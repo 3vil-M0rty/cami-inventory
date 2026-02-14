@@ -1,0 +1,109 @@
+.stock-notification {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  animation: slideDown 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stock-notification__icon {
+  float: left;
+  margin-right: 14px;
+  color: #b45309;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: rgba(180, 83, 9, 0.1);
+  border-radius: 50%;
+}
+
+.stock-notification__content {
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.stock-notification__title {
+  font-family: 'Archivo', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #92400e;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.stock-notification__message {
+  font-family: 'Archivo', sans-serif;
+  font-size: 14px;
+  color: #78350f;
+}
+
+.stock-notification__message strong {
+  font-weight: 700;
+  color: #b45309;
+}
+
+.stock-notification__items {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(180, 83, 9, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stock-notification__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  color: #78350f;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+}
+
+.stock-notification__item-name {
+  flex: 1;
+  margin-right: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stock-notification__item-stock {
+  font-weight: 600;
+  color: #b45309;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .stock-notification {
+    padding: 14px 16px;
+  }
+
+  .stock-notification__icon {
+    float: none;
+    margin: 0 auto 10px;
+  }
+
+  .stock-notification__content {
+    text-align: center;
+  }
+}

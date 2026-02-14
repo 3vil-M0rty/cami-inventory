@@ -1,0 +1,73 @@
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.input-label {
+  font-family: 'Archivo', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0a0a0a;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.input-required {
+  color: #dc2626;
+  margin-left: 4px;
+}
+
+.input-field {
+  font-family: 'Archivo', sans-serif;
+  font-size: 15px;
+  padding: 12px 16px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #0a0a0a;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.input-field:hover:not(:disabled) {
+  border-color: #a0a0a0;
+}
+
+.input-field:focus {
+  border-color: #0a0a0a;
+  box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.1);
+}
+
+.input-field::placeholder {
+  color: #999;
+}
+
+.input-field:disabled {
+  background: #f5f5f5;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.input-field--error {
+  border-color: #dc2626;
+}
+
+.input-field--error:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.input-error {
+  font-family: 'Archivo', sans-serif;
+  font-size: 12px;
+  color: #dc2626;
+  margin-top: -2px;
+}
+
+/* Number input arrows */
+.input-field[type="number"]::-webkit-inner-spin-button,
+.input-field[type="number"]::-webkit-outer-spin-button {
+  opacity: 1;
+}

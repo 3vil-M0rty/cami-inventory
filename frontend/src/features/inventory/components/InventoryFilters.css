@@ -1,0 +1,131 @@
+.inventory-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.inventory-filters__buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 10px 18px;
+  border: 1px solid #d0d0d0;
+  background: #ffffff;
+  color: #0a0a0a;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.filter-btn:hover {
+  border-color: #0a0a0a;
+  background: #fafafa;
+}
+
+.filter-btn--active {
+  background: #0a0a0a;
+  color: #ffffff;
+  border-color: #0a0a0a;
+}
+
+.filter-btn--active:hover {
+  background: #1a1a1a;
+}
+
+.inventory-filters__search {
+  flex: 1;
+  min-width: 250px;
+  max-width: 400px;
+}
+
+.search-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input__icon {
+  position: absolute;
+  left: 14px;
+  color: #999;
+  pointer-events: none;
+}
+
+.search-input__field {
+  font-family: 'Archivo', sans-serif;
+  font-size: 14px;
+  width: 100%;
+  padding: 10px 40px 10px 42px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #0a0a0a;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.search-input__field:hover {
+  border-color: #a0a0a0;
+}
+
+.search-input__field:focus {
+  border-color: #0a0a0a;
+  box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.1);
+}
+
+.search-input__field::placeholder {
+  color: #999;
+}
+
+.search-input__clear {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.search-input__clear:hover {
+  background: #f0f0f0;
+  color: #0a0a0a;
+}
+
+@media (max-width: 768px) {
+  .inventory-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inventory-filters__buttons {
+    width: 100%;
+  }
+
+  .filter-btn {
+    flex: 1;
+  }
+
+  .inventory-filters__search {
+    max-width: 100%;
+  }
+}
