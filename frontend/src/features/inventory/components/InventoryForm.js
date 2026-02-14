@@ -14,7 +14,6 @@ import './InventoryForm.css';
 
 const InventoryForm = ({ onSubmit, onCancel, initialData = null }) => {
   const { t } = useLanguage();
-  const isEditMode = Boolean(initialData);
 
   const [formData, setFormData] = useState({
     image: '',

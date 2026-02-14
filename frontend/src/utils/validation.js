@@ -69,10 +69,12 @@ export const validateInventoryItem = (formData) => {
   };
 };
 
-export default {
+const validationUtils = {
   isRequired,
   isValidNumber,
   isPositiveNumber,
   isValidUrl,
   validateInventoryItem
 };
+
+export default validationUtils;
