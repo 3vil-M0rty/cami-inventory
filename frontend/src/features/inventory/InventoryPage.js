@@ -123,7 +123,10 @@ function InventoryPage() {
       actions: 'Actions',
       noItems: 'Aucun article trouvé',
       loading: 'Chargement...',
-      category: 'Catégorie'
+      category: 'Catégorie',
+      modifier: 'Modifier',
+      supprimier : 'Supprimer',
+      faible: 'Stock faible',
     },
     it: {
       title: 'Inventario Alluminio',
@@ -136,7 +139,10 @@ function InventoryPage() {
       actions: 'Azioni',
       noItems: 'Nessun articolo trovato',
       loading: 'Caricamento...',
-      category: 'Categoria'
+      category: 'Categoria',
+      modifier: 'Edit',
+      supprimier : 'Delete',
+      faible: 'Scorte basse',
     },
     en: {
       title: 'Aluminum Inventory',
@@ -149,7 +155,10 @@ function InventoryPage() {
       actions: 'Actions',
       noItems: 'No items found',
       loading: 'Loading...',
-      category: 'Category'
+      category: 'Category',
+      modifier: 'Modifica',
+      supprimier : 'Elimina',
+      faible : 'Low stock',
     }
   };
 
@@ -336,7 +345,7 @@ function ItemCard({ item, language, onUpdateQuantity, onDelete, onEdit }) {
 
         {isLowStock && (
           <div className="low-stock-warning">
-            ⚠️ Stock faible
+            ⚠️ {t.faible}
           </div>
         )}
 
@@ -357,10 +366,10 @@ function ItemCard({ item, language, onUpdateQuantity, onDelete, onEdit }) {
 
         <div className="item-actions">
           <button className="edit-btn" onClick={() => onEdit(item)}>
-            ✏️ Modifier
+            ✏️ {t.modifier}
           </button>
           <button className="delete-btn" onClick={() => onDelete(item.id)}>
-            🗑️ Supprimer
+            🗑️ {t.supprimer}
           </button>
         </div>
       </div>
