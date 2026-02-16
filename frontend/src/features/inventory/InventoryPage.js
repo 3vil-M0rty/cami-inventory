@@ -312,6 +312,28 @@ function InventoryPage() {
 function ItemCard({ item, language, onUpdateQuantity, onDelete, onEdit }) {
   const isLowStock = item.quantity < item.threshold;
   const categoryColor = item.categoryId?.color || '#gray';
+   const translations = {
+    fr: {
+     
+      modifier: 'Modifier',
+      supprimier : 'Supprimer',
+      faible: 'Stock faible',
+    },
+    it: {
+      
+      modifier: 'Edit',
+      supprimier : 'Delete',
+      faible: 'Scorte basse',
+    },
+    en: {
+     
+      modifier: 'Modifica',
+      supprimier : 'Elimina',
+      faible : 'Low stock',
+    }
+  };
+
+  const t = translations[language];
 
   return (
     <div className={`item-card ${isLowStock ? 'low-stock' : ''}`}>
