@@ -316,19 +316,19 @@ function ItemCard({ item, language, onUpdateQuantity, onDelete, onEdit }) {
     fr: {
      
       modifier: 'Modifier',
-      supprimier : 'Supprimer',
+      supprimer : 'Supprimer',
       faible: 'Stock faible',
     },
     it: {
       
-      modifier: 'Edit',
-      supprimier : 'Delete',
+      modifier: 'Modifica',
+      supprimer : 'Elimina',
       faible: 'Scorte basse',
     },
     en: {
      
-      modifier: 'Modifica',
-      supprimier : 'Elimina',
+      modifier: 'Edit',
+      supprimer : 'Delete',
       faible : 'Low stock',
     }
   };
