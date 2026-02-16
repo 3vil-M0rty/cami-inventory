@@ -46,6 +46,47 @@ mongoose.connect(MONGODB_URI, {
   process.exit(1);
 });
 
+// Category Schema & Model
+const categorySchema = new mongoose.Schema({
+  name: {
+    it: {
+      type: String,
+      required: [true, 'Italian category name is required'],
+      trim: true
+    },
+    fr: {
+      type: String,
+      required: [true, 'French category name is required'],
+      trim: true
+    },
+    en: {
+      type: String,
+      required: [true, 'English category name is required'],
+      trim: true
+    }
+  },
+  color: {
+    type: String,
+    default: '#3b82f6'
+  },
+  order: {
+    type: Number,
+    default: 0
+  }
+}, {
+  timestamps: true,
+  toJSON: {
+    transform: function(doc, ret) {
+      ret.id = ret._id;
+      delete ret._id;
+      delete ret.__v;
+      return ret;
+    }
+  }
+});
+
+const Category = mongoose.model('Category', categorySchema);
+
 // Mongoose Schema & Model
 const itemSchema = new mongoose.Schema({
   image: {
@@ -78,6 +119,11 @@ const itemSchema = new mongoose.Schema({
     type: Number,
     required: [true, 'Threshold is required'],
     min: [0, 'Threshold cannot be negative']
+  },
+  categoryId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category',
+    default: null
   }
 }, {
   timestamps: true,
@@ -96,6 +142,54 @@ const Item = mongoose.model('Item', itemSchema);
 // Initialize sample data
 async function initializeSampleData() {
   try {
+    const categoryCount = await Category.countDocuments();
+    
+    if (categoryCount === 0) {
+      console.log('📦 Initializing sample categories...');
+      
+      const sampleCategories = [
+        {
+          name: {
+            it: 'Serie 6000',
+            fr: 'Série 6000',
+            en: '6000 Series'
+          },
+          color: '#3b82f6',
+          order: 1
+        },
+        {
+          name: {
+            it: 'Serie 7000',
+            fr: 'Série 7000',
+            en: '7000 Series'
+          },
+          color: '#8b5cf6',
+          order: 2
+        },
+        {
+          name: {
+            it: 'Serie 5000',
+            fr: 'Série 5000',
+            en: '5000 Series'
+          },
+          color: '#10b981',
+          order: 3
+        },
+        {
+          name: {
+            it: 'Serie 2000',
+            fr: 'Série 2000',
+            en: '2000 Series'
+          },
+          color: '#f59e0b',
+          order: 4
+        }
+      ];
+      
+      await Category.insertMany(sampleCategories);
+      console.log('✅ Sample categories initialized');
+    }
+    
     const count = await Item.countDocuments();
     
     if (count === 0) {
@@ -152,6 +246,130 @@ async function initializeSampleData() {
   }
 }
 
+// ==================== CATEGORY API ROUTES ====================
+
+// GET all categories
+app.get('/api/categories', async (req, res) => {
+  try {
+    const categories = await Category.find().sort({ order: 1, createdAt: 1 });
+    res.json(categories);
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch categories',
+      message: error.message 
+    });
+  }
+});
+
+// POST create new category
+app.post('/api/categories', async (req, res) => {
+  try {
+    const categoryData = {
+      name: {
+        it: req.body.name?.it,
+        fr: req.body.name?.fr,
+        en: req.body.name?.en
+      },
+      color: req.body.color || '#3b82f6',
+      order: req.body.order || 0
+    };
+    
+    const category = new Category(categoryData);
+    await category.save();
+    
+    console.log('✅ Created category:', category.id);
+    res.status(201).json(category);
+  } catch (error) {
+    console.error('Error creating category:', error);
+    
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: error.message
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to create category',
+      message: error.message 
+    });
+  }
+});
+
+// PUT update category
+app.put('/api/categories/:id', async (req, res) => {
+  try {
+    const updateData = {
+      name: {
+        it: req.body.name?.it,
+        fr: req.body.name?.fr,
+        en: req.body.name?.en
+      },
+      color: req.body.color,
+      order: req.body.order
+    };
+    
+    const category = await Category.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { 
+        new: true,
+        runValidators: true
+      }
+    );
+    
+    if (!category) {
+      return res.status(404).json({ 
+        error: 'Category not found',
+        message: `No category found with id: ${req.params.id}` 
+      });
+    }
+    
+    console.log('✅ Updated category:', category.id);
+    res.json(category);
+  } catch (error) {
+    console.error('Error updating category:', error);
+    res.status(500).json({ 
+      error: 'Failed to update category',
+      message: error.message 
+    });
+  }
+});
+
+// DELETE category
+app.delete('/api/categories/:id', async (req, res) => {
+  try {
+    const category = await Category.findByIdAndDelete(req.params.id);
+    
+    if (!category) {
+      return res.status(404).json({ 
+        error: 'Category not found',
+        message: `No category found with id: ${req.params.id}` 
+      });
+    }
+    
+    // Remove category reference from items (don't delete items)
+    await Item.updateMany(
+      { categoryId: req.params.id },
+      { $set: { categoryId: null } }
+    );
+    
+    console.log('✅ Deleted category:', req.params.id);
+    res.json({ 
+      success: true,
+      id: req.params.id,
+      message: 'Category deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting category:', error);
+    res.status(500).json({ 
+      error: 'Failed to delete category',
+      message: error.message 
+    });
+  }
+});
+
 // ==================== API ROUTES ====================
 
 // Health check
@@ -167,7 +385,16 @@ app.get('/health', (req, res) => {
 // GET all items
 app.get('/api/inventory', async (req, res) => {
   try {
-    const items = await Item.find().sort({ createdAt: -1 });
+    const { categoryId } = req.query;
+    
+    const filter = {};
+    if (categoryId && categoryId !== 'all') {
+      filter.categoryId = categoryId;
+    }
+    
+    const items = await Item.find(filter)
+      .populate('categoryId')
+      .sort({ createdAt: -1 });
     res.json(items);
   } catch (error) {
     console.error('Error fetching items:', error);
@@ -181,7 +408,7 @@ app.get('/api/inventory', async (req, res) => {
 // GET single item by ID
 app.get('/api/inventory/:id', async (req, res) => {
   try {
-    const item = await Item.findById(req.params.id);
+    const item = await Item.findById(req.params.id).populate('categoryId');
     
     if (!item) {
       return res.status(404).json({ 
@@ -219,11 +446,13 @@ app.post('/api/inventory', async (req, res) => {
         en: req.body.designation?.en
       },
       quantity: Number(req.body.quantity),
-      threshold: Number(req.body.threshold)
+      threshold: Number(req.body.threshold),
+      categoryId: req.body.categoryId || null
     };
     
     const item = new Item(itemData);
     await item.save();
+    await item.populate('categoryId');
     
     console.log('✅ Created item:', item.id);
     res.status(201).json(item);
@@ -259,7 +488,8 @@ app.put('/api/inventory/:id', async (req, res) => {
         en: req.body.designation?.en
       },
       quantity: Number(req.body.quantity),
-      threshold: Number(req.body.threshold)
+      threshold: Number(req.body.threshold),
+      categoryId: req.body.categoryId || null
     };
     
     const item = await Item.findByIdAndUpdate(
@@ -269,7 +499,7 @@ app.put('/api/inventory/:id', async (req, res) => {
         new: true,
         runValidators: true
       }
-    );
+    ).populate('categoryId');
     
     if (!item) {
       return res.status(404).json({ 
@@ -328,6 +558,7 @@ app.patch('/api/inventory/:id/quantity', async (req, res) => {
     // Update quantity, but don't allow negative values
     item.quantity = Math.max(0, item.quantity + amount);
     await item.save();
+    await item.populate('categoryId');
     
     console.log(`✅ Updated quantity for item ${item.id}: ${amount > 0 ? '+' : ''}${amount} (new: ${item.quantity})`);
     res.json(item);
@@ -386,7 +617,7 @@ app.delete('/api/inventory/:id', async (req, res) => {
 // GET low stock items
 app.get('/api/inventory/filter/low-stock', async (req, res) => {
   try {
-    const items = await Item.find();
+    const items = await Item.find().populate('categoryId');
     const lowStock = items.filter(item => item.quantity < item.threshold);
     res.json(lowStock);
   } catch (error) {
@@ -402,19 +633,25 @@ app.get('/api/inventory/filter/low-stock', async (req, res) => {
 app.get('/api/inventory/search', async (req, res) => {
   try {
     const searchTerm = req.query.q || '';
+    const { categoryId } = req.query;
     
-    if (!searchTerm) {
-      const items = await Item.find().sort({ createdAt: -1 });
-      return res.json(items);
+    const filter = {};
+    
+    if (categoryId && categoryId !== 'all') {
+      filter.categoryId = categoryId;
     }
     
-    const items = await Item.find({
-      $or: [
+    if (searchTerm) {
+      filter.$or = [
         { 'designation.it': { $regex: searchTerm, $options: 'i' } },
         { 'designation.fr': { $regex: searchTerm, $options: 'i' } },
         { 'designation.en': { $regex: searchTerm, $options: 'i' } }
-      ]
-    }).sort({ createdAt: -1 });
+      ];
+    }
+    
+    const items = await Item.find(filter)
+      .populate('categoryId')
+      .sort({ createdAt: -1 });
     
     res.json(items);
   } catch (error) {
