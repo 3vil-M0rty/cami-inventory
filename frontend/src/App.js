@@ -4,7 +4,7 @@ import './App.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
-function InventoryApp() {
+function App() {
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -571,4 +571,4 @@ function ItemModal({ language, categories, item, onClose, onSave }) {
   );
 }
 
-export default InventoryApp;
+export default App;
