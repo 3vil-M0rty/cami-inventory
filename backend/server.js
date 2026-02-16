@@ -3,7 +3,7 @@
  * 
  * Production-ready Express + MongoDB API
  * Shared database for all users
- * WITH QUANTITY UPDATE FEATURE
+ * WITH ORDERED QUANTITY FEATURE
  */
 
 require('dotenv').config();
@@ -87,7 +87,7 @@ const categorySchema = new mongoose.Schema({
 
 const Category = mongoose.model('Category', categorySchema);
 
-// Mongoose Schema & Model
+// Mongoose Schema & Model WITH ORDERED QUANTITY
 const itemSchema = new mongoose.Schema({
   image: {
     type: String,
@@ -113,12 +113,19 @@ const itemSchema = new mongoose.Schema({
   quantity: {
     type: Number,
     required: [true, 'Quantity is required'],
-    min: [0, 'Quantity cannot be negative']
+    min: [0, 'Quantity cannot be negative'],
+    default: 0
+  },
+  orderedQuantity: {
+    type: Number,
+    min: [0, 'Ordered quantity cannot be negative'],
+    default: 0
   },
   threshold: {
     type: Number,
     required: [true, 'Threshold is required'],
-    min: [0, 'Threshold cannot be negative']
+    min: [0, 'Threshold cannot be negative'],
+    default: 0
   },
   categoryId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -204,6 +211,7 @@ async function initializeSampleData() {
             en: 'Aluminum Bar 6063 - 50x25mm'
           },
           quantity: 45,
+          orderedQuantity: 10,
           threshold: 20
         },
         {
@@ -214,6 +222,7 @@ async function initializeSampleData() {
             en: 'Aluminum Bar 7075 - 30x30mm'
           },
           quantity: 8,
+          orderedQuantity: 25,
           threshold: 15
         },
         {
@@ -224,6 +233,7 @@ async function initializeSampleData() {
             en: 'Aluminum Bar 5052 - 60x40mm'
           },
           quantity: 32,
+          orderedQuantity: 0,
           threshold: 25
         },
         {
@@ -234,6 +244,7 @@ async function initializeSampleData() {
             en: 'Aluminum Bar 2024 - 40x20mm'
           },
           quantity: 12,
+          orderedQuantity: 20,
           threshold: 30
         }
       ];
@@ -330,6 +341,21 @@ app.put('/api/categories/:id', async (req, res) => {
     res.json(category);
   } catch (error) {
     console.error('Error updating category:', error);
+    
+    if (error.kind === 'ObjectId') {
+      return res.status(400).json({ 
+        error: 'Invalid ID format',
+        message: 'The provided ID is not valid' 
+      });
+    }
+    
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: error.message 
+      });
+    }
+    
     res.status(500).json({ 
       error: 'Failed to update category',
       message: error.message 
@@ -349,12 +375,6 @@ app.delete('/api/categories/:id', async (req, res) => {
       });
     }
     
-    // Remove category reference from items (don't delete items)
-    await Item.updateMany(
-      { categoryId: req.params.id },
-      { $set: { categoryId: null } }
-    );
-    
     console.log('✅ Deleted category:', req.params.id);
     res.json({ 
       success: true,
@@ -363,6 +383,14 @@ app.delete('/api/categories/:id', async (req, res) => {
     });
   } catch (error) {
     console.error('Error deleting category:', error);
+    
+    if (error.kind === 'ObjectId') {
+      return res.status(400).json({ 
+        error: 'Invalid ID format',
+        message: 'The provided ID is not valid' 
+      });
+    }
+    
     res.status(500).json({ 
       error: 'Failed to delete category',
       message: error.message 
@@ -445,8 +473,9 @@ app.post('/api/inventory', async (req, res) => {
         fr: req.body.designation?.fr,
         en: req.body.designation?.en
       },
-      quantity: Number(req.body.quantity),
-      threshold: Number(req.body.threshold),
+      quantity: Number(req.body.quantity) || 0,
+      orderedQuantity: Number(req.body.orderedQuantity) || 0,
+      threshold: Number(req.body.threshold) || 0,
       categoryId: req.body.categoryId || null
     };
     
@@ -487,8 +516,9 @@ app.put('/api/inventory/:id', async (req, res) => {
         fr: req.body.designation?.fr,
         en: req.body.designation?.en
       },
-      quantity: Number(req.body.quantity),
-      threshold: Number(req.body.threshold),
+      quantity: Number(req.body.quantity) || 0,
+      orderedQuantity: Number(req.body.orderedQuantity) || 0,
+      threshold: Number(req.body.threshold) || 0,
       categoryId: req.body.categoryId || null
     };
     
@@ -534,7 +564,7 @@ app.put('/api/inventory/:id', async (req, res) => {
   }
 });
 
-// PATCH update quantity only (NEW FEATURE!)
+// PATCH update quantity only
 app.patch('/api/inventory/:id/quantity', async (req, res) => {
   try {
     const { amount } = req.body;
@@ -614,11 +644,14 @@ app.delete('/api/inventory/:id', async (req, res) => {
   }
 });
 
-// GET low stock items
+// GET low stock items (existing + ordered < threshold)
 app.get('/api/inventory/filter/low-stock', async (req, res) => {
   try {
     const items = await Item.find().populate('categoryId');
-    const lowStock = items.filter(item => item.quantity < item.threshold);
+    const lowStock = items.filter(item => {
+      const totalStock = item.quantity + (item.orderedQuantity || 0);
+      return totalStock < item.threshold;
+    });
     res.json(lowStock);
   } catch (error) {
     console.error('Error fetching low stock items:', error);

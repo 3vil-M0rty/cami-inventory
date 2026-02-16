@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from "axios";
+import * as XLSX from 'xlsx';
 import './InventoryPage.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -14,6 +15,8 @@ function InventoryPage() {
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showAddItem, setShowAddItem] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   // Fetch categories
   useEffect(() => {
@@ -76,12 +79,12 @@ function InventoryPage() {
       ));
     } catch (error) {
       console.error('Error updating quantity:', error);
-      alert('Erreur lors de la mise à jour de la quantité');
+      alert(translations[language].errorUpdating || 'Erreur lors de la mise à jour');
     }
   };
 
   const deleteItem = async (itemId) => {
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet article?')) {
+    if (!window.confirm(translations[language].deleteConfirmMessage)) {
       return;
     }
     
@@ -90,12 +93,12 @@ function InventoryPage() {
       setItems(items.filter(item => item.id !== itemId));
     } catch (error) {
       console.error('Error deleting item:', error);
-      alert('Erreur lors de la suppression');
+      alert(translations[language].errorDeleting || 'Erreur lors de la suppression');
     }
   };
 
   const deleteCategory = async (categoryId) => {
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette catégorie? Les articles ne seront pas supprimés.')) {
+    if (!window.confirm(translations[language].deleteCategoryConfirmMessage)) {
       return;
     }
     
@@ -107,8 +110,111 @@ function InventoryPage() {
       }
     } catch (error) {
       console.error('Error deleting category:', error);
-      alert('Erreur lors de la suppression de la catégorie');
+      alert(translations[language].errorDeletingCategory || 'Erreur lors de la suppression');
     }
+  };
+
+  // Filter items based on search term
+  const filteredItems = items.filter(item => {
+    if (!searchTerm) return true;
+    const designation = item.designation[language] || '';
+    return designation.toLowerCase().includes(searchTerm.toLowerCase());
+  });
+
+  // Excel Export Function
+  const exportToExcel = () => {
+    setExporting(true);
+    try {
+      const workbook = XLSX.utils.book_new();
+      
+      // Get unique categories (including items without category)
+      const categoriesMap = new Map();
+      categoriesMap.set('no-category', { name: translations[language].noCategory, items: [] });
+      
+      categories.forEach(cat => {
+        categoriesMap.set(cat.id, { name: cat.name[language], items: [] });
+      });
+      
+      // Organize items by category
+      items.forEach(item => {
+        const categoryId = item.categoryId?.id || item.categoryId?._id || 'no-category';
+        if (categoriesMap.has(categoryId)) {
+          categoriesMap.get(categoryId).items.push(item);
+        } else {
+          categoriesMap.get('no-category').items.push(item);
+        }
+      });
+      
+      // Create a sheet for each category
+      categoriesMap.forEach((categoryData, categoryId) => {
+        if (categoryData.items.length === 0) return; // Skip empty categories
+        
+        const sheetData = categoryData.items.map(item => ({
+          [translations[language].designation]: item.designation[language],
+          [translations[language].quantity]: item.quantity,
+          [translations[language].orderedQuantity]: item.orderedQuantity || 0,
+          [translations[language].threshold]: item.threshold,
+          [translations[language].status]: getStockStatus(item).text
+        }));
+        
+        const worksheet = XLSX.utils.json_to_sheet(sheetData);
+        
+        // Set column widths
+        worksheet['!cols'] = [
+          { wch: 40 }, // Designation
+          { wch: 15 }, // Quantity
+          { wch: 20 }, // Ordered Quantity
+          { wch: 15 }, // Threshold
+          { wch: 20 }  // Status
+        ];
+        
+        XLSX.utils.book_append_sheet(workbook, worksheet, categoryData.name.substring(0, 31));
+      });
+      
+      // Generate Excel file
+      const fileName = `inventaire_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+      
+      alert(translations[language].exportSuccess);
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      alert(translations[language].exportError);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Get stock status with color coding
+  const getStockStatus = (item) => {
+    const currentStock = item.quantity;
+    const orderedQty = item.orderedQuantity || 0;
+    const totalStock = currentStock + orderedQty;
+    const threshold = item.threshold;
+    
+    // Red: existing + ordered < threshold
+    if (totalStock < threshold) {
+      return { 
+        color: '#dc2626', 
+        text: translations[language].criticalStock,
+        className: 'status-critical'
+      };
+    }
+    
+    // Yellow: existing < threshold BUT existing + ordered >= threshold
+    if (currentStock < threshold && totalStock >= threshold) {
+      return { 
+        color: '#f59e0b', 
+        text: translations[language].warningStock,
+        className: 'status-warning'
+      };
+    }
+    
+    // Green: existing >= threshold
+    return { 
+      color: '#16a34a', 
+      text: translations[language].inStock,
+      className: 'status-ok'
+    };
   };
 
   const translations = {
@@ -119,14 +225,30 @@ function InventoryPage() {
       addCategory: 'Ajouter catégorie',
       addItem: 'Ajouter article',
       quantity: 'Quantité',
+      orderedQuantity: 'Qté Commandée',
       threshold: 'Seuil',
       actions: 'Actions',
       noItems: 'Aucun article trouvé',
       loading: 'Chargement...',
       category: 'Catégorie',
+      designation: 'Désignation',
       modifier: 'Modifier',
-      supprimier : 'Supprimer',
-      faible: 'Stock faible',
+      supprimer: 'Supprimer',
+      searchPlaceholder: 'Rechercher par désignation...',
+      exportExcel: 'Exporter Excel',
+      exporting: 'Exportation...',
+      exportSuccess: 'Excel exporté avec succès',
+      exportError: 'Erreur lors de l\'exportation',
+      noCategory: 'Sans Catégorie',
+      criticalStock: 'Stock Critique',
+      warningStock: 'Alerte Stock',
+      inStock: 'En Stock',
+      deleteConfirmMessage: 'Êtes-vous sûr de vouloir supprimer cet article?',
+      deleteCategoryConfirmMessage: 'Êtes-vous sûr de vouloir supprimer cette catégorie?',
+      errorUpdating: 'Erreur lors de la mise à jour',
+      errorDeleting: 'Erreur lors de la suppression',
+      errorDeletingCategory: 'Erreur lors de la suppression de la catégorie',
+      status: 'Statut'
     },
     it: {
       title: 'Inventario Alluminio',
@@ -135,14 +257,30 @@ function InventoryPage() {
       addCategory: 'Aggiungi categoria',
       addItem: 'Aggiungi articolo',
       quantity: 'Quantità',
+      orderedQuantity: 'Qta Ordinata',
       threshold: 'Soglia',
       actions: 'Azioni',
       noItems: 'Nessun articolo trovato',
       loading: 'Caricamento...',
       category: 'Categoria',
-      modifier: 'Edit',
-      supprimier : 'Delete',
-      faible: 'Scorte basse',
+      designation: 'Designazione',
+      modifier: 'Modifica',
+      supprimer: 'Elimina',
+      searchPlaceholder: 'Cerca per designazione...',
+      exportExcel: 'Esporta Excel',
+      exporting: 'Esportazione...',
+      exportSuccess: 'Excel esportato con successo',
+      exportError: 'Errore durante l\'esportazione',
+      noCategory: 'Senza Categoria',
+      criticalStock: 'Stock Critico',
+      warningStock: 'Avviso Stock',
+      inStock: 'Disponibile',
+      deleteConfirmMessage: 'Sei sicuro di voler eliminare questo articolo?',
+      deleteCategoryConfirmMessage: 'Sei sicuro di voler eliminare questa categoria?',
+      errorUpdating: 'Errore durante l\'aggiornamento',
+      errorDeleting: 'Errore durante l\'eliminazione',
+      errorDeletingCategory: 'Errore durante l\'eliminazione della categoria',
+      status: 'Stato'
     },
     en: {
       title: 'Aluminum Inventory',
@@ -151,14 +289,30 @@ function InventoryPage() {
       addCategory: 'Add category',
       addItem: 'Add item',
       quantity: 'Quantity',
+      orderedQuantity: 'Ordered Qty',
       threshold: 'Threshold',
       actions: 'Actions',
       noItems: 'No items found',
       loading: 'Loading...',
       category: 'Category',
-      modifier: 'Modifica',
-      supprimier : 'Elimina',
-      faible : 'Low stock',
+      designation: 'Designation',
+      modifier: 'Edit',
+      supprimer: 'Delete',
+      searchPlaceholder: 'Search by designation...',
+      exportExcel: 'Export Excel',
+      exporting: 'Exporting...',
+      exportSuccess: 'Excel exported successfully',
+      exportError: 'Error during export',
+      noCategory: 'No Category',
+      criticalStock: 'Critical Stock',
+      warningStock: 'Warning Stock',
+      inStock: 'In Stock',
+      deleteConfirmMessage: 'Are you sure you want to delete this item?',
+      deleteCategoryConfirmMessage: 'Are you sure you want to delete this category?',
+      errorUpdating: 'Error updating',
+      errorDeleting: 'Error deleting',
+      errorDeletingCategory: 'Error deleting category',
+      status: 'Status'
     }
   };
 
@@ -168,25 +322,36 @@ function InventoryPage() {
     <div className="inventory-app">
       <header className="header">
         <h1>{t.title}</h1>
-        <div className="language-selector">
-          <button 
-            className={language === 'fr' ? 'active' : ''} 
-            onClick={() => setLanguage('fr')}
-          >
-            FR
-          </button>
-          <button 
-            className={language === 'it' ? 'active' : ''} 
-            onClick={() => setLanguage('it')}
-          >
-            IT
-          </button>
-          <button 
-            className={language === 'en' ? 'active' : ''} 
-            onClick={() => setLanguage('en')}
-          >
-            EN
-          </button>
+        <div className="header-actions">
+          <div className="search-bar">
+            <input
+              type="text"
+              placeholder={t.searchPlaceholder}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="search-input"
+            />
+          </div>
+          <div className="language-selector">
+            <button 
+              className={language === 'fr' ? 'active' : ''} 
+              onClick={() => setLanguage('fr')}
+            >
+              FR
+            </button>
+            <button 
+              className={language === 'it' ? 'active' : ''} 
+              onClick={() => setLanguage('it')}
+            >
+              IT
+            </button>
+            <button 
+              className={language === 'en' ? 'active' : ''} 
+              onClick={() => setLanguage('en')}
+            >
+              EN
+            </button>
+          </div>
         </div>
       </header>
 
@@ -216,13 +381,10 @@ function InventoryPage() {
                 className={`filter-btn category-btn ${selectedCategory === category.id ? 'active' : ''}`}
                 style={{
                   '--category-color': category.color,
-                  borderColor: selectedCategory === category.id ? category.color : '#ddd'
+                  borderColor: selectedCategory === category.id ? category.color : '#333'
                 }}
                 onClick={() => {
                   setSelectedCategory(selectedCategory === category.id ? 'all' : category.id);
-                  if (filter !== 'all' && selectedCategory !== category.id) {
-                    // Keep the filter active when switching categories
-                  }
                 }}
               >
                 <span className="category-dot" style={{ backgroundColor: category.color }}></span>
@@ -231,7 +393,7 @@ function InventoryPage() {
               <button
                 className="delete-category-btn"
                 onClick={() => deleteCategory(category.id)}
-                title="Supprimer la catégorie"
+                title={t.supprimer}
               >
                 ×
               </button>
@@ -246,25 +408,36 @@ function InventoryPage() {
           </button>
         </div>
 
-        <button className="add-item-btn" onClick={() => setShowAddItem(true)}>
-          + {t.addItem}
-        </button>
+        <div className="action-buttons">
+          <button 
+            className="excel-btn" 
+            onClick={exportToExcel}
+            disabled={exporting || items.length === 0}
+          >
+            {exporting ? t.exporting : t.exportExcel}
+          </button>
+          <button className="add-item-btn" onClick={() => setShowAddItem(true)}>
+            + {t.addItem}
+          </button>
+        </div>
       </div>
 
       {loading ? (
         <div className="loading">{t.loading}</div>
-      ) : items.length === 0 ? (
+      ) : filteredItems.length === 0 ? (
         <div className="no-items">{t.noItems}</div>
       ) : (
         <div className="items-grid">
-          {items.map(item => (
+          {filteredItems.map(item => (
             <ItemCard
               key={item.id}
               item={item}
               language={language}
               onUpdateQuantity={updateQuantity}
+              onEdit={(item) => setEditingItem(item)}
               onDelete={deleteItem}
-              onEdit={setEditingItem}
+              getStockStatus={getStockStatus}
+              t={t}
             />
           ))}
         </div>
@@ -273,35 +446,30 @@ function InventoryPage() {
       {showAddCategory && (
         <CategoryModal
           language={language}
-          onClose={() => setShowAddCategory(false)}
-          onSave={() => {
-            fetchCategories();
+          onClose={() => {
             setShowAddCategory(false);
+            fetchCategories();
           }}
-        />
-      )}
-
-      {showAddItem && (
-        <ItemModal
-          language={language}
-          categories={categories}
-          onClose={() => setShowAddItem(false)}
           onSave={() => {
-            fetchItems();
-            setShowAddItem(false);
+            setShowAddCategory(false);
+            fetchCategories();
           }}
         />
       )}
 
-      {editingItem && (
+      {(showAddItem || editingItem) && (
         <ItemModal
           language={language}
           categories={categories}
           item={editingItem}
-          onClose={() => setEditingItem(null)}
-          onSave={() => {
-            fetchItems();
+          onClose={() => {
+            setShowAddItem(false);
             setEditingItem(null);
+          }}
+          onSave={() => {
+            setShowAddItem(false);
+            setEditingItem(null);
+            fetchItems();
           }}
         />
       )}
@@ -309,72 +477,61 @@ function InventoryPage() {
   );
 }
 
-function ItemCard({ item, language, onUpdateQuantity, onDelete, onEdit }) {
-  const isLowStock = item.quantity < item.threshold;
-  const categoryColor = item.categoryId?.color || '#gray';
-   const translations = {
-    fr: {
-     
-      modifier: 'Modifier',
-      supprimer : 'Supprimer',
-      faible: 'Stock faible',
-    },
-    it: {
-      
-      modifier: 'Modifica',
-      supprimer : 'Elimina',
-      faible: 'Scorte basse',
-    },
-    en: {
-     
-      modifier: 'Edit',
-      supprimer : 'Delete',
-      faible : 'Low stock',
-    }
-  };
-
-  const t = translations[language];
-
+function ItemCard({ item, language, onUpdateQuantity, onEdit, onDelete, getStockStatus, t }) {
+  const status = getStockStatus(item);
+  
   return (
-    <div className={`item-card ${isLowStock ? 'low-stock' : ''}`}>
-      {item.image && (
-        <div className="item-image">
+    <div className={`item-card ${status.className}`}>
+      <div className="item-image">
+        {item.image ? (
           <img src={item.image} alt={item.designation[language]} />
-        </div>
-      )}
-      
-      {item.categoryId && (
-        <div className="item-category" style={{ backgroundColor: categoryColor }}>
-          {item.categoryId.name[language]}
-        </div>
-      )}
+        ) : (
+          <div className="no-image">📦</div>
+        )}
+        {item.categoryId && (
+          <div 
+            className="item-category" 
+            style={{ backgroundColor: item.categoryId.color }}
+          >
+            {item.categoryId.name[language]}
+          </div>
+        )}
+      </div>
 
       <div className="item-content">
         <h3>{item.designation[language]}</h3>
-        
+
         <div className="quantity-section">
           <div className="quantity-display">
-            <span className="quantity-label">Quantité:</span>
-            <span className={`quantity-value ${isLowStock ? 'low' : ''}`}>
+            <span className="quantity-label">{t.quantity}</span>
+            <span className={`quantity-value ${item.quantity < item.threshold ? 'low' : ''}`}>
               {item.quantity}
             </span>
           </div>
+          <div className="quantity-display">
+            <span className="quantity-label">{t.orderedQuantity}</span>
+            <span className="quantity-value">
+              {item.orderedQuantity || 0}
+            </span>
+          </div>
           <div className="threshold-display">
-            <span className="threshold-label">Seuil:</span>
+            <span className="threshold-label">{t.threshold}</span>
             <span className="threshold-value">{item.threshold}</span>
           </div>
         </div>
 
-        {isLowStock && (
-          <div className="low-stock-warning">
-            ⚠️ {t.faible}
-          </div>
-        )}
+        <div className="status-badge" style={{ 
+          backgroundColor: status.color,
+          color: '#fff'
+        }}>
+          {status.text}
+        </div>
 
         <div className="quantity-controls">
           <button
             className="qty-btn minus"
             onClick={() => onUpdateQuantity(item.id, -1)}
+            disabled={item.quantity === 0}
           >
             −
           </button>
@@ -388,10 +545,10 @@ function ItemCard({ item, language, onUpdateQuantity, onDelete, onEdit }) {
 
         <div className="item-actions">
           <button className="edit-btn" onClick={() => onEdit(item)}>
-            ✏️ {t.modifier}
+            {t.modifier}
           </button>
           <button className="delete-btn" onClick={() => onDelete(item.id)}>
-            🗑️ {t.supprimer}
+            {t.supprimer}
           </button>
         </div>
       </div>
@@ -412,17 +569,49 @@ function CategoryModal({ language, onClose, onSave }) {
       onSave();
     } catch (error) {
       console.error('Error creating category:', error);
-      alert('Erreur lors de la création de la catégorie');
+      alert('Erreur lors de la création');
     }
   };
+
+  const translations = {
+    fr: { 
+      title: 'Ajouter une catégorie',
+      nameFr: 'Nom (Français)',
+      nameIt: 'Nome (Italiano)',
+      nameEn: 'Name (English)',
+      color: 'Couleur',
+      cancel: 'Annuler',
+      create: 'Créer'
+    },
+    it: {
+      title: 'Aggiungi categoria',
+      nameFr: 'Nom (Français)',
+      nameIt: 'Nome (Italiano)',
+      nameEn: 'Name (English)',
+      color: 'Colore',
+      cancel: 'Annulla',
+      create: 'Crea'
+    },
+    en: {
+      title: 'Add category',
+      nameFr: 'Nom (Français)',
+      nameIt: 'Nome (Italiano)',
+      nameEn: 'Name (English)',
+      color: 'Color',
+      cancel: 'Cancel',
+      create: 'Create'
+    }
+  };
+
+  const t = translations[language];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Ajouter une catégorie</h2>
+        <h2>{t.title}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Nom (Français)</label>
+            <label>{t.nameFr}</label>
             <input
               type="text"
               required
@@ -434,7 +623,7 @@ function CategoryModal({ language, onClose, onSave }) {
             />
           </div>
           <div className="form-group">
-            <label>Nome (Italiano)</label>
+            <label>{t.nameIt}</label>
             <input
               type="text"
               required
@@ -446,7 +635,7 @@ function CategoryModal({ language, onClose, onSave }) {
             />
           </div>
           <div className="form-group">
-            <label>Name (English)</label>
+            <label>{t.nameEn}</label>
             <input
               type="text"
               required
@@ -458,7 +647,7 @@ function CategoryModal({ language, onClose, onSave }) {
             />
           </div>
           <div className="form-group">
-            <label>Couleur</label>
+            <label>{t.color}</label>
             <input
               type="color"
               value={formData.color}
@@ -466,8 +655,8 @@ function CategoryModal({ language, onClose, onSave }) {
             />
           </div>
           <div className="modal-actions">
-            <button type="button" onClick={onClose}>Annuler</button>
-            <button type="submit" className="primary">Créer</button>
+            <button type="button" onClick={onClose}>{t.cancel}</button>
+            <button type="submit" className="primary">{t.create}</button>
           </div>
         </form>
       </div>
@@ -480,12 +669,14 @@ function ItemModal({ language, categories, item, onClose, onSave }) {
     image: item.image || '',
     designation: item.designation,
     quantity: item.quantity,
+    orderedQuantity: item.orderedQuantity || 0,
     threshold: item.threshold,
     categoryId: item.categoryId?.id || item.categoryId?._id || ''
   } : {
     image: '',
     designation: { it: '', fr: '', en: '' },
     quantity: 0,
+    orderedQuantity: 0,
     threshold: 0,
     categoryId: ''
   });
@@ -507,22 +698,52 @@ function ItemModal({ language, categories, item, onClose, onSave }) {
 
   const translations = {
     fr: {
-     
-      seuil: 'Seuil',
-      quantite : 'Quantité',
-      faible: 'Stock faible',
+      titleAdd: 'Ajouter un article',
+      titleEdit: 'Modifier l\'article',
+      imageUrl: 'URL Image',
+      designationFr: 'Désignation (Français)',
+      designationIt: 'Designazione (Italiano)',
+      designationEn: 'Designation (English)',
+      category: 'Catégorie',
+      noCategory: 'Aucune catégorie',
+      quantity: 'Quantité',
+      orderedQuantity: 'Quantité Commandée',
+      threshold: 'Seuil',
+      cancel: 'Annuler',
+      create: 'Créer',
+      update: 'Mettre à jour'
     },
     it: {
-      
-      seuil: 'Sogli',
-      quantite : 'Quantità',
-      faible: 'Scorte basse',
+      titleAdd: 'Aggiungi articolo',
+      titleEdit: 'Modifica articolo',
+      imageUrl: 'URL Immagine',
+      designationFr: 'Désignation (Français)',
+      designationIt: 'Designazione (Italiano)',
+      designationEn: 'Designation (English)',
+      category: 'Categoria',
+      noCategory: 'Nessuna categoria',
+      quantity: 'Quantità',
+      orderedQuantity: 'Quantità Ordinata',
+      threshold: 'Soglia',
+      cancel: 'Annulla',
+      create: 'Crea',
+      update: 'Aggiorna'
     },
     en: {
-     
-      seuil: 'Threshold',
-      quantite : 'Quantity',
-      faible : 'Low stock',
+      titleAdd: 'Add item',
+      titleEdit: 'Edit item',
+      imageUrl: 'Image URL',
+      designationFr: 'Désignation (Français)',
+      designationIt: 'Designazione (Italiano)',
+      designationEn: 'Designation (English)',
+      category: 'Category',
+      noCategory: 'No category',
+      quantity: 'Quantity',
+      orderedQuantity: 'Ordered Quantity',
+      threshold: 'Threshold',
+      cancel: 'Cancel',
+      create: 'Create',
+      update: 'Update'
     }
   };
 
@@ -531,10 +752,10 @@ function ItemModal({ language, categories, item, onClose, onSave }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal large" onClick={(e) => e.stopPropagation()}>
-        <h2>{item ? 'Modifier l\'article' : 'Ajouter un article'}</h2>
+        <h2>{item ? t.titleEdit : t.titleAdd}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Image URL</label>
+            <label>{t.imageUrl}</label>
             <input
               type="url"
               value={formData.image}
@@ -542,7 +763,7 @@ function ItemModal({ language, categories, item, onClose, onSave }) {
             />
           </div>
           <div className="form-group">
-            <label>Désignation (Français)</label>
+            <label>{t.designationFr}</label>
             <input
               type="text"
               required
@@ -554,7 +775,7 @@ function ItemModal({ language, categories, item, onClose, onSave }) {
             />
           </div>
           <div className="form-group">
-            <label>Designazione (Italiano)</label>
+            <label>{t.designationIt}</label>
             <input
               type="text"
               required
@@ -566,7 +787,7 @@ function ItemModal({ language, categories, item, onClose, onSave }) {
             />
           </div>
           <div className="form-group">
-            <label>Designation (English)</label>
+            <label>{t.designationEn}</label>
             <input
               type="text"
               required
@@ -578,12 +799,12 @@ function ItemModal({ language, categories, item, onClose, onSave }) {
             />
           </div>
           <div className="form-group">
-            <label>Catégorie</label>
+            <label>{t.category}</label>
             <select
               value={formData.categoryId}
               onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
             >
-              <option value="">Aucune catégorie</option>
+              <option value="">{t.noCategory}</option>
               {categories.map(cat => (
                 <option key={cat.id} value={cat.id}>
                   {cat.name[language]}
@@ -593,30 +814,40 @@ function ItemModal({ language, categories, item, onClose, onSave }) {
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label>Quantité</label>
+              <label>{t.quantity}</label>
               <input
                 type="number"
                 required
                 min="0"
                 value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) })}
+                onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
               />
             </div>
             <div className="form-group">
-              <label>Seuil</label>
+              <label>{t.orderedQuantity}</label>
+              <input
+                type="number"
+                required
+                min="0"
+                value={formData.orderedQuantity}
+                onChange={(e) => setFormData({ ...formData, orderedQuantity: parseInt(e.target.value) || 0 })}
+              />
+            </div>
+            <div className="form-group">
+              <label>{t.threshold}</label>
               <input
                 type="number"
                 required
                 min="0"
                 value={formData.threshold}
-                onChange={(e) => setFormData({ ...formData, threshold: parseInt(e.target.value) })}
+                onChange={(e) => setFormData({ ...formData, threshold: parseInt(e.target.value) || 0 })}
               />
             </div>
           </div>
           <div className="modal-actions">
-            <button type="button" onClick={onClose}>Annuler</button>
+            <button type="button" onClick={onClose}>{t.cancel}</button>
             <button type="submit" className="primary">
-              {item ? 'Mettre à jour' : 'Créer'}
+              {item ? t.update : t.create}
             </button>
           </div>
         </form>

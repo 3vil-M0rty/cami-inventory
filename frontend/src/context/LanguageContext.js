@@ -3,9 +3,7 @@ import { createContext, useContext, useState, useCallback } from 'react';
 /**
  * Language Context
  * 
- * Provides lightweight internationalization without heavy dependencies.
- * Manages current language state and provides translation utilities.
- * 
+ * Complete internationalization with full translation coverage
  * Supported languages: Italian (default), French, English
  */
 
@@ -23,24 +21,28 @@ export const LANGUAGE_LABELS = {
   [LANGUAGES.EN]: 'English'
 };
 
-// UI translations for the application
+// Complete UI translations for the application
 const translations = {
   [LANGUAGES.IT]: {
     // Navigation & Layout
     appTitle: 'CAMI ALUMINIUM',
     appSubtitle: 'Sistema di Gestione Inventario',
     
-    // Inventory Table
+    // Inventory Table Headers
     image: 'Immagine',
     designation: 'Designazione',
     quantity: 'Quantità',
+    orderedQuantity: 'Quantità Ordinata',
     threshold: 'Soglia',
     status: 'Stato',
     actions: 'Azioni',
+    category: 'Categoria',
     
     // Status
     inStock: 'Disponibile',
     lowStock: 'Scorte Basse',
+    criticalStock: 'Stock Critico',
+    warningStock: 'Avviso Stock',
     
     // Actions
     edit: 'Modifica',
@@ -49,6 +51,8 @@ const translations = {
     cancel: 'Annulla',
     save: 'Salva',
     confirm: 'Conferma',
+    search: 'Cerca',
+    exportExcel: 'Esporta Excel',
     
     // Forms
     addNewItem: 'Aggiungi Nuova Barra',
@@ -58,12 +62,23 @@ const translations = {
     designationFr: 'Designazione (FR)',
     designationEn: 'Designazione (EN)',
     quantityLabel: 'Quantità',
+    orderedQuantityLabel: 'Quantità Ordinata',
     thresholdLabel: 'Soglia Minima',
+    categoryLabel: 'Categoria',
+    noCategory: 'Nessuna Categoria',
     
     // Filters
+    allItems: 'Mostra Tutto',
     showAll: 'Mostra Tutto',
     showLowStock: 'Solo Scorte Basse',
     searchPlaceholder: 'Cerca per designazione...',
+    
+    // Categories
+    addCategory: 'Aggiungi Categoria',
+    editCategory: 'Modifica Categoria',
+    deleteCategory: 'Elimina Categoria',
+    categoryName: 'Nome Categoria',
+    categoryColor: 'Colore',
     
     // Notifications
     lowStockAlert: 'Avviso Scorte Basse',
@@ -73,10 +88,12 @@ const translations = {
     // Delete Confirmation
     deleteConfirmTitle: 'Conferma Eliminazione',
     deleteConfirmMessage: 'Sei sicuro di voler eliminare questo articolo? Questa azione non può essere annullata.',
+    deleteCategoryConfirmMessage: 'Sei sicuro di voler eliminare questa categoria? Gli articoli non saranno eliminati.',
     
     // Empty States
     noItems: 'Nessun articolo trovato',
     noItemsDescription: 'Inizia aggiungendo il tuo primo articolo all\'inventario',
+    loading: 'Caricamento...',
     
     // Validation
     requiredField: 'Campo obbligatorio',
@@ -85,7 +102,22 @@ const translations = {
     // Success Messages
     itemAdded: 'Articolo aggiunto con successo',
     itemUpdated: 'Articolo aggiornato con successo',
-    itemDeleted: 'Articolo eliminato con successo'
+    itemDeleted: 'Articolo eliminato con successo',
+    
+    // Modal Actions
+    create: 'Crea',
+    update: 'Aggiorna',
+    close: 'Chiudi',
+    
+    // Excel Export
+    exporting: 'Esportazione...',
+    exportSuccess: 'Excel esportato con successo',
+    exportError: 'Errore durante l\'esportazione',
+    
+    // Stock Status Messages
+    stockCritical: 'Stock critico - ordina immediatamente',
+    stockWarning: 'Stock in avviso - verifica ordini',
+    stockOk: 'Stock sufficiente'
   },
   
   [LANGUAGES.FR]: {
@@ -93,17 +125,21 @@ const translations = {
     appTitle: 'CAMI ALUMINIUM',
     appSubtitle: 'Système de Gestion d\'Inventaire',
     
-    // Inventory Table
+    // Inventory Table Headers
     image: 'Image',
     designation: 'Désignation',
     quantity: 'Quantité',
+    orderedQuantity: 'Quantité Commandée',
     threshold: 'Seuil',
     status: 'Statut',
     actions: 'Actions',
+    category: 'Catégorie',
     
     // Status
     inStock: 'En Stock',
     lowStock: 'Stock Faible',
+    criticalStock: 'Stock Critique',
+    warningStock: 'Alerte Stock',
     
     // Actions
     edit: 'Modifier',
@@ -112,6 +148,8 @@ const translations = {
     cancel: 'Annuler',
     save: 'Enregistrer',
     confirm: 'Confirmer',
+    search: 'Rechercher',
+    exportExcel: 'Exporter Excel',
     
     // Forms
     addNewItem: 'Ajouter Nouvelle Barre',
@@ -121,12 +159,23 @@ const translations = {
     designationFr: 'Désignation (FR)',
     designationEn: 'Désignation (EN)',
     quantityLabel: 'Quantité',
+    orderedQuantityLabel: 'Quantité Commandée',
     thresholdLabel: 'Seuil Minimum',
+    categoryLabel: 'Catégorie',
+    noCategory: 'Aucune Catégorie',
     
     // Filters
+    allItems: 'Tout Afficher',
     showAll: 'Tout Afficher',
     showLowStock: 'Stock Faible Uniquement',
     searchPlaceholder: 'Rechercher par désignation...',
+    
+    // Categories
+    addCategory: 'Ajouter Catégorie',
+    editCategory: 'Modifier Catégorie',
+    deleteCategory: 'Supprimer Catégorie',
+    categoryName: 'Nom de la Catégorie',
+    categoryColor: 'Couleur',
     
     // Notifications
     lowStockAlert: 'Alerte Stock Faible',
@@ -136,10 +185,12 @@ const translations = {
     // Delete Confirmation
     deleteConfirmTitle: 'Confirmer Suppression',
     deleteConfirmMessage: 'Êtes-vous sûr de vouloir supprimer cet article? Cette action est irréversible.',
+    deleteCategoryConfirmMessage: 'Êtes-vous sûr de vouloir supprimer cette catégorie? Les articles ne seront pas supprimés.',
     
     // Empty States
     noItems: 'Aucun article trouvé',
     noItemsDescription: 'Commencez par ajouter votre premier article à l\'inventaire',
+    loading: 'Chargement...',
     
     // Validation
     requiredField: 'Champ obligatoire',
@@ -148,7 +199,22 @@ const translations = {
     // Success Messages
     itemAdded: 'Article ajouté avec succès',
     itemUpdated: 'Article mis à jour avec succès',
-    itemDeleted: 'Article supprimé avec succès'
+    itemDeleted: 'Article supprimé avec succès',
+    
+    // Modal Actions
+    create: 'Créer',
+    update: 'Mettre à jour',
+    close: 'Fermer',
+    
+    // Excel Export
+    exporting: 'Exportation...',
+    exportSuccess: 'Excel exporté avec succès',
+    exportError: 'Erreur lors de l\'exportation',
+    
+    // Stock Status Messages
+    stockCritical: 'Stock critique - commander immédiatement',
+    stockWarning: 'Stock en alerte - vérifier les commandes',
+    stockOk: 'Stock suffisant'
   },
   
   [LANGUAGES.EN]: {
@@ -156,17 +222,21 @@ const translations = {
     appTitle: 'CAMI ALUMINIUM',
     appSubtitle: 'Inventory Management System',
     
-    // Inventory Table
+    // Inventory Table Headers
     image: 'Image',
     designation: 'Designation',
     quantity: 'Quantity',
+    orderedQuantity: 'Ordered Quantity',
     threshold: 'Threshold',
     status: 'Status',
     actions: 'Actions',
+    category: 'Category',
     
     // Status
     inStock: 'In Stock',
     lowStock: 'Low Stock',
+    criticalStock: 'Critical Stock',
+    warningStock: 'Warning Stock',
     
     // Actions
     edit: 'Edit',
@@ -175,6 +245,8 @@ const translations = {
     cancel: 'Cancel',
     save: 'Save',
     confirm: 'Confirm',
+    search: 'Search',
+    exportExcel: 'Export Excel',
     
     // Forms
     addNewItem: 'Add New Bar',
@@ -184,12 +256,23 @@ const translations = {
     designationFr: 'Designation (FR)',
     designationEn: 'Designation (EN)',
     quantityLabel: 'Quantity',
+    orderedQuantityLabel: 'Ordered Quantity',
     thresholdLabel: 'Minimum Threshold',
+    categoryLabel: 'Category',
+    noCategory: 'No Category',
     
     // Filters
+    allItems: 'Show All',
     showAll: 'Show All',
     showLowStock: 'Low Stock Only',
     searchPlaceholder: 'Search by designation...',
+    
+    // Categories
+    addCategory: 'Add Category',
+    editCategory: 'Edit Category',
+    deleteCategory: 'Delete Category',
+    categoryName: 'Category Name',
+    categoryColor: 'Color',
     
     // Notifications
     lowStockAlert: 'Low Stock Alert',
@@ -199,10 +282,12 @@ const translations = {
     // Delete Confirmation
     deleteConfirmTitle: 'Confirm Deletion',
     deleteConfirmMessage: 'Are you sure you want to delete this item? This action cannot be undone.',
+    deleteCategoryConfirmMessage: 'Are you sure you want to delete this category? Items will not be deleted.',
     
     // Empty States
     noItems: 'No items found',
     noItemsDescription: 'Start by adding your first item to the inventory',
+    loading: 'Loading...',
     
     // Validation
     requiredField: 'Required field',
@@ -211,12 +296,27 @@ const translations = {
     // Success Messages
     itemAdded: 'Item added successfully',
     itemUpdated: 'Item updated successfully',
-    itemDeleted: 'Item deleted successfully'
+    itemDeleted: 'Item deleted successfully',
+    
+    // Modal Actions
+    create: 'Create',
+    update: 'Update',
+    close: 'Close',
+    
+    // Excel Export
+    exporting: 'Exporting...',
+    exportSuccess: 'Excel exported successfully',
+    exportError: 'Error during export',
+    
+    // Stock Status Messages
+    stockCritical: 'Critical stock - order immediately',
+    stockWarning: 'Warning stock - check orders',
+    stockOk: 'Sufficient stock'
   }
 };
 
 export const LanguageProvider = ({ children }) => {
-  const [currentLanguage, setCurrentLanguage] = useState(LANGUAGES.IT);
+  const [currentLanguage, setCurrentLanguage] = useState(LANGUAGES.FR);
 
   const changeLanguage = useCallback((lang) => {
     if (Object.values(LANGUAGES).includes(lang)) {
