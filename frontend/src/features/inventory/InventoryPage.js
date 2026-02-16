@@ -505,6 +505,29 @@ function ItemModal({ language, categories, item, onClose, onSave }) {
     }
   };
 
+  const translations = {
+    fr: {
+     
+      seuil: 'Seuil',
+      quantite : 'Quantité',
+      faible: 'Stock faible',
+    },
+    it: {
+      
+      seuil: 'Sogli',
+      quantite : 'Quantità',
+      faible: 'Scorte basse',
+    },
+    en: {
+     
+      seuil: 'Threshold',
+      quantite : 'Quantity',
+      faible : 'Low stock',
+    }
+  };
+
+  const t = translations[language];
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal large" onClick={(e) => e.stopPropagation()}>
