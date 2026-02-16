@@ -29,21 +29,7 @@ const Header = () => {
           </div>
         </div>
 
-        <div className="header__actions">
-          <div className="language-selector">
-            {Object.values(languages).map((lang) => (
-              <button
-                key={lang}
-                className={`language-selector__btn ${
-                  currentLanguage === lang ? 'language-selector__btn--active' : ''
-                }`}
-                onClick={() => changeLanguage(lang)}
-              >
-                {languageLabels[lang]}
-              </button>
-            ))}
-          </div>
-        </div>
+       
       </div>
     </header>
   );
