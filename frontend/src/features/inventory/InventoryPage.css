@@ -685,3 +685,48 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #666;
 }
+/* ==================== INTERNAL INVENTORY HEADER (no global nav conflict) ==================== */
+.inv-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  padding: 24px 32px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 24px;
+  border: 1px solid #e5e5e5;
+}
+
+.inv-header h1 {
+  font-size: 28px;
+  color: #1a1a1a;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.inv-header__search {
+  position: relative;
+}
+
+.inv-search-input {
+  width: 300px;
+  padding: 10px 16px;
+  border: 2px solid #333;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  background: #fff;
+  color: #1a1a1a;
+  transition: all 0.2s;
+}
+
+.inv-search-input:focus {
+  outline: none;
+  border-color: #000;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+}
+
+.inv-search-input::placeholder {
+  color: #999;
+}

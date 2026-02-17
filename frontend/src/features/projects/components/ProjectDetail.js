@@ -5,48 +5,30 @@ import ChassisForm from './ChassisForm';
 import UsedBarsPanel from './UsedBarsPanel';
 import LabelPrint from './LabelPrint';
 import { exportProjectPDF } from '../utils/pdfExport';
+import { CHASSIS_LABELS } from './ChassisTypesConfig';
 import './ProjectDetail.css';
 
-const CHASSIS_LABELS = {
-  fenetre_2_ouvrants:      { fr: 'Fenêtre 2 ouvrants',      it: 'Finestra 2 ante',      en: 'Window 2 sashes' },
-  fenetre_1_ouvrant:       { fr: 'Fenêtre 1 ouvrant',       it: 'Finestra 1 anta',      en: 'Window 1 sash' },
-  fenetre_oscillo_battant: { fr: 'Fenêtre oscillo-battant',  it: 'Finestra oscillo-battente', en: 'Tilt & turn window' },
-  soufflet:                { fr: 'Soufflet',                 it: 'Soffietto',            en: 'Bellows' },
-  porte_1_ouvrant:         { fr: 'Porte 1 ouvrant',         it: 'Porta 1 anta',         en: 'Door 1 leaf' },
-  mur_rideau:              { fr: 'Mur rideau',               it: 'Muro cortina',         en: 'Curtain wall' },
-  volet_roulant:           { fr: 'Volet roulant',            it: 'Tapparella',           en: 'Rolling shutter' },
-  faux_cadre:              { fr: 'Faux cadre',               it: 'Falso telaio',         en: 'Sub-frame' },
-  minimaliste_2_vantaux:   { fr: 'Minimaliste 2 vantaux',   it: 'Minimalista 2 ante',   en: 'Minimalist 2 leaves' },
-  minimaliste_3_vantaux:   { fr: 'Minimaliste 3 vantaux',   it: 'Minimalista 3 ante',   en: 'Minimalist 3 leaves' },
-  minimaliste_4_vantaux:   { fr: 'Minimaliste 4 vantaux',   it: 'Minimalista 4 ante',   en: 'Minimalist 4 leaves' },
-  coulisse_2_vantaux:      { fr: 'Coulisse 2 vantaux',      it: 'Scorrevole 2 ante',    en: 'Sliding 2 leaves' },
-  coulisse_3_vantaux:      { fr: 'Coulisse 3 vantaux',      it: 'Scorrevole 3 ante',    en: 'Sliding 3 leaves' },
-  coulisse_4_vantaux:      { fr: 'Coulisse 4 vantaux',      it: 'Scorrevole 4 ante',    en: 'Sliding 4 leaves' },
-};
-
 const ETAT_COLORS = {
-  non_entame: '#999',
+  non_entame: '#9ca3af',
   en_cours:   '#f59e0b',
   fabrique:   '#3b82f6',
   livre:      '#16a34a'
 };
 
 function ProjectDetail({ project, onBack }) {
-  const { deleteChassis, updateChassis } = useProjects();
+  const { deleteChassis } = useProjects();
   const { t, currentLanguage } = useLanguage();
 
-  const [activeTab, setActiveTab]           = useState('chassis');
+  const [activeTab, setActiveTab]             = useState('chassis');
   const [showChassisForm, setShowChassisForm] = useState(false);
   const [editingChassis, setEditingChassis]   = useState(null);
-  // Single label print
   const [printingChassis, setPrintingChassis] = useState(null);
-  // Multi-select batch print
   const [selectedIds, setSelectedIds]         = useState(new Set());
   const [batchPrinting, setBatchPrinting]     = useState(false);
   const [batchIndex, setBatchIndex]           = useState(0);
 
   const language = currentLanguage;
-  const statusColor = { en_cours: '#f59e0b', termine: '#16a34a', livre: '#3b82f6' }[project.status] || '#999';
+  const statusColor = { en_cours: '#f59e0b', termine: '#16a34a', livre: '#3b82f6' }[project.status] || '#9ca3af';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
   const handleDeleteChassis = async (chassisId) => {
@@ -54,11 +36,8 @@ function ProjectDetail({ project, onBack }) {
     await deleteChassis(project.id, chassisId);
   };
 
-  const handlePDF = () => {
-    exportProjectPDF(project, language, CHASSIS_LABELS, t);
-  };
+  const handlePDF = () => exportProjectPDF(project, language, CHASSIS_LABELS, t);
 
-  // ── Selection helpers ─────────────────────────────────
   const allIds = (project.chassis || []).map(ch => ch._id || ch.id);
 
   const toggleSelect = (id) => {
@@ -70,20 +49,13 @@ function ProjectDetail({ project, onBack }) {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === allIds.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(allIds));
-    }
+    setSelectedIds(selectedIds.size === allIds.length ? new Set() : new Set(allIds));
   };
 
-  // ── Batch print: open one label at a time ─────────────
-  const selectedChassisList = (project.chassis || []).filter(
-    ch => selectedIds.has(ch._id || ch.id)
-  );
+  const selectedChassisList = (project.chassis || []).filter(ch => selectedIds.has(ch._id || ch.id));
 
   const startBatchPrint = () => {
-    if (selectedChassisList.length === 0) return;
+    if (!selectedChassisList.length) return;
     setBatchIndex(0);
     setBatchPrinting(true);
   };
@@ -121,7 +93,6 @@ function ProjectDetail({ project, onBack }) {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="project-detail__tabs">
         <button
           className={`project-detail__tab ${activeTab === 'chassis' ? 'project-detail__tab--active' : ''}`}
@@ -137,15 +108,12 @@ function ProjectDetail({ project, onBack }) {
         </button>
       </div>
 
-      {/* Chassis tab */}
       {activeTab === 'chassis' && (
         <div className="project-detail__panel">
           <div className="panel-toolbar">
-            <button className="add-item-btn" onClick={() => setShowChassisForm(true)}>
+            <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>
               + {t('addChassis')}
             </button>
-
-            {/* Selection toolbar */}
             {(project.chassis?.length || 0) > 0 && (
               <div className="selection-toolbar">
                 <button className="select-btn" onClick={toggleSelectAll}>
@@ -186,36 +154,27 @@ function ProjectDetail({ project, onBack }) {
                       <React.Fragment key={chId}>
                         <tr className={`chassis-row ${isSelected ? 'chassis-row--selected' : ''}`}>
                           <td>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
+                            <input type="checkbox" checked={isSelected}
                               onChange={() => toggleSelect(chId)}
                               onClick={e => e.stopPropagation()}
                             />
                           </td>
                           <td><strong>{ch.repere}</strong></td>
                           <td>{CHASSIS_LABELS[ch.type]?.[language] || ch.type}</td>
-                          <td><strong>{ch.quantity || 1}</strong></td>
+                          <td><strong>{ch.quantity ?? 1}</strong></td>
                           <td>{ch.largeur}</td>
                           <td>{ch.hauteur}</td>
                           <td>{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
                           <td>
-                            <span className="etat-badge"
-                              style={{ backgroundColor: ETAT_COLORS[ch.etat] || '#999' }}>
+                            <span className="etat-badge" style={{ backgroundColor: ETAT_COLORS[ch.etat] || '#9ca3af' }}>
                               {t(`etat_${ch.etat}`) || ch.etat}
                             </span>
                           </td>
                           <td>
                             <div className="chassis-row__actions">
-                              <button className="edit-btn" onClick={() => { setEditingChassis(ch); setShowChassisForm(true); }}>
-                                {t('edit')}
-                              </button>
-                              <button className="edit-btn" title={t('printLabel')} onClick={() => setPrintingChassis(ch)}>
-                                🖨
-                              </button>
-                              <button className="delete-btn" onClick={() => handleDeleteChassis(chId)}>
-                                {t('delete')}
-                              </button>
+                              <button className="edit-btn" onClick={() => { setEditingChassis(ch); setShowChassisForm(true); }}>{t('edit')}</button>
+                              <button className="edit-btn" title={t('printLabel')} onClick={() => setPrintingChassis(ch)}>🖨</button>
+                              <button className="delete-btn" onClick={() => handleDeleteChassis(chId)}>{t('delete')}</button>
                             </div>
                           </td>
                         </tr>
@@ -229,8 +188,7 @@ function ProjectDetail({ project, onBack }) {
                             <td>{comp.hauteur}</td>
                             <td>—</td>
                             <td>
-                              <span className="etat-badge"
-                                style={{ backgroundColor: ETAT_COLORS[comp.etat] || '#999', fontSize: 11 }}>
+                              <span className="etat-badge" style={{ backgroundColor: ETAT_COLORS[comp.etat] || '#9ca3af', fontSize: 11 }}>
                                 {t(`etat_${comp.etat}`) || comp.etat}
                               </span>
                             </td>
@@ -247,9 +205,7 @@ function ProjectDetail({ project, onBack }) {
         </div>
       )}
 
-      {activeTab === 'bars' && (
-        <UsedBarsPanel project={project} language={language} />
-      )}
+      {activeTab === 'bars' && <UsedBarsPanel project={project} language={language} />}
 
       {showChassisForm && (
         <ChassisForm
@@ -260,17 +216,10 @@ function ProjectDetail({ project, onBack }) {
         />
       )}
 
-      {/* Single chassis label print */}
       {printingChassis && (
-        <LabelPrint
-          chassis={printingChassis}
-          project={project}
-          chassisLabels={CHASSIS_LABELS}
-          onClose={() => setPrintingChassis(null)}
-        />
+        <LabelPrint chassis={printingChassis} project={project} chassisLabels={CHASSIS_LABELS} onClose={() => setPrintingChassis(null)} />
       )}
 
-      {/* Batch print — sequential labels */}
       {batchPrinting && selectedChassisList[batchIndex] && (
         <LabelPrint
           chassis={selectedChassisList[batchIndex]}

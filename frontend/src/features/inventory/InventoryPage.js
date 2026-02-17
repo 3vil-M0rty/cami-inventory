@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import axios from "axios";
 import * as XLSX from 'xlsx';
+import { useLanguage } from '../../context/LanguageContext';
 import './InventoryPage.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 function InventoryPage() {
+  const { currentLanguage: language, t: tGlobal } = useLanguage();
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [filter, setFilter] = useState('all'); // 'all' or 'low-stock'
-  const [language, setLanguage] = useState('fr');
+  const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showAddItem, setShowAddItem] = useState(false);
@@ -18,124 +19,79 @@ function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [exporting, setExporting] = useState(false);
 
-  // Fetch categories
-  useEffect(() => {
-    fetchCategories();
-  }, []);
-
-  // Fetch items based on filters
-  useEffect(() => {
-    fetchItems();
-  }, [selectedCategory, filter]);
+  useEffect(() => { fetchCategories(); }, []);
+  useEffect(() => { fetchItems(); }, [selectedCategory, filter]);
 
   const fetchCategories = async () => {
     try {
       const response = await axios.get(`${API_URL}/categories`);
       setCategories(response.data);
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-    }
+    } catch (error) { console.error('Error fetching categories:', error); }
   };
 
   const fetchItems = async () => {
     setLoading(true);
     try {
       let url = `${API_URL}/inventory`;
-      
       if (filter === 'low-stock') {
         url = `${API_URL}/inventory/filter/low-stock`;
       } else if (selectedCategory !== 'all') {
         url = `${API_URL}/inventory?categoryId=${selectedCategory}`;
       }
-      
       const response = await axios.get(url);
-      
-      // Apply additional filtering if needed
       let filteredItems = response.data;
-      
       if (filter === 'low-stock' && selectedCategory !== 'all') {
-        filteredItems = filteredItems.filter(item => 
+        filteredItems = filteredItems.filter(item =>
           item.categoryId?._id === selectedCategory || item.categoryId?.id === selectedCategory
         );
       }
-      
       setItems(filteredItems);
-    } catch (error) {
-      console.error('Error fetching items:', error);
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { console.error('Error fetching items:', error); }
+    finally { setLoading(false); }
   };
 
   const updateQuantity = async (itemId, amount) => {
     try {
-      const response = await axios.patch(`${API_URL}/inventory/${itemId}/quantity`, {
-        amount
-      });
-      
-      // Update the item in the list
-      setItems(items.map(item => 
-        item.id === itemId ? response.data : item
-      ));
+      const response = await axios.patch(`${API_URL}/inventory/${itemId}/quantity`, { amount });
+      setItems(items.map(item => item.id === itemId ? response.data : item));
     } catch (error) {
       console.error('Error updating quantity:', error);
-      alert(translations[language].errorUpdating || 'Erreur lors de la mise à jour');
+      alert(t.errorUpdating || 'Erreur lors de la mise à jour');
     }
   };
 
   const deleteItem = async (itemId) => {
-    if (!window.confirm(translations[language].deleteConfirmMessage)) {
-      return;
-    }
-    
+    if (!window.confirm(t.deleteConfirmMessage)) return;
     try {
       await axios.delete(`${API_URL}/inventory/${itemId}`);
       setItems(items.filter(item => item.id !== itemId));
-    } catch (error) {
-      console.error('Error deleting item:', error);
-      alert(translations[language].errorDeleting || 'Erreur lors de la suppression');
-    }
+    } catch (error) { console.error('Error deleting item:', error); }
   };
 
   const deleteCategory = async (categoryId) => {
-    if (!window.confirm(translations[language].deleteCategoryConfirmMessage)) {
-      return;
-    }
-    
+    if (!window.confirm(t.deleteCategoryConfirmMessage)) return;
     try {
       await axios.delete(`${API_URL}/categories/${categoryId}`);
       setCategories(categories.filter(cat => cat.id !== categoryId));
-      if (selectedCategory === categoryId) {
-        setSelectedCategory('all');
-      }
-    } catch (error) {
-      console.error('Error deleting category:', error);
-      alert(translations[language].errorDeletingCategory || 'Erreur lors de la suppression');
-    }
+      if (selectedCategory === categoryId) setSelectedCategory('all');
+    } catch (error) { console.error('Error deleting category:', error); }
   };
 
-  // Filter items based on search term
   const filteredItems = items.filter(item => {
     if (!searchTerm) return true;
     const designation = item.designation[language] || '';
     return designation.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
-  // Excel Export Function
   const exportToExcel = () => {
     setExporting(true);
     try {
       const workbook = XLSX.utils.book_new();
-      
-      // Get unique categories (including items without category)
       const categoriesMap = new Map();
-      categoriesMap.set('no-category', { name: translations[language].noCategory, items: [] });
-      
+      categoriesMap.set('no-category', { name: t.noCategory, items: [] });
       categories.forEach(cat => {
         categoriesMap.set(cat.id, { name: cat.name[language], items: [] });
       });
-      
-      // Organize items by category
       items.forEach(item => {
         const categoryId = item.categoryId?.id || item.categoryId?._id || 'no-category';
         if (categoriesMap.has(categoryId)) {
@@ -144,226 +100,113 @@ function InventoryPage() {
           categoriesMap.get('no-category').items.push(item);
         }
       });
-      
-      // Create a sheet for each category
-      categoriesMap.forEach((categoryData, categoryId) => {
-        if (categoryData.items.length === 0) return; // Skip empty categories
-        
+      categoriesMap.forEach((categoryData) => {
+        if (categoryData.items.length === 0) return;
         const sheetData = categoryData.items.map(item => ({
-          [translations[language].designation]: item.designation[language],
-          [translations[language].quantity]: item.quantity,
-          [translations[language].orderedQuantity]: item.orderedQuantity || 0,
-          [translations[language].threshold]: item.threshold,
-          [translations[language].status]: getStockStatus(item).text
+          [t.designation]: item.designation[language],
+          [t.quantity]: item.quantity,
+          [t.orderedQuantity]: item.orderedQuantity || 0,
+          [t.threshold]: item.threshold,
+          [t.status]: getStockStatus(item).text
         }));
-        
         const worksheet = XLSX.utils.json_to_sheet(sheetData);
-        
-        // Set column widths
-        worksheet['!cols'] = [
-          { wch: 40 }, // Designation
-          { wch: 15 }, // Quantity
-          { wch: 20 }, // Ordered Quantity
-          { wch: 15 }, // Threshold
-          { wch: 20 }  // Status
-        ];
-        
+        worksheet['!cols'] = [{ wch: 40 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 20 }];
         XLSX.utils.book_append_sheet(workbook, worksheet, categoryData.name.substring(0, 31));
       });
-      
-      // Generate Excel file
       const fileName = `inventaire_${new Date().toISOString().split('T')[0]}.xlsx`;
       XLSX.writeFile(workbook, fileName);
-      
-      alert(translations[language].exportSuccess);
+      alert(t.exportSuccess);
     } catch (error) {
       console.error('Error exporting to Excel:', error);
-      alert(translations[language].exportError);
-    } finally {
-      setExporting(false);
-    }
+      alert(t.exportError);
+    } finally { setExporting(false); }
   };
 
-  // Get stock status with color coding
   const getStockStatus = (item) => {
     const currentStock = item.quantity;
     const orderedQty = item.orderedQuantity || 0;
     const totalStock = currentStock + orderedQty;
     const threshold = item.threshold;
-    
-    // Red: existing + ordered < threshold
-    if (totalStock < threshold) {
-      return { 
-        color: '#dc2626', 
-        text: translations[language].criticalStock,
-        className: 'status-critical'
-      };
-    }
-    
-    // Yellow: existing < threshold BUT existing + ordered >= threshold
-    if (currentStock < threshold && totalStock >= threshold) {
-      return { 
-        color: '#f59e0b', 
-        text: translations[language].warningStock,
-        className: 'status-warning'
-      };
-    }
-    
-    // Green: existing >= threshold
-    return { 
-      color: '#16a34a', 
-      text: translations[language].inStock,
-      className: 'status-ok'
-    };
+    if (totalStock < threshold) return { color: '#dc2626', text: t.criticalStock, className: 'status-critical' };
+    if (currentStock < threshold && totalStock >= threshold) return { color: '#f59e0b', text: t.warningStock, className: 'status-warning' };
+    return { color: '#16a34a', text: t.inStock, className: 'status-ok' };
   };
 
-  const translations = {
+  // Local translations for keys not in global context
+  const localT = {
     fr: {
-      title: 'Inventaire Aluminium',
-      allItems: 'Tout afficher',
-      lowStock: 'Stock faible uniquement',
-      addCategory: 'Ajouter catégorie',
-      addItem: 'Ajouter article',
-      quantity: 'Quantité',
-      orderedQuantity: 'Qté Commandée',
-      threshold: 'Seuil',
-      actions: 'Actions',
-      noItems: 'Aucun article trouvé',
-      loading: 'Chargement...',
-      category: 'Catégorie',
-      designation: 'Désignation',
-      modifier: 'Modifier',
-      supprimer: 'Supprimer',
+      title: 'Inventaire Aluminium', allItems: 'Tout afficher', lowStock: 'Stock faible uniquement',
+      addCategory: 'Ajouter catégorie', addItem: 'Ajouter article',
+      quantity: 'Quantité', orderedQuantity: 'Qté Commandée', threshold: 'Seuil',
+      actions: 'Actions', noItems: 'Aucun article trouvé', loading: 'Chargement...',
+      designation: 'Désignation', modifier: 'Modifier', supprimer: 'Supprimer',
       searchPlaceholder: 'Rechercher par désignation...',
-      exportExcel: 'Exporter Excel',
-      exporting: 'Exportation...',
-      exportSuccess: 'Excel exporté avec succès',
-      exportError: 'Erreur lors de l\'exportation',
-      noCategory: 'Sans Catégorie',
-      criticalStock: 'Stock Critique',
-      warningStock: 'Alerte Stock',
-      inStock: 'En Stock',
+      exportExcel: 'Exporter Excel', exporting: 'Exportation...',
+      exportSuccess: 'Excel exporté avec succès', exportError: "Erreur lors de l'exportation",
+      noCategory: 'Sans Catégorie', criticalStock: 'Stock Critique',
+      warningStock: 'Alerte Stock', inStock: 'En Stock',
       deleteConfirmMessage: 'Êtes-vous sûr de vouloir supprimer cet article?',
       deleteCategoryConfirmMessage: 'Êtes-vous sûr de vouloir supprimer cette catégorie?',
-      errorUpdating: 'Erreur lors de la mise à jour',
-      errorDeleting: 'Erreur lors de la suppression',
-      errorDeletingCategory: 'Erreur lors de la suppression de la catégorie',
-      status: 'Statut'
+      errorUpdating: 'Erreur lors de la mise à jour', errorDeleting: 'Erreur lors de la suppression',
+      errorDeletingCategory: 'Erreur lors de la suppression de la catégorie', status: 'Statut'
     },
     it: {
-      title: 'Inventario Alluminio',
-      allItems: 'Mostra tutto',
-      lowStock: 'Solo scorte basse',
-      addCategory: 'Aggiungi categoria',
-      addItem: 'Aggiungi articolo',
-      quantity: 'Quantità',
-      orderedQuantity: 'Qta Ordinata',
-      threshold: 'Soglia',
-      actions: 'Azioni',
-      noItems: 'Nessun articolo trovato',
-      loading: 'Caricamento...',
-      category: 'Categoria',
-      designation: 'Designazione',
-      modifier: 'Modifica',
-      supprimer: 'Elimina',
+      title: 'Inventario Alluminio', allItems: 'Mostra tutto', lowStock: 'Solo scorte basse',
+      addCategory: 'Aggiungi categoria', addItem: 'Aggiungi articolo',
+      quantity: 'Quantità', orderedQuantity: 'Qta Ordinata', threshold: 'Soglia',
+      actions: 'Azioni', noItems: 'Nessun articolo trovato', loading: 'Caricamento...',
+      designation: 'Designazione', modifier: 'Modifica', supprimer: 'Elimina',
       searchPlaceholder: 'Cerca per designazione...',
-      exportExcel: 'Esporta Excel',
-      exporting: 'Esportazione...',
-      exportSuccess: 'Excel esportato con successo',
-      exportError: 'Errore durante l\'esportazione',
-      noCategory: 'Senza Categoria',
-      criticalStock: 'Stock Critico',
-      warningStock: 'Avviso Stock',
-      inStock: 'Disponibile',
+      exportExcel: 'Esporta Excel', exporting: 'Esportazione...',
+      exportSuccess: 'Excel esportato con successo', exportError: "Errore durante l'esportazione",
+      noCategory: 'Senza Categoria', criticalStock: 'Stock Critico',
+      warningStock: 'Avviso Stock', inStock: 'Disponibile',
       deleteConfirmMessage: 'Sei sicuro di voler eliminare questo articolo?',
       deleteCategoryConfirmMessage: 'Sei sicuro di voler eliminare questa categoria?',
-      errorUpdating: 'Errore durante l\'aggiornamento',
-      errorDeleting: 'Errore durante l\'eliminazione',
-      errorDeletingCategory: 'Errore durante l\'eliminazione della categoria',
-      status: 'Stato'
+      errorUpdating: "Errore durante l'aggiornamento", errorDeleting: "Errore durante l'eliminazione",
+      errorDeletingCategory: "Errore durante l'eliminazione della categoria", status: 'Stato'
     },
     en: {
-      title: 'Aluminum Inventory',
-      allItems: 'Show all',
-      lowStock: 'Low stock only',
-      addCategory: 'Add category',
-      addItem: 'Add item',
-      quantity: 'Quantity',
-      orderedQuantity: 'Ordered Qty',
-      threshold: 'Threshold',
-      actions: 'Actions',
-      noItems: 'No items found',
-      loading: 'Loading...',
-      category: 'Category',
-      designation: 'Designation',
-      modifier: 'Edit',
-      supprimer: 'Delete',
+      title: 'Aluminum Inventory', allItems: 'Show all', lowStock: 'Low stock only',
+      addCategory: 'Add category', addItem: 'Add item',
+      quantity: 'Quantity', orderedQuantity: 'Ordered Qty', threshold: 'Threshold',
+      actions: 'Actions', noItems: 'No items found', loading: 'Loading...',
+      designation: 'Designation', modifier: 'Edit', supprimer: 'Delete',
       searchPlaceholder: 'Search by designation...',
-      exportExcel: 'Export Excel',
-      exporting: 'Exporting...',
-      exportSuccess: 'Excel exported successfully',
-      exportError: 'Error during export',
-      noCategory: 'No Category',
-      criticalStock: 'Critical Stock',
-      warningStock: 'Warning Stock',
-      inStock: 'In Stock',
+      exportExcel: 'Export Excel', exporting: 'Exporting...',
+      exportSuccess: 'Excel exported successfully', exportError: 'Error during export',
+      noCategory: 'No Category', criticalStock: 'Critical Stock',
+      warningStock: 'Warning Stock', inStock: 'In Stock',
       deleteConfirmMessage: 'Are you sure you want to delete this item?',
       deleteCategoryConfirmMessage: 'Are you sure you want to delete this category?',
-      errorUpdating: 'Error updating',
-      errorDeleting: 'Error deleting',
-      errorDeletingCategory: 'Error deleting category',
-      status: 'Status'
+      errorUpdating: 'Error updating', errorDeleting: 'Error deleting',
+      errorDeletingCategory: 'Error deleting category', status: 'Status'
     }
   };
 
-  const t = translations[language];
+  const t = localT[language] || localT.fr;
 
   return (
     <div className="inventory-app">
-      <header className="header">
+      {/* Internal header — no language buttons, just title + search */}
+      <header className="inv-header">
         <h1>{t.title}</h1>
-        <div className="header-actions">
-          <div className="search-bar">
-            <input
-              type="text"
-              placeholder={t.searchPlaceholder}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="search-input"
-            />
-          </div>
-          <div className="language-selector">
-            <button 
-              className={language === 'fr' ? 'active' : ''} 
-              onClick={() => setLanguage('fr')}
-            >
-              FR
-            </button>
-            <button 
-              className={language === 'it' ? 'active' : ''} 
-              onClick={() => setLanguage('it')}
-            >
-              IT
-            </button>
-            <button 
-              className={language === 'en' ? 'active' : ''} 
-              onClick={() => setLanguage('en')}
-            >
-              EN
-            </button>
-          </div>
+        <div className="inv-header__search">
+          <input
+            type="text"
+            placeholder={t.searchPlaceholder}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="inv-search-input"
+          />
         </div>
       </header>
 
       <div className="controls">
         <div className="filter-buttons">
-          {/* Main filters */}
           <button
             className={`filter-btn ${filter === 'all' && selectedCategory === 'all' ? 'active' : ''}`}
-            onClick={() => {
-              setFilter('all');
-              setSelectedCategory('all');
-            }}
+            onClick={() => { setFilter('all'); setSelectedCategory('all'); }}
           >
             {t.allItems}
           </button>
@@ -373,47 +216,25 @@ function InventoryPage() {
           >
             {t.lowStock}
           </button>
-
-          {/* Category filters */}
           {categories.map(category => (
             <div key={category.id} className="category-btn-wrapper">
               <button
                 className={`filter-btn category-btn ${selectedCategory === category.id ? 'active' : ''}`}
-                style={{
-                  '--category-color': category.color,
-                  borderColor: selectedCategory === category.id ? category.color : '#333'
-                }}
-                onClick={() => {
-                  setSelectedCategory(selectedCategory === category.id ? 'all' : category.id);
-                }}
+                style={{ '--category-color': category.color, borderColor: selectedCategory === category.id ? category.color : '#333' }}
+                onClick={() => setSelectedCategory(selectedCategory === category.id ? 'all' : category.id)}
               >
                 <span className="category-dot" style={{ backgroundColor: category.color }}></span>
                 {category.name[language]}
               </button>
-              <button
-                className="delete-category-btn"
-                onClick={() => deleteCategory(category.id)}
-                title={t.supprimer}
-              >
-                ×
-              </button>
+              <button className="delete-category-btn" onClick={() => deleteCategory(category.id)} title={t.supprimer}>×</button>
             </div>
           ))}
-
-          <button
-            className="filter-btn add-category-btn"
-            onClick={() => setShowAddCategory(true)}
-          >
+          <button className="filter-btn add-category-btn" onClick={() => setShowAddCategory(true)}>
             + {t.addCategory}
           </button>
         </div>
-
         <div className="action-buttons">
-          <button 
-            className="excel-btn" 
-            onClick={exportToExcel}
-            disabled={exporting || items.length === 0}
-          >
+          <button className="excel-btn" onClick={exportToExcel} disabled={exporting || items.length === 0}>
             {exporting ? t.exporting : t.exportExcel}
           </button>
           <button className="add-item-btn" onClick={() => setShowAddItem(true)}>
@@ -446,14 +267,8 @@ function InventoryPage() {
       {showAddCategory && (
         <CategoryModal
           language={language}
-          onClose={() => {
-            setShowAddCategory(false);
-            fetchCategories();
-          }}
-          onSave={() => {
-            setShowAddCategory(false);
-            fetchCategories();
-          }}
+          onClose={() => { setShowAddCategory(false); fetchCategories(); }}
+          onSave={() => { setShowAddCategory(false); fetchCategories(); }}
         />
       )}
 
@@ -462,15 +277,8 @@ function InventoryPage() {
           language={language}
           categories={categories}
           item={editingItem}
-          onClose={() => {
-            setShowAddItem(false);
-            setEditingItem(null);
-          }}
-          onSave={() => {
-            setShowAddItem(false);
-            setEditingItem(null);
-            fetchItems();
-          }}
+          onClose={() => { setShowAddItem(false); setEditingItem(null); }}
+          onSave={() => { setShowAddItem(false); setEditingItem(null); fetchItems(); }}
         />
       )}
     </div>
@@ -479,7 +287,6 @@ function InventoryPage() {
 
 function ItemCard({ item, language, onUpdateQuantity, onEdit, onDelete, getStockStatus, t }) {
   const status = getStockStatus(item);
-  
   return (
     <div className={`item-card ${status.className}`}>
       <div className="item-image">
@@ -489,67 +296,37 @@ function ItemCard({ item, language, onUpdateQuantity, onEdit, onDelete, getStock
           <div className="no-image">📦</div>
         )}
         {item.categoryId && (
-          <div 
-            className="item-category" 
-            style={{ backgroundColor: item.categoryId.color }}
-          >
+          <div className="item-category" style={{ backgroundColor: item.categoryId.color }}>
             {item.categoryId.name[language]}
           </div>
         )}
       </div>
-
       <div className="item-content">
         <h3>{item.designation[language]}</h3>
-
         <div className="quantity-section">
           <div className="quantity-display">
             <span className="quantity-label">{t.quantity}</span>
-            <span className={`quantity-value ${item.quantity < item.threshold ? 'low' : ''}`}>
-              {item.quantity}
-            </span>
+            <span className={`quantity-value ${item.quantity < item.threshold ? 'low' : ''}`}>{item.quantity}</span>
           </div>
           <div className="quantity-display">
             <span className="quantity-label">{t.orderedQuantity}</span>
-            <span className="quantity-value">
-              {item.orderedQuantity || 0}
-            </span>
+            <span className="quantity-value">{item.orderedQuantity || 0}</span>
           </div>
           <div className="threshold-display">
             <span className="threshold-label">{t.threshold}</span>
             <span className="threshold-value">{item.threshold}</span>
           </div>
         </div>
-
-        <div className="status-badge" style={{ 
-          backgroundColor: status.color,
-          color: '#fff'
-        }}>
+        <div className="status-badge" style={{ backgroundColor: status.color, color: '#fff' }}>
           {status.text}
         </div>
-
         <div className="quantity-controls">
-          <button
-            className="qty-btn minus"
-            onClick={() => onUpdateQuantity(item.id, -1)}
-            disabled={item.quantity === 0}
-          >
-            −
-          </button>
-          <button
-            className="qty-btn plus"
-            onClick={() => onUpdateQuantity(item.id, 1)}
-          >
-            +
-          </button>
+          <button className="qty-btn minus" onClick={() => onUpdateQuantity(item.id, -1)} disabled={item.quantity === 0}>−</button>
+          <button className="qty-btn plus" onClick={() => onUpdateQuantity(item.id, 1)}>+</button>
         </div>
-
         <div className="item-actions">
-          <button className="edit-btn" onClick={() => onEdit(item)}>
-            {t.modifier}
-          </button>
-          <button className="delete-btn" onClick={() => onDelete(item.id)}>
-            {t.supprimer}
-          </button>
+          <button className="edit-btn" onClick={() => onEdit(item)}>{t.modifier}</button>
+          <button className="delete-btn" onClick={() => onDelete(item.id)}>{t.supprimer}</button>
         </div>
       </div>
     </div>
@@ -557,102 +334,39 @@ function ItemCard({ item, language, onUpdateQuantity, onEdit, onDelete, getStock
 }
 
 function CategoryModal({ language, onClose, onSave }) {
-  const [formData, setFormData] = useState({
-    name: { it: '', fr: '', en: '' },
-    color: '#3b82f6'
-  });
+  const [formData, setFormData] = useState({ name: { it: '', fr: '', en: '' }, color: '#3b82f6' });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       await axios.post(`${API_URL}/categories`, formData);
       onSave();
-    } catch (error) {
-      console.error('Error creating category:', error);
-      alert('Erreur lors de la création');
-    }
+    } catch (error) { console.error('Error creating category:', error); alert('Erreur lors de la création'); }
   };
 
-  const translations = {
-    fr: { 
-      title: 'Ajouter une catégorie',
-      nameFr: 'Nom (Français)',
-      nameIt: 'Nome (Italiano)',
-      nameEn: 'Name (English)',
-      color: 'Couleur',
-      cancel: 'Annuler',
-      create: 'Créer'
-    },
-    it: {
-      title: 'Aggiungi categoria',
-      nameFr: 'Nom (Français)',
-      nameIt: 'Nome (Italiano)',
-      nameEn: 'Name (English)',
-      color: 'Colore',
-      cancel: 'Annulla',
-      create: 'Crea'
-    },
-    en: {
-      title: 'Add category',
-      nameFr: 'Nom (Français)',
-      nameIt: 'Nome (Italiano)',
-      nameEn: 'Name (English)',
-      color: 'Color',
-      cancel: 'Cancel',
-      create: 'Create'
-    }
+  const labels = {
+    fr: { title: 'Ajouter une catégorie', nameFr: 'Nom (Français)', nameIt: 'Nome (Italiano)', nameEn: 'Name (English)', color: 'Couleur', cancel: 'Annuler', create: 'Créer' },
+    it: { title: 'Aggiungi categoria', nameFr: 'Nom (Français)', nameIt: 'Nome (Italiano)', nameEn: 'Name (English)', color: 'Colore', cancel: 'Annulla', create: 'Crea' },
+    en: { title: 'Add category', nameFr: 'Nom (Français)', nameIt: 'Nome (Italiano)', nameEn: 'Name (English)', color: 'Color', cancel: 'Cancel', create: 'Create' },
   };
-
-  const t = translations[language];
+  const t = labels[language] || labels.fr;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>{t.title}</h2>
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>{t.nameFr}</label>
-            <input
-              type="text"
-              required
-              value={formData.name.fr}
-              onChange={(e) => setFormData({
-                ...formData,
-                name: { ...formData.name, fr: e.target.value }
-              })}
-            />
+          <div className="form-group"><label>{t.nameFr}</label>
+            <input type="text" required value={formData.name.fr} onChange={(e) => setFormData({ ...formData, name: { ...formData.name, fr: e.target.value } })} />
           </div>
-          <div className="form-group">
-            <label>{t.nameIt}</label>
-            <input
-              type="text"
-              required
-              value={formData.name.it}
-              onChange={(e) => setFormData({
-                ...formData,
-                name: { ...formData.name, it: e.target.value }
-              })}
-            />
+          <div className="form-group"><label>{t.nameIt}</label>
+            <input type="text" required value={formData.name.it} onChange={(e) => setFormData({ ...formData, name: { ...formData.name, it: e.target.value } })} />
           </div>
-          <div className="form-group">
-            <label>{t.nameEn}</label>
-            <input
-              type="text"
-              required
-              value={formData.name.en}
-              onChange={(e) => setFormData({
-                ...formData,
-                name: { ...formData.name, en: e.target.value }
-              })}
-            />
+          <div className="form-group"><label>{t.nameEn}</label>
+            <input type="text" required value={formData.name.en} onChange={(e) => setFormData({ ...formData, name: { ...formData.name, en: e.target.value } })} />
           </div>
-          <div className="form-group">
-            <label>{t.color}</label>
-            <input
-              type="color"
-              value={formData.color}
-              onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-            />
+          <div className="form-group"><label>{t.color}</label>
+            <input type="color" value={formData.color} onChange={(e) => setFormData({ ...formData, color: e.target.value })} />
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>{t.cancel}</button>
@@ -673,12 +387,8 @@ function ItemModal({ language, categories, item, onClose, onSave }) {
     threshold: item.threshold,
     categoryId: item.categoryId?.id || item.categoryId?._id || ''
   } : {
-    image: '',
-    designation: { it: '', fr: '', en: '' },
-    quantity: 0,
-    orderedQuantity: 0,
-    threshold: 0,
-    categoryId: ''
+    image: '', designation: { it: '', fr: '', en: '' },
+    quantity: 0, orderedQuantity: 0, threshold: 0, categoryId: ''
   });
 
   const handleSubmit = async (e) => {
@@ -690,165 +400,53 @@ function ItemModal({ language, categories, item, onClose, onSave }) {
         await axios.post(`${API_URL}/inventory`, formData);
       }
       onSave();
-    } catch (error) {
-      console.error('Error saving item:', error);
-      alert('Erreur lors de la sauvegarde');
-    }
+    } catch (error) { console.error('Error saving item:', error); alert('Erreur lors de la sauvegarde'); }
   };
 
-  const translations = {
-    fr: {
-      titleAdd: 'Ajouter un article',
-      titleEdit: 'Modifier l\'article',
-      imageUrl: 'URL Image',
-      designationFr: 'Désignation (Français)',
-      designationIt: 'Designazione (Italiano)',
-      designationEn: 'Designation (English)',
-      category: 'Catégorie',
-      noCategory: 'Aucune catégorie',
-      quantity: 'Quantité',
-      orderedQuantity: 'Quantité Commandée',
-      threshold: 'Seuil',
-      cancel: 'Annuler',
-      create: 'Créer',
-      update: 'Mettre à jour'
-    },
-    it: {
-      titleAdd: 'Aggiungi articolo',
-      titleEdit: 'Modifica articolo',
-      imageUrl: 'URL Immagine',
-      designationFr: 'Désignation (Français)',
-      designationIt: 'Designazione (Italiano)',
-      designationEn: 'Designation (English)',
-      category: 'Categoria',
-      noCategory: 'Nessuna categoria',
-      quantity: 'Quantità',
-      orderedQuantity: 'Quantità Ordinata',
-      threshold: 'Soglia',
-      cancel: 'Annulla',
-      create: 'Crea',
-      update: 'Aggiorna'
-    },
-    en: {
-      titleAdd: 'Add item',
-      titleEdit: 'Edit item',
-      imageUrl: 'Image URL',
-      designationFr: 'Désignation (Français)',
-      designationIt: 'Designazione (Italiano)',
-      designationEn: 'Designation (English)',
-      category: 'Category',
-      noCategory: 'No category',
-      quantity: 'Quantity',
-      orderedQuantity: 'Ordered Quantity',
-      threshold: 'Threshold',
-      cancel: 'Cancel',
-      create: 'Create',
-      update: 'Update'
-    }
+  const labels = {
+    fr: { titleAdd: 'Ajouter un article', titleEdit: "Modifier l'article", imageUrl: 'URL Image', designationFr: 'Désignation (Français)', designationIt: 'Designazione (Italiano)', designationEn: 'Designation (English)', category: 'Catégorie', noCategory: 'Aucune catégorie', quantity: 'Quantité', orderedQuantity: 'Quantité Commandée', threshold: 'Seuil', cancel: 'Annuler', create: 'Créer', update: 'Mettre à jour' },
+    it: { titleAdd: 'Aggiungi articolo', titleEdit: 'Modifica articolo', imageUrl: 'URL Immagine', designationFr: 'Désignation (Français)', designationIt: 'Designazione (Italiano)', designationEn: 'Designation (English)', category: 'Categoria', noCategory: 'Nessuna categoria', quantity: 'Quantità', orderedQuantity: 'Quantità Ordinata', threshold: 'Soglia', cancel: 'Annulla', create: 'Crea', update: 'Aggiorna' },
+    en: { titleAdd: 'Add item', titleEdit: 'Edit item', imageUrl: 'Image URL', designationFr: 'Désignation (Français)', designationIt: 'Designazione (Italiano)', designationEn: 'Designation (English)', category: 'Category', noCategory: 'No category', quantity: 'Quantity', orderedQuantity: 'Ordered Quantity', threshold: 'Threshold', cancel: 'Cancel', create: 'Create', update: 'Update' },
   };
-
-  const t = translations[language];
+  const t = labels[language] || labels.fr;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal large" onClick={(e) => e.stopPropagation()}>
         <h2>{item ? t.titleEdit : t.titleAdd}</h2>
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>{t.imageUrl}</label>
-            <input
-              type="url"
-              value={formData.image}
-              onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-            />
+          <div className="form-group"><label>{t.imageUrl}</label>
+            <input type="url" value={formData.image} onChange={(e) => setFormData({ ...formData, image: e.target.value })} />
           </div>
-          <div className="form-group">
-            <label>{t.designationFr}</label>
-            <input
-              type="text"
-              required
-              value={formData.designation.fr}
-              onChange={(e) => setFormData({
-                ...formData,
-                designation: { ...formData.designation, fr: e.target.value }
-              })}
-            />
+          <div className="form-group"><label>{t.designationFr}</label>
+            <input type="text" required value={formData.designation.fr} onChange={(e) => setFormData({ ...formData, designation: { ...formData.designation, fr: e.target.value } })} />
           </div>
-          <div className="form-group">
-            <label>{t.designationIt}</label>
-            <input
-              type="text"
-              required
-              value={formData.designation.it}
-              onChange={(e) => setFormData({
-                ...formData,
-                designation: { ...formData.designation, it: e.target.value }
-              })}
-            />
+          <div className="form-group"><label>{t.designationIt}</label>
+            <input type="text" required value={formData.designation.it} onChange={(e) => setFormData({ ...formData, designation: { ...formData.designation, it: e.target.value } })} />
           </div>
-          <div className="form-group">
-            <label>{t.designationEn}</label>
-            <input
-              type="text"
-              required
-              value={formData.designation.en}
-              onChange={(e) => setFormData({
-                ...formData,
-                designation: { ...formData.designation, en: e.target.value }
-              })}
-            />
+          <div className="form-group"><label>{t.designationEn}</label>
+            <input type="text" required value={formData.designation.en} onChange={(e) => setFormData({ ...formData, designation: { ...formData.designation, en: e.target.value } })} />
           </div>
-          <div className="form-group">
-            <label>{t.category}</label>
-            <select
-              value={formData.categoryId}
-              onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-            >
+          <div className="form-group"><label>{t.category}</label>
+            <select value={formData.categoryId} onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}>
               <option value="">{t.noCategory}</option>
-              {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name[language]}
-                </option>
-              ))}
+              {categories.map(cat => (<option key={cat.id} value={cat.id}>{cat.name[language]}</option>))}
             </select>
           </div>
           <div className="form-row">
-            <div className="form-group">
-              <label>{t.quantity}</label>
-              <input
-                type="number"
-                required
-                min="0"
-                value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
-              />
+            <div className="form-group"><label>{t.quantity}</label>
+              <input type="number" required min="0" step="1" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })} />
             </div>
-            <div className="form-group">
-              <label>{t.orderedQuantity}</label>
-              <input
-                type="number"
-                required
-                min="0"
-                value={formData.orderedQuantity}
-                onChange={(e) => setFormData({ ...formData, orderedQuantity: parseInt(e.target.value) || 0 })}
-              />
+            <div className="form-group"><label>{t.orderedQuantity}</label>
+              <input type="number" required min="0" step="1" value={formData.orderedQuantity} onChange={(e) => setFormData({ ...formData, orderedQuantity: parseInt(e.target.value) || 0 })} />
             </div>
-            <div className="form-group">
-              <label>{t.threshold}</label>
-              <input
-                type="number"
-                required
-                min="0"
-                value={formData.threshold}
-                onChange={(e) => setFormData({ ...formData, threshold: parseInt(e.target.value) || 0 })}
-              />
+            <div className="form-group"><label>{t.threshold}</label>
+              <input type="number" required min="0" step="1" value={formData.threshold} onChange={(e) => setFormData({ ...formData, threshold: parseInt(e.target.value) || 0 })} />
             </div>
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>{t.cancel}</button>
-            <button type="submit" className="primary">
-              {item ? t.update : t.create}
-            </button>
+            <button type="submit" className="primary">{item ? t.update : t.create}</button>
           </div>
         </form>
       </div>

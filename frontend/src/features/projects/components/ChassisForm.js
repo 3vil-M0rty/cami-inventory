@@ -1,26 +1,8 @@
 import { useState } from 'react';
 import { useProjects } from '../../../context/ProjectContext';
 import { useLanguage } from '../../../context/LanguageContext';
-
-const CHASSIS_TYPES = [
-  { value: 'fenetre_2_ouvrants', fr: 'Fenêtre 2 ouvrants', composite: false },
-  { value: 'chassis_fixe', fr: 'Châssis fixe', composite: false },
-  { value: 'fenetre_1_ouvrant', fr: 'Fenêtre 1 ouvrant', composite: false },
-  { value: 'fenetre_oscillo_battant', fr: 'Fenêtre oscillo-battant', composite: false },
-  { value: 'soufflet', fr: 'Soufflet', composite: false },
-  { value: 'porte_1_ouvrant', fr: 'Porte 1 ouvrant', composite: false },
-  { value: 'mur_rideau', fr: 'Mur rideau', composite: false },
-  { value: 'volet_roulant', fr: 'Volet roulant', composite: false },
-  { value: 'faux_cadre', fr: 'Faux cadre', composite: false },
-  { value: 'minimaliste_2_vantaux', fr: 'Minimaliste 2 vantaux', composite: true, vantaux: 2 },
-  { value: 'minimaliste_3_vantaux', fr: 'Minimaliste 3 vantaux', composite: true, vantaux: 3 },
-  { value: 'minimaliste_4_vantaux', fr: 'Minimaliste 4 vantaux', composite: true, vantaux: 4 },
-  { value: 'coulisse_2_vantaux', fr: 'Coulisse 2 vantaux', composite: true, vantaux: 2 },
-  { value: 'coulisse_3_vantaux', fr: 'Coulisse 3 vantaux', composite: true, vantaux: 3 },
-  { value: 'coulisse_4_vantaux', fr: 'Coulisse 4 vantaux', composite: true, vantaux: 4 },
-];
-
-const ETAT_OPTIONS = ['non_entame', 'en_cours', 'fabrique', 'livre'];
+import { CHASSIS_TYPES, ETAT_OPTIONS } from './ChassisTypesConfig';
+import './ChassisForm.css';
 
 function buildComponents(type, existing = []) {
   const found = CHASSIS_TYPES.find(ct => ct.value === type);
@@ -30,14 +12,14 @@ function buildComponents(type, existing = []) {
   const dormantEx = existing.find(c => c.role === 'dormant') || {};
   components.push({
     role: 'dormant', repere: dormantEx.repere || 'D',
-    largeur: dormantEx.largeur || 0, hauteur: dormantEx.hauteur || 0,
+    largeur: dormantEx.largeur || '', hauteur: dormantEx.hauteur || '',
     etat: dormantEx.etat || 'non_entame'
   });
   for (let i = 0; i < count; i++) {
     const vEx = existing.filter(c => c.role === 'vantail')[i] || {};
     components.push({
       role: 'vantail', repere: vEx.repere || `V${i + 1}`,
-      largeur: vEx.largeur || 0, hauteur: vEx.hauteur || 0,
+      largeur: vEx.largeur || '', hauteur: vEx.hauteur || '',
       etat: vEx.etat || 'non_entame'
     });
   }
@@ -46,7 +28,8 @@ function buildComponents(type, existing = []) {
 
 function ChassisForm({ chassis, projectId, onClose, onSave }) {
   const { addChassis, updateChassis } = useProjects();
-  const { t } = useLanguage();
+  const { t, currentLanguage } = useLanguage();
+  const lang = currentLanguage;
 
   const isEdit = !!chassis;
   const initialType = chassis?.type || 'fenetre_1_ouvrant';
@@ -54,12 +37,13 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
   const [formData, setFormData] = useState({
     type: initialType,
     repere: chassis?.repere || '',
-    quantity: chassis?.quantity || 1,
-    largeur: chassis?.largeur || '',
-    hauteur: chassis?.hauteur || '',
+    quantity: chassis?.quantity ?? 1,
+    largeur: chassis?.largeur ?? '',
+    hauteur: chassis?.hauteur ?? '',
     etat: chassis?.etat || 'non_entame',
     components: buildComponents(initialType, chassis?.components || [])
   });
+  const [saving, setSaving] = useState(false);
 
   const set = (key, val) => setFormData(prev => ({ ...prev, [key]: val }));
 
@@ -81,112 +65,161 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSaving(true);
     const payload = {
       ...formData,
-      quantity: Number(formData.quantity) || 1,
-      largeur: Number(formData.largeur) || 0,
-      hauteur: Number(formData.hauteur) || 0,
+      quantity: parseInt(formData.quantity, 10) || 1,
+      largeur: parseInt(formData.largeur, 10) || 0,
+      hauteur: parseInt(formData.hauteur, 10) || 0,
       dimension: `${formData.largeur}×${formData.hauteur}`,
+      components: formData.components.map(c => ({
+        ...c,
+        largeur: parseInt(c.largeur, 10) || 0,
+        hauteur: parseInt(c.hauteur, 10) || 0,
+      }))
     };
-    if (isEdit) {
-      await updateChassis(projectId, chassis._id || chassis.id, payload);
-    } else {
-      await addChassis(projectId, payload);
+    try {
+      if (isEdit) {
+        await updateChassis(projectId, chassis._id || chassis.id, payload);
+      } else {
+        await addChassis(projectId, payload);
+      }
+      onSave();
+    } finally {
+      setSaving(false);
     }
-    onSave();
   };
 
   const isComposite = CHASSIS_TYPES.find(ct => ct.value === formData.type)?.composite;
 
+  // Get label for type in current language
+  const getTypeLabel = (ct) => ct[lang] || ct.fr;
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal large" onClick={e => e.stopPropagation()}>
-        <h2>{isEdit ? t('chassisTitleEdit') : t('chassisTitleAdd')}</h2>
-        <form onSubmit={handleSubmit}>
+      <div className="modal chassis-form-modal" onClick={e => e.stopPropagation()}>
+        <div className="chassis-form__header">
+          <h2>{isEdit ? t('chassisTitleEdit') : t('chassisTitleAdd')}</h2>
+          <button className="chassis-form__close" onClick={onClose}>×</button>
+        </div>
 
-          <div className="form-group">
-            <label>{t('chassisType')}</label>
-            <select value={formData.type} onChange={e => handleTypeChange(e.target.value)}>
+        <form onSubmit={handleSubmit} className="chassis-form">
+
+          {/* Type selector — visual cards */}
+          <div className="chassis-form__section">
+            <label className="chassis-form__section-label">{t('chassisType')}</label>
+            <div className="chassis-type-grid">
               {CHASSIS_TYPES.map(ct => (
-                <option key={ct.value} value={ct.value}>{ct.fr}</option>
+                <button
+                  key={ct.value}
+                  type="button"
+                  className={`chassis-type-card ${formData.type === ct.value ? 'chassis-type-card--active' : ''} ${ct.composite ? 'chassis-type-card--composite' : ''}`}
+                  onClick={() => handleTypeChange(ct.value)}
+                >
+                  <span className="chassis-type-card__name">{getTypeLabel(ct)}</span>
+                  {ct.composite && <span className="chassis-type-card__badge">{ct.vantaux}V</span>}
+                </button>
               ))}
-            </select>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>{t('repere')}</label>
-              <input type="text" required value={formData.repere}
-                onChange={e => set('repere', e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>{t('quantityChassis')}</label>
-              <input type="number" required min="1" value={formData.quantity}
-                onChange={e => set('quantity', e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>{t('largeur')} (mm)</label>
-              <input type="number" required min="0" value={formData.largeur}
-                onChange={e => set('largeur', e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>{t('hauteur')} (mm)</label>
-              <input type="number" required min="0" value={formData.hauteur}
-                onChange={e => set('hauteur', e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>{t('chassisEtat')}</label>
-              <select value={formData.etat} onChange={e => set('etat', e.target.value)}>
-                {ETAT_OPTIONS.map(o => (
-                  <option key={o} value={o}>{t(`etat_${o}`)}</option>
-                ))}
-              </select>
             </div>
           </div>
 
+          {/* Main fields */}
+          <div className="chassis-form__section">
+            <label className="chassis-form__section-label">Dimensions & Informations</label>
+            <div className="chassis-form__fields">
+              <div className="form-group">
+                <label>{t('repere')}</label>
+                <input
+                  type="text" required
+                  placeholder="ex: A1, F01..."
+                  value={formData.repere}
+                  onChange={e => set('repere', e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>{t('quantityChassis')}</label>
+                <input
+                  type="number" required min="1" step="1"
+                  value={formData.quantity}
+                  onChange={e => set('quantity', e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>{t('largeur')} (mm)</label>
+                <input
+                  type="number" required min="0" step="1"
+                  placeholder="ex: 1200"
+                  value={formData.largeur}
+                  onChange={e => set('largeur', e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>{t('hauteur')} (mm)</label>
+                <input
+                  type="number" required min="0" step="1"
+                  placeholder="ex: 2100"
+                  value={formData.hauteur}
+                  onChange={e => set('hauteur', e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>{t('chassisEtat')}</label>
+                <select value={formData.etat} onChange={e => set('etat', e.target.value)}>
+                  {ETAT_OPTIONS.map(o => (
+                    <option key={o} value={o}>{t(`etat_${o}`)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Composite components */}
           {isComposite && formData.components.length > 0 && (
-            <div className="composite-section">
-              <h3 className="composite-section__title">{t('componentsDimensions')}</h3>
-              {formData.components.map((comp, idx) => (
-                <div key={idx} className="composite-component">
-                  <span className="composite-component__role">
-                    {comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${idx}`}
-                  </span>
-                  <div className="form-row composite-component__fields">
-                    <div className="form-group">
-                      <label>{t('repere')}</label>
-                      <input type="text" value={comp.repere}
-                        onChange={e => setComponent(idx, 'repere', e.target.value)} />
+            <div className="chassis-form__section chassis-form__section--composite">
+              <label className="chassis-form__section-label">{t('componentsDimensions')}</label>
+              <div className="composite-grid">
+                {formData.components.map((comp, idx) => (
+                  <div key={idx} className="composite-card">
+                    <div className="composite-card__role">
+                      {comp.role === 'dormant'
+                        ? `${t('dormant')}`
+                        : `${t('vantail')} ${idx}`}
                     </div>
-                    <div className="form-group">
-                      <label>{t('largeur')}</label>
-                      <input type="number" min="0" value={comp.largeur}
-                        onChange={e => setComponent(idx, 'largeur', Number(e.target.value))} />
-                    </div>
-                    <div className="form-group">
-                      <label>{t('hauteur')}</label>
-                      <input type="number" min="0" value={comp.hauteur}
-                        onChange={e => setComponent(idx, 'hauteur', Number(e.target.value))} />
-                    </div>
-                    <div className="form-group">
-                      <label>{t('chassisEtat')}</label>
-                      <select value={comp.etat}
-                        onChange={e => setComponent(idx, 'etat', e.target.value)}>
-                        {ETAT_OPTIONS.map(o => (
-                          <option key={o} value={o}>{t(`etat_${o}`)}</option>
-                        ))}
-                      </select>
+                    <div className="composite-card__fields">
+                      <div className="form-group form-group--sm">
+                        <label>{t('repere')}</label>
+                        <input type="text" value={comp.repere}
+                          onChange={e => setComponent(idx, 'repere', e.target.value)} />
+                      </div>
+                      <div className="form-group form-group--sm">
+                        <label>L (mm)</label>
+                        <input type="number" min="0" step="1" value={comp.largeur}
+                          onChange={e => setComponent(idx, 'largeur', e.target.value)} />
+                      </div>
+                      <div className="form-group form-group--sm">
+                        <label>H (mm)</label>
+                        <input type="number" min="0" step="1" value={comp.hauteur}
+                          onChange={e => setComponent(idx, 'hauteur', e.target.value)} />
+                      </div>
+                      <div className="form-group form-group--sm">
+                        <label>{t('chassisEtat')}</label>
+                        <select value={comp.etat} onChange={e => setComponent(idx, 'etat', e.target.value)}>
+                          {ETAT_OPTIONS.map(o => (
+                            <option key={o} value={o}>{t(`etat_${o}`)}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
 
           <div className="modal-actions">
             <button type="button" onClick={onClose}>{t('cancel')}</button>
-            <button type="submit" className="primary">
-              {isEdit ? t('update') : t('create')}
+            <button type="submit" className="primary" disabled={saving}>
+              {saving ? '...' : (isEdit ? t('update') : t('create'))}
             </button>
           </div>
         </form>
