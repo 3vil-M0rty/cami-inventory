@@ -1,0 +1,115 @@
+/* ==================== USED BARS PANEL ==================== */
+
+.used-bars-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.used-bars-panel__search-section {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.used-bars-panel__error {
+  margin: 8px 0 0 0;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.used-bars-panel__results {
+  margin-top: 12px;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.used-bars-panel__results-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 8px 16px;
+  background: #f5f5f5;
+  margin: 0;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.used-bars-panel__result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f5f5f5;
+  gap: 16px;
+}
+
+.used-bars-panel__result-row:last-child { border-bottom: none; }
+.used-bars-panel__result-row:hover { background: #fafafa; }
+
+.used-bars-panel__result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.used-bars-panel__result-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.used-bars-panel__result-stock {
+  font-size: 12px;
+  color: #666;
+}
+
+.used-bars-panel__result-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.used-bars-panel__qty-input {
+  width: 70px;
+  padding: 8px 10px;
+  border: 2px solid #333;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  background: #fff;
+  color: #1a1a1a;
+}
+
+.used-bars-panel__qty-input:focus {
+  outline: none;
+  border-color: #000;
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.1);
+}
+
+.used-bars-panel__no-results {
+  margin-top: 10px;
+  color: #999;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.used-bars-panel__used-section {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.used-bars-panel__used-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 16px 0;
+}

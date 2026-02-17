@@ -3,11 +3,12 @@ import './Header.css';
 
 /**
  * Header Component
- * 
- * Main application header with branding and language selector
+ *
+ * Extended with Inventaire / Projets navigation tabs.
+ * All existing styles preserved.
  */
 
-const Header = () => {
+const Header = ({ activePage, onNavigate }) => {
   const { t, currentLanguage, changeLanguage, languages, languageLabels } = useLanguage();
 
   return (
@@ -29,7 +30,34 @@ const Header = () => {
           </div>
         </div>
 
-       
+        <nav className="header__nav">
+          <button
+            className={`header__nav-btn ${activePage === 'inventory' ? 'header__nav-btn--active' : ''}`}
+            onClick={() => onNavigate('inventory')}
+          >
+            {t('navInventory')}
+          </button>
+          <button
+            className={`header__nav-btn ${activePage === 'projects' ? 'header__nav-btn--active' : ''}`}
+            onClick={() => onNavigate('projects')}
+          >
+            {t('navProjects')}
+          </button>
+        </nav>
+
+        <div className="header__actions">
+          <div className="language-selector">
+            {Object.entries(languageLabels).map(([code, label]) => (
+              <button
+                key={code}
+                className={`language-selector__btn ${currentLanguage === code ? 'language-selector__btn--active' : ''}`}
+                onClick={() => changeLanguage(code)}
+              >
+                {code.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </header>
   );
