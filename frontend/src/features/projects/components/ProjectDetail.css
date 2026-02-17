@@ -273,3 +273,75 @@
     flex-direction: column;
   }
 }
+
+/* ==================== SELECTION & BATCH PRINT ==================== */
+
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.select-btn {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 14px;
+  background: transparent;
+  color: #666;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.select-btn:hover {
+  background: #f5f5f5;
+  color: #1a1a1a;
+  border-color: #bbb;
+}
+
+.print-selected-btn {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 16px;
+  background: #1a1a1a;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.print-selected-btn:hover {
+  background: #333;
+}
+
+/* Checkbox column */
+.chassis-table th:first-child,
+.chassis-table td:first-child {
+  width: 36px;
+  text-align: center;
+  padding: 8px 4px;
+}
+
+.chassis-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #1a1a1a;
+}
+
+/* Selected row highlight */
+.chassis-row--selected {
+  background: rgba(26, 26, 26, 0.05) !important;
+}
+
+.chassis-row--selected td {
+  border-left-color: #1a1a1a;
+}

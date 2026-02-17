@@ -1,6 +1,4 @@
-/* ==================== LABEL PREVIEW (SCREEN) ==================== */
-
-.label-preview-overlay {}
+/* ==================== MODAL PREVIEW (SCREEN) ==================== */
 
 .label-preview-modal {
   max-width: 480px !important;
@@ -16,10 +14,10 @@
   border: 1px solid #e5e5e5;
 }
 
-/* The actual label box — preview size (scaled up for screen readability) */
+/* Preview label box */
 .label-preview-frame .label {
-  width: 285px;   /* 9.5cm × 30px/cm */
-  height: 165px;  /* 5.5cm × 30px/cm */
+  width: 285px;   /* 9.5cm at 30px/cm */
+  height: 175px;
   padding: 10px;
   background: #fff;
   border: 1px solid #ccc;
@@ -32,6 +30,13 @@
   overflow: hidden;
 }
 
+.batch-indicator {
+  font-size: 14px;
+  font-weight: 400;
+  color: #666;
+  margin-left: 8px;
+}
+
 /* ==================== LABEL INTERNAL STYLES ==================== */
 
 .label__header {
@@ -40,7 +45,7 @@
   align-items: center;
   border-bottom: 1.5px solid #1a1a1a;
   padding-bottom: 4px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .label__brand {
@@ -57,6 +62,7 @@
   border-radius: 2px;
   border: 1px solid #ccc;
   display: inline-block;
+  flex-shrink: 0;
 }
 
 .label__project-row {
@@ -77,6 +83,7 @@
   text-transform: uppercase;
   font-size: 8px;
   letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 .label__val {
@@ -93,7 +100,7 @@
 .label__chassis-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px 12px;
+  gap: 3px 12px;
   flex: 1;
 }
 
@@ -116,42 +123,53 @@
   color: #555 !important;
 }
 
-/* ==================== PRINT — hide everything except the label ==================== */
+/* ==================== PRINT — KEY FIX ==================== */
+/*
+  PROBLEM BEFORE: `display: block !important` was set on .printable-label *
+  which broke the flexbox/grid layout inside the label (flex/grid only
+  works when parent has display:flex/grid, not block).
+  
+  FIX: Use visibility toggling only. Keep the label's own display values intact.
+*/
 
-/* The printable-label div is hidden on screen */
+/* Hidden on screen */
 .printable-label {
   display: none;
 }
 
 @media print {
-  /* Hide everything */
+  /* 1. Hide everything on the page */
   body * {
     visibility: hidden !important;
   }
 
-  /* Show only the printable label */
-  .printable-label,
-  .printable-label * {
+  /* 2. Show only the printable label container and its children */
+  .printable-label {
+    display: flex !important;   /* restore flex for the outer wrapper */
     visibility: visible !important;
-    display: block !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 8.5cm;
+    height: 4.5cm;
+    padding: 0;
+    background: #fff;
+    z-index: 99999;
+    align-items: flex-start;
+    justify-content: flex-start;
   }
 
-  /* Page size matching the spec: 9.5cm × 5.5cm */
+  .printable-label * {
+    visibility: visible !important;
+  }
+
+  /* 3. Page size */
   @page {
     size: 9.5cm 5.5cm;
     margin: 0.5cm;
   }
 
-  .printable-label {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 8.5cm;    /* 9.5cm - 2×0.5cm margin */
-    height: 4.5cm;   /* 5.5cm - 2×0.5cm margin */
-    padding: 0;
-    background: #fff;
-  }
-
+  /* 4. Label sizing — keep flex-direction: column */
   .printable-label .label {
     width: 100%;
     height: 100%;
@@ -159,35 +177,55 @@
     box-shadow: none;
     border: none;
     font-size: 7pt;
-    display: flex;
-    flex-direction: column;
-    gap: 2mm;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1.5mm;
     overflow: hidden;
     page-break-inside: avoid;
   }
 
-  .printable-label .label__brand {
-    font-size: 9pt;
-    font-weight: 900;
+  /* 5. Grid layout for chassis fields */
+  .printable-label .label__chassis-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 2mm 8mm;
   }
 
-  .printable-label .label__key {
-    font-size: 6pt;
+  /* 6. Flex rows */
+  .printable-label .label__project-row {
+    display: flex !important;
+    gap: 8mm;
   }
 
-  .printable-label .label__val {
-    font-size: 7pt;
+  .printable-label .label__header {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: center;
   }
 
-  .printable-label .label__repere {
-    font-size: 12pt !important;
-    font-weight: 900 !important;
+  .printable-label .label__field {
+    display: flex !important;
+    gap: 2px;
+    align-items: baseline;
   }
 
+  .printable-label .label__chassis-field {
+    display: flex !important;
+    flex-direction: column;
+  }
+
+  /* 7. Typography */
+  .printable-label .label__brand   { font-size: 9pt; font-weight: 900; }
+  .printable-label .label__key     { font-size: 6pt; }
+  .printable-label .label__val     { font-size: 7pt; }
+  .printable-label .label__repere  { font-size: 12pt !important; font-weight: 900 !important; }
   .printable-label .label__ral-swatch {
-    width: 10mm;
-    height: 6mm;
+    width: 10mm; height: 6mm;
+    display: inline-block !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+
+  /* 8. Hide modal controls */
+  .no-print { display: none !important; }
 }
