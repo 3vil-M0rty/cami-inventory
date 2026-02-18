@@ -89,7 +89,38 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
     };
     try {
       if (isEdit) {
-        await updateChassis(projectId, chassis._id || chassis.id, payload);
+        const originalId = chassis._originalId || chassis._id || chassis.id;
+        const rowIndex   = chassis._rowIndex;
+        const totalQty   = chassis._totalQty ?? (chassis.quantity ?? 1);
+
+        if (rowIndex !== undefined && totalQty > 1) {
+          // Partial edit: only update etat for this specific row unit
+          // Merge etatUnits so only this row's état changes
+          const updatedPayload = {
+            ...chassis,
+            _originalId: undefined,
+            _rowIndex: undefined,
+            _totalQty: undefined,
+            quantity: totalQty,
+            etatUnits: Array.from({ length: totalQty }, (_, i) =>
+              i === rowIndex ? payload.etat : undefined
+            ),
+            // Update other fields that apply to all (type, repere, dimensions, components)
+            type: payload.type,
+            repere: payload.repere,
+            largeur: payload.largeur,
+            hauteur: payload.hauteur,
+            dimension: payload.dimension,
+            components: payload.components,
+          };
+          await updateChassis(projectId, originalId, updatedPayload);
+        } else {
+          const cleanPayload = { ...payload };
+          delete cleanPayload._originalId;
+          delete cleanPayload._rowIndex;
+          delete cleanPayload._totalQty;
+          await updateChassis(projectId, originalId, cleanPayload);
+        }
       } else {
         await addChassis(projectId, payload);
       }

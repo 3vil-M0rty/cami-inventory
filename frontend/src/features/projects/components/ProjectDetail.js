@@ -104,24 +104,41 @@ function ProjectDetail({ project, onBack }) {
     }));
   });
 
-  /* ── Selection: one checkbox per expanded row ── */
-  const allRowKeys = expandedRows.map(r => r.rowKey);
+  /* ── Selectable keys: for composite rows, each component; for simple rows, the row itself ── */
+  const allSelectableKeys = expandedRows.flatMap(({ ch, chId, rowIndex, isComposite, rowKey }) => {
+    if (isComposite) {
+      return (ch.components || []).map((_, idx) => `${rowKey}-comp-${idx}`);
+    }
+    return [rowKey];
+  });
 
-  const toggleSelectRow = (rowKey) =>
+  const toggleSelectRow = (key) =>
     setSelectedRowKeys(prev => {
       const next = new Set(prev);
-      next.has(rowKey) ? next.delete(rowKey) : next.add(rowKey);
+      next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
 
   const toggleSelectAll = () =>
-    setSelectedRowKeys(selectedRowKeys.size === allRowKeys.length ? new Set() : new Set(allRowKeys));
+    setSelectedRowKeys(selectedRowKeys.size === allSelectableKeys.length ? new Set() : new Set(allSelectableKeys));
 
   /* ── Batch print ── */
   const startBatchPrint = () => {
-    const toPrint = expandedRows
-      .filter(r => selectedRowKeys.has(r.rowKey))
-      .map(r => ({ ...r.ch, _printRowIndex: r.rowIndex }));
+    // For non-composite: collect rows where rowKey is selected
+    // For composite: collect component rows selected
+    const toPrint = [];
+    expandedRows.forEach(r => {
+      if (!r.isComposite && selectedRowKeys.has(r.rowKey)) {
+        toPrint.push({ ...r.ch, _printRowIndex: r.rowIndex });
+      } else if (r.isComposite) {
+        const selectedComps = (r.ch.components || []).filter((_, idx) =>
+          selectedRowKeys.has(`${r.rowKey}-comp-${idx}`)
+        );
+        if (selectedComps.length > 0) {
+          toPrint.push({ ...r.ch, _printRowIndex: r.rowIndex, components: selectedComps });
+        }
+      }
+    });
     if (!toPrint.length) return;
     const html = buildLabelHTML(toPrint, project, chassisLabels, language);
     const w = window.open('', '_blank');
@@ -182,12 +199,12 @@ function ProjectDetail({ project, onBack }) {
               + {t('addChassis')}
             </button>
             <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}>
-              ⚙️ Types de chassis
+              ⚙️ {t('chassisTypeConfig')}
             </button>
             {expandedRows.length > 0 && (
               <div className="selection-toolbar">
                 <button className="select-btn" onClick={toggleSelectAll}>
-                  {selectedRowKeys.size === allRowKeys.length ? t('deselectAll') : t('selectAll')}
+                  {selectedRowKeys.size === allSelectableKeys.length ? t('deselectAll') : t('selectAll')}
                 </button>
                 {selectedRowKeys.size > 0 && (
                   <button className="print-selected-btn" onClick={startBatchPrint}>
@@ -208,7 +225,7 @@ function ProjectDetail({ project, onBack }) {
                     <th style={{ width: 40, textAlign: 'center' }}>
                       <input
                         type="checkbox"
-                        checked={allRowKeys.length > 0 && selectedRowKeys.size === allRowKeys.length}
+                        checked={allSelectableKeys.length > 0 && selectedRowKeys.size === allSelectableKeys.length}
                         onChange={toggleSelectAll}
                       />
                     </th>
@@ -223,19 +240,20 @@ function ProjectDetail({ project, onBack }) {
                 </thead>
                 <tbody>
                   {expandedRows.map(({ ch, chId, rowIndex, isComposite, rowKey }) => {
-                    const isSelected = selectedRowKeys.has(rowKey);
                     const rowEtat    = getRowEtat(ch, rowIndex);
                     return (
                       <React.Fragment key={rowKey}>
-                        <tr className={`chassis-row ${isSelected ? 'chassis-row--selected' : ''}`}>
-                          {/* Checkbox on EVERY row */}
+                        <tr className={`chassis-row ${!isComposite && selectedRowKeys.has(rowKey) ? 'chassis-row--selected' : ''}`}>
+                          {/* Checkbox: only for non-composite rows; composite gets checkboxes on components */}
                           <td className="chassis-row__check">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleSelectRow(rowKey)}
-                              onClick={e => e.stopPropagation()}
-                            />
+                            {!isComposite ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedRowKeys.has(rowKey)}
+                                onChange={() => toggleSelectRow(rowKey)}
+                                onClick={e => e.stopPropagation()}
+                              />
+                            ) : null}
                           </td>
                           <td>
                             <strong>{ch.repere}</strong>
@@ -262,7 +280,20 @@ function ProjectDetail({ project, onBack }) {
                           <td>
                             <div className="chassis-row__actions">
                               <button className="edit-btn"
-                                onClick={() => { setEditingChassis(ch); setShowChassisForm(true); }}>
+                                onClick={() => {
+                                  // Create a single-unit snapshot for this specific row
+                                  const rowEtatVal = getRowEtat(ch, rowIndex);
+                                  const singleUnit = {
+                                    ...ch,
+                                    quantity: 1,
+                                    etat: rowEtatVal,
+                                    _originalId: chId,
+                                    _rowIndex: rowIndex,
+                                    _totalQty: ch.quantity ?? 1,
+                                  };
+                                  setEditingChassis(singleUnit);
+                                  setShowChassisForm(true);
+                                }}>
                                 ✏️ {t('edit')}
                               </button>
                               <button className="print-btn" title={t('printLabel')}
@@ -276,9 +307,19 @@ function ProjectDetail({ project, onBack }) {
                           </td>
                         </tr>
                         {/* Sub-components */}
-                        {isComposite && ch.components?.map((comp, idx) => (
-                          <tr key={`${rowKey}-comp-${idx}`} className="component-row">
-                            <td></td>
+                        {isComposite && ch.components?.map((comp, idx) => {
+                          const compKey = `${rowKey}-comp-${idx}`;
+                          const compSelected = selectedRowKeys.has(compKey);
+                          return (
+                          <tr key={compKey} className={`component-row ${compSelected ? 'chassis-row--selected' : ''}`}>
+                            <td className="chassis-row__check">
+                              <input
+                                type="checkbox"
+                                checked={compSelected}
+                                onChange={() => toggleSelectRow(compKey)}
+                                onClick={e => e.stopPropagation()}
+                              />
+                            </td>
                             <td className="component-indent">↳ {comp.repere || `${comp.role} ${idx + 1}`}</td>
                             <td className="component-role">{comp.role}</td>
                             <td>{comp.largeur}</td>
@@ -291,7 +332,8 @@ function ProjectDetail({ project, onBack }) {
                             </td>
                             <td></td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </React.Fragment>
                     );
                   })}

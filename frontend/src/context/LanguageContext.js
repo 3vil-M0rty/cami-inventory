@@ -71,6 +71,7 @@ const translations = {
     usedBarsTitle: 'Barres utilisées', noUsedBars: 'Aucune barre utilisée',
     barDesignation: 'Désignation', barQtyUsed: 'Qté utilisée',
     barStockRemaining: 'Stock restant',
+    chassisTypeConfig: 'Types de châssis',
   },
   [LANGUAGES.IT]: {
     appTitle: 'CAMI ALUMINIUM',
@@ -132,6 +133,7 @@ const translations = {
     usedBarsTitle: 'Barre utilizzate', noUsedBars: 'Nessuna barra utilizzata',
     barDesignation: 'Designazione', barQtyUsed: 'Qtà usata',
     barStockRemaining: 'Stock rimanente',
+    chassisTypeConfig: 'Tipi di telaio',
   },
   [LANGUAGES.EN]: {
     appTitle: 'CAMI ALUMINIUM',
@@ -193,6 +195,7 @@ const translations = {
     usedBarsTitle: 'Used Bars', noUsedBars: 'No bars used',
     barDesignation: 'Designation', barQtyUsed: 'Qty used',
     barStockRemaining: 'Remaining stock',
+    chassisTypeConfig: 'Chassis Types',
   }
 };
 
