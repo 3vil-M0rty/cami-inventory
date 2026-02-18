@@ -6,8 +6,8 @@ import './ProjectsPage.css';
 
 const STATUS_COLORS = {
   en_cours: '#f59e0b',
-  termine:  '#16a34a',
-  livre:    '#3b82f6'
+  fabrique: '#3b82f6',
+  cloture:  '#16a34a'
 };
 
 function ProjectsPage() {
@@ -110,7 +110,7 @@ function ProjectsPage() {
 
 function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
   const statusColor = STATUS_COLORS[project.status] || '#999';
-  const statusLabel = t(`status_${project.status}`) || project.status;
+  const statusLabel = t(`status_${project.status}`) || project.status || '';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
   return (
@@ -148,11 +148,9 @@ function ProjectFormModal({ language, project, t, onClose, onSave }) {
     ralCode:   project.ralCode,
     ralColor:  project.ralColor || '#ffffff',
     date:      project.date ? project.date.split('T')[0] : '',
-    status:    project.status
   } : {
     name: '', reference: '', ralCode: '', ralColor: '#ffffff',
-    date: new Date().toISOString().split('T')[0],
-    status: 'en_cours'
+    date: new Date().toISOString().split('T')[0]
   });
 
   const set = (key, val) => setFormData(prev => ({ ...prev, [key]: val }));
@@ -161,12 +159,6 @@ function ProjectFormModal({ language, project, t, onClose, onSave }) {
     e.preventDefault();
     onSave(formData);
   };
-
-  const statusOptions = [
-    { value: 'en_cours', label: t('status_en_cours') },
-    { value: 'termine',  label: t('status_termine') },
-    { value: 'livre',    label: t('status_livre') }
-  ];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -203,14 +195,7 @@ function ProjectFormModal({ language, project, t, onClose, onSave }) {
               <input type="date" required value={formData.date}
                 onChange={e => set('date', e.target.value)} />
             </div>
-            <div className="form-group">
-              <label>{t('projectStatus')}</label>
-              <select value={formData.status} onChange={e => set('status', e.target.value)}>
-                {statusOptions.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
+
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>{t('cancel')}</button>

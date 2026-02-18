@@ -72,6 +72,12 @@ const translations = {
     barDesignation: 'Désignation', barQtyUsed: 'Qté utilisée',
     barStockRemaining: 'Stock restant',
     chassisTypeConfig: 'Types de châssis',
+    status_fabrique: 'Fabriqué', status_cloture: 'Clôturé',
+    tabBL: 'Bons de livraison', noBL: 'Aucune livraison enregistrée',
+    blTitle: 'Bon de Livraison', blDate: 'Date livraison', blUnits: 'Unités livrées',
+    blPrint: 'Imprimer BL', blRef: 'Réf. projet', blHistory: 'Historique des BL',
+    deliveryDate: 'Date de livraison', unitNotes: 'Notes', blUnitLabel: 'Désignation',
+    progressTitle: 'Avancement',
   },
   [LANGUAGES.IT]: {
     appTitle: 'CAMI ALUMINIUM',
@@ -134,6 +140,12 @@ const translations = {
     barDesignation: 'Designazione', barQtyUsed: 'Qtà usata',
     barStockRemaining: 'Stock rimanente',
     chassisTypeConfig: 'Tipi di telaio',
+    status_fabrique: 'Fabbricato', status_cloture: 'Chiuso',
+    tabBL: 'Bolle di consegna', noBL: 'Nessuna consegna registrata',
+    blTitle: 'Bolla di Consegna', blDate: 'Data consegna', blUnits: 'Unità consegnate',
+    blPrint: 'Stampa BL', blRef: 'Rif. progetto', blHistory: 'Storico BL',
+    deliveryDate: 'Data di consegna', unitNotes: 'Note', blUnitLabel: 'Designazione',
+    progressTitle: 'Avanzamento',
   },
   [LANGUAGES.EN]: {
     appTitle: 'CAMI ALUMINIUM',
@@ -196,6 +208,12 @@ const translations = {
     barDesignation: 'Designation', barQtyUsed: 'Qty used',
     barStockRemaining: 'Remaining stock',
     chassisTypeConfig: 'Chassis Types',
+    status_fabrique: 'Fabricated', status_cloture: 'Closed',
+    tabBL: 'Delivery Notes', noBL: 'No deliveries recorded',
+    blTitle: 'Delivery Note', blDate: 'Delivery date', blUnits: 'Delivered units',
+    blPrint: 'Print DN', blRef: 'Project ref.', blHistory: 'Delivery history',
+    deliveryDate: 'Delivery date', unitNotes: 'Notes', blUnitLabel: 'Description',
+    progressTitle: 'Progress',
   }
 };
 
