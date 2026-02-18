@@ -1,14 +1,33 @@
 import { useLanguage } from '../../../context/LanguageContext';
 import './LabelPrint.css';
 
-/* Shared print HTML builder — used by both single print and batch print */
+/**
+ * Shared print HTML builder — used by both single print and batch print.
+ *
+ * Each item in chassisList may carry an optional `_component` field:
+ *   { repere, role, largeur, hauteur, unitLabel }
+ * When present, the label is printed for the COMPONENT, not the parent chassis.
+ * `_printRowIndex` is still used to disambiguate the parent unit instance label.
+ */
 export function buildLabelHTML(chassisList, project, chassisLabels, language) {
   const ralHex  = project.ralColor || '#cccccc';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
   const oneLabelHTML = (chassis) => {
+    const comp     = chassis._component;  // set for composite component labels
     const typeName = chassisLabels[chassis.type]?.[language] || chassis.type;
-    const rowNum   = (chassis._printRowIndex ?? 0) > 0 ? ` #${chassis._printRowIndex + 1}` : '';
+    const qty      = chassis._totalQty || chassis.quantity || 1;
+    const unitNum  = (chassis._printRowIndex ?? 0);
+    const unitSuffix = qty > 1 ? ` #${unitNum + 1}` : '';
+
+    // For a component label: repere = comp.repere, type = role, dims = comp dims
+    const repere = comp ? comp.repere                           : `${chassis.repere}${unitSuffix}`;
+    const type   = comp ? comp.roleLabel                        : typeName;
+    const largeur = comp ? comp.largeur : chassis.largeur;
+    const hauteur = comp ? comp.hauteur : chassis.hauteur;
+    // Show parent repere + unit as a sub-line when printing a component
+    const parentLine = comp ? `<div class="parent-ref"><span class="k">Châssis</span> <span class="v">${chassis.repere}${unitSuffix}</span></div>` : '';
+
     return `<div class="label">
     <div class="lh">
       <span class="brand">CAMI ALUMINIUM</span>
@@ -24,10 +43,11 @@ export function buildLabelHTML(chassisList, project, chassisLabels, language) {
     </div>
     <div class="div"></div>
     <div class="grid">
-      <div class="cell"><span class="k">Repère</span><span class="repere">${chassis.repere}${rowNum}</span></div>
-      <div class="cell"><span class="k">Type</span><span class="v">${typeName}</span></div>
-      <div class="cell full"><span class="k">Dimensions</span><span class="dim">${chassis.largeur} × ${chassis.hauteur} mm</span></div>
+      <div class="cell"><span class="k">Repère</span><span class="repere">${repere}</span></div>
+      <div class="cell"><span class="k">Type</span><span class="v">${type}</span></div>
+      <div class="cell full"><span class="k">Dimensions</span><span class="dim">${largeur} × ${hauteur} mm</span></div>
     </div>
+    ${parentLine}
   </div>`;
   };
 
@@ -74,6 +94,7 @@ export function buildLabelHTML(chassisList, project, chassisLabels, language) {
   .full  { grid-column: 1 / -1; }
   .repere { font-size: 18pt; font-weight: 900; color: #1a1a1a; letter-spacing: -0.02em; line-height: 1; }
   .dim   { font-size: 10pt; font-weight: 700; color: #1a1a1a; }
+  .parent-ref { font-size: 6pt; color: #888; margin-top: 1mm; }
 </style>
 </head>
 <body>
@@ -95,17 +116,21 @@ function LabelPrint({ chassis, project, chassisLabels, onClose }) {
   const { t, currentLanguage } = useLanguage();
   const language = currentLanguage;
 
-  const dateStr  = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
-  const typeName = chassisLabels[chassis.type]?.[language] || chassis.type;
-  const rowNum   = (chassis._printRowIndex ?? 0) > 0 ? ` #${chassis._printRowIndex + 1}` : '';
+  const comp       = chassis._component;   // set when printing a composite component
+  const dateStr    = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
+  const typeName   = chassisLabels[chassis.type]?.[language] || chassis.type;
+  const qty        = chassis._totalQty || chassis.quantity || 1;
+  const unitIndex  = chassis._printRowIndex ?? 0;
+  const unitSuffix = qty > 1 ? ` #${unitIndex + 1}` : '';
+
+  // What to show in the preview and on the printed label
+  const displayRepere  = comp ? comp.repere    : `${chassis.repere}${unitSuffix}`;
+  const displayType    = comp ? comp.roleLabel  : typeName;
+  const displayLargeur = comp ? comp.largeur    : chassis.largeur;
+  const displayHauteur = comp ? comp.hauteur    : chassis.hauteur;
 
   const handlePrint = () => {
-    const html = buildLabelHTML(
-      [{ ...chassis, _printRowIndex: chassis._printRowIndex ?? 0 }],
-      project,
-      chassisLabels,
-      language
-    );
+    const html = buildLabelHTML([{ ...chassis }], project, chassisLabels, language);
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); }
   };
@@ -133,17 +158,22 @@ function LabelPrint({ chassis, project, chassisLabels, onClose }) {
             <div className="lp-grid">
               <div className="lp-cell">
                 <span className="lp-k">{t('labelRepere')}</span>
-                <span className="lp-repere">{chassis.repere}{rowNum}</span>
+                <span className="lp-repere">{displayRepere}</span>
               </div>
               <div className="lp-cell">
                 <span className="lp-k">{t('labelType')}</span>
-                <span className="lp-v">{typeName}</span>
+                <span className="lp-v">{displayType}</span>
               </div>
               <div className="lp-cell lp-full">
                 <span className="lp-k">{t('labelDim')}</span>
-                <span className="lp-dim">{chassis.largeur} × {chassis.hauteur} mm</span>
+                <span className="lp-dim">{displayLargeur} × {displayHauteur} mm</span>
               </div>
             </div>
+            {comp && (
+              <div style={{ fontSize: '9px', color: '#888', marginTop: 4 }}>
+                Châssis : {chassis.repere}{unitSuffix}
+              </div>
+            )}
           </div>
         </div>
 

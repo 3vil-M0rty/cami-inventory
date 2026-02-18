@@ -314,9 +314,26 @@ function ProjectDetail({ project, onBack }) {
   };
 
   const startBatchPrint = () => {
-    const toPrint = rows
-      .filter(r => r.kind === 'unit' && selectedKeys.has(r.rowKey))
-      .map(r => ({ ...r.ch, _printRowIndex: r.unitIndex }));
+    const toPrint = [];
+    for (const row of rows) {
+      if (!selectedKeys.has(row.rowKey)) continue;
+      if (row.kind === 'unit') {
+        toPrint.push({ ...row.ch, _printRowIndex: row.unitIndex, _totalQty: row.ch.quantity || 1 });
+      } else if (row.kind === 'component') {
+        const roleLabel = row.comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${row.ci}`;
+        toPrint.push({
+          ...row.ch,
+          _printRowIndex: row.unitIndex,
+          _totalQty: row.ch.quantity || 1,
+          _component: {
+            repere:    row.comp.repere || roleLabel,
+            roleLabel,
+            largeur:   row.comp.largeur,
+            hauteur:   row.comp.hauteur,
+          }
+        });
+      }
+    }
     if (!toPrint.length) return;
     const html = buildLabelHTML(toPrint, project, chassisLabels, language);
     const w = window.open('', '_blank');
@@ -438,7 +455,19 @@ function ProjectDetail({ project, onBack }) {
                                 setShowChassisForm(true);
                               }}>✏️ {t('edit')}</button>
                               <button className="print-btn" title={t('printLabel')}
-                                onClick={() => setPrintingChassis({ ...ch, _printRowIndex: unitIndex })}>🖨</button>
+                                onClick={() => {
+                                  // Print one label per component for this unit instance
+                                  const toPrint = ch.components.map((comp, ci) => {
+                                    const roleLabel = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`;
+                                    return {
+                                      ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1,
+                                      _component: { repere: comp.repere || roleLabel, roleLabel, largeur: comp.largeur, hauteur: comp.hauteur }
+                                    };
+                                  });
+                                  const html = buildLabelHTML(toPrint, project, chassisLabels, language);
+                                  const w = window.open('', '_blank');
+                                  if (w) { w.document.write(html); w.document.close(); }
+                                }}>🖨</button>
                               <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}>🗑</button>
                             </div>
                           </td>
@@ -478,7 +507,18 @@ function ProjectDetail({ project, onBack }) {
                             </select>
                           </td>
                           <td><span className="date-placeholder">—</span></td>
-                          <td />
+                          <td>
+                            <button className="print-btn" title={t('printLabel')}
+                              onClick={() => {
+                                const roleLabel = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`;
+                                setPrintingChassis({
+                                  ...ch,
+                                  _printRowIndex: unitIndex,
+                                  _totalQty: ch.quantity || 1,
+                                  _component: { repere: comp.repere || roleLabel, roleLabel, largeur: comp.largeur, hauteur: comp.hauteur }
+                                });
+                              }}>🖨</button>
+                          </td>
                         </tr>
                       );
                     }
