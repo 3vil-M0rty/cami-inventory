@@ -1,7 +1,7 @@
 /* ==================== LABEL PREVIEW MODAL ==================== */
 
 .label-preview-modal {
-  max-width: 500px !important;
+  max-width: 460px !important;
 }
 
 .label-preview-frame {
@@ -14,38 +14,29 @@
   border: 1px solid #e0e0e0;
 }
 
-/* Preview label box — screen-only representation */
+/* Preview label box */
 .label-preview-frame .label {
   width: 285px;
-  min-height: 170px;
+  min-height: 155px;
   padding: 10px;
   background: #fff;
   border: 1px solid #ccc;
   border-radius: 4px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  overflow: hidden;
+  gap: 5px;
 }
 
-.batch-indicator {
-  font-size: 14px;
-  font-weight: 400;
-  color: #888;
-  margin-left: 8px;
-}
-
-/* ==================== LABEL INTERNAL STYLES ==================== */
-
+/* ── Label internal styles ── */
 .label__header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   border-bottom: 1.5px solid #1a1a1a;
   padding-bottom: 5px;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
 }
 
 .label__brand {
@@ -58,9 +49,9 @@
 
 .label__ral-swatch {
   width: 18px;
-  height: 13px;
+  height: 12px;
   border-radius: 2px;
-  border: 1px solid rgba(0,0,0,0.15);
+  border: 1px solid rgba(0,0,0,0.12);
   display: inline-block;
   flex-shrink: 0;
 }
@@ -78,7 +69,7 @@
 
 .label__key {
   font-weight: 700;
-  color: #888;
+  color: #999;
   text-transform: uppercase;
   font-size: 7px;
   letter-spacing: 0.05em;
@@ -92,14 +83,14 @@
 }
 
 .label__divider {
-  border-top: 1px dashed #ccc;
-  margin: 3px 0;
+  border-top: 1px dashed #ddd;
+  margin: 2px 0;
 }
 
 .label__chassis-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px 14px;
+  gap: 5px 14px;
   flex: 1;
 }
 
@@ -110,15 +101,15 @@
 }
 
 .label__repere {
-  font-size: 15px !important;
+  font-size: 18px !important;
   font-weight: 900 !important;
   color: #1a1a1a !important;
   letter-spacing: -0.02em;
   line-height: 1.1;
 }
 
-.label__etat {
+.label__dim {
+  font-size: 10px !important;
   font-weight: 700 !important;
-  font-size: 8px !important;
-  color: #444 !important;
+  color: #1a1a1a !important;
 }

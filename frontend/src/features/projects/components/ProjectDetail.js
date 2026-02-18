@@ -16,17 +16,19 @@ const ETAT_COLORS = {
   livre:      '#16a34a'
 };
 
-/**
- * Print all chassis labels in one browser window, each on its own page.
- */
-function printAllLabels(chassisList, project, chassisLabels, language, t) {
+/* ─────────────────────────────────────────────
+   Print all chassis labels in one browser window
+   each label on its own page (no État shown)
+───────────────────────────────────────────── */
+function printAllLabels(chassisList, project, chassisLabels, language) {
   const ralHex = project.ralColor || '#cccccc';
-  const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
+  const dateStr = project.date
+    ? new Date(project.date).toLocaleDateString('fr-FR')
+    : '';
 
   const labelHtml = (chassis) => {
     const typeName = chassisLabels[chassis.type]?.[language] || chassis.type;
-    const etatName = t(`etat_${chassis.etat}`) || chassis.etat;
-    const rowNum = chassis._printRowIndex > 0 ? ` #${chassis._printRowIndex + 1}` : '';
+    const rowNum   = chassis._printRowIndex > 0 ? ` #${chassis._printRowIndex + 1}` : '';
     return `
   <div class="label">
     <div class="label__header">
@@ -34,12 +36,24 @@ function printAllLabels(chassisList, project, chassisLabels, language, t) {
       <span class="label__ral-swatch" style="background-color:${ralHex}"></span>
     </div>
     <div class="label__row">
-      <span class="label__field"><span class="label__key">Projet</span><span class="label__val">${project.name}</span></span>
-      <span class="label__field"><span class="label__key">Réf.</span><span class="label__val">${project.reference}</span></span>
+      <span class="label__field">
+        <span class="label__key">Projet</span>
+        <span class="label__val">${project.name}</span>
+      </span>
+      <span class="label__field">
+        <span class="label__key">Réf.</span>
+        <span class="label__val">${project.reference}</span>
+      </span>
     </div>
     <div class="label__row">
-      <span class="label__field"><span class="label__key">RAL</span><span class="label__val">${project.ralCode}</span></span>
-      <span class="label__field"><span class="label__key">Date</span><span class="label__val">${dateStr}</span></span>
+      <span class="label__field">
+        <span class="label__key">RAL</span>
+        <span class="label__val">${project.ralCode}</span>
+      </span>
+      <span class="label__field">
+        <span class="label__key">Date</span>
+        <span class="label__val">${dateStr}</span>
+      </span>
     </div>
     <div class="label__divider"></div>
     <div class="label__grid">
@@ -51,25 +65,17 @@ function printAllLabels(chassisList, project, chassisLabels, language, t) {
         <span class="label__key">Type</span>
         <span class="label__val">${typeName}</span>
       </div>
-      <div class="label__cell">
-        <span class="label__key">Dim.</span>
-        <span class="label__val">${chassis.largeur} × ${chassis.hauteur} mm</span>
-      </div>
-      <div class="label__cell">
-        <span class="label__key">Qté</span>
-        <span class="label__val">1</span>
-      </div>
       <div class="label__cell label__full">
-        <span class="label__key">État</span>
-        <span class="label__val">${etatName}</span>
+        <span class="label__key">Dimensions</span>
+        <span class="label__val label__dim-val">${chassis.largeur} × ${chassis.hauteur} mm</span>
       </div>
     </div>
   </div>`;
   };
 
-  const allLabels = chassisList.map((ch) =>
-    `<div class="page">${labelHtml(ch)}</div>`
-  ).join('\n');
+  const allLabels = chassisList
+    .map((ch) => `<div class="page">${labelHtml(ch)}</div>`)
+    .join('\n');
 
   const html = `<!DOCTYPE html>
 <html>
@@ -86,7 +92,7 @@ function printAllLabels(chassisList, project, chassisLabels, language, t) {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #fff; }
     .page { width: 8.7cm; height: 4.7cm; overflow: hidden; }
-    .label { width: 100%; height: 100%; padding: 3mm; display: flex; flex-direction: column; gap: 1.5mm; }
+    .label { width: 100%; height: 100%; padding: 3mm; display: flex; flex-direction: column; gap: 2mm; }
     .label__header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #1a1a1a; padding-bottom: 1.5mm; margin-bottom: 1mm; }
     .label__brand { font-size: 9pt; font-weight: 900; color: #1a1a1a; letter-spacing: 0.05em; text-transform: uppercase; }
     .label__ral-swatch { width: 10mm; height: 6mm; border-radius: 2px; border: 1px solid #ccc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -95,9 +101,10 @@ function printAllLabels(chassisList, project, chassisLabels, language, t) {
     .label__key { font-size: 6pt; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
     .label__val { font-size: 7pt; font-weight: 500; color: #1a1a1a; }
     .label__divider { border-top: 1px dashed #ccc; margin: 1mm 0; }
-    .label__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5mm 8mm; flex: 1; }
+    .label__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm 8mm; flex: 1; }
     .label__cell { display: flex; flex-direction: column; gap: 0.5mm; }
-    .label__repere-val { font-size: 14pt; font-weight: 900; color: #1a1a1a; letter-spacing: -0.02em; line-height: 1; }
+    .label__repere-val { font-size: 16pt; font-weight: 900; color: #1a1a1a; letter-spacing: -0.02em; line-height: 1; }
+    .label__dim-val { font-size: 9pt !important; font-weight: 700 !important; }
     .label__full { grid-column: 1 / -1; }
   </style>
 </head>
@@ -114,46 +121,39 @@ ${allLabels}
 </body>
 </html>`;
 
-  const printWindow = window.open('', '_blank');
-  if (printWindow) {
-    printWindow.document.write(html);
-    printWindow.document.close();
-  }
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(html); w.document.close(); }
 }
 
+/* ─────────────────────────────────────────────
+   ProjectDetail component
+───────────────────────────────────────────── */
 function ProjectDetail({ project, onBack }) {
   const { deleteChassis, updateChassis } = useProjects();
   const { t, currentLanguage } = useLanguage();
 
-  const [activeTab, setActiveTab]             = useState('chassis');
+  const [activeTab,       setActiveTab]       = useState('chassis');
   const [showChassisForm, setShowChassisForm] = useState(false);
   const [showTypeManager, setShowTypeManager] = useState(false);
-  const [editingChassis, setEditingChassis]   = useState(null);
+  const [editingChassis,  setEditingChassis]  = useState(null);
   const [printingChassis, setPrintingChassis] = useState(null);
-  const [selectedIds, setSelectedIds]         = useState(new Set());
-  const [chassisLabels, setChassisLabels]     = useState(STATIC_LABELS);
+  const [selectedIds,     setSelectedIds]     = useState(new Set());
+  const [chassisLabels,   setChassisLabels]   = useState(STATIC_LABELS);
 
-  const language = currentLanguage;
+  const language    = currentLanguage;
   const statusColor = { en_cours: '#f59e0b', termine: '#16a34a', livre: '#3b82f6' }[project.status] || '#9ca3af';
-  const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
+  const dateStr     = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
-  // Load live chassis type labels
   useEffect(() => {
     fetchChassisTypes()
       .then(types => setChassisLabels(buildChassisLabels(types)))
-      .catch(() => {/* keep static */});
+      .catch(() => {});
   }, [showTypeManager]);
 
-  // Delete the entire chassis entry
-  const handleDeleteChassis = async (chassisId) => {
-    if (!window.confirm(t('deleteChassisConfirm'))) return;
-    await deleteChassis(project.id, chassisId);
-  };
-
-  // Per-row delete: decrement qty by 1, or fully delete if last unit
-  const handleDeleteRow = async (ch, rowIndex) => {
+  /* ── Per-row delete: decrement qty or full delete ── */
+  const handleDeleteRow = async (ch) => {
     const chId = ch._id || ch.id;
-    const qty = ch.quantity ?? 1;
+    const qty  = ch.quantity ?? 1;
     if (qty <= 1) {
       if (!window.confirm(t('deleteChassisConfirm'))) return;
       await deleteChassis(project.id, chId);
@@ -163,57 +163,47 @@ function ProjectDetail({ project, onBack }) {
     }
   };
 
-  // Per-row edit: open the form for this chassis
-  const handleEditRow = (ch) => {
-    setEditingChassis(ch);
-    setShowChassisForm(true);
-  };
-
+  /* ── Selection helpers ── */
   const allIds = (project.chassis || []).map(ch => ch._id || ch.id);
 
-  const toggleSelect = (id) => {
+  const toggleSelect = (id) =>
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-  };
 
-  const toggleSelectAll = () => {
+  const toggleSelectAll = () =>
     setSelectedIds(selectedIds.size === allIds.length ? new Set() : new Set(allIds));
-  };
 
-  const selectedChassisList = (project.chassis || []).filter(ch => selectedIds.has(ch._id || ch.id));
-
-  // Expand selected chassis by their quantity (each unit gets its own ticket)
-  const expandedSelectedChassis = selectedChassisList.flatMap(ch => {
-    const qty = ch.quantity ?? 1;
-    return Array.from({ length: qty }, (_, i) => ({ ...ch, _printRowIndex: i, _printQty: 1 }));
-  });
-
+  /* ── Batch print: expand each selected chassis by qty ── */
   const startBatchPrint = () => {
-    if (!expandedSelectedChassis.length) return;
-    printAllLabels(expandedSelectedChassis, project, chassisLabels, language, t);
+    const selected = (project.chassis || []).filter(ch => selectedIds.has(ch._id || ch.id));
+    const expanded = selected.flatMap(ch =>
+      Array.from({ length: ch.quantity ?? 1 }, (_, i) => ({ ...ch, _printRowIndex: i }))
+    );
+    if (expanded.length) printAllLabels(expanded, project, chassisLabels, language);
   };
 
-  /**
-   * Expand chassis into display rows.
-   * Both simple and composite chassis: repeat N times (qty), each row shows qty=1 with its own action buttons.
-   */
+  /* ── Expand chassis rows: N rows per chassis (one per unit) ── */
   const expandedRows = (project.chassis || []).flatMap(ch => {
-    const qty = ch.quantity ?? 1;
-    const isComposite = ch.components?.length > 0;
-    const chId = ch._id || ch.id;
-
+    const qty         = ch.quantity ?? 1;
+    const chId        = ch._id || ch.id;
+    const isComposite = (ch.components?.length ?? 0) > 0;
     return Array.from({ length: qty }, (_, i) => ({
-      ch, chId, rowIndex: i, showQty: 1, isFirst: i === 0, isComposite
+      ch, chId, rowIndex: i, isFirst: i === 0, isComposite
     }));
   });
 
   return (
     <div className="project-detail">
-      <button className="project-detail__back" onClick={onBack}>{t('backToProjects')}</button>
 
+      {/* ── Back ── */}
+      <button className="project-detail__back" onClick={onBack}>
+        {t('backToProjects')}
+      </button>
+
+      {/* ── Project header ── */}
       <div className="project-detail__header">
         <div className="project-detail__info">
           <div className="project-detail__ral-swatch" style={{ backgroundColor: project.ralColor || '#eee' }} />
@@ -230,11 +220,16 @@ function ProjectDetail({ project, onBack }) {
           </div>
         </div>
         <div className="project-detail__header-actions">
-          <button className="excel-btn" onClick={() => exportProjectPDF(project, language, chassisLabels, t)}>{t('exportPDF')} — Châssis</button>
-          <button className="excel-btn" onClick={() => exportBarsPDF(project, language, t)} style={{ marginLeft: 8 }}>{t('exportPDF')} — Barres</button>
+          <button className="excel-btn" onClick={() => exportProjectPDF(project, language, chassisLabels, t)}>
+            📄 {t('exportPDF')} — Châssis
+          </button>
+          <button className="excel-btn" onClick={() => exportBarsPDF(project, language, t)}>
+            📄 {t('exportPDF')} — Barres
+          </button>
         </div>
       </div>
 
+      {/* ── Tabs ── */}
       <div className="project-detail__tabs">
         <button
           className={`project-detail__tab ${activeTab === 'chassis' ? 'project-detail__tab--active' : ''}`}
@@ -250,13 +245,16 @@ function ProjectDetail({ project, onBack }) {
         </button>
       </div>
 
+      {/* ── Chassis panel ── */}
       {activeTab === 'chassis' && (
         <div className="project-detail__panel">
+
+          {/* Toolbar */}
           <div className="panel-toolbar">
             <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>
               + {t('addChassis')}
             </button>
-            <button className="ct-config-btn" title="Gérer les types de chassis" onClick={() => setShowTypeManager(true)}>
+            <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}>
               ⚙️ Types de chassis
             </button>
             {(project.chassis?.length || 0) > 0 && (
@@ -273,6 +271,7 @@ function ProjectDetail({ project, onBack }) {
             )}
           </div>
 
+          {/* Table */}
           {!project.chassis?.length ? (
             <div className="no-items">{t('noChassis')}</div>
           ) : (
@@ -280,10 +279,9 @@ function ProjectDetail({ project, onBack }) {
               <table className="chassis-table">
                 <thead>
                   <tr>
-                    <th style={{ width: 36 }}></th>
+                    <th style={{ width: 40 }}></th>
                     <th>{t('repere')}</th>
                     <th>{t('type')}</th>
-                    <th>{t('quantityChassis')}</th>
                     <th>{t('largeur')} (mm)</th>
                     <th>{t('hauteur')} (mm)</th>
                     <th>{t('dimension')}</th>
@@ -292,55 +290,82 @@ function ProjectDetail({ project, onBack }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {expandedRows.map(({ ch, chId, rowIndex, showQty, isFirst, isComposite }) => {
+                  {expandedRows.map(({ ch, chId, rowIndex, isFirst, isComposite }) => {
                     const isSelected = selectedIds.has(chId);
-                    const rowKey = `${chId}-${rowIndex}`;
+                    const rowKey     = `${chId}-${rowIndex}`;
                     return (
                       <React.Fragment key={rowKey}>
                         <tr className={`chassis-row ${isSelected ? 'chassis-row--selected' : ''}`}>
-                          <td>
+
+                          {/* Checkbox — only on first row */}
+                          <td className="chassis-row__check">
                             {isFirst && (
-                              <input type="checkbox" checked={isSelected}
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
                                 onChange={() => toggleSelect(chId)}
                                 onClick={e => e.stopPropagation()}
                               />
                             )}
                           </td>
+
+                          {/* Repère */}
                           <td>
                             <strong>{ch.repere}</strong>
-                            {rowIndex > 0 && <span className="row-index-badge"> #{rowIndex + 1}</span>}
+                            {rowIndex > 0 && (
+                              <span className="row-index-badge"> #{rowIndex + 1}</span>
+                            )}
                           </td>
+
+                          {/* Type */}
                           <td>{chassisLabels[ch.type]?.[language] || ch.type}</td>
-                          <td><strong>{showQty}</strong></td>
+
+                          {/* Dims */}
                           <td>{ch.largeur}</td>
                           <td>{ch.hauteur}</td>
-                          <td>{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
+                          <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
+
+                          {/* État */}
                           <td>
                             <span className="etat-badge" style={{ backgroundColor: ETAT_COLORS[ch.etat] || '#9ca3af' }}>
                               {t(`etat_${ch.etat}`) || ch.etat}
                             </span>
                           </td>
+
+                          {/* Actions — ALL 3 on every row */}
                           <td>
                             <div className="chassis-row__actions">
-                              <button className="edit-btn" onClick={() => handleEditRow(ch)}>
-                                {t('edit')}
+                              <button
+                                className="edit-btn"
+                                onClick={() => { setEditingChassis(ch); setShowChassisForm(true); }}
+                              >
+                                ✏️ {t('edit')}
                               </button>
-                              <button className="edit-btn" title={t('printLabel')} onClick={() => setPrintingChassis({ ...ch, _printRowIndex: rowIndex })}>
+                              <button
+                                className="print-btn"
+                                title={t('printLabel')}
+                                onClick={() => setPrintingChassis({ ...ch, _printRowIndex: rowIndex })}
+                              >
                                 🖨
                               </button>
-                              <button className="delete-btn" onClick={() => handleDeleteRow(ch, rowIndex)}>
-                                {t('delete')}
+                              <button
+                                className="delete-btn"
+                                onClick={() => handleDeleteRow(ch)}
+                              >
+                                🗑 {t('delete')}
                               </button>
                             </div>
                           </td>
                         </tr>
-                        {/* Sub-components for composite rows */}
+
+                        {/* Sub-components for composite chassis */}
                         {isComposite && ch.components?.map((comp, idx) => (
                           <tr key={`${rowKey}-comp-${idx}`} className="component-row">
                             <td></td>
-                            <td className="component-indent">↳ {comp.repere || `${comp.role} ${idx + 1}`}</td>
+                            <td className="component-indent">
+                              ↳ {comp.repere || `${comp.role} ${idx + 1}`}
+                            </td>
                             <td className="component-role">{comp.role}</td>
-                            <td>1</td>
                             <td>{comp.largeur}</td>
                             <td>{comp.hauteur}</td>
                             <td>—</td>
@@ -364,6 +389,7 @@ function ProjectDetail({ project, onBack }) {
 
       {activeTab === 'bars' && <UsedBarsPanel project={project} language={language} />}
 
+      {/* ── Modals ── */}
       {showChassisForm && (
         <ChassisForm
           chassis={editingChassis}
@@ -378,7 +404,12 @@ function ProjectDetail({ project, onBack }) {
       )}
 
       {printingChassis && (
-        <LabelPrint chassis={printingChassis} project={project} chassisLabels={chassisLabels} onClose={() => setPrintingChassis(null)} />
+        <LabelPrint
+          chassis={printingChassis}
+          project={project}
+          chassisLabels={chassisLabels}
+          onClose={() => setPrintingChassis(null)}
+        />
       )}
     </div>
   );
