@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import axios from "axios";
 import * as XLSX from 'xlsx';
@@ -8,6 +7,8 @@ import './InventoryPage.css';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 function InventoryPage() {
+  const { currentLanguage: language } = useLanguage();
+
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -19,7 +20,7 @@ function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [exporting, setExporting] = useState(false);
 
-  useEffect(() => { fetchCategories(); }, []);
+  useEffect(() => { fetchCategories(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { fetchItems(); }, [selectedCategory, filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchCategories = async () => {
@@ -48,6 +49,67 @@ function InventoryPage() {
       setItems(filteredItems);
     } catch (error) { console.error('Error fetching items:', error); }
     finally { setLoading(false); }
+  };
+
+  // Local translations
+  const localT = {
+    fr: {
+      title: 'Inventaire Aluminium', allItems: 'Tout afficher', lowStock: 'Stock faible uniquement',
+      addCategory: 'Ajouter catégorie', addItem: 'Ajouter article',
+      quantity: 'Quantité', orderedQuantity: 'Qté Commandée', threshold: 'Seuil',
+      actions: 'Actions', noItems: 'Aucun article trouvé', loading: 'Chargement...',
+      designation: 'Désignation', modifier: 'Modifier', supprimer: 'Supprimer',
+      searchPlaceholder: 'Rechercher par désignation...',
+      exportExcel: 'Exporter Excel', exporting: 'Exportation...',
+      exportSuccess: 'Excel exporté avec succès', exportError: "Erreur lors de l'exportation",
+      noCategory: 'Sans Catégorie', criticalStock: 'Stock Critique',
+      warningStock: 'Alerte Stock', inStock: 'En Stock',
+      deleteConfirmMessage: 'Êtes-vous sûr de vouloir supprimer cet article?',
+      deleteCategoryConfirmMessage: 'Êtes-vous sûr de vouloir supprimer cette catégorie?',
+      errorUpdating: 'Erreur lors de la mise à jour', status: 'Statut'
+    },
+    it: {
+      title: 'Inventario Alluminio', allItems: 'Mostra tutto', lowStock: 'Solo scorte basse',
+      addCategory: 'Aggiungi categoria', addItem: 'Aggiungi articolo',
+      quantity: 'Quantità', orderedQuantity: 'Qta Ordinata', threshold: 'Soglia',
+      actions: 'Azioni', noItems: 'Nessun articolo trovato', loading: 'Caricamento...',
+      designation: 'Designazione', modifier: 'Modifica', supprimer: 'Elimina',
+      searchPlaceholder: 'Cerca per designazione...',
+      exportExcel: 'Esporta Excel', exporting: 'Esportazione...',
+      exportSuccess: 'Excel esportato con successo', exportError: "Errore durante l'esportazione",
+      noCategory: 'Senza Categoria', criticalStock: 'Stock Critico',
+      warningStock: 'Avviso Stock', inStock: 'Disponibile',
+      deleteConfirmMessage: 'Sei sicuro di voler eliminare questo articolo?',
+      deleteCategoryConfirmMessage: 'Sei sicuro di voler eliminare questa categoria?',
+      errorUpdating: "Errore durante l'aggiornamento", status: 'Stato'
+    },
+    en: {
+      title: 'Aluminum Inventory', allItems: 'Show all', lowStock: 'Low stock only',
+      addCategory: 'Add category', addItem: 'Add item',
+      quantity: 'Quantity', orderedQuantity: 'Ordered Qty', threshold: 'Threshold',
+      actions: 'Actions', noItems: 'No items found', loading: 'Loading...',
+      designation: 'Designation', modifier: 'Edit', supprimer: 'Delete',
+      searchPlaceholder: 'Search by designation...',
+      exportExcel: 'Export Excel', exporting: 'Exporting...',
+      exportSuccess: 'Excel exported successfully', exportError: 'Error during export',
+      noCategory: 'No Category', criticalStock: 'Critical Stock',
+      warningStock: 'Warning Stock', inStock: 'In Stock',
+      deleteConfirmMessage: 'Are you sure you want to delete this item?',
+      deleteCategoryConfirmMessage: 'Are you sure you want to delete this category?',
+      errorUpdating: 'Error updating', status: 'Status'
+    }
+  };
+
+  const t = localT[language] || localT.fr;
+
+  const getStockStatus = (item) => {
+    const currentStock = item.quantity;
+    const orderedQty   = item.orderedQuantity || 0;
+    const totalStock   = currentStock + orderedQty;
+    const threshold    = item.threshold;
+    if (totalStock < threshold)                              return { color: '#dc2626', text: t.criticalStock, className: 'status-critical' };
+    if (currentStock < threshold && totalStock >= threshold) return { color: '#f59e0b', text: t.warningStock,  className: 'status-warning' };
+    return { color: '#16a34a', text: t.inStock, className: 'status-ok' };
   };
 
   const updateQuantity = async (itemId, amount) => {
@@ -122,73 +184,8 @@ function InventoryPage() {
     } finally { setExporting(false); }
   };
 
-  const getStockStatus = (item) => {
-    const currentStock = item.quantity;
-    const orderedQty = item.orderedQuantity || 0;
-    const totalStock = currentStock + orderedQty;
-    const threshold = item.threshold;
-    if (totalStock < threshold) return { color: '#dc2626', text: t.criticalStock, className: 'status-critical' };
-    if (currentStock < threshold && totalStock >= threshold) return { color: '#f59e0b', text: t.warningStock, className: 'status-warning' };
-    return { color: '#16a34a', text: t.inStock, className: 'status-ok' };
-  };
-
-  // Local translations for keys not in global context
-  const localT = {
-    fr: {
-      title: 'Inventaire Aluminium', allItems: 'Tout afficher', lowStock: 'Stock faible uniquement',
-      addCategory: 'Ajouter catégorie', addItem: 'Ajouter article',
-      quantity: 'Quantité', orderedQuantity: 'Qté Commandée', threshold: 'Seuil',
-      actions: 'Actions', noItems: 'Aucun article trouvé', loading: 'Chargement...',
-      designation: 'Désignation', modifier: 'Modifier', supprimer: 'Supprimer',
-      searchPlaceholder: 'Rechercher par désignation...',
-      exportExcel: 'Exporter Excel', exporting: 'Exportation...',
-      exportSuccess: 'Excel exporté avec succès', exportError: "Erreur lors de l'exportation",
-      noCategory: 'Sans Catégorie', criticalStock: 'Stock Critique',
-      warningStock: 'Alerte Stock', inStock: 'En Stock',
-      deleteConfirmMessage: 'Êtes-vous sûr de vouloir supprimer cet article?',
-      deleteCategoryConfirmMessage: 'Êtes-vous sûr de vouloir supprimer cette catégorie?',
-      errorUpdating: 'Erreur lors de la mise à jour', errorDeleting: 'Erreur lors de la suppression',
-      errorDeletingCategory: 'Erreur lors de la suppression de la catégorie', status: 'Statut'
-    },
-    it: {
-      title: 'Inventario Alluminio', allItems: 'Mostra tutto', lowStock: 'Solo scorte basse',
-      addCategory: 'Aggiungi categoria', addItem: 'Aggiungi articolo',
-      quantity: 'Quantità', orderedQuantity: 'Qta Ordinata', threshold: 'Soglia',
-      actions: 'Azioni', noItems: 'Nessun articolo trovato', loading: 'Caricamento...',
-      designation: 'Designazione', modifier: 'Modifica', supprimer: 'Elimina',
-      searchPlaceholder: 'Cerca per designazione...',
-      exportExcel: 'Esporta Excel', exporting: 'Esportazione...',
-      exportSuccess: 'Excel esportato con successo', exportError: "Errore durante l'esportazione",
-      noCategory: 'Senza Categoria', criticalStock: 'Stock Critico',
-      warningStock: 'Avviso Stock', inStock: 'Disponibile',
-      deleteConfirmMessage: 'Sei sicuro di voler eliminare questo articolo?',
-      deleteCategoryConfirmMessage: 'Sei sicuro di voler eliminare questa categoria?',
-      errorUpdating: "Errore durante l'aggiornamento", errorDeleting: "Errore durante l'eliminazione",
-      errorDeletingCategory: "Errore durante l'eliminazione della categoria", status: 'Stato'
-    },
-    en: {
-      title: 'Aluminum Inventory', allItems: 'Show all', lowStock: 'Low stock only',
-      addCategory: 'Add category', addItem: 'Add item',
-      quantity: 'Quantity', orderedQuantity: 'Ordered Qty', threshold: 'Threshold',
-      actions: 'Actions', noItems: 'No items found', loading: 'Loading...',
-      designation: 'Designation', modifier: 'Edit', supprimer: 'Delete',
-      searchPlaceholder: 'Search by designation...',
-      exportExcel: 'Export Excel', exporting: 'Exporting...',
-      exportSuccess: 'Excel exported successfully', exportError: 'Error during export',
-      noCategory: 'No Category', criticalStock: 'Critical Stock',
-      warningStock: 'Warning Stock', inStock: 'In Stock',
-      deleteConfirmMessage: 'Are you sure you want to delete this item?',
-      deleteCategoryConfirmMessage: 'Are you sure you want to delete this category?',
-      errorUpdating: 'Error updating', errorDeleting: 'Error deleting',
-      errorDeletingCategory: 'Error deleting category', status: 'Status'
-    }
-  };
-
-  const t = localT[language] || localT.fr;
-
   return (
     <div className="inventory-app">
-      {/* Internal header — no language buttons, just title + search */}
       <header className="inv-header">
         <h1>{t.title}</h1>
         <div className="inv-header__search">

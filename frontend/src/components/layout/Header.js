@@ -1,16 +1,8 @@
-/* eslint-disable no-unused-vars */
 import { useLanguage } from '../../context/LanguageContext';
 import './Header.css';
 
-/**
- * Header Component
- *
- * Extended with Inventaire / Projets navigation tabs.
- * All existing styles preserved.
- */
-
 const Header = ({ activePage, onNavigate }) => {
-  // eslint-disable-next-line no-unused-vars
+  const { t, currentLanguage, changeLanguage, languageLabels } = useLanguage();
 
   return (
     <header className="header">
