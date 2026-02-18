@@ -634,43 +634,91 @@ app.delete('/api/projects/:id/chassis/:cid', async (req, res) => {
 
 /**
  * GET /api/projects/:id/bons-livraison
- * Returns all BLs for a project, derived dynamically from unit delivery dates.
+ * Returns all BLs for a project, derived dynamically from delivered unit/component dates.
  * BL = unique (projectId + deliveryDate).
  * No documents are stored — computed from data.
+ *
+ * Rules:
+ *   - Non-composite unit: appears when unit.etat === 'livre'
+ *   - Composite unit: each component appears individually when its componentState.etat === 'livre'
+ *     (does NOT wait for the parent unit to be fully 'livre')
  */
 app.get('/api/projects/:id/bons-livraison', async (req, res) => {
   try {
-    const project = await Project.findById(req.params.id).populate('usedBars.itemId');
+    const project      = await Project.findById(req.params.id).populate('usedBars.itemId');
     if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    // Resolve human-readable chassis type labels (fr) from ChassisType collection
+    const chassisTypes = await ChassisType.find().lean();
+    const typeLabel = (typeValue) => {
+      const ct = chassisTypes.find(t => t.value === typeValue);
+      return ct ? (ct.fr || ct.value) : typeValue;
+    };
 
     const blMap = {}; // key = YYYY-MM-DD
 
+    const ensureBL = (dateKey) => {
+      if (!blMap[dateKey]) {
+        blMap[dateKey] = {
+          blId:         `BL-${project._id.toString().slice(-6).toUpperCase()}-${dateKey.replace(/-/g, '')}`,
+          projectId:    project._id,
+          projectName:  project.name,
+          reference:    project.reference,
+          ralCode:      project.ralCode,
+          ralColor:     project.ralColor,
+          deliveryDate: dateKey,
+          units:        []
+        };
+      }
+      return blMap[dateKey];
+    };
+
     for (const chassis of project.chassis) {
+      const isComposite  = (chassis.components || []).length > 0;
+      const unitSuffix   = (idx) => chassis.quantity > 1 ? ` #${idx + 1}` : '';
+      const designation  = typeLabel(chassis.type);
+
       for (const unit of chassis.units || []) {
-        if (unit.etat === 'livre' && unit.deliveryDate) {
-          const dateKey = new Date(unit.deliveryDate).toISOString().split('T')[0];
-          if (!blMap[dateKey]) {
-            blMap[dateKey] = {
-              blId:         `BL-${project._id.toString().slice(-6).toUpperCase()}-${dateKey.replace(/-/g, '')}`,
-              projectId:    project._id,
-              projectName:  project.name,
-              reference:    project.reference,
-              ralCode:      project.ralCode,
-              ralColor:     project.ralColor,
-              deliveryDate: dateKey,
-              units:        []
-            };
+        if (!isComposite) {
+          // Simple unit — add when etat is livre
+          if (unit.etat === 'livre' && unit.deliveryDate) {
+            const dateKey = new Date(unit.deliveryDate).toISOString().split('T')[0];
+            ensureBL(dateKey).units.push({
+              chassisId:     chassis._id,
+              chassisRepere: chassis.repere,
+              chassisType:   designation,
+              dimension:     chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`,
+              unitIndex:     unit.unitIndex,
+              unitLabel:     `${chassis.repere}${unitSuffix(unit.unitIndex)}`,
+              deliveryDate:  unit.deliveryDate,
+              notes:         unit.notes || '',
+              isComponent:   false,
+            });
           }
-          blMap[dateKey].units.push({
-            chassisId:    chassis._id,
-            chassisRepere: chassis.repere,
-            chassisType:  chassis.type,
-            dimension:    chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`,
-            unitIndex:    unit.unitIndex,
-            unitLabel:    `${chassis.repere}${chassis.quantity > 1 ? ` #${unit.unitIndex + 1}` : ''}`,
-            deliveryDate: unit.deliveryDate,
-            notes:        unit.notes || ''
-          });
+        } else {
+          // Composite unit — each component is independent
+          for (const cs of (unit.componentStates || [])) {
+            if (cs.etat === 'livre' && cs.deliveryDate) {
+              const comp     = chassis.components[cs.compIndex];
+              if (!comp) continue;
+              const dateKey  = new Date(cs.deliveryDate).toISOString().split('T')[0];
+              const roleLabel = comp.role === 'dormant' ? 'Dormant' : `Vantail ${cs.compIndex}`;
+              const compRepere = comp.repere || roleLabel;
+              ensureBL(dateKey).units.push({
+                chassisId:     chassis._id,
+                chassisRepere: chassis.repere,
+                chassisType:   designation,
+                dimension:     comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : (chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`),
+                unitIndex:     unit.unitIndex,
+                compIndex:     cs.compIndex,
+                unitLabel:     `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${compRepere}`,
+                deliveryDate:  cs.deliveryDate,
+                notes:         unit.notes || '',
+                isComponent:   true,
+                role:          roleLabel,
+              });
+            }
+          }
         }
       }
     }
@@ -689,24 +737,62 @@ app.get('/api/projects/:id/bons-livraison/:dateKey', async (req, res) => {
     const project = await Project.findById(req.params.id).populate('usedBars.itemId');
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
-    const targetDate = req.params.dateKey; // YYYY-MM-DD
-    const units = [];
+    const chassisTypes = await ChassisType.find().lean();
+    const typeLabel = (typeValue) => {
+      const ct = chassisTypes.find(t => t.value === typeValue);
+      return ct ? (ct.fr || ct.value) : typeValue;
+    };
+
+    const targetDate  = req.params.dateKey;
+    const units       = [];
 
     for (const chassis of project.chassis) {
+      const isComposite = (chassis.components || []).length > 0;
+      const unitSuffix  = (idx) => chassis.quantity > 1 ? ` #${idx + 1}` : '';
+      const designation = typeLabel(chassis.type);
+
       for (const unit of chassis.units || []) {
-        if (unit.etat === 'livre' && unit.deliveryDate) {
-          const dateKey = new Date(unit.deliveryDate).toISOString().split('T')[0];
-          if (dateKey === targetDate) {
-            units.push({
-              chassisId:     chassis._id,
-              chassisRepere: chassis.repere,
-              chassisType:   chassis.type,
-              dimension:     chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`,
-              unitIndex:     unit.unitIndex,
-              unitLabel:     `${chassis.repere}${chassis.quantity > 1 ? ` #${unit.unitIndex + 1}` : ''}`,
-              deliveryDate:  unit.deliveryDate,
-              notes:         unit.notes || ''
-            });
+        if (!isComposite) {
+          if (unit.etat === 'livre' && unit.deliveryDate) {
+            const dateKey = new Date(unit.deliveryDate).toISOString().split('T')[0];
+            if (dateKey === targetDate) {
+              units.push({
+                chassisId:     chassis._id,
+                chassisRepere: chassis.repere,
+                chassisType:   designation,
+                dimension:     chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`,
+                unitIndex:     unit.unitIndex,
+                unitLabel:     `${chassis.repere}${unitSuffix(unit.unitIndex)}`,
+                deliveryDate:  unit.deliveryDate,
+                notes:         unit.notes || '',
+                isComponent:   false,
+              });
+            }
+          }
+        } else {
+          for (const cs of (unit.componentStates || [])) {
+            if (cs.etat === 'livre' && cs.deliveryDate) {
+              const dateKey = new Date(cs.deliveryDate).toISOString().split('T')[0];
+              if (dateKey === targetDate) {
+                const comp      = chassis.components[cs.compIndex];
+                if (!comp) continue;
+                const roleLabel = comp.role === 'dormant' ? 'Dormant' : `Vantail ${cs.compIndex}`;
+                const compRepere = comp.repere || roleLabel;
+                units.push({
+                  chassisId:     chassis._id,
+                  chassisRepere: chassis.repere,
+                  chassisType:   designation,
+                  dimension:     comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : (chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`),
+                  unitIndex:     unit.unitIndex,
+                  compIndex:     cs.compIndex,
+                  unitLabel:     `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${compRepere}`,
+                  deliveryDate:  cs.deliveryDate,
+                  notes:         unit.notes || '',
+                  isComponent:   true,
+                  role:          roleLabel,
+                });
+              }
+            }
           }
         }
       }

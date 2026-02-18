@@ -99,9 +99,10 @@ function DeliveryDateModal({ defaultDate, onConfirm, onCancel, t }) {
 
 // ─── BL Panel ─────────────────────────────────────────────────────────────────
 function generateBLHtml(bl, project) {
-  const rows = bl.units.map(u =>
-    `<tr><td>${u.unitLabel}</td><td>${u.chassisType || ''}</td><td>${u.dimension}</td><td>${u.notes || ''}</td></tr>`
-  ).join('');
+  const rows = bl.units.map(u => {
+    const bg = u.isComponent ? 'background:#f8f8f8' : '';
+    return `<tr style="${bg}"><td>${u.unitLabel}</td><td>${u.chassisType || '—'}</td><td>${u.dimension}</td><td>${fmtDate(u.deliveryDate)}</td><td>${u.notes || '—'}</td></tr>`;
+  }).join('');
   const closeScript = '<' + '/script>';
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${bl.blId}</title>
   <style>body{font-family:Arial,sans-serif;margin:40px;color:#1a1a1a}
@@ -113,7 +114,6 @@ function generateBLHtml(bl, project) {
   table{width:100%;border-collapse:collapse;font-size:13px}
   th{background:#1a1a1a;color:#fff;padding:10px 12px;text-align:left;font-size:10px;text-transform:uppercase}
   td{padding:10px 12px;border-bottom:1px solid #eee}
-  tr:nth-child(even) td{background:#f9f9f9}
   .sig{display:flex;justify-content:space-between;margin-top:60px}
   .sig-box{border-top:1px solid #333;width:200px;padding-top:8px;font-size:12px;text-align:center}
   .footer{margin-top:30px;border-top:1px solid #eee;padding-top:12px;font-size:11px;color:#888}
@@ -128,9 +128,9 @@ function generateBLHtml(bl, project) {
     <div class="meta-item"><label>Projet</label><span>${project.name}</span></div>
     <div class="meta-item"><label>Référence</label><span>${project.reference}</span></div>
     <div class="meta-item"><label>RAL</label><span>${project.ralCode}</span></div>
-    <div class="meta-item"><label>Unités livrées</label><span>${bl.units.length}</span></div>
+    <div class="meta-item"><label>Pièces livrées</label><span>${bl.units.length}</span></div>
   </div>
-  <table><thead><tr><th>Repère</th><th>Type</th><th>Dimension</th><th>Notes</th></tr></thead>
+  <table><thead><tr><th>Repère</th><th>Désignation</th><th>Dimension</th><th>Date livraison</th><th>Notes</th></tr></thead>
   <tbody>${rows}</tbody></table>
   <div class="sig"><div class="sig-box">Signature livreur</div><div class="sig-box">Signature réceptionnaire</div></div>
   <div class="footer">Généré automatiquement — CAMI ALUMINIUM — ${new Date().toLocaleDateString('fr-FR')}</div>
@@ -169,7 +169,7 @@ function BLPanel({ project, t }) {
               <div className="bl-card__info">
                 <span className="bl-card__id">{bl.blId}</span>
                 <span className="bl-card__date">📅 {fmtDate(bl.deliveryDate + 'T00:00:00')}</span>
-                <span className="bl-card__count">{bl.units.length} unité{bl.units.length > 1 ? 's' : ''}</span>
+                <span className="bl-card__count">{bl.units.length} pièce{bl.units.length > 1 ? 's' : ''}</span>
               </div>
               <div className="bl-card__actions">
                 <button className="bl-print-btn" onClick={e => {
@@ -183,10 +183,24 @@ function BLPanel({ project, t }) {
             {openBL === bl.deliveryDate && (
               <div className="bl-card__body">
                 <table className="bl-table">
-                  <thead><tr><th>{t('blUnitLabel')}</th><th>{t('dimension')}</th><th>{t('blDate')}</th><th>{t('unitNotes')}</th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th>{t('blUnitLabel')}</th>
+                      <th>{t('type')}</th>
+                      <th>{t('dimension')}</th>
+                      <th>{t('blDate')}</th>
+                      <th>{t('unitNotes')}</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {bl.units.map((u, i) => (
-                      <tr key={i}><td><strong>{u.unitLabel}</strong></td><td className="dim-cell">{u.dimension}</td><td>{fmtDate(u.deliveryDate)}</td><td>{u.notes || '—'}</td></tr>
+                      <tr key={i} className={u.isComponent ? 'bl-row--component' : ''}>
+                        <td><strong>{u.unitLabel}</strong></td>
+                        <td>{u.chassisType || '—'}</td>
+                        <td className="dim-cell">{u.dimension}</td>
+                        <td>{fmtDate(u.deliveryDate)}</td>
+                        <td>{u.notes || '—'}</td>
+                      </tr>
                     ))}
                   </tbody>
                 </table>
