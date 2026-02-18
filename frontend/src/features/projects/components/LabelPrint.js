@@ -47,7 +47,14 @@ function LabelPrint({
   <meta charset="utf-8"/>
   <title>CAMI — ${project.name} — ${chassis.repere}</title>
   <style>
-    @page { size: 9.5cm 5.5cm; margin: 0.4cm; }
+    @page {
+      size: 9.5cm 5.5cm;
+      margin: 0.4cm;
+      /* Remove browser default headers & footers */
+    }
+    @media print {
+      html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       width: 8.7cm;
@@ -189,9 +196,11 @@ function LabelPrint({
   </div>
   <script>
     window.onload = function() {
+      // Remove default browser title so header shows our custom title not URL
+      document.title = '';
+      window.focus();
       window.print();
-      // Close the window after printing (small delay for some browsers)
-      setTimeout(function() { window.close(); }, 500);
+      setTimeout(function() { window.close(); }, 800);
     };
   </script>
 </body>

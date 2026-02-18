@@ -1,13 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useProjects } from '../../../context/ProjectContext';
 import { useLanguage } from '../../../context/LanguageContext';
-import { CHASSIS_TYPES, ETAT_OPTIONS } from './ChassisTypesConfig';
+import { fetchChassisTypes, ETAT_OPTIONS, STATIC_CHASSIS_TYPES } from './ChassisTypesConfig';
 import './ChassisForm.css';
 
-function buildComponents(type, existing = []) {
-  const found = CHASSIS_TYPES.find(ct => ct.value === type);
-  if (!found?.composite) return [];
-  const count = found.vantaux;
+function buildComponents(typeObj, existing = []) {
+  if (!typeObj?.composite) return [];
+  const count = typeObj.vantaux || 0;
   const components = [];
   const dormantEx = existing.find(c => c.role === 'dormant') || {};
   components.push({
@@ -34,6 +33,16 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
   const isEdit = !!chassis;
   const initialType = chassis?.type || 'fenetre_1_ouvrant';
 
+  const [chassisTypes, setChassisTypes] = useState(STATIC_CHASSIS_TYPES);
+  const [saving, setSaving] = useState(false);
+
+  // Load dynamic types from API
+  useEffect(() => {
+    fetchChassisTypes().then(setChassisTypes).catch(() => {/* use static fallback */});
+  }, []);
+
+  const getTypeObj = (typeValue) => chassisTypes.find(ct => ct.value === typeValue);
+
   const [formData, setFormData] = useState({
     type: initialType,
     repere: chassis?.repere || '',
@@ -41,9 +50,8 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
     largeur: chassis?.largeur ?? '',
     hauteur: chassis?.hauteur ?? '',
     etat: chassis?.etat || 'non_entame',
-    components: buildComponents(initialType, chassis?.components || [])
+    components: buildComponents(getTypeObj(initialType), chassis?.components || [])
   });
-  const [saving, setSaving] = useState(false);
 
   const set = (key, val) => setFormData(prev => ({ ...prev, [key]: val }));
 
@@ -51,7 +59,7 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
     setFormData(prev => ({
       ...prev,
       type: newType,
-      components: buildComponents(newType, prev.components)
+      components: buildComponents(getTypeObj(newType), prev.components)
     }));
   };
 
@@ -66,9 +74,10 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
+    const qty = parseInt(formData.quantity, 10) || 1;
     const payload = {
       ...formData,
-      quantity: parseInt(formData.quantity, 10) || 1,
+      quantity: qty,
       largeur: parseInt(formData.largeur, 10) || 0,
       hauteur: parseInt(formData.hauteur, 10) || 0,
       dimension: `${formData.largeur}×${formData.hauteur}`,
@@ -90,9 +99,7 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
     }
   };
 
-  const isComposite = CHASSIS_TYPES.find(ct => ct.value === formData.type)?.composite;
-
-  // Get label for type in current language
+  const isComposite = getTypeObj(formData.type)?.composite;
   const getTypeLabel = (ct) => ct[lang] || ct.fr;
 
   return (
@@ -105,11 +112,11 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
 
         <form onSubmit={handleSubmit} className="chassis-form">
 
-          {/* Type selector — visual cards */}
+          {/* Type selector */}
           <div className="chassis-form__section">
             <label className="chassis-form__section-label">{t('chassisType')}</label>
             <div className="chassis-type-grid">
-              {CHASSIS_TYPES.map(ct => (
+              {chassisTypes.map(ct => (
                 <button
                   key={ct.value}
                   type="button"
@@ -141,7 +148,7 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
                 <input
                   type="number" required min="1" step="1"
                   value={formData.quantity}
-                  onChange={e => set('quantity', e.target.value)}
+                  onChange={e => set('quantity', parseInt(e.target.value, 10) || 1)}
                 />
               </div>
               <div className="form-group">
@@ -181,9 +188,7 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
                 {formData.components.map((comp, idx) => (
                   <div key={idx} className="composite-card">
                     <div className="composite-card__role">
-                      {comp.role === 'dormant'
-                        ? `${t('dormant')}`
-                        : `${t('vantail')} ${idx}`}
+                      {comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${idx}`}
                     </div>
                     <div className="composite-card__fields">
                       <div className="form-group form-group--sm">

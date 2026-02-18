@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useProjects } from '../../../context/ProjectContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import ChassisForm from './ChassisForm';
+import ChassisTypeManager from './ChassisTypeManager';
 import UsedBarsPanel from './UsedBarsPanel';
 import LabelPrint from './LabelPrint';
 import { exportProjectPDF } from '../utils/pdfExport';
-import { CHASSIS_LABELS } from './ChassisTypesConfig';
+import { fetchChassisTypes, buildChassisLabels, CHASSIS_LABELS as STATIC_LABELS } from './ChassisTypesConfig';
 import './ProjectDetail.css';
 
 const ETAT_COLORS = {
@@ -21,22 +22,31 @@ function ProjectDetail({ project, onBack }) {
 
   const [activeTab, setActiveTab]             = useState('chassis');
   const [showChassisForm, setShowChassisForm] = useState(false);
+  const [showTypeManager, setShowTypeManager] = useState(false);
   const [editingChassis, setEditingChassis]   = useState(null);
   const [printingChassis, setPrintingChassis] = useState(null);
   const [selectedIds, setSelectedIds]         = useState(new Set());
   const [batchPrinting, setBatchPrinting]     = useState(false);
   const [batchIndex, setBatchIndex]           = useState(0);
+  const [chassisLabels, setChassisLabels]     = useState(STATIC_LABELS);
 
   const language = currentLanguage;
   const statusColor = { en_cours: '#f59e0b', termine: '#16a34a', livre: '#3b82f6' }[project.status] || '#9ca3af';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
+
+  // Load live chassis type labels
+  useEffect(() => {
+    fetchChassisTypes()
+      .then(types => setChassisLabels(buildChassisLabels(types)))
+      .catch(() => {/* keep static */});
+  }, [showTypeManager]); // reload after manager closes
 
   const handleDeleteChassis = async (chassisId) => {
     if (!window.confirm(t('deleteChassisConfirm'))) return;
     await deleteChassis(project.id, chassisId);
   };
 
-  const handlePDF = () => exportProjectPDF(project, language, CHASSIS_LABELS, t);
+  const handlePDF = () => exportProjectPDF(project, language, chassisLabels, t);
 
   const allIds = (project.chassis || []).map(ch => ch._id || ch.id);
 
@@ -68,6 +78,28 @@ function ProjectDetail({ project, onBack }) {
       setBatchIndex(0);
     }
   };
+
+  /**
+   * Expand chassis into display rows.
+   * - Simple chassis: one row per chassis entry (qty shown as number)
+   * - Composite chassis: repeat the chassis row qty times, then show components ONCE per row
+   *   so if qty=3 and 2 vantaux → 3 parent rows, each with sub-rows for dormant+V1+V2
+   */
+  const expandedRows = (project.chassis || []).flatMap(ch => {
+    const qty = ch.quantity ?? 1;
+    const isComposite = ch.components?.length > 0;
+    const chId = ch._id || ch.id;
+
+    if (!isComposite) {
+      // Simple: single row with qty
+      return [{ ch, chId, rowIndex: 0, qty, showQty: qty, isFirst: true }];
+    }
+
+    // Composite: expand into qty rows, each showing "1" unit and the sub-components
+    return Array.from({ length: qty }, (_, i) => ({
+      ch, chId, rowIndex: i, qty: 1, showQty: 1, isFirst: i === 0
+    }));
+  });
 
   return (
     <div className="project-detail">
@@ -114,6 +146,9 @@ function ProjectDetail({ project, onBack }) {
             <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>
               + {t('addChassis')}
             </button>
+            <button className="ct-config-btn" title="Gérer les types de chassis" onClick={() => setShowTypeManager(true)}>
+              ⚙️ Types de chassis
+            </button>
             {(project.chassis?.length || 0) > 0 && (
               <div className="selection-toolbar">
                 <button className="select-btn" onClick={toggleSelectAll}>
@@ -147,21 +182,26 @@ function ProjectDetail({ project, onBack }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {project.chassis.map(ch => {
-                    const chId = ch._id || ch.id;
+                  {expandedRows.map(({ ch, chId, rowIndex, showQty, isFirst }) => {
                     const isSelected = selectedIds.has(chId);
+                    const rowKey = `${chId}-${rowIndex}`;
                     return (
-                      <React.Fragment key={chId}>
+                      <React.Fragment key={rowKey}>
                         <tr className={`chassis-row ${isSelected ? 'chassis-row--selected' : ''}`}>
                           <td>
-                            <input type="checkbox" checked={isSelected}
-                              onChange={() => toggleSelect(chId)}
-                              onClick={e => e.stopPropagation()}
-                            />
+                            {isFirst && (
+                              <input type="checkbox" checked={isSelected}
+                                onChange={() => toggleSelect(chId)}
+                                onClick={e => e.stopPropagation()}
+                              />
+                            )}
                           </td>
-                          <td><strong>{ch.repere}</strong></td>
-                          <td>{CHASSIS_LABELS[ch.type]?.[language] || ch.type}</td>
-                          <td><strong>{ch.quantity ?? 1}</strong></td>
+                          <td>
+                            <strong>{ch.repere}</strong>
+                            {rowIndex > 0 && <span className="row-index-badge"> #{rowIndex + 1}</span>}
+                          </td>
+                          <td>{chassisLabels[ch.type]?.[language] || ch.type}</td>
+                          <td><strong>{showQty}</strong></td>
                           <td>{ch.largeur}</td>
                           <td>{ch.hauteur}</td>
                           <td>{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
@@ -171,19 +211,22 @@ function ProjectDetail({ project, onBack }) {
                             </span>
                           </td>
                           <td>
-                            <div className="chassis-row__actions">
-                              <button className="edit-btn" onClick={() => { setEditingChassis(ch); setShowChassisForm(true); }}>{t('edit')}</button>
-                              <button className="edit-btn" title={t('printLabel')} onClick={() => setPrintingChassis(ch)}>🖨</button>
-                              <button className="delete-btn" onClick={() => handleDeleteChassis(chId)}>{t('delete')}</button>
-                            </div>
+                            {isFirst && (
+                              <div className="chassis-row__actions">
+                                <button className="edit-btn" onClick={() => { setEditingChassis(ch); setShowChassisForm(true); }}>{t('edit')}</button>
+                                <button className="edit-btn" title={t('printLabel')} onClick={() => setPrintingChassis(ch)}>🖨</button>
+                                <button className="delete-btn" onClick={() => handleDeleteChassis(chId)}>{t('delete')}</button>
+                              </div>
+                            )}
                           </td>
                         </tr>
+                        {/* Show sub-components for each expanded row */}
                         {ch.components?.length > 0 && ch.components.map((comp, idx) => (
-                          <tr key={idx} className="component-row">
+                          <tr key={`${rowKey}-comp-${idx}`} className="component-row">
                             <td></td>
                             <td className="component-indent">↳ {comp.repere || `${comp.role} ${idx + 1}`}</td>
                             <td className="component-role">{comp.role}</td>
-                            <td>—</td>
+                            <td>1</td>
                             <td>{comp.largeur}</td>
                             <td>{comp.hauteur}</td>
                             <td>—</td>
@@ -216,15 +259,19 @@ function ProjectDetail({ project, onBack }) {
         />
       )}
 
+      {showTypeManager && (
+        <ChassisTypeManager onClose={() => setShowTypeManager(false)} />
+      )}
+
       {printingChassis && (
-        <LabelPrint chassis={printingChassis} project={project} chassisLabels={CHASSIS_LABELS} onClose={() => setPrintingChassis(null)} />
+        <LabelPrint chassis={printingChassis} project={project} chassisLabels={chassisLabels} onClose={() => setPrintingChassis(null)} />
       )}
 
       {batchPrinting && selectedChassisList[batchIndex] && (
         <LabelPrint
           chassis={selectedChassisList[batchIndex]}
           project={project}
-          chassisLabels={CHASSIS_LABELS}
+          chassisLabels={chassisLabels}
           batchMode={true}
           batchCurrent={batchIndex + 1}
           batchTotal={selectedChassisList.length}
@@ -236,5 +283,5 @@ function ProjectDetail({ project, onBack }) {
   );
 }
 
-export { CHASSIS_LABELS };
+export { STATIC_LABELS as CHASSIS_LABELS };
 export default ProjectDetail;

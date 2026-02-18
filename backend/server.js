@@ -106,29 +106,23 @@ const componentSchema = new mongoose.Schema({
   }
 }, { _id: true });
 
+// ── ChassisType Model (dynamically managed via API) ─────────────
+const chassisTypeSchema = new mongoose.Schema({
+  value:     { type: String, required: true, unique: true },
+  fr:        { type: String, required: true },
+  it:        { type: String, default: '' },
+  en:        { type: String, default: '' },
+  composite: { type: Boolean, default: false },
+  vantaux:   { type: Number, default: 0 },
+  order:     { type: Number, default: 0 }
+}, { timestamps: true });
+const ChassisType = mongoose.model('ChassisType', chassisTypeSchema);
+
 // Chassis sub-schema (embedded in Project)
 const chassisSchema = new mongoose.Schema({
-  type: {
-    type: String,
-    required: true,
-    enum: [
-      'fenetre_2_ouvrants',
-      'fenetre_1_ouvrant',
-      'fenetre_oscillo_battant',
-      'soufflet',
-      'porte_1_ouvrant',
-      'mur_rideau',
-      'volet_roulant',
-      'faux_cadre',
-      'minimaliste_2_vantaux',
-      'minimaliste_3_vantaux',
-      'minimaliste_4_vantaux',
-      'coulisse_2_vantaux',
-      'coulisse_3_vantaux',
-      'coulisse_4_vantaux'
-    ]
-  },
+  type:      { type: String, required: true },  // open — managed via ChassisType collection
   repere:    { type: String, required: true },
+  quantity:  { type: Number, required: true, min: 1, default: 1 },
   largeur:   { type: Number, required: true },
   hauteur:   { type: Number, required: true },
   dimension: { type: String, default: '' },
@@ -173,6 +167,30 @@ const Project = mongoose.model('Project', projectSchema);
 
 async function initializeSampleData() {
   try {
+    // Seed chassis types
+    const ctCount = await ChassisType.countDocuments();
+    if (ctCount === 0) {
+      console.log('🪟 Seeding chassis types...');
+      await ChassisType.insertMany([
+        { value: 'chassis_fixe',            fr: 'Châssis fixe',            it: 'Telaio fisso',              en: 'Fixed frame',          composite: false, vantaux: 0, order: 1 },
+        { value: 'fenetre_1_ouvrant',        fr: 'Fenêtre 1 ouvrant',       it: 'Finestra 1 anta',           en: 'Window 1 sash',         composite: false, vantaux: 0, order: 2 },
+        { value: 'fenetre_2_ouvrants',       fr: 'Fenêtre 2 ouvrants',      it: 'Finestra 2 ante',           en: 'Window 2 sashes',       composite: false, vantaux: 0, order: 3 },
+        { value: 'fenetre_oscillo_battant',  fr: 'Fenêtre oscillo-battant', it: 'Finestra oscillo-battente', en: 'Tilt & turn window',    composite: false, vantaux: 0, order: 4 },
+        { value: 'soufflet',                 fr: 'Soufflet',                it: 'Soffietto',                 en: 'Bellows',               composite: false, vantaux: 0, order: 5 },
+        { value: 'porte_1_ouvrant',          fr: 'Porte 1 ouvrant',         it: 'Porta 1 anta',              en: 'Door 1 leaf',           composite: false, vantaux: 0, order: 6 },
+        { value: 'mur_rideau',               fr: 'Mur rideau',              it: 'Muro cortina',              en: 'Curtain wall',          composite: false, vantaux: 0, order: 7 },
+        { value: 'volet_roulant',            fr: 'Volet roulant',           it: 'Tapparella',                en: 'Rolling shutter',       composite: false, vantaux: 0, order: 8 },
+        { value: 'faux_cadre',               fr: 'Faux cadre',              it: 'Falso telaio',              en: 'Sub-frame',             composite: false, vantaux: 0, order: 9 },
+        { value: 'minimaliste_2_vantaux',    fr: 'Minimaliste 2 vantaux',   it: 'Minimalista 2 ante',        en: 'Minimalist 2 leaves',   composite: true,  vantaux: 2, order: 10 },
+        { value: 'minimaliste_3_vantaux',    fr: 'Minimaliste 3 vantaux',   it: 'Minimalista 3 ante',        en: 'Minimalist 3 leaves',   composite: true,  vantaux: 3, order: 11 },
+        { value: 'minimaliste_4_vantaux',    fr: 'Minimaliste 4 vantaux',   it: 'Minimalista 4 ante',        en: 'Minimalist 4 leaves',   composite: true,  vantaux: 4, order: 12 },
+        { value: 'coulisse_2_vantaux',       fr: 'Coulisse 2 vantaux',      it: 'Scorrevole 2 ante',         en: 'Sliding 2 leaves',      composite: true,  vantaux: 2, order: 13 },
+        { value: 'coulisse_3_vantaux',       fr: 'Coulisse 3 vantaux',      it: 'Scorrevole 3 ante',         en: 'Sliding 3 leaves',      composite: true,  vantaux: 3, order: 14 },
+        { value: 'coulisse_4_vantaux',       fr: 'Coulisse 4 vantaux',      it: 'Scorrevole 4 ante',         en: 'Sliding 4 leaves',      composite: true,  vantaux: 4, order: 15 },
+      ]);
+      console.log('✅ Chassis types seeded');
+    }
+
     const categoryCount = await Category.countDocuments();
     if (categoryCount === 0) {
       console.log('📦 Initializing sample categories...');
@@ -514,6 +532,7 @@ app.post('/api/projects/:id/chassis', async (req, res) => {
     const chassisData = {
       type:      req.body.type,
       repere:    req.body.repere,
+      quantity:  Number(req.body.quantity) || 1,
       largeur:   Number(req.body.largeur) || 0,
       hauteur:   Number(req.body.hauteur) || 0,
       dimension: req.body.dimension || `${req.body.largeur}x${req.body.hauteur}`,
@@ -545,6 +564,7 @@ app.put('/api/projects/:id/chassis/:cid', async (req, res) => {
 
     chassis.type      = req.body.type      ?? chassis.type;
     chassis.repere    = req.body.repere    ?? chassis.repere;
+    chassis.quantity  = req.body.quantity  !== undefined ? Number(req.body.quantity) : chassis.quantity;
     chassis.largeur   = req.body.largeur   !== undefined ? Number(req.body.largeur) : chassis.largeur;
     chassis.hauteur   = req.body.hauteur   !== undefined ? Number(req.body.hauteur) : chassis.hauteur;
     chassis.dimension = req.body.dimension ?? `${chassis.largeur}x${chassis.hauteur}`;
@@ -661,6 +681,55 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal Server Error', message: err.message });
+});
+
+
+// ==================== CHASSIS TYPES CRUD ====================
+
+// GET all chassis types
+app.get('/api/chassis-types', async (req, res) => {
+  try {
+    const types = await ChassisType.find().sort({ order: 1, createdAt: 1 });
+    res.json(types);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch chassis types' });
+  }
+});
+
+// POST create chassis type
+app.post('/api/chassis-types', async (req, res) => {
+  try {
+    const { value, fr, it, en, composite, vantaux } = req.body;
+    if (!value || !fr) return res.status(400).json({ error: 'value and fr are required' });
+    const count = await ChassisType.countDocuments();
+    const ct = new ChassisType({ value, fr, it: it||fr, en: en||fr, composite: !!composite, vantaux: composite ? (Number(vantaux)||2) : 0, order: count });
+    await ct.save();
+    res.status(201).json(ct);
+  } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ error: 'Type value already exists' });
+    res.status(500).json({ error: 'Failed to create chassis type', message: error.message });
+  }
+});
+
+// PUT update chassis type
+app.put('/api/chassis-types/:id', async (req, res) => {
+  try {
+    const ct = await ChassisType.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (!ct) return res.status(404).json({ error: 'Not found' });
+    res.json(ct);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update chassis type' });
+  }
+});
+
+// DELETE chassis type
+app.delete('/api/chassis-types/:id', async (req, res) => {
+  try {
+    await ChassisType.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete chassis type' });
+  }
 });
 
 // ==================== START ====================
