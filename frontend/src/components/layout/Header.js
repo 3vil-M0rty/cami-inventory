@@ -9,7 +9,7 @@ import './Header.css';
  */
 
 const Header = ({ activePage, onNavigate }) => {
-  const { t, currentLanguage, changeLanguage, languages, languageLabels } = useLanguage();
+  const { t, currentLanguage, changeLanguage, languageLabels } = useLanguage();
 
   return (
     <header className="header">

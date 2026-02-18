@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useLanguage } from '../../../context/LanguageContext';
 import {
   fetchChassisTypes, createChassisType, updateChassisType, deleteChassisType
 } from './ChassisTypesConfig';
@@ -8,7 +7,6 @@ import './ChassisTypeManager.css';
 const EMPTY_FORM = { fr: '', it: '', en: '', composite: false, vantaux: 2 };
 
 function ChassisTypeManager({ onClose }) {
-  const { t } = useLanguage();
   const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(EMPTY_FORM);

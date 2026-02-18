@@ -1,0 +1,293 @@
+/* ============================================================
+   APP.CSS — Global B&W design system
+   Colors used ONLY for: status badges, stock warnings, RAL swatches
+   ============================================================ */
+
+/* ── Reset ── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { font-size: 16px; }
+body {
+  font-family: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: #f0f0f0;
+  min-height: 100vh;
+  color: #1a1a1a;
+}
+
+/* ── App shell ── */
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+.app__main { flex: 1; }
+
+/* ── Page wrappers ── */
+.inventory-app,
+.projects-page,
+.project-detail {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 28px;
+}
+
+/* ── Buttons ── */
+button { font-family: inherit; cursor: pointer; transition: all 0.15s; }
+
+.add-item-btn {
+  padding: 10px 22px;
+  background: #1a1a1a;
+  color: #fff;
+  border: 2px solid #1a1a1a;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.add-item-btn:hover { background: #000; border-color: #000; }
+
+.excel-btn {
+  padding: 9px 18px;
+  background: #fff;
+  color: #1a1a1a;
+  border: 2px solid #333;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.excel-btn:hover:not(:disabled) { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.excel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.edit-btn {
+  padding: 6px 13px;
+  background: #fff;
+  color: #1a1a1a;
+  border: 1.5px solid #ccc;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.edit-btn:hover { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+
+.delete-btn {
+  padding: 6px 13px;
+  background: #fff;
+  color: #1a1a1a;
+  border: 1.5px solid #ccc;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.delete-btn:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
+
+.select-btn {
+  padding: 7px 14px;
+  background: #fff;
+  color: #555;
+  border: 1.5px solid #ccc;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.select-btn:hover { background: #f5f5f5; color: #1a1a1a; border-color: #999; }
+
+.print-selected-btn {
+  padding: 7px 16px;
+  background: #1a1a1a;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.print-selected-btn:hover { background: #333; }
+
+.ct-config-btn {
+  padding: 8px 16px;
+  background: #fff;
+  color: #1a1a1a;
+  border: 2px solid #ccc;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ct-config-btn:hover { background: #f5f5f5; border-color: #999; }
+
+/* ── Forms ── */
+.form-group { margin-bottom: 18px; }
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: #1a1a1a;
+  font-weight: 500;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #1a1a1a;
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.07);
+}
+.form-group input[type="color"] { height: 46px; padding: 4px 8px; cursor: pointer; }
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+}
+
+/* ── Modals ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+.modal {
+  background: #fff;
+  border-radius: 10px;
+  padding: 32px;
+  max-width: 520px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.22);
+  border: 1px solid #e0e0e0;
+  animation: modalIn 0.18s ease-out;
+}
+.modal.large { max-width: 700px; }
+.modal h2 { margin-bottom: 24px; font-size: 21px; }
+
+.modal-actions { display: flex; gap: 10px; margin-top: 24px; justify-content: flex-end; }
+.modal-actions button {
+  padding: 10px 22px;
+  border: 2px solid #ccc;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.modal-actions button:hover { background: #f5f5f5; border-color: #999; }
+.modal-actions button.primary { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.modal-actions button.primary:hover { background: #000; border-color: #000; }
+.modal-actions button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Status / Etat badges — COLOR IS MEANINGFUL here ── */
+.etat-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 20px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.status-badge {
+  padding: 8px;
+  border-radius: 6px;
+  text-align: center;
+  font-weight: 700;
+  margin-bottom: 14px;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+}
+
+/* ── Stock warning — COLOR IS MEANINGFUL ── */
+.quantity-value.low { color: #dc2626 !important; }
+
+/* ── Empty / loading ── */
+.loading, .no-items {
+  text-align: center;
+  padding: 60px 20px;
+  color: #888;
+  font-size: 15px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+/* ── Toolbar ── */
+.panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+/* ── Tables ── */
+.chassis-table, .used-bars-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.chassis-table th, .used-bars-table th {
+  background: #1a1a1a;
+  color: #fff;
+  padding: 11px 16px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.chassis-table td, .used-bars-table td {
+  padding: 11px 16px;
+  border-bottom: 1px solid #efefef;
+  color: #1a1a1a;
+  vertical-align: middle;
+}
+.chassis-row:hover td, .used-bars-table tr:hover td { background: #fafafa; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f0f0f0; }
+::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #999; }
+
+/* ── Animations ── */
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .inventory-app, .projects-page, .project-detail { padding: 16px; }
+  .form-row { grid-template-columns: 1fr; }
+  .modal { padding: 20px; }
+}

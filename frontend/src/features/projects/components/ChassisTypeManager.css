@@ -1,5 +1,9 @@
+/* ============================================================
+   CHASSIS TYPE MANAGER — B&W theme
+   ============================================================ */
+
 .ct-manager-modal {
-  max-width: 780px !important;
+  max-width: 760px !important;
   max-height: 90vh;
   overflow-y: auto;
 }
@@ -9,59 +13,30 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e5e5e5;
 }
+.ct-manager__header h2 { margin: 0; font-size: 17px; }
 
-.ct-manager__header h2 { margin: 0; font-size: 18px; }
-
+/* ── Form ── */
 .ct-manager__form {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  background: #f8f8f8;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
   padding: 18px;
   margin-bottom: 24px;
 }
+.ct-manager__form h3 { margin: 0 0 14px; font-size: 14px; color: #555; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 
-.ct-manager__form h3 { margin: 0 0 14px; font-size: 15px; color: #374151; }
+.ct-manager__fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ct-manager__composite-toggle { grid-column: 1 / -1; }
+.ct-manager__composite-toggle label { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 13px; font-weight: 600; }
 
-.ct-manager__fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.ct-manager__composite-toggle {
-  grid-column: 1 / -1;
-}
-
-.ct-manager__composite-toggle label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.ct-manager__preview {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #6b7280;
-}
-
-.ct-manager__preview code {
-  background: #e5e7eb;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  color: #374151;
-}
+.ct-manager__preview { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #888; }
+.ct-manager__preview code { background: #e8e8e8; padding: 2px 8px; border-radius: 4px; font-size: 11px; color: #444; }
 
 .ct-manager__error {
-  background: #fef2f2;
+  background: #fff5f5;
   border: 1px solid #fca5a5;
   color: #dc2626;
   border-radius: 6px;
@@ -70,53 +45,32 @@
   font-size: 13px;
 }
 
-.ct-manager__list h3 { margin: 0 0 12px; font-size: 15px; }
+/* ── List ── */
+.ct-manager__list h3 { margin: 0 0 12px; font-size: 14px; color: #555; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 
-.ct-manager__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
+.ct-manager__table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .ct-manager__table th {
-  background: #f3f4f6;
-  padding: 8px 12px;
+  background: #1a1a1a;
+  color: #fff;
+  padding: 9px 14px;
   text-align: left;
-  font-weight: 600;
-  color: #374151;
-  border-bottom: 1px solid #e5e7eb;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
-
 .ct-manager__table td {
-  padding: 8px 12px;
-  border-bottom: 1px solid #f3f4f6;
+  padding: 9px 14px;
+  border-bottom: 1px solid #f0f0f0;
   vertical-align: middle;
 }
+.ct-manager__row--editing td { background: #f8f8f8; }
 
-.ct-manager__row--editing td { background: #eff6ff; }
+.ct-manager__code { background: #f0f0f0; padding: 2px 7px; border-radius: 3px; font-size: 11px; color: #666; }
 
-.ct-manager__code {
-  background: #f3f4f6;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 11px;
-  color: #6b7280;
-}
-
-.ct-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 600;
-  background: #f3f4f6;
-  color: #6b7280;
-}
-
-.ct-badge--composite {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
+/* Composite badge — subtle color to distinguish */
+.ct-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; background: #ebebeb; color: #777; }
+.ct-badge--composite { background: #1a1a1a; color: #fff; }
 
 .ct-manager__actions { display: flex; gap: 6px; }
-.ct-manager__loading { color: #9ca3af; padding: 12px 0; font-size: 14px; }
+.ct-manager__loading { color: #aaa; padding: 16px 0; font-size: 14px; }
