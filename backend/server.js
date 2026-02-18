@@ -46,6 +46,19 @@ const itemSchema = new mongoose.Schema({
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const Item = mongoose.model('Item', itemSchema);
 
+
+// ==================== STOCK MOVEMENT SCHEMA ====================
+const stockMovementSchema = new mongoose.Schema({
+  itemId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
+  type:        { type: String, enum: ['entree', 'sortie', 'project_use', 'project_return'], required: true },
+  quantity:    { type: Number, required: true },
+  balanceAfter:{ type: Number, required: true },
+  note:        { type: String, default: '' },
+  projectId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
+  projectName: { type: String, default: '' },
+}, { timestamps: true });
+const StockMovement = mongoose.model('StockMovement', stockMovementSchema);
+
 const chassisTypeSchema = new mongoose.Schema({
   value: { type: String, required: true, unique: true },
   fr:    { type: String, required: true },
@@ -383,12 +396,16 @@ app.put('/api/inventory/:id', async (req, res) => {
 
 app.patch('/api/inventory/:id/quantity', async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amount, note } = req.body;
     if (typeof amount !== 'number') return res.status(400).json({ error: 'Amount must be a number' });
     const item = await Item.findById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Not found' });
     item.quantity = Math.max(0, item.quantity + amount);
     await item.save();
+    await StockMovement.create({
+      itemId: item._id, type: amount >= 0 ? 'entree' : 'sortie',
+      quantity: Math.abs(amount), balanceAfter: item.quantity, note: note || '',
+    });
     await item.populate('categoryId');
     res.json(item);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -443,7 +460,13 @@ app.delete('/api/projects/:id', async (req, res) => {
   try {
     const p = await Project.findById(req.params.id);
     if (!p) return res.status(404).json({ error: 'Not found' });
-    for (const bar of p.usedBars) await Item.findByIdAndUpdate(bar.itemId, { $inc: { quantity: bar.quantity } });
+    for (const bar of p.usedBars) {
+      const restored = await Item.findByIdAndUpdate(bar.itemId, { $inc: { quantity: bar.quantity } }, { new: true });
+      await StockMovement.create({
+        itemId: bar.itemId, type: 'project_return', quantity: bar.quantity,
+        balanceAfter: restored ? restored.quantity : 0, projectId: p._id, projectName: p.name,
+      });
+    }
     await Project.findByIdAndDelete(req.params.id);
     res.json({ success: true, id: req.params.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -831,6 +854,10 @@ app.post('/api/projects/:id/bars', async (req, res) => {
 
     item.quantity = Math.max(0, item.quantity - Number(quantity));
     await Promise.all([item.save(), project.save()]);
+    await StockMovement.create({
+      itemId: item._id, type: 'project_use', quantity: Number(quantity),
+      balanceAfter: item.quantity, projectId: project._id, projectName: project.name,
+    });
     await project.populate('usedBars.itemId');
 
     res.status(201).json(project.toJSON());
@@ -845,7 +872,14 @@ app.delete('/api/projects/:id/bars/:itemId', async (req, res) => {
     const barEntry = project.usedBars.find(b => b.itemId.toString() === req.params.itemId);
     if (!barEntry) return res.status(404).json({ error: 'Bar not in project' });
 
-    await Item.findByIdAndUpdate(req.params.itemId, { $inc: { quantity: barEntry.quantity } });
+    const restoredItem = await Item.findByIdAndUpdate(
+      req.params.itemId, { $inc: { quantity: barEntry.quantity } }, { new: true }
+    );
+    await StockMovement.create({
+      itemId: req.params.itemId, type: 'project_return', quantity: barEntry.quantity,
+      balanceAfter: restoredItem ? restoredItem.quantity : 0,
+      projectId: project._id, projectName: project.name,
+    });
     project.usedBars = project.usedBars.filter(b => b.itemId.toString() !== req.params.itemId);
     await project.save();
     await project.populate('usedBars.itemId');
@@ -889,6 +923,142 @@ app.delete('/api/chassis-types/:id', async (req, res) => {
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ==================== STOCK MOVEMENT ROUTES ====================
+
+app.get('/api/movements', async (req, res) => {
+  try {
+    const { itemId, type, from, to, limit = 500 } = req.query;
+    const filter = {};
+    if (itemId) filter.itemId = itemId;
+    if (type && type !== 'all') filter.type = type;
+    if (from || to) {
+      filter.createdAt = {};
+      if (from) filter.createdAt.$gte = new Date(from);
+      if (to)   filter.createdAt.$lte = new Date(new Date(to).setHours(23,59,59,999));
+    }
+    const movements = await StockMovement.find(filter)
+      .populate('itemId', 'designation categoryId')
+      .sort({ createdAt: -1 })
+      .limit(Number(limit));
+    res.json(movements);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/movements/item/:itemId', async (req, res) => {
+  try {
+    const movements = await StockMovement.find({ itemId: req.params.itemId })
+      .sort({ createdAt: -1 }).limit(100);
+    res.json(movements);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==================== ANALYTICS ROUTES ====================
+
+app.get('/api/analytics/dashboard', async (req, res) => {
+  try {
+    const [projects, items, movements] = await Promise.all([
+      Project.find().lean(),
+      Item.find().populate('categoryId').lean(),
+      StockMovement.find().populate('itemId', 'designation').sort({ createdAt: 1 }).lean(),
+    ]);
+
+    // KPIs
+    const criticalItems = items.filter(i => (i.quantity + (i.orderedQuantity||0)) < i.threshold);
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const projectsInProgress = projects.filter(p => computeProjectStatus(p.chassis||[]) === 'en_cours').length;
+
+    let deliveriesThisMonth = 0;
+    for (const p of projects) {
+      for (const ch of p.chassis||[]) {
+        for (const u of ch.units||[]) {
+          if (u.etat==='livre' && u.deliveryDate && new Date(u.deliveryDate)>=monthStart) deliveriesThisMonth++;
+          for (const cs of u.componentStates||[]) {
+            if (cs.etat==='livre' && cs.deliveryDate && new Date(cs.deliveryDate)>=monthStart) deliveriesThisMonth++;
+          }
+        }
+      }
+    }
+
+    // Chassis status counts
+    const chassisStatusCounts = { non_entame:0, en_cours:0, fabrique:0, livre:0 };
+    for (const p of projects) {
+      for (const ch of p.chassis||[]) {
+        const qty = ch.quantity||1;
+        const isComp = (ch.components||[]).length>0;
+        for (let i=0;i<qty;i++) {
+          const unit = (ch.units||[]).find(u=>u.unitIndex===i)||{etat:'non_entame',componentStates:[]};
+          let etat;
+          if (isComp) {
+            const states=(ch.components||[]).map((_,ci)=>{const cs=(unit.componentStates||[]).find(c=>c.compIndex===ci);return cs?cs.etat:'non_entame';});
+            if (states.every(e=>e==='livre')) etat='livre';
+            else if (states.every(e=>e==='fabrique'||e==='livre')) etat='fabrique';
+            else if (states.some(e=>e!=='non_entame')) etat='en_cours';
+            else etat='non_entame';
+          } else { etat=unit.etat||'non_entame'; }
+          chassisStatusCounts[etat]++;
+        }
+      }
+    }
+
+    // Project consumption (top 10)
+    const projectConsumption = projects
+      .filter(p=>(p.usedBars||[]).length>0)
+      .map(p=>({ projectId:p._id, projectName:p.name, reference:p.reference,
+        totalBars:(p.usedBars||[]).reduce((s,b)=>s+b.quantity,0), barCount:(p.usedBars||[]).length }))
+      .sort((a,b)=>b.totalBars-a.totalBars).slice(0,10);
+
+    // Top 5 consumed items (from movement log)
+    const itemConsMap = {};
+    for (const m of movements) {
+      if (m.type==='project_use' && m.itemId) {
+        const id=m.itemId._id?.toString()||m.itemId.toString();
+        const des=m.itemId.designation||{};
+        if (!itemConsMap[id]) itemConsMap[id]={id,designation:des,total:0};
+        itemConsMap[id].total+=m.quantity;
+      }
+    }
+    const topItems=Object.values(itemConsMap).sort((a,b)=>b.total-a.total).slice(0,5);
+
+    // Monthly movements (last 12 months)
+    const monthlyMap={};
+    for (let i=11;i>=0;i--) {
+      const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      monthlyMap[key]={month:key,entrees:0,sorties:0,project_use:0,project_return:0};
+    }
+    for (const m of movements) {
+      const d=new Date(m.createdAt);
+      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      if (monthlyMap[key]) monthlyMap[key][m.type]=(monthlyMap[key][m.type]||0)+m.quantity;
+    }
+
+    // Stock health by category
+    const catMap={};
+    for (const item of items) {
+      const catId=item.categoryId?._id?.toString()||'none';
+      const catName=item.categoryId?.name||{fr:'Sans catégorie',it:'Senza categoria',en:'No category'};
+      const catColor=item.categoryId?.color||'#9ca3af';
+      if (!catMap[catId]) catMap[catId]={catId,catName,catColor,total:0,ok:0,low:0,critical:0};
+      catMap[catId].total++;
+      const total=item.quantity+(item.orderedQuantity||0);
+      if (total<item.threshold) catMap[catId].critical++;
+      else if (item.quantity<item.threshold) catMap[catId].low++;
+      else catMap[catId].ok++;
+    }
+
+    res.json({
+      kpis:{ totalProjects:projects.length, projectsInProgress, totalItems:items.length,
+        criticalItems:criticalItems.length, deliveriesThisMonth, totalMovements:movements.length },
+      chassisStatusCounts, projectConsumption, topItems,
+      monthlyMovements:Object.values(monthlyMap),
+      stockByCategory:Object.values(catMap),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // ==================== ERROR HANDLERS ====================
 

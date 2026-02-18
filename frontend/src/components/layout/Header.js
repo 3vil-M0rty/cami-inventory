@@ -37,6 +37,18 @@ const Header = ({ activePage, onNavigate }) => {
           >
             {t('navProjects')}
           </button>
+          <button
+            className={`header__nav-btn ${activePage === 'movements' ? 'header__nav-btn--active' : ''}`}
+            onClick={() => onNavigate('movements')}
+          >
+            {t('navMovements')}
+          </button>
+          <button
+            className={`header__nav-btn ${activePage === 'analytics' ? 'header__nav-btn--active' : ''}`}
+            onClick={() => onNavigate('analytics')}
+          >
+            {t('navAnalytics')}
+          </button>
         </nav>
 
         <div className="header__actions">
