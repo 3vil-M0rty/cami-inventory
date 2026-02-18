@@ -8,7 +8,6 @@ import './InventoryPage.css';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 function InventoryPage() {
-  const { currentLanguage: language } = useLanguage();
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -21,7 +20,7 @@ function InventoryPage() {
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => { fetchCategories(); }, []);
-  useEffect(() => { fetchItems(); }, [selectedCategory, filter]);
+  useEffect(() => { fetchItems(); }, [selectedCategory, filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchCategories = async () => {
     try {

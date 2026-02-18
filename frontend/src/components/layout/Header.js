@@ -11,7 +11,6 @@ import './Header.css';
 
 const Header = ({ activePage, onNavigate }) => {
   // eslint-disable-next-line no-unused-vars
-  const { t, currentLanguage, changeLanguage, languageLabels } = useLanguage();
 
   return (
     <header className="header">

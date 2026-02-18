@@ -67,7 +67,7 @@ function printAllLabels(chassisList, project, chassisLabels, language, t) {
   </div>`;
   };
 
-  const allLabels = chassisList.map((ch, i) =>
+  const allLabels = chassisList.map((ch) =>
     `<div class="page">${labelHtml(ch)}</div>`
   ).join('\n');
 
@@ -122,7 +122,7 @@ ${allLabels}
 }
 
 function ProjectDetail({ project, onBack }) {
-  const { deleteChassis } = useProjects();
+  const { deleteChassis, updateChassis } = useProjects();
   const { t, currentLanguage } = useLanguage();
 
   const [activeTab, setActiveTab]             = useState('chassis');
@@ -142,11 +142,31 @@ function ProjectDetail({ project, onBack }) {
     fetchChassisTypes()
       .then(types => setChassisLabels(buildChassisLabels(types)))
       .catch(() => {/* keep static */});
-  }, [showTypeManager]); // reload after manager closes
+  }, [showTypeManager]);
 
+  // Delete the entire chassis entry
   const handleDeleteChassis = async (chassisId) => {
     if (!window.confirm(t('deleteChassisConfirm'))) return;
     await deleteChassis(project.id, chassisId);
+  };
+
+  // Per-row delete: decrement qty by 1, or fully delete if last unit
+  const handleDeleteRow = async (ch, rowIndex) => {
+    const chId = ch._id || ch.id;
+    const qty = ch.quantity ?? 1;
+    if (qty <= 1) {
+      if (!window.confirm(t('deleteChassisConfirm'))) return;
+      await deleteChassis(project.id, chId);
+    } else {
+      if (!window.confirm(`Supprimer cette unité ? (${qty - 1} restante(s))`)) return;
+      await updateChassis(project.id, chId, { ...ch, quantity: qty - 1 });
+    }
+  };
+
+  // Per-row edit: open the form for this chassis
+  const handleEditRow = (ch) => {
+    setEditingChassis(ch);
+    setShowChassisForm(true);
   };
 
   const allIds = (project.chassis || []).map(ch => ch._id || ch.id);
@@ -173,23 +193,20 @@ function ProjectDetail({ project, onBack }) {
 
   const startBatchPrint = () => {
     if (!expandedSelectedChassis.length) return;
-    // Print all selected chassis tickets in one window (each on its own page)
     printAllLabels(expandedSelectedChassis, project, chassisLabels, language, t);
   };
 
   /**
    * Expand chassis into display rows.
-   * Both simple and composite chassis: repeat N times (qty), each row shows qty=1 and its own action buttons.
+   * Both simple and composite chassis: repeat N times (qty), each row shows qty=1 with its own action buttons.
    */
   const expandedRows = (project.chassis || []).flatMap(ch => {
     const qty = ch.quantity ?? 1;
     const isComposite = ch.components?.length > 0;
     const chId = ch._id || ch.id;
 
-    // Expand into qty rows, each showing 1 unit
     return Array.from({ length: qty }, (_, i) => ({
-      ch, chId, rowIndex: i, qty: 1, showQty: 1, isFirst: i === 0,
-      isComposite
+      ch, chId, rowIndex: i, showQty: 1, isFirst: i === 0, isComposite
     }));
   });
 
@@ -305,17 +322,19 @@ function ProjectDetail({ project, onBack }) {
                           </td>
                           <td>
                             <div className="chassis-row__actions">
-                              {isFirst && (
-                                <button className="edit-btn" onClick={() => { setEditingChassis(ch); setShowChassisForm(true); }}>{t('edit')}</button>
-                              )}
-                              <button className="edit-btn" title={t('printLabel')} onClick={() => setPrintingChassis({ ...ch, _printRowIndex: rowIndex })}>🖨</button>
-                              {isFirst && (
-                                <button className="delete-btn" onClick={() => handleDeleteChassis(chId)}>{t('delete')}</button>
-                              )}
+                              <button className="edit-btn" onClick={() => handleEditRow(ch)}>
+                                {t('edit')}
+                              </button>
+                              <button className="edit-btn" title={t('printLabel')} onClick={() => setPrintingChassis({ ...ch, _printRowIndex: rowIndex })}>
+                                🖨
+                              </button>
+                              <button className="delete-btn" onClick={() => handleDeleteRow(ch, rowIndex)}>
+                                {t('delete')}
+                              </button>
                             </div>
                           </td>
                         </tr>
-                        {/* Show sub-components for composite expanded rows */}
+                        {/* Sub-components for composite rows */}
                         {isComposite && ch.components?.map((comp, idx) => (
                           <tr key={`${rowKey}-comp-${idx}`} className="component-row">
                             <td></td>
