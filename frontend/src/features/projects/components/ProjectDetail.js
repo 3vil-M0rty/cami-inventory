@@ -13,60 +13,55 @@ const ETAT_OPTIONS = ['non_entame', 'en_cours', 'fabrique', 'livre'];
 const ETAT_COLORS  = { non_entame: '#9ca3af', en_cours: '#f59e0b', fabrique: '#3b82f6', livre: '#16a34a' };
 const STATUS_COLORS = { en_cours: '#f59e0b', fabrique: '#3b82f6', cloture: '#16a34a' };
 
-// ── Helpers ─────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/**
- * Returns the unit record for a given (chassisId, unitIndex).
- * Falls back to chassis-level defaults when no per-unit record exists.
- */
 function getUnit(ch, idx) {
-  const units = ch.units || [];
-  return units.find(u => u.unitIndex === idx) || {
-    unitIndex: idx,
-    etat: ch.etat || 'non_entame',
-    deliveryDate: null,
-    notes: '',
-    components: [],           // per-unit component overrides
+  return (ch.units || []).find(u => u.unitIndex === idx) || {
+    unitIndex: idx, etat: 'non_entame', deliveryDate: null, notes: '', componentStates: []
   };
 }
 
-/**
- * Returns the etat for a specific component within a specific unit.
- * Priority: per-unit component override → original component default.
- */
 function getComponentEtat(unit, compIdx, comp) {
-  const overrides = unit.components || [];
-  const override  = overrides.find(c => c.compIndex === compIdx);
-  return override?.etat ?? comp.etat ?? 'non_entame';
+  const cs = (unit.componentStates || []).find(c => c.compIndex === compIdx);
+  return cs ? cs.etat : (comp.etat || 'non_entame');
 }
 
-function fmtDate(d)      { if (!d) return ''; return new Date(d).toLocaleDateString('fr-FR'); }
-function toDateInput(d)  { if (!d) return ''; return new Date(d).toISOString().split('T')[0]; }
+function deriveCompositeEtat(unit, components) {
+  const n = components.length;
+  if (!n) return unit.etat || 'non_entame';
+  const states = components.map((comp, i) => getComponentEtat(unit, i, comp));
+  if (states.every(e => e === 'livre'))                     return 'livre';
+  if (states.every(e => e === 'fabrique' || e === 'livre')) return 'fabrique';
+  if (states.some(e => e !== 'non_entame'))                 return 'en_cours';
+  return 'non_entame';
+}
 
-// ── Progress Bar ────────────────────────────────────────────────
+function fmtDate(d)     { if (!d) return ''; return new Date(d).toLocaleDateString('fr-FR'); }
+function toDateInput(d) { if (!d) return ''; return new Date(d).toISOString().split('T')[0]; }
+
+// ─── Progress Bar ─────────────────────────────────────────────────────────────
 function ProgressBar({ chassis, t }) {
   if (!chassis || chassis.length === 0) return null;
   const counts = { non_entame: 0, en_cours: 0, fabrique: 0, livre: 0 };
   let total = 0;
   for (const ch of chassis) {
-    const qty = ch.quantity || 1;
+    const qty    = ch.quantity || 1;
+    const isComp = (ch.components || []).length > 0;
     for (let i = 0; i < qty; i++) {
-      const unit = (ch.units || []).find(u => u.unitIndex === i);
-      counts[unit?.etat || 'non_entame']++;
+      const unit = getUnit(ch, i);
+      const etat = isComp ? deriveCompositeEtat(unit, ch.components) : (unit.etat || 'non_entame');
+      counts[etat] = (counts[etat] || 0) + 1;
       total++;
     }
   }
-  const pct = k => (total === 0 ? 0 : Math.round(counts[k] / total * 100));
+  const pct = k => total === 0 ? 0 : Math.round(counts[k] / total * 100);
   return (
     <div className="progress-section">
       <div className="progress-bar">
         {ETAT_OPTIONS.filter(e => counts[e] > 0).map(e => (
-          <div
-            key={e}
-            className="progress-bar__segment"
+          <div key={e} className="progress-bar__segment"
             style={{ width: `${pct(e)}%`, backgroundColor: ETAT_COLORS[e] }}
-            title={`${t('etat_' + e)}: ${counts[e]}`}
-          />
+            title={`${t('etat_' + e)}: ${counts[e]}`} />
         ))}
       </div>
       <div className="progress-legend">
@@ -82,7 +77,7 @@ function ProgressBar({ chassis, t }) {
   );
 }
 
-// ── Delivery Date Modal ─────────────────────────────────────────
+// ─── Delivery Date Modal ──────────────────────────────────────────────────────
 function DeliveryDateModal({ defaultDate, onConfirm, onCancel, t }) {
   const [date, setDate] = useState(defaultDate || new Date().toISOString().split('T')[0]);
   return (
@@ -102,37 +97,58 @@ function DeliveryDateModal({ defaultDate, onConfirm, onCancel, t }) {
   );
 }
 
-// ── BL Panel ────────────────────────────────────────────────────
+// ─── BL Panel ─────────────────────────────────────────────────────────────────
 function generateBLHtml(bl, project) {
   const rows = bl.units.map(u =>
     `<tr><td>${u.unitLabel}</td><td>${u.chassisType || ''}</td><td>${u.dimension}</td><td>${u.notes || ''}</td></tr>`
   ).join('');
+  const closeScript = '<' + '/script>';
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${bl.blId}</title>
-  <style>body{font-family:Arial,sans-serif;margin:40px;color:#1a1a1a}.header{border-bottom:3px solid #1a1a1a;padding-bottom:20px;margin-bottom:30px;display:flex;justify-content:space-between}.logo{font-size:22px;font-weight:900}.meta{display:flex;gap:30px;margin-bottom:24px}.meta-item label{font-size:10px;text-transform:uppercase;color:#888;display:block}.meta-item span{font-size:14px;font-weight:700}table{width:100%;border-collapse:collapse;font-size:13px}th{background:#1a1a1a;color:#fff;padding:10px 12px;text-align:left;font-size:10px;text-transform:uppercase}td{padding:10px 12px;border-bottom:1px solid #eee}tr:nth-child(even) td{background:#f9f9f9}.sig{display:flex;justify-content:space-between;margin-top:60px}.sig-box{border-top:1px solid #333;width:200px;padding-top:8px;font-size:12px;text-align:center}.footer{margin-top:30px;border-top:1px solid #eee;padding-top:12px;font-size:11px;color:#888}@media print{@page{margin:20mm}}</style>
+  <style>body{font-family:Arial,sans-serif;margin:40px;color:#1a1a1a}
+  .header{border-bottom:3px solid #1a1a1a;padding-bottom:20px;margin-bottom:30px;display:flex;justify-content:space-between}
+  .logo{font-size:22px;font-weight:900}
+  .meta{display:flex;gap:30px;margin-bottom:24px}
+  .meta-item label{font-size:10px;text-transform:uppercase;color:#888;display:block}
+  .meta-item span{font-size:14px;font-weight:700}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{background:#1a1a1a;color:#fff;padding:10px 12px;text-align:left;font-size:10px;text-transform:uppercase}
+  td{padding:10px 12px;border-bottom:1px solid #eee}
+  tr:nth-child(even) td{background:#f9f9f9}
+  .sig{display:flex;justify-content:space-between;margin-top:60px}
+  .sig-box{border-top:1px solid #333;width:200px;padding-top:8px;font-size:12px;text-align:center}
+  .footer{margin-top:30px;border-top:1px solid #eee;padding-top:12px;font-size:11px;color:#888}
+  @media print{@page{margin:20mm}}</style>
   </head><body>
-  <div class="header"><div><div class="logo">CAMI ALUMINIUM</div><div style="font-size:18px;font-weight:700;color:#555">${bl.blId}</div></div><div style="text-align:right"><div style="font-size:13px;color:#555">Bon de Livraison</div><div style="font-size:18px;font-weight:700">${new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR')}</div></div></div>
-  <div class="meta"><div class="meta-item"><label>Projet</label><span>${project.name}</span></div><div class="meta-item"><label>Référence</label><span>${project.reference}</span></div><div class="meta-item"><label>RAL</label><span>${project.ralCode}</span></div><div class="meta-item"><label>Unités livrées</label><span>${bl.units.length}</span></div></div>
-  <table><thead><tr><th>Repère</th><th>Type</th><th>Dimension</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>
+  <div class="header">
+    <div><div class="logo">CAMI ALUMINIUM</div><div style="font-size:18px;font-weight:700;color:#555">${bl.blId}</div></div>
+    <div style="text-align:right"><div style="font-size:13px;color:#555">Bon de Livraison</div>
+    <div style="font-size:18px;font-weight:700">${new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR')}</div></div>
+  </div>
+  <div class="meta">
+    <div class="meta-item"><label>Projet</label><span>${project.name}</span></div>
+    <div class="meta-item"><label>Référence</label><span>${project.reference}</span></div>
+    <div class="meta-item"><label>RAL</label><span>${project.ralCode}</span></div>
+    <div class="meta-item"><label>Unités livrées</label><span>${bl.units.length}</span></div>
+  </div>
+  <table><thead><tr><th>Repère</th><th>Type</th><th>Dimension</th><th>Notes</th></tr></thead>
+  <tbody>${rows}</tbody></table>
   <div class="sig"><div class="sig-box">Signature livreur</div><div class="sig-box">Signature réceptionnaire</div></div>
   <div class="footer">Généré automatiquement — CAMI ALUMINIUM — ${new Date().toLocaleDateString('fr-FR')}</div>
-  <script>window.onload=()=>{window.print();}</script></body></html>`;
+  <script>window.onload=()=>{window.print();}${closeScript}</body></html>`;
 }
 
 function BLPanel({ project, t }) {
   const { getBonsLivraison } = useProjects();
-  const [bls,     setBls]     = useState([]);
+  const [bls, setBls]        = useState([]);
   const [loading, setLoading] = useState(true);
-  const [openBL,  setOpenBL]  = useState(null);
-
+  const [openBL, setOpenBL]  = useState(null);
   const load = useCallback(async () => {
     setLoading(true);
     try   { setBls(await getBonsLivraison(project.id)); }
     catch { setBls([]); }
     finally { setLoading(false); }
   }, [project.id, getBonsLivraison]);
-
   useEffect(() => { load(); }, [load]);
-
   if (loading) return <div className="bl-loading">{t('loading')}</div>;
   if (bls.length === 0) return (
     <div className="bl-empty">
@@ -141,7 +157,6 @@ function BLPanel({ project, t }) {
       <p className="bl-empty__hint">Marquez des unités comme « Livré » pour générer des BL automatiquement.</p>
     </div>
   );
-
   return (
     <div className="bl-panel">
       <div className="bl-panel__header">
@@ -157,38 +172,21 @@ function BLPanel({ project, t }) {
                 <span className="bl-card__count">{bl.units.length} unité{bl.units.length > 1 ? 's' : ''}</span>
               </div>
               <div className="bl-card__actions">
-                <button
-                  className="bl-print-btn"
-                  onClick={e => {
-                    e.stopPropagation();
-                    const w = window.open('', '_blank');
-                    if (w) { w.document.write(generateBLHtml(bl, project)); w.document.close(); }
-                  }}
-                >
-                  🖨 {t('blPrint')}
-                </button>
+                <button className="bl-print-btn" onClick={e => {
+                  e.stopPropagation();
+                  const w = window.open('', '_blank');
+                  if (w) { w.document.write(generateBLHtml(bl, project)); w.document.close(); }
+                }}>🖨 {t('blPrint')}</button>
                 <span className="bl-card__toggle">{openBL === bl.deliveryDate ? '▲' : '▼'}</span>
               </div>
             </div>
             {openBL === bl.deliveryDate && (
               <div className="bl-card__body">
                 <table className="bl-table">
-                  <thead>
-                    <tr>
-                      <th>{t('blUnitLabel')}</th>
-                      <th>{t('dimension')}</th>
-                      <th>{t('blDate')}</th>
-                      <th>{t('unitNotes')}</th>
-                    </tr>
-                  </thead>
+                  <thead><tr><th>{t('blUnitLabel')}</th><th>{t('dimension')}</th><th>{t('blDate')}</th><th>{t('unitNotes')}</th></tr></thead>
                   <tbody>
                     {bl.units.map((u, i) => (
-                      <tr key={i}>
-                        <td><strong>{u.unitLabel}</strong></td>
-                        <td className="dim-cell">{u.dimension}</td>
-                        <td>{fmtDate(u.deliveryDate)}</td>
-                        <td>{u.notes || '—'}</td>
-                      </tr>
+                      <tr key={i}><td><strong>{u.unitLabel}</strong></td><td className="dim-cell">{u.dimension}</td><td>{fmtDate(u.deliveryDate)}</td><td>{u.notes || '—'}</td></tr>
                     ))}
                   </tbody>
                 </table>
@@ -201,9 +199,15 @@ function BLPanel({ project, t }) {
   );
 }
 
-// ── Main ProjectDetail ──────────────────────────────────────────
+// ─── Main ProjectDetail ───────────────────────────────────────────────────────
+//
+// ROW KINDS:
+//   'unit'      — standalone non-composite unit → own checkbox, own etat select, own actions
+//   'groupHead' — composite chassis header (1 per unit-instance) → NO checkbox, derived etat badge, edit/print/delete actions
+//   'component' — one component inside a composite group → own checkbox, own etat select
+//
 function ProjectDetail({ project, onBack }) {
-  const { deleteChassis, updateChassis, updateUnit } = useProjects();
+  const { deleteChassis, updateChassis, updateUnit, updateComponent } = useProjects();
   const { t, currentLanguage } = useLanguage();
 
   const [activeTab,       setActiveTab]       = useState('chassis');
@@ -212,112 +216,92 @@ function ProjectDetail({ project, onBack }) {
   const [editingChassis,  setEditingChassis]  = useState(null);
   const [printingChassis, setPrintingChassis] = useState(null);
   const [chassisLabels,   setChassisLabels]   = useState(STATIC_LABELS);
-  // selectedKeys holds both unit row keys ("chId-unitIdx")
-  // and component row keys ("chId-unitIdx-comp-compIdx")
   const [selectedKeys,    setSelectedKeys]    = useState(new Set());
   const [deliveryModal,   setDeliveryModal]   = useState(null);
-  const [saving,          setSaving]          = useState(null); // key of the row currently being saved
+  const [savingKey,       setSavingKey]       = useState(null);
 
   const language    = currentLanguage;
   const statusColor = STATUS_COLORS[project.status] || '#9ca3af';
   const dateStr     = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
   useEffect(() => {
-    fetchChassisTypes()
-      .then(types => setChassisLabels(buildChassisLabels(types)))
-      .catch(() => {});
+    fetchChassisTypes().then(types => setChassisLabels(buildChassisLabels(types))).catch(() => {});
   }, [showTypeManager]);
 
-  // ── Build flat rows ──────────────────────────────────────────
-  //
-  // Each chassis with quantity N produces N "unit rows".
-  // A composite chassis additionally produces component sub-rows for each unit.
-  //
-  const expandedRows = (project.chassis || []).flatMap(ch => {
-    const qty         = ch.quantity ?? 1;
+  // Build flat display rows
+  const rows = (project.chassis || []).flatMap(ch => {
+    const qty         = ch.quantity || 1;
     const chId        = ch._id || ch.id;
-    const isComposite = (ch.components?.length ?? 0) > 0;
+    const isComposite = (ch.components || []).length > 0;
 
-    return Array.from({ length: qty }, (_, i) => {
-      const unit    = getUnit(ch, i);
-      const rowKey  = `${chId}-${i}`;
-      const label   = qty > 1 ? `${ch.repere} #${i + 1}` : ch.repere;
+    return Array.from({ length: qty }, (_, unitIndex) => {
+      const unit      = getUnit(ch, unitIndex);
+      const groupKey  = `${chId}-${unitIndex}`;
+      const baseLabel = qty > 1 ? `${ch.repere} #${unitIndex + 1}` : ch.repere;
 
-      // Build per-component entries for this unit
-      const componentRows = isComposite
-        ? (ch.components || []).map((comp, idx) => ({
-            comp,
-            compIdx:  idx,
-            compKey:  `${rowKey}-comp-${idx}`,
-            compEtat: getComponentEtat(unit, idx, comp),
-          }))
-        : [];
+      if (!isComposite) {
+        return [{
+          kind: 'unit', ch, chId, unitIndex, unit,
+          rowKey: groupKey, label: baseLabel,
+          etat: unit.etat || 'non_entame',
+        }];
+      }
 
-      return { ch, chId, unitIndex: i, isComposite, unit, rowKey, label, componentRows };
+      const componentRows = ch.components.map((comp, ci) => ({
+        kind: 'component', ch, chId, unitIndex, unit, comp, ci,
+        rowKey: `${groupKey}-c${ci}`, groupKey,
+        label: comp.repere || `${comp.role === 'dormant' ? 'D' : 'V'}${ci + 1}`,
+        etat: getComponentEtat(unit, ci, comp),
+      }));
+
+      return [
+        { kind: 'groupHead', ch, chId, unitIndex, unit, rowKey: groupKey, label: baseLabel,
+          derivedEtat: deriveCompositeEtat(unit, ch.components), componentRows },
+        ...componentRows,
+      ];
     });
-  });
+  }).flat();
 
-  // Collect ALL selectable keys (unit rows + component rows)
-  const allKeys = expandedRows.flatMap(r => [
-    r.rowKey,
-    ...r.componentRows.map(c => c.compKey),
-  ]);
+  const allSelectableKeys = rows.filter(r => r.kind === 'unit' || r.kind === 'component').map(r => r.rowKey);
 
-  const toggleRow = key => setSelectedKeys(prev => {
-    const n = new Set(prev);
-    n.has(key) ? n.delete(key) : n.add(key);
-    return n;
-  });
+  const toggleKey = key => setSelectedKeys(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const toggleAll = () => setSelectedKeys(selectedKeys.size === allSelectableKeys.length ? new Set() : new Set(allSelectableKeys));
 
-  const toggleAll = () =>
-    setSelectedKeys(selectedKeys.size === allKeys.length ? new Set() : new Set(allKeys));
-
-  // ── Etat handlers ────────────────────────────────────────────
-
-  /** Change the etat of a unit row (not a component). */
-  const handleEtatChange = async (ch, unitIndex, newEtat) => {
-    const chId   = ch._id || ch.id;
-    const rowKey = `${chId}-${unitIndex}`;
+  // Etat handlers
+  const handleUnitEtatChange = async (ch, unitIndex, newEtat, rowKey) => {
     if (newEtat === 'livre') {
       const unit = getUnit(ch, unitIndex);
-      setDeliveryModal({ chId, unitIndex, currentDate: toDateInput(unit.deliveryDate), rowKey });
+      setDeliveryModal({ kind: 'unit', chId: ch._id || ch.id, unitIndex, rowKey, currentDate: toDateInput(unit.deliveryDate) });
       return;
     }
-    setSaving(rowKey);
-    await updateUnit(project.id, chId, unitIndex, { etat: newEtat });
-    setSaving(null);
+    setSavingKey(rowKey);
+    await updateUnit(project.id, ch._id || ch.id, unitIndex, { etat: newEtat });
+    setSavingKey(null);
   };
 
-  /** Change the etat of a single component within a specific unit row. */
-  const handleComponentEtatChange = async (ch, unitIndex, compIdx, newEtat) => {
-    const chId    = ch._id || ch.id;
-    const compKey = `${chId}-${unitIndex}-comp-${compIdx}`;
-    setSaving(compKey);
-    // updateUnit merges the patch; we store component overrides as an array
-    // under units[unitIndex].components so other units are untouched.
-    const unit            = getUnit(ch, unitIndex);
-    const existingComps   = unit.components ? [...unit.components] : [];
-    const existingIdx     = existingComps.findIndex(c => c.compIndex === compIdx);
-    if (existingIdx >= 0) {
-      existingComps[existingIdx] = { ...existingComps[existingIdx], etat: newEtat };
-    } else {
-      existingComps.push({ compIndex: compIdx, etat: newEtat });
+  const handleComponentEtatChange = async (ch, unitIndex, ci, newEtat, rowKey) => {
+    if (newEtat === 'livre') {
+      setDeliveryModal({ kind: 'component', chId: ch._id || ch.id, unitIndex, ci, rowKey, currentDate: null });
+      return;
     }
-    await updateUnit(project.id, chId, unitIndex, { components: existingComps });
-    setSaving(null);
+    setSavingKey(rowKey);
+    await updateComponent(project.id, ch._id || ch.id, unitIndex, ci, { etat: newEtat });
+    setSavingKey(null);
   };
 
-  const handleDeliveryConfirm = async deliveryDate => {
-    const { chId, unitIndex, rowKey } = deliveryModal;
+  const handleDeliveryConfirm = async (deliveryDate) => {
+    const m = deliveryModal;
     setDeliveryModal(null);
-    setSaving(rowKey);
-    await updateUnit(project.id, chId, unitIndex, { etat: 'livre', deliveryDate });
-    setSaving(null);
+    setSavingKey(m.rowKey);
+    if (m.kind === 'unit') {
+      await updateUnit(project.id, m.chId, m.unitIndex, { etat: 'livre', deliveryDate });
+    } else {
+      await updateComponent(project.id, m.chId, m.unitIndex, m.ci, { etat: 'livre', deliveryDate });
+    }
+    setSavingKey(null);
   };
 
-  // ── Delete ───────────────────────────────────────────────────
-
-  const handleDeleteRow = async (ch, unitIndex) => {
+  const handleDeleteUnit = async (ch, unitIndex) => {
     const chId = ch._id || ch.id;
     const qty  = ch.quantity ?? 1;
     if (qty <= 1) {
@@ -329,11 +313,9 @@ function ProjectDetail({ project, onBack }) {
     }
   };
 
-  // ── Batch print ──────────────────────────────────────────────
-
   const startBatchPrint = () => {
-    const toPrint = expandedRows
-      .filter(r => selectedKeys.has(r.rowKey))
+    const toPrint = rows
+      .filter(r => r.kind === 'unit' && selectedKeys.has(r.rowKey))
       .map(r => ({ ...r.ch, _printRowIndex: r.unitIndex }));
     if (!toPrint.length) return;
     const html = buildLabelHTML(toPrint, project, chassisLabels, language);
@@ -341,13 +323,12 @@ function ProjectDetail({ project, onBack }) {
     if (w) { w.document.write(html); w.document.close(); }
   };
 
-  // ── Render ───────────────────────────────────────────────────
+  const totalDisplayRows = (project.chassis || []).reduce((acc, ch) => acc + (ch.quantity || 1), 0);
 
   return (
     <div className="project-detail">
       <button className="project-detail__back" onClick={onBack}>{t('backToProjects')}</button>
 
-      {/* ── Header ── */}
       <div className="project-detail__header">
         <div className="project-detail__info">
           <div className="project-detail__ral-swatch" style={{ backgroundColor: project.ralColor || '#eee' }} />
@@ -364,50 +345,36 @@ function ProjectDetail({ project, onBack }) {
           </div>
         </div>
         <div className="project-detail__header-actions">
-          <button className="excel-btn" onClick={() => exportProjectPDF(project, language, chassisLabels, t)}>
-            📄 {t('exportPDF')} — Châssis
-          </button>
-          <button className="excel-btn" onClick={() => exportBarsPDF(project, language, t)}>
-            📄 {t('exportPDF')} — Barres
-          </button>
+          <button className="excel-btn" onClick={() => exportProjectPDF(project, language, chassisLabels, t)}>📄 {t('exportPDF')} — Châssis</button>
+          <button className="excel-btn" onClick={() => exportBarsPDF(project, language, t)}>📄 {t('exportPDF')} — Barres</button>
         </div>
       </div>
 
       <ProgressBar chassis={project.chassis} t={t} />
 
-      {/* ── Tabs ── */}
       <div className="project-detail__tabs">
         {[
-          { key: 'chassis', label: t('tabChassis'), count: expandedRows.length },
+          { key: 'chassis', label: t('tabChassis'), count: totalDisplayRows },
           { key: 'bars',    label: t('tabBars'),    count: project.usedBars?.length || 0 },
           { key: 'bl',      label: t('tabBL'),      count: null },
         ].map(tab => (
-          <button
-            key={tab.key}
+          <button key={tab.key}
             className={`project-detail__tab ${activeTab === tab.key ? 'project-detail__tab--active' : ''}`}
-            onClick={() => setActiveTab(tab.key)}
-          >
+            onClick={() => setActiveTab(tab.key)}>
             {tab.label}
             {tab.count !== null && <span className="tab-count">{tab.count}</span>}
           </button>
         ))}
       </div>
 
-      {/* ── Chassis tab ── */}
       {activeTab === 'chassis' && (
         <div className="project-detail__panel">
           <div className="panel-toolbar">
-            <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>
-              + {t('addChassis')}
-            </button>
-            <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}>
-              ⚙️ {t('chassisTypeConfig')}
-            </button>
-            {expandedRows.length > 0 && (
+            <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>+ {t('addChassis')}</button>
+            <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}>⚙️ {t('chassisTypeConfig')}</button>
+            {rows.length > 0 && (
               <div className="selection-toolbar">
-                <button className="select-btn" onClick={toggleAll}>
-                  {selectedKeys.size === allKeys.length ? t('deselectAll') : t('selectAll')}
-                </button>
+                <button className="select-btn" onClick={toggleAll}>{selectedKeys.size === allSelectableKeys.length ? t('deselectAll') : t('selectAll')}</button>
                 {selectedKeys.size > 0 && (
                   <button className="print-selected-btn" onClick={startBatchPrint}>
                     🖨 {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})
@@ -425,11 +392,9 @@ function ProjectDetail({ project, onBack }) {
                 <thead>
                   <tr>
                     <th style={{ width: 40 }}>
-                      <input
-                        type="checkbox"
-                        checked={allKeys.length > 0 && selectedKeys.size === allKeys.length}
-                        onChange={toggleAll}
-                      />
+                      <input type="checkbox"
+                        checked={allSelectableKeys.length > 0 && selectedKeys.size === allSelectableKeys.length}
+                        onChange={toggleAll} />
                     </th>
                     <th>{t('repere')}</th>
                     <th>{t('type')}</th>
@@ -442,148 +407,128 @@ function ProjectDetail({ project, onBack }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {expandedRows.map(({ ch, chId, unitIndex, isComposite, unit, rowKey, label, componentRows }) => {
-                    const etat       = unit.etat || 'non_entame';
-                    const isSelected = selectedKeys.has(rowKey);
-                    const isSaving   = saving === rowKey;
+                  {rows.map(row => {
 
-                    return (
-                      <React.Fragment key={rowKey}>
-
-                        {/* ── Unit row ── */}
-                        <tr className={`chassis-row${isSelected ? ' chassis-row--selected' : ''}${isSaving ? ' chassis-row--saving' : ''}`}>
-                          <td className="chassis-row__check">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleRow(rowKey)}
-                              onClick={e => e.stopPropagation()}
-                            />
-                          </td>
+                    // ── GROUP HEADER (composite chassis, per unit-instance) ─────────────────────
+                    if (row.kind === 'groupHead') {
+                      const { ch, chId, unitIndex, label, derivedEtat } = row;
+                      return (
+                        <tr key={row.rowKey} className="chassis-row chassis-row--group-head">
+                          <td />
                           <td>
                             <strong>{label}</strong>
-                            {isComposite && <span className="composite-badge">⊞</span>}
+                            <span className="composite-badge" title="Composite">⊞</span>
                           </td>
                           <td>{chassisLabels[ch.type]?.[language] || ch.type}</td>
                           <td>{ch.largeur}</td>
                           <td>{ch.hauteur}</td>
                           <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
                           <td>
-                            <select
-                              className="etat-select"
-                              value={etat}
-                              disabled={isSaving}
-                              onChange={e => handleEtatChange(ch, unitIndex, e.target.value)}
-                              style={{ borderLeftColor: ETAT_COLORS[etat] }}
-                            >
-                              {ETAT_OPTIONS.map(opt => (
-                                <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>
-                              ))}
-                            </select>
+                            <span className="etat-badge"
+                              style={{ background: ETAT_COLORS[derivedEtat], color: '#fff',
+                                       padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap' }}>
+                              {t(`etat_${derivedEtat}`)}
+                            </span>
                           </td>
-                          <td className="delivery-date-cell">
-                            {etat === 'livre' ? (
-                              <button
-                                className="date-btn"
-                                onClick={() => setDeliveryModal({ chId, unitIndex, currentDate: toDateInput(unit.deliveryDate), rowKey })}
-                              >
-                                📅 {unit.deliveryDate ? fmtDate(unit.deliveryDate) : 'Définir'}
-                              </button>
-                            ) : (
-                              <span className="date-placeholder">—</span>
-                            )}
-                          </td>
+                          <td><span className="date-placeholder">—</span></td>
                           <td>
                             <div className="chassis-row__actions">
-                              <button
-                                className="edit-btn"
-                                onClick={() => {
-                                  /*
-                                   * We pass only the data relevant to THIS unit row:
-                                   * - quantity is forced to 1 (we're editing a single unit)
-                                   * - _originalId / _unitIndex let ChassisForm know which
-                                   *   record / unit slot to update on save
-                                   * - _totalQty is kept for informational use in the form
-                                   * - etat is the per-unit etat, not the chassis-level default
-                                   */
-                                  setEditingChassis({
-                                    ...ch,
-                                    quantity:     1,
-                                    etat,
-                                    _originalId:  chId,
-                                    _unitIndex:   unitIndex,
-                                    _totalQty:    ch.quantity ?? 1,
-                                  });
-                                  setShowChassisForm(true);
-                                }}
-                              >
-                                ✏️ {t('edit')}
-                              </button>
-                              <button
-                                className="print-btn"
-                                title={t('printLabel')}
-                                onClick={() => setPrintingChassis({ ...ch, _printRowIndex: unitIndex })}
-                              >
-                                🖨
-                              </button>
-                              <button className="delete-btn" onClick={() => handleDeleteRow(ch, unitIndex)}>
-                                🗑
-                              </button>
+                              <button className="edit-btn" onClick={() => {
+                                setEditingChassis({ ...ch, _originalId: chId });
+                                setShowChassisForm(true);
+                              }}>✏️ {t('edit')}</button>
+                              <button className="print-btn" title={t('printLabel')}
+                                onClick={() => setPrintingChassis({ ...ch, _printRowIndex: unitIndex })}>🖨</button>
+                              <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}>🗑</button>
                             </div>
                           </td>
                         </tr>
+                      );
+                    }
 
-                        {/* ── Component sub-rows (one per component, per unit) ── */}
-                        {componentRows.map(({ comp, compIdx, compKey, compEtat }) => {
-                          const isCompSelected = selectedKeys.has(compKey);
-                          const isCompSaving   = saving === compKey;
-                          return (
-                            <tr
-                              key={compKey}
-                              className={`component-row${isCompSelected ? ' component-row--selected' : ''}${isCompSaving ? ' component-row--saving' : ''}`}
-                            >
-                              {/* Checkbox — isolated to this component/unit combination */}
-                              <td className="chassis-row__check">
-                                <input
-                                  type="checkbox"
-                                  checked={isCompSelected}
-                                  onChange={() => toggleRow(compKey)}
-                                  onClick={e => e.stopPropagation()}
-                                />
-                              </td>
-                              <td className="component-indent">
-                                ↳ {comp.repere || `${comp.role} ${compIdx + 1}`}
-                              </td>
-                              <td className="component-role">
-                                {comp.role === 'dormant' ? t('dormant') : t('vantail')}
-                              </td>
-                              <td>{comp.largeur}</td>
-                              <td>{comp.hauteur}</td>
-                              <td>—</td>
+                    // ── COMPONENT ROW (inside composite group) ─────────────────────────────────
+                    if (row.kind === 'component') {
+                      const { ch, unitIndex, comp, ci, rowKey, label, etat } = row;
+                      const isSaving   = savingKey === rowKey;
+                      const isSelected = selectedKeys.has(rowKey);
+                      return (
+                        <tr key={rowKey}
+                          className={`component-row${isSelected ? ' component-row--selected' : ''}${isSaving ? ' component-row--saving' : ''}`}>
+                          <td className="chassis-row__check">
+                            <input type="checkbox" checked={isSelected}
+                              onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} />
+                          </td>
+                          <td className="component-indent">
+                            ↳ <strong>{label}</strong>
+                          </td>
+                          <td className="component-role">
+                            {comp.role === 'dormant' ? t('dormant') : t('vantail')}
+                          </td>
+                          <td>{comp.largeur || '—'}</td>
+                          <td>{comp.hauteur || '—'}</td>
+                          <td className="dim-cell">
+                            {comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}
+                          </td>
+                          <td>
+                            <select className="etat-select etat-select--component"
+                              value={etat} disabled={isSaving}
+                              onChange={e => handleComponentEtatChange(ch, unitIndex, ci, e.target.value, rowKey)}
+                              style={{ borderLeftColor: ETAT_COLORS[etat] }}>
+                              {ETAT_OPTIONS.map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
+                            </select>
+                          </td>
+                          <td><span className="date-placeholder">—</span></td>
+                          <td />
+                        </tr>
+                      );
+                    }
 
-                              {/* Per-unit, per-component etat select */}
-                              <td>
-                                <select
-                                  className="etat-select etat-select--component"
-                                  value={compEtat}
-                                  disabled={isCompSaving}
-                                  onChange={e => handleComponentEtatChange(ch, unitIndex, compIdx, e.target.value)}
-                                  style={{ borderLeftColor: ETAT_COLORS[compEtat] }}
-                                >
-                                  {ETAT_OPTIONS.map(opt => (
-                                    <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>
-                                  ))}
-                                </select>
-                              </td>
-
-                              {/* Components don't have delivery dates or row-level actions */}
-                              <td><span className="date-placeholder">—</span></td>
-                              <td />
-                            </tr>
-                          );
-                        })}
-
-                      </React.Fragment>
+                    // ── UNIT ROW (non-composite) ───────────────────────────────────────────────
+                    const { ch, chId, unitIndex, unit, rowKey, label, etat } = row;
+                    const isSaving   = savingKey === rowKey;
+                    const isSelected = selectedKeys.has(rowKey);
+                    return (
+                      <tr key={rowKey}
+                        className={`chassis-row${isSelected ? ' chassis-row--selected' : ''}${isSaving ? ' chassis-row--saving' : ''}`}>
+                        <td className="chassis-row__check">
+                          <input type="checkbox" checked={isSelected}
+                            onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} />
+                        </td>
+                        <td><strong>{label}</strong></td>
+                        <td>{chassisLabels[ch.type]?.[language] || ch.type}</td>
+                        <td>{ch.largeur}</td>
+                        <td>{ch.hauteur}</td>
+                        <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
+                        <td>
+                          <select className="etat-select" value={etat} disabled={isSaving}
+                            onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)}
+                            style={{ borderLeftColor: ETAT_COLORS[etat] }}>
+                            {ETAT_OPTIONS.map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
+                          </select>
+                        </td>
+                        <td className="delivery-date-cell">
+                          {etat === 'livre' ? (
+                            <button className="date-btn" onClick={() => setDeliveryModal({
+                              kind: 'unit', chId, unitIndex, rowKey, currentDate: toDateInput(unit.deliveryDate)
+                            })}>
+                              📅 {unit.deliveryDate ? fmtDate(unit.deliveryDate) : 'Définir'}
+                            </button>
+                          ) : (
+                            <span className="date-placeholder">—</span>
+                          )}
+                        </td>
+                        <td>
+                          <div className="chassis-row__actions">
+                            <button className="edit-btn" onClick={() => {
+                              setEditingChassis({ ...ch, quantity: 1, etat, _originalId: chId, _unitIndex: unitIndex, _totalQty: ch.quantity ?? 1 });
+                              setShowChassisForm(true);
+                            }}>✏️ {t('edit')}</button>
+                            <button className="print-btn" title={t('printLabel')}
+                              onClick={() => setPrintingChassis({ ...ch, _printRowIndex: unitIndex })}>🖨</button>
+                            <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}>🗑</button>
+                          </div>
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -594,39 +539,16 @@ function ProjectDetail({ project, onBack }) {
       )}
 
       {activeTab === 'bars' && <UsedBarsPanel project={project} language={language} />}
+      {activeTab === 'bl' && <div className="project-detail__panel"><BLPanel project={project} t={t} language={language} /></div>}
 
-      {activeTab === 'bl' && (
-        <div className="project-detail__panel">
-          <BLPanel project={project} t={t} language={language} />
-        </div>
-      )}
-
-      {/* ── Modals & overlays ── */}
       {showChassisForm && (
-        <ChassisForm
-          chassis={editingChassis}
-          projectId={project.id}
+        <ChassisForm chassis={editingChassis} projectId={project.id}
           onClose={() => { setShowChassisForm(false); setEditingChassis(null); }}
-          onSave={()  => { setShowChassisForm(false); setEditingChassis(null); }}
-        />
+          onSave={()  => { setShowChassisForm(false); setEditingChassis(null); }} />
       )}
       {showTypeManager  && <ChassisTypeManager onClose={() => setShowTypeManager(false)} />}
-      {printingChassis  && (
-        <LabelPrint
-          chassis={printingChassis}
-          project={project}
-          chassisLabels={chassisLabels}
-          onClose={() => setPrintingChassis(null)}
-        />
-      )}
-      {deliveryModal && (
-        <DeliveryDateModal
-          defaultDate={deliveryModal.currentDate}
-          onConfirm={handleDeliveryConfirm}
-          onCancel={() => setDeliveryModal(null)}
-          t={t}
-        />
-      )}
+      {printingChassis  && <LabelPrint chassis={printingChassis} project={project} chassisLabels={chassisLabels} onClose={() => setPrintingChassis(null)} />}
+      {deliveryModal    && <DeliveryDateModal defaultDate={deliveryModal.currentDate} onConfirm={handleDeliveryConfirm} onCancel={() => setDeliveryModal(null)} t={t} />}
     </div>
   );
 }

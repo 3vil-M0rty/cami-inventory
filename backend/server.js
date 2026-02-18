@@ -57,6 +57,7 @@ const chassisTypeSchema = new mongoose.Schema({
 }, { timestamps: true });
 const ChassisType = mongoose.model('ChassisType', chassisTypeSchema);
 
+// Template-level component definition (dimensions, role, repere)
 const componentSchema = new mongoose.Schema({
   role:    { type: String, enum: ['dormant', 'vantail'], required: true },
   repere:  { type: String, default: '' },
@@ -66,14 +67,29 @@ const componentSchema = new mongoose.Schema({
 }, { _id: true });
 
 /**
- * UNIT schema — one record per physical chassis unit
- * When a chassis has quantity=3, we store 3 unit documents inside chassis.units[]
+ * Per-unit component state override.
+ * compIndex matches the index in chassis.components[].
+ * Only etat is tracked per-unit (dimensions live on the template).
+ */
+const unitComponentSchema = new mongoose.Schema({
+  compIndex:    { type: Number, required: true },
+  etat:         { type: String, enum: ['non_entame', 'en_cours', 'fabrique', 'livre'], default: 'non_entame' },
+  deliveryDate: { type: Date, default: null }
+}, { _id: false });
+
+/**
+ * UNIT schema — one record per physical chassis unit.
+ * When a chassis has quantity=3, we store 3 unit documents inside chassis.units[].
+ * For composite chassis, componentStates[] tracks each component's état independently.
+ * The unit's own etat is DERIVED from its componentStates (computed, not stored directly
+ * for composite chassis — but we store it for non-composite to keep the same API shape).
  */
 const unitSchema = new mongoose.Schema({
-  unitIndex:    { type: Number, required: true },         // 0-based index within parent chassis
-  etat:         { type: String, enum: ['non_entame', 'en_cours', 'fabrique', 'livre'], default: 'non_entame' },
-  deliveryDate: { type: Date, default: null },            // set when etat → 'livre'
-  notes:        { type: String, default: '' }
+  unitIndex:       { type: Number, required: true },
+  etat:            { type: String, enum: ['non_entame', 'en_cours', 'fabrique', 'livre'], default: 'non_entame' },
+  deliveryDate:    { type: Date, default: null },
+  notes:           { type: String, default: '' },
+  componentStates: [unitComponentSchema]   // only meaningful for composite chassis
 }, { _id: true });
 
 /**
@@ -130,16 +146,21 @@ const Project = mongoose.model('Project', projectSchema);
 function computeProjectStatus(chassis) {
   if (!chassis || chassis.length === 0) return 'en_cours';
 
-  // Collect all unit états
   const allEtats = [];
   for (const ch of chassis) {
-    const units = ch.units || [];
-    const qty   = ch.quantity || 1;
+    const units     = ch.units || [];
+    const qty       = ch.quantity || 1;
+    const numComps  = (ch.components || []).length;
+    const composite = numComps > 0;
+
     if (units.length === 0) {
-      // Fallback: no units stored yet — treat as qty × non_entame
       for (let i = 0; i < qty; i++) allEtats.push('non_entame');
     } else {
-      for (const u of units) allEtats.push(u.etat || 'non_entame');
+      for (const u of units) {
+        // For composite units, derive etat from component states
+        const etat = composite ? deriveCompositeUnitEtat(u, numComps) : (u.etat || 'non_entame');
+        allEtats.push(etat);
+      }
     }
   }
 
@@ -150,16 +171,62 @@ function computeProjectStatus(chassis) {
 }
 
 /**
- * Ensure chassis.units array matches chassis.quantity
- * Adds missing units with default state, removes extras
+ * For a composite chassis unit, derive its overall etat from its component states.
+ * Rules (same as project status but scoped to one unit):
+ *   all livre    → livre
+ *   all fabrique|livre → fabrique
+ *   otherwise   → en_cours (if any started) or non_entame
+ */
+function deriveCompositeUnitEtat(unit, numComponents) {
+  if (!numComponents) return unit.etat || 'non_entame';
+  const states = [];
+  for (let i = 0; i < numComponents; i++) {
+    const cs = (unit.componentStates || []).find(c => c.compIndex === i);
+    states.push(cs ? cs.etat : 'non_entame');
+  }
+  if (states.every(e => e === 'livre'))                        return 'livre';
+  if (states.every(e => e === 'fabrique' || e === 'livre'))    return 'fabrique';
+  if (states.some(e => e !== 'non_entame'))                    return 'en_cours';
+  return 'non_entame';
+}
+
+/**
+ * Ensure chassis.units array matches chassis.quantity.
+ * For composite chassis, also ensures componentStates is initialized.
  */
 function syncUnits(chassis) {
-  const qty = chassis.quantity || 1;
-  const existing = chassis.units || [];
-  const synced = [];
+  const qty          = chassis.quantity || 1;
+  const numComps     = (chassis.components || []).length;
+  const isComposite  = numComps > 0;
+  const existing     = chassis.units || [];
+  const synced       = [];
+
   for (let i = 0; i < qty; i++) {
     const found = existing.find(u => u.unitIndex === i);
-    synced.push(found || { unitIndex: i, etat: 'non_entame', deliveryDate: null, notes: '' });
+    if (found) {
+      // Ensure componentStates array is initialised for composite units
+      if (isComposite && (!found.componentStates || found.componentStates.length < numComps)) {
+        const existingStates = found.componentStates || [];
+        found.componentStates = Array.from({ length: numComps }, (_, ci) => {
+          const ex = existingStates.find(cs => cs.compIndex === ci);
+          return ex || { compIndex: ci, etat: 'non_entame', deliveryDate: null };
+        });
+        // Sync derived etat
+        found.etat = deriveCompositeUnitEtat(found, numComps);
+      }
+      synced.push(found);
+    } else {
+      const newUnit = {
+        unitIndex:       i,
+        etat:            'non_entame',
+        deliveryDate:    null,
+        notes:           '',
+        componentStates: isComposite
+          ? Array.from({ length: numComps }, (_, ci) => ({ compIndex: ci, etat: 'non_entame', deliveryDate: null }))
+          : []
+      };
+      synced.push(newUnit);
+    }
   }
   chassis.units = synced;
 }
@@ -458,8 +525,7 @@ app.put('/api/projects/:id/chassis/:cid', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// PATCH — update a specific UNIT's état and/or delivery date
-// This is the core endpoint for state changes
+// PATCH — update a specific UNIT's état (non-composite only) or notes/deliveryDate
 app.patch('/api/projects/:id/chassis/:cid/units/:unitIndex', async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
@@ -470,20 +536,18 @@ app.patch('/api/projects/:id/chassis/:cid/units/:unitIndex', async (req, res) =>
 
     const idx  = parseInt(req.params.unitIndex, 10);
     let   unit = chassis.units.find(u => u.unitIndex === idx);
+    const isComposite = (chassis.components || []).length > 0;
 
     if (!unit) {
-      // Create unit if missing (migration from old data)
-      chassis.units.push({ unitIndex: idx, etat: 'non_entame', deliveryDate: null, notes: '' });
+      chassis.units.push({ unitIndex: idx, etat: 'non_entame', deliveryDate: null, notes: '', componentStates: [] });
       unit = chassis.units.find(u => u.unitIndex === idx);
     }
 
-    if (req.body.etat !== undefined) {
+    if (req.body.etat !== undefined && !isComposite) {
       unit.etat = req.body.etat;
-      // Auto-set delivery date when marked as 'livre'
       if (req.body.etat === 'livre') {
         unit.deliveryDate = req.body.deliveryDate ? new Date(req.body.deliveryDate) : new Date();
       } else {
-        // Clear delivery date if moving out of 'livre'
         unit.deliveryDate = null;
       }
     }
@@ -491,6 +555,60 @@ app.patch('/api/projects/:id/chassis/:cid/units/:unitIndex', async (req, res) =>
       unit.deliveryDate = req.body.deliveryDate ? new Date(req.body.deliveryDate) : null;
     }
     if (req.body.notes !== undefined) unit.notes = req.body.notes;
+
+    await project.save();
+    const saved = await populateAndReturn(project);
+    res.json(saved);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH — update a specific COMPONENT's état within a specific unit (composite chassis)
+app.patch('/api/projects/:id/chassis/:cid/units/:unitIndex/components/:compIndex', async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const chassis = project.chassis.id(req.params.cid);
+    if (!chassis) return res.status(404).json({ error: 'Chassis not found' });
+
+    const numComps = (chassis.components || []).length;
+    if (!numComps) return res.status(400).json({ error: 'Chassis is not composite' });
+
+    const unitIdx = parseInt(req.params.unitIndex, 10);
+    const compIdx = parseInt(req.params.compIndex, 10);
+    if (compIdx < 0 || compIdx >= numComps) return res.status(400).json({ error: 'Invalid component index' });
+
+    let unit = chassis.units.find(u => u.unitIndex === unitIdx);
+    if (!unit) {
+      chassis.units.push({
+        unitIndex: unitIdx, etat: 'non_entame', deliveryDate: null, notes: '',
+        componentStates: Array.from({ length: numComps }, (_, ci) => ({ compIndex: ci, etat: 'non_entame' }))
+      });
+      unit = chassis.units.find(u => u.unitIndex === unitIdx);
+    }
+    if (!unit.componentStates) unit.componentStates = [];
+
+    let cs = unit.componentStates.find(c => c.compIndex === compIdx);
+    if (!cs) {
+      unit.componentStates.push({ compIndex: compIdx, etat: 'non_entame', deliveryDate: null });
+      cs = unit.componentStates.find(c => c.compIndex === compIdx);
+    }
+
+    if (req.body.etat !== undefined) {
+      cs.etat = req.body.etat;
+      cs.deliveryDate = req.body.etat === 'livre'
+        ? (req.body.deliveryDate ? new Date(req.body.deliveryDate) : new Date())
+        : null;
+    }
+
+    // Derive unit etat from all component states
+    unit.etat = deriveCompositeUnitEtat(unit, numComps);
+    if (unit.etat === 'livre') {
+      const dates = (unit.componentStates || []).map(c => c.deliveryDate).filter(Boolean);
+      unit.deliveryDate = dates.length ? new Date(Math.max(...dates.map(d => new Date(d)))) : new Date();
+    } else {
+      unit.deliveryDate = null;
+    }
 
     await project.save();
     const saved = await populateAndReturn(project);

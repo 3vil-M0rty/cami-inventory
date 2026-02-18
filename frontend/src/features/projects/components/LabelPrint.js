@@ -85,7 +85,7 @@ ${pages}
     window.print();
     setTimeout(function(){ window.close(); }, 1000);
   };
-<\/script>
+</script>
 </body>
 </html>`;
 }

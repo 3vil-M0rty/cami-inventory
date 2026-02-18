@@ -76,12 +76,24 @@ export const ProjectProvider = ({ children }) => {
   };
 
   /**
-   * Update a single unit's état and optional deliveryDate.
+   * Update a single unit's état and optional deliveryDate (non-composite chassis).
    * Server auto-computes new project status and returns full project.
    */
   const updateUnit = async (projectId, chassisId, unitIndex, data) => {
     try {
       const updated = await projectService.updateUnit(projectId, chassisId, unitIndex, data);
+      setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
+      return { success: true, project: updated };
+    } catch (err) { return { success: false, error: err.message }; }
+  };
+
+  /**
+   * Update a single component's état within a specific unit (composite chassis).
+   * The unit's overall état is automatically derived from all component states on the server.
+   */
+  const updateComponent = async (projectId, chassisId, unitIndex, compIndex, data) => {
+    try {
+      const updated = await projectService.updateComponent(projectId, chassisId, unitIndex, compIndex, data);
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
       return { success: true, project: updated };
     } catch (err) { return { success: false, error: err.message }; }
@@ -115,7 +127,7 @@ export const ProjectProvider = ({ children }) => {
       projects, loading, error, loadProjects, refreshProject,
       addProject, updateProject, deleteProject,
       addChassis, updateChassis, deleteChassis,
-      updateUnit,
+      updateUnit, updateComponent,
       getBonsLivraison, getBonLivraison,
       addUsedBar, removeUsedBar,
       getProjectById
