@@ -60,7 +60,7 @@ export function buildLabelHTML(chassisList, project, chassisLabels, language) {
     print-color-adjust: exact;
   }
   .page  { width: 9.5cm; height: 5.5cm; overflow: hidden; }
-  .label { width: 100%; height: 100%; padding: 4mm; display: flex; flex-direction: column; gap: 2mm; }
+  .label { width: 100%; height: 100%; padding: 0mm; display: flex; flex-direction: column; gap: 0mm; }
   .lh    { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #1a1a1a; padding-bottom: 1.5mm; margin-bottom: 1mm; }
   .brand { font-size: 9pt; font-weight: 900; color: #1a1a1a; letter-spacing: 0.05em; text-transform: uppercase; }
   .swatch { width: 10mm; height: 6mm; border-radius: 2px; border: 1px solid #ccc; background-color: ${ralHex}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -69,8 +69,8 @@ export function buildLabelHTML(chassisList, project, chassisLabels, language) {
   .k     { font-size: 6pt; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; margin-right: 2px; }
   .v     { font-size: 7pt; font-weight: 500; color: #1a1a1a; }
   .div   { border-top: 1px dashed #ccc; margin: 1mm 0; }
-  .grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm 8mm; flex: 1; }
-  .cell  { display: flex; flex-direction: column; gap: 0.5mm; }
+  .grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 0mm 1mm; flex: 1; }
+  .cell  { display: flex; flex-direction: column; gap: 0.0mm; }
   .full  { grid-column: 1 / -1; }
   .repere { font-size: 18pt; font-weight: 900; color: #1a1a1a; letter-spacing: -0.02em; line-height: 1; }
   .dim   { font-size: 10pt; font-weight: 700; color: #1a1a1a; }
