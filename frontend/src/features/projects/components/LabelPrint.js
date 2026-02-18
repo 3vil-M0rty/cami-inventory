@@ -58,7 +58,7 @@ function LabelPrint({
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       width: 8.7cm;
-      height: 4.7cm;
+      height: 4.0cm;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
       background: #fff;
       overflow: hidden;
@@ -206,7 +206,7 @@ function LabelPrint({
 </body>
 </html>`;
 
-    const printWindow = window.open('', '_blank', 'width=400,height=300');
+    const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(html);
       printWindow.document.close();

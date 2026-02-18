@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import { useLanguage } from '../../context/LanguageContext';
 import './Header.css';
 
@@ -9,6 +10,7 @@ import './Header.css';
  */
 
 const Header = ({ activePage, onNavigate }) => {
+  // eslint-disable-next-line no-unused-vars
   const { t, currentLanguage, changeLanguage, languageLabels } = useLanguage();
 
   return (

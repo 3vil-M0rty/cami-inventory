@@ -5,7 +5,7 @@ import ChassisForm from './ChassisForm';
 import ChassisTypeManager from './ChassisTypeManager';
 import UsedBarsPanel from './UsedBarsPanel';
 import LabelPrint from './LabelPrint';
-import { exportProjectPDF } from '../utils/pdfExport';
+import { exportProjectPDF, exportBarsPDF } from '../utils/pdfExport';
 import { fetchChassisTypes, buildChassisLabels, CHASSIS_LABELS as STATIC_LABELS } from './ChassisTypesConfig';
 import './ProjectDetail.css';
 
@@ -15,6 +15,111 @@ const ETAT_COLORS = {
   fabrique:   '#3b82f6',
   livre:      '#16a34a'
 };
+
+/**
+ * Print all chassis labels in one browser window, each on its own page.
+ */
+function printAllLabels(chassisList, project, chassisLabels, language, t) {
+  const ralHex = project.ralColor || '#cccccc';
+  const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
+
+  const labelHtml = (chassis) => {
+    const typeName = chassisLabels[chassis.type]?.[language] || chassis.type;
+    const etatName = t(`etat_${chassis.etat}`) || chassis.etat;
+    const rowNum = chassis._printRowIndex > 0 ? ` #${chassis._printRowIndex + 1}` : '';
+    return `
+  <div class="label">
+    <div class="label__header">
+      <span class="label__brand">CAMI ALUMINIUM</span>
+      <span class="label__ral-swatch" style="background-color:${ralHex}"></span>
+    </div>
+    <div class="label__row">
+      <span class="label__field"><span class="label__key">Projet</span><span class="label__val">${project.name}</span></span>
+      <span class="label__field"><span class="label__key">Réf.</span><span class="label__val">${project.reference}</span></span>
+    </div>
+    <div class="label__row">
+      <span class="label__field"><span class="label__key">RAL</span><span class="label__val">${project.ralCode}</span></span>
+      <span class="label__field"><span class="label__key">Date</span><span class="label__val">${dateStr}</span></span>
+    </div>
+    <div class="label__divider"></div>
+    <div class="label__grid">
+      <div class="label__cell">
+        <span class="label__key">Repère</span>
+        <span class="label__repere-val">${chassis.repere}${rowNum}</span>
+      </div>
+      <div class="label__cell">
+        <span class="label__key">Type</span>
+        <span class="label__val">${typeName}</span>
+      </div>
+      <div class="label__cell">
+        <span class="label__key">Dim.</span>
+        <span class="label__val">${chassis.largeur} × ${chassis.hauteur} mm</span>
+      </div>
+      <div class="label__cell">
+        <span class="label__key">Qté</span>
+        <span class="label__val">1</span>
+      </div>
+      <div class="label__cell label__full">
+        <span class="label__key">État</span>
+        <span class="label__val">${etatName}</span>
+      </div>
+    </div>
+  </div>`;
+  };
+
+  const allLabels = chassisList.map((ch, i) =>
+    `<div class="page">${labelHtml(ch)}</div>`
+  ).join('\n');
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>CAMI — ${project.name} — Étiquettes</title>
+  <style>
+    @page { size: 9.5cm 5.5cm; margin: 0.4cm; }
+    @media print {
+      html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .page { page-break-after: always; }
+      .page:last-child { page-break-after: avoid; }
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #fff; }
+    .page { width: 8.7cm; height: 4.7cm; overflow: hidden; }
+    .label { width: 100%; height: 100%; padding: 3mm; display: flex; flex-direction: column; gap: 1.5mm; }
+    .label__header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #1a1a1a; padding-bottom: 1.5mm; margin-bottom: 1mm; }
+    .label__brand { font-size: 9pt; font-weight: 900; color: #1a1a1a; letter-spacing: 0.05em; text-transform: uppercase; }
+    .label__ral-swatch { width: 10mm; height: 6mm; border-radius: 2px; border: 1px solid #ccc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .label__row { display: flex; gap: 8mm; }
+    .label__field { display: flex; gap: 2px; align-items: baseline; }
+    .label__key { font-size: 6pt; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+    .label__val { font-size: 7pt; font-weight: 500; color: #1a1a1a; }
+    .label__divider { border-top: 1px dashed #ccc; margin: 1mm 0; }
+    .label__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5mm 8mm; flex: 1; }
+    .label__cell { display: flex; flex-direction: column; gap: 0.5mm; }
+    .label__repere-val { font-size: 14pt; font-weight: 900; color: #1a1a1a; letter-spacing: -0.02em; line-height: 1; }
+    .label__full { grid-column: 1 / -1; }
+  </style>
+</head>
+<body>
+${allLabels}
+<script>
+  window.onload = function() {
+    document.title = '';
+    window.focus();
+    window.print();
+    setTimeout(function() { window.close(); }, 1000);
+  };
+</script>
+</body>
+</html>`;
+
+  const printWindow = window.open('', '_blank');
+  if (printWindow) {
+    printWindow.document.write(html);
+    printWindow.document.close();
+  }
+}
 
 function ProjectDetail({ project, onBack }) {
   const { deleteChassis } = useProjects();
@@ -26,8 +131,6 @@ function ProjectDetail({ project, onBack }) {
   const [editingChassis, setEditingChassis]   = useState(null);
   const [printingChassis, setPrintingChassis] = useState(null);
   const [selectedIds, setSelectedIds]         = useState(new Set());
-  const [batchPrinting, setBatchPrinting]     = useState(false);
-  const [batchIndex, setBatchIndex]           = useState(0);
   const [chassisLabels, setChassisLabels]     = useState(STATIC_LABELS);
 
   const language = currentLanguage;
@@ -46,8 +149,6 @@ function ProjectDetail({ project, onBack }) {
     await deleteChassis(project.id, chassisId);
   };
 
-  const handlePDF = () => exportProjectPDF(project, language, chassisLabels, t);
-
   const allIds = (project.chassis || []).map(ch => ch._id || ch.id);
 
   const toggleSelect = (id) => {
@@ -64,40 +165,31 @@ function ProjectDetail({ project, onBack }) {
 
   const selectedChassisList = (project.chassis || []).filter(ch => selectedIds.has(ch._id || ch.id));
 
-  const startBatchPrint = () => {
-    if (!selectedChassisList.length) return;
-    setBatchIndex(0);
-    setBatchPrinting(true);
-  };
+  // Expand selected chassis by their quantity (each unit gets its own ticket)
+  const expandedSelectedChassis = selectedChassisList.flatMap(ch => {
+    const qty = ch.quantity ?? 1;
+    return Array.from({ length: qty }, (_, i) => ({ ...ch, _printRowIndex: i, _printQty: 1 }));
+  });
 
-  const handleBatchNext = () => {
-    if (batchIndex + 1 < selectedChassisList.length) {
-      setBatchIndex(i => i + 1);
-    } else {
-      setBatchPrinting(false);
-      setBatchIndex(0);
-    }
+  const startBatchPrint = () => {
+    if (!expandedSelectedChassis.length) return;
+    // Print all selected chassis tickets in one window (each on its own page)
+    printAllLabels(expandedSelectedChassis, project, chassisLabels, language, t);
   };
 
   /**
    * Expand chassis into display rows.
-   * - Simple chassis: one row per chassis entry (qty shown as number)
-   * - Composite chassis: repeat the chassis row qty times, then show components ONCE per row
-   *   so if qty=3 and 2 vantaux → 3 parent rows, each with sub-rows for dormant+V1+V2
+   * Both simple and composite chassis: repeat N times (qty), each row shows qty=1 and its own action buttons.
    */
   const expandedRows = (project.chassis || []).flatMap(ch => {
     const qty = ch.quantity ?? 1;
     const isComposite = ch.components?.length > 0;
     const chId = ch._id || ch.id;
 
-    if (!isComposite) {
-      // Simple: single row with qty
-      return [{ ch, chId, rowIndex: 0, qty, showQty: qty, isFirst: true }];
-    }
-
-    // Composite: expand into qty rows, each showing "1" unit and the sub-components
+    // Expand into qty rows, each showing 1 unit
     return Array.from({ length: qty }, (_, i) => ({
-      ch, chId, rowIndex: i, qty: 1, showQty: 1, isFirst: i === 0
+      ch, chId, rowIndex: i, qty: 1, showQty: 1, isFirst: i === 0,
+      isComposite
     }));
   });
 
@@ -121,7 +213,8 @@ function ProjectDetail({ project, onBack }) {
           </div>
         </div>
         <div className="project-detail__header-actions">
-          <button className="excel-btn" onClick={handlePDF}>{t('exportPDF')}</button>
+          <button className="excel-btn" onClick={() => exportProjectPDF(project, language, chassisLabels, t)}>{t('exportPDF')} — Châssis</button>
+          <button className="excel-btn" onClick={() => exportBarsPDF(project, language, t)} style={{ marginLeft: 8 }}>{t('exportPDF')} — Barres</button>
         </div>
       </div>
 
@@ -182,7 +275,7 @@ function ProjectDetail({ project, onBack }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {expandedRows.map(({ ch, chId, rowIndex, showQty, isFirst }) => {
+                  {expandedRows.map(({ ch, chId, rowIndex, showQty, isFirst, isComposite }) => {
                     const isSelected = selectedIds.has(chId);
                     const rowKey = `${chId}-${rowIndex}`;
                     return (
@@ -211,17 +304,19 @@ function ProjectDetail({ project, onBack }) {
                             </span>
                           </td>
                           <td>
-                            {isFirst && (
-                              <div className="chassis-row__actions">
+                            <div className="chassis-row__actions">
+                              {isFirst && (
                                 <button className="edit-btn" onClick={() => { setEditingChassis(ch); setShowChassisForm(true); }}>{t('edit')}</button>
-                                <button className="edit-btn" title={t('printLabel')} onClick={() => setPrintingChassis(ch)}>🖨</button>
+                              )}
+                              <button className="edit-btn" title={t('printLabel')} onClick={() => setPrintingChassis({ ...ch, _printRowIndex: rowIndex })}>🖨</button>
+                              {isFirst && (
                                 <button className="delete-btn" onClick={() => handleDeleteChassis(chId)}>{t('delete')}</button>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </td>
                         </tr>
-                        {/* Show sub-components for each expanded row */}
-                        {ch.components?.length > 0 && ch.components.map((comp, idx) => (
+                        {/* Show sub-components for composite expanded rows */}
+                        {isComposite && ch.components?.map((comp, idx) => (
                           <tr key={`${rowKey}-comp-${idx}`} className="component-row">
                             <td></td>
                             <td className="component-indent">↳ {comp.repere || `${comp.role} ${idx + 1}`}</td>
@@ -265,19 +360,6 @@ function ProjectDetail({ project, onBack }) {
 
       {printingChassis && (
         <LabelPrint chassis={printingChassis} project={project} chassisLabels={chassisLabels} onClose={() => setPrintingChassis(null)} />
-      )}
-
-      {batchPrinting && selectedChassisList[batchIndex] && (
-        <LabelPrint
-          chassis={selectedChassisList[batchIndex]}
-          project={project}
-          chassisLabels={chassisLabels}
-          batchMode={true}
-          batchCurrent={batchIndex + 1}
-          batchTotal={selectedChassisList.length}
-          onNext={handleBatchNext}
-          onClose={() => { setBatchPrinting(false); setBatchIndex(0); }}
-        />
       )}
     </div>
   );

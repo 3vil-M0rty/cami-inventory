@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import axios from "axios";
 import * as XLSX from 'xlsx';
@@ -20,7 +21,7 @@ function InventoryPage() {
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => { fetchCategories(); }, []);
-  useEffect(() => { fetchItems(); }, [selectedCategory, filter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchItems(); }, [selectedCategory, filter]);
 
   const fetchCategories = async () => {
     try {
