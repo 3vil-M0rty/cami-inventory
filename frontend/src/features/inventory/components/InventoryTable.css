@@ -388,3 +388,62 @@
     padding: 2px 6px;
   }
 }
+
+/* Take-Out Modal */
+.take-out-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.take-out-confirm__article {
+  margin: 0;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.take-out-confirm__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.take-out-confirm__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #555;
+}
+
+.take-out-confirm__input {
+  padding: 8px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100px;
+}
+
+.take-out-confirm__input:focus {
+  border-color: #e57373;
+  box-shadow: 0 0 0 3px rgba(229, 115, 115, 0.15);
+}
+
+.take-out-confirm__textarea {
+  padding: 8px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  resize: vertical;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.take-out-confirm__textarea:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}

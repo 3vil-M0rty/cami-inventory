@@ -204,3 +204,145 @@
   .filter-buttons, .action-buttons { width: 100%; }
   .items-grid { grid-template-columns: 1fr; }
 }
+/* ───── Take-Out Modal ───── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-box {
+  background: #fff;
+  border-radius: 12px;
+  width: 420px;
+  max-width: 95vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #888;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.modal-close-btn:hover { color: #333; }
+
+.modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.take-out-article {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.take-out-available {
+  margin-left: 6px;
+  color: #888;
+  font-size: 0.88rem;
+}
+
+.take-out-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.take-out-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #555;
+}
+
+.take-out-input {
+  padding: 9px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  font-size: 1rem;
+  width: 110px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.take-out-input:focus {
+  border-color: #e57373;
+  box-shadow: 0 0 0 3px rgba(229, 115, 115, 0.15);
+}
+
+.take-out-textarea {
+  padding: 9px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.take-out-textarea:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.take-out-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.cancel-btn {
+  padding: 9px 18px;
+  background: #f3f4f6;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #555;
+  transition: background 0.2s;
+}
+
+.cancel-btn:hover { background: #e5e7eb; }
+
+.confirm-takeout-btn {
+  padding: 9px 18px;
+  background: #ef4444;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.confirm-takeout-btn:hover:not(:disabled) { background: #dc2626; }
+.confirm-takeout-btn:disabled { opacity: 0.45; cursor: not-allowed; }

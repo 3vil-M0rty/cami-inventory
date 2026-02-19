@@ -102,14 +102,14 @@ export const updateItem = async (id, itemData) => {
  * @param {string} id - Item ID
  * @param {number} amount - Amount to add (positive) or subtract (negative)
  */
-export const updateQuantity = async (id, amount) => {
+export const updateQuantity = async (id, amount, note = '') => {
   try {
     const response = await fetch(`${API_BASE_URL}/inventory/${id}/quantity`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ amount })
+      body: JSON.stringify({ amount, note })
     });
     
     if (!response.ok) {

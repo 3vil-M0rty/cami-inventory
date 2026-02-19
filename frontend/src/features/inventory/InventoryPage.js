@@ -19,6 +19,9 @@ function InventoryPage() {
   const [editingItem, setEditingItem] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [takeOutModal, setTakeOutModal] = useState(null); // { item }
+  const [takeOutQty, setTakeOutQty] = useState(1);
+  const [takeOutNote, setTakeOutNote] = useState('');
 
   useEffect(() => { fetchCategories(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { fetchItems(); }, [selectedCategory, filter]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -112,14 +115,36 @@ function InventoryPage() {
     return { color: '#16a34a', text: t.inStock, className: 'status-ok' };
   };
 
-  const updateQuantity = async (itemId, amount) => {
+  const updateQuantity = async (itemId, amount, note = '') => {
     try {
-      const response = await axios.patch(`${API_URL}/inventory/${itemId}/quantity`, { amount });
+      const response = await axios.patch(`${API_URL}/inventory/${itemId}/quantity`, { amount, note });
       setItems(items.map(item => item.id === itemId ? response.data : item));
     } catch (error) {
       console.error('Error updating quantity:', error);
       alert(t.errorUpdating || 'Erreur lors de la mise à jour');
     }
+  };
+
+  const handleMinusClick = (item) => {
+    setTakeOutModal({ item });
+    setTakeOutQty(1);
+    setTakeOutNote('');
+  };
+
+  const handleTakeOutConfirm = async () => {
+    if (!takeOutModal) return;
+    const qty = parseInt(takeOutQty, 10);
+    if (!qty || qty <= 0) return;
+    await updateQuantity(takeOutModal.item.id, -qty, takeOutNote);
+    setTakeOutModal(null);
+    setTakeOutQty(1);
+    setTakeOutNote('');
+  };
+
+  const handleTakeOutCancel = () => {
+    setTakeOutModal(null);
+    setTakeOutQty(1);
+    setTakeOutNote('');
   };
 
   const deleteItem = async (itemId) => {
@@ -252,6 +277,7 @@ function InventoryPage() {
               item={item}
               language={language}
               onUpdateQuantity={updateQuantity}
+                  onMinusClick={handleMinusClick}
               onEdit={(item) => setEditingItem(item)}
               onDelete={deleteItem}
               getStockStatus={getStockStatus}
@@ -282,7 +308,7 @@ function InventoryPage() {
   );
 }
 
-function ItemCard({ item, language, onUpdateQuantity, onEdit, onDelete, getStockStatus, t }) {
+function ItemCard({ item, language, onUpdateQuantity, onMinusClick, onEdit, onDelete, getStockStatus, t }) {
   const status = getStockStatus(item);
   return (
     <div className={`item-card ${status.className}`}>
@@ -318,7 +344,7 @@ function ItemCard({ item, language, onUpdateQuantity, onEdit, onDelete, getStock
           {status.text}
         </div>
         <div className="quantity-controls">
-          <button className="qty-btn minus" onClick={() => onUpdateQuantity(item.id, -1)} disabled={item.quantity === 0}>−</button>
+          <button className="qty-btn minus" onClick={() => onMinusClick(item)} disabled={item.quantity === 0}>−</button>
           <button className="qty-btn plus" onClick={() => onUpdateQuantity(item.id, 1)}>+</button>
         </div>
         <div className="item-actions">

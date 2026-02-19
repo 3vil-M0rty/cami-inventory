@@ -71,9 +71,9 @@ export const InventoryProvider = ({ children }) => {
    * Update quantity only (NEW FEATURE!)
    * Faster than full update - only changes quantity field
    */
-  const updateQuantity = async (id, amount) => {
+  const updateQuantity = async (id, amount, note = '') => {
     try {
-      const updatedItem = await inventoryService.updateQuantity(id, amount);
+      const updatedItem = await inventoryService.updateQuantity(id, amount, note);
       setItems(prevItems =>
         prevItems.map(item => item.id === id ? updatedItem : item)
       );

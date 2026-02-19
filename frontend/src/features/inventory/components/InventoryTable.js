@@ -15,6 +15,9 @@ import './InventoryTable.css';
 const InventoryTable = ({ items, onEdit, onDelete, onQuantityUpdate }) => {
   const { t, currentLanguage } = useLanguage();
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [takeOutModal, setTakeOutModal] = useState(null); // { item }
+  const [takeOutQty, setTakeOutQty] = useState(1);
+  const [takeOutNote, setTakeOutNote] = useState('');
 
   const handleDeleteClick = (item) => {
     setDeleteConfirm(item);
@@ -31,8 +34,26 @@ const InventoryTable = ({ items, onEdit, onDelete, onQuantityUpdate }) => {
     setDeleteConfirm(null);
   };
 
-  const handleQuantityChange = async (id, amount) => {
-    await onQuantityUpdate(id, amount);
+  const handleMinusClick = (item) => {
+    setTakeOutModal({ item });
+    setTakeOutQty(1);
+    setTakeOutNote('');
+  };
+
+  const handleTakeOutConfirm = async () => {
+    if (!takeOutModal) return;
+    const qty = parseInt(takeOutQty, 10);
+    if (!qty || qty <= 0) return;
+    await onQuantityUpdate(takeOutModal.item.id, -qty, takeOutNote);
+    setTakeOutModal(null);
+    setTakeOutQty(1);
+    setTakeOutNote('');
+  };
+
+  const handleTakeOutCancel = () => {
+    setTakeOutModal(null);
+    setTakeOutQty(1);
+    setTakeOutNote('');
   };
 
   const getStatusClass = (item) => {
@@ -110,8 +131,8 @@ const InventoryTable = ({ items, onEdit, onDelete, onQuantityUpdate }) => {
                   <div className="quantity-controls">
                     <button 
                       className="quantity-btn quantity-btn--minus"
-                      onClick={() => handleQuantityChange(item.id, -1)}
-                      title="Decrease by 1"
+                      onClick={() => handleMinusClick(item)}
+                      title="Decrease quantity"
                       disabled={item.quantity === 0}
                     >
                       −
@@ -123,7 +144,7 @@ const InventoryTable = ({ items, onEdit, onDelete, onQuantityUpdate }) => {
                     </span>
                     <button 
                       className="quantity-btn quantity-btn--plus"
-                      onClick={() => handleQuantityChange(item.id, 1)}
+                      onClick={() => onQuantityUpdate(item.id, 1, '')}
                       title="Increase by 1"
                     >
                       +
@@ -193,6 +214,59 @@ const InventoryTable = ({ items, onEdit, onDelete, onQuantityUpdate }) => {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Take-Out Modal */}
+      <Modal
+        isOpen={takeOutModal !== null}
+        onClose={handleTakeOutCancel}
+        title="Take Out Stock"
+        size="small"
+      >
+        {takeOutModal && (
+          <div className="take-out-confirm">
+            <p className="take-out-confirm__article">
+              <strong>{takeOutModal.item.designation[currentLanguage]}</strong>
+              <span style={{ marginLeft: 8, color: '#888' }}>
+                (available: {takeOutModal.item.quantity})
+              </span>
+            </p>
+            <div className="take-out-confirm__field">
+              <label className="take-out-confirm__label">Quantity to remove</label>
+              <input
+                type="number"
+                className="take-out-confirm__input"
+                min={1}
+                max={takeOutModal.item.quantity}
+                value={takeOutQty}
+                onChange={e => setTakeOutQty(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="take-out-confirm__field">
+              <label className="take-out-confirm__label">Reason / Note</label>
+              <textarea
+                className="take-out-confirm__textarea"
+                placeholder="e.g. Used for maintenance on machine #3"
+                value={takeOutNote}
+                onChange={e => setTakeOutNote(e.target.value)}
+                rows={3}
+              />
+            </div>
+            <div className="delete-confirm__actions">
+              <Button variant="secondary" onClick={handleTakeOutCancel}>
+                {t('cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleTakeOutConfirm}
+                disabled={!takeOutQty || parseInt(takeOutQty) <= 0 || parseInt(takeOutQty) > takeOutModal.item.quantity}
+              >
+                Confirm Take-Out
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   );
