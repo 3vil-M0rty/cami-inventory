@@ -304,6 +304,53 @@ function InventoryPage() {
           onSave={() => { setShowAddItem(false); setEditingItem(null); fetchItems(); }}
         />
       )}
+
+      {/* Take-Out Modal */}
+      {takeOutModal && (
+        <div className="modal-overlay" onClick={handleTakeOutCancel}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth: 420, padding: 24, display: 'flex', flexDirection: 'column', gap: 16}}>
+            <h2 style={{margin: 0, fontSize: '1.1rem'}}>Take Out Stock</h2>
+            <p style={{margin: 0}}>
+              <strong>{takeOutModal.item.designation[language]}</strong>
+              <span style={{marginLeft: 8, color: '#888', fontSize: '0.88rem'}}>(available: {takeOutModal.item.quantity})</span>
+            </p>
+            <div className="form-group">
+              <label>Quantity to remove</label>
+              <input
+                type="number"
+                min={1}
+                max={takeOutModal.item.quantity}
+                value={takeOutQty}
+                onChange={e => setTakeOutQty(e.target.value)}
+                autoFocus
+                style={{width: 100}}
+              />
+            </div>
+            <div className="form-group">
+              <label>Reason / Note</label>
+              <textarea
+                placeholder="e.g. Used for maintenance on machine #3"
+                value={takeOutNote}
+                onChange={e => setTakeOutNote(e.target.value)}
+                rows={3}
+                style={{width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d0d5dd', fontFamily: 'inherit', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box'}}
+              />
+            </div>
+            <div className="modal-actions">
+              <button type="button" onClick={handleTakeOutCancel}>Cancel</button>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleTakeOutConfirm}
+                disabled={!takeOutQty || parseInt(takeOutQty) <= 0 || parseInt(takeOutQty) > takeOutModal.item.quantity}
+                style={{background: '#ef4444'}}
+              >
+                Confirm Take-Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
