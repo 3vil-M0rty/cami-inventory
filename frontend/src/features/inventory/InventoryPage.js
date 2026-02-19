@@ -69,7 +69,8 @@ function InventoryPage() {
       warningStock: 'Alerte Stock', inStock: 'En Stock',
       deleteConfirmMessage: 'Êtes-vous sûr de vouloir supprimer cet article?',
       deleteCategoryConfirmMessage: 'Êtes-vous sûr de vouloir supprimer cette catégorie?',
-      errorUpdating: 'Erreur lors de la mise à jour', status: 'Statut'
+      errorUpdating: 'Erreur lors de la mise à jour', status: 'Statut',
+      takeOutTitle: 'Retirer du stock', takeOutAvailable: 'disponible', takeOutQtyLabel: 'Quantité à retirer', takeOutNoteLabel: 'Raison / Note', takeOutPlaceholder: 'ex: Utilisé pour la maintenance de la machine #3', takeOutConfirm: 'Confirmer le retrait', takeOutCancel: 'Annuler'
     },
     it: {
       title: 'Inventario Alluminio', allItems: 'Mostra tutto', lowStock: 'Solo scorte basse',
@@ -84,7 +85,8 @@ function InventoryPage() {
       warningStock: 'Avviso Stock', inStock: 'Disponibile',
       deleteConfirmMessage: 'Sei sicuro di voler eliminare questo articolo?',
       deleteCategoryConfirmMessage: 'Sei sicuro di voler eliminare questa categoria?',
-      errorUpdating: "Errore durante l'aggiornamento", status: 'Stato'
+      errorUpdating: "Errore durante l'aggiornamento", status: 'Stato',
+      takeOutTitle: 'Preleva dal magazzino', takeOutAvailable: 'disponibile', takeOutQtyLabel: 'Quantità da prelevare', takeOutNoteLabel: 'Motivo / Nota', takeOutPlaceholder: 'es: Usato per manutenzione macchina #3', takeOutConfirm: 'Conferma prelievo', takeOutCancel: 'Annulla'
     },
     en: {
       title: 'Aluminum Inventory', allItems: 'Show all', lowStock: 'Low stock only',
@@ -99,7 +101,8 @@ function InventoryPage() {
       warningStock: 'Warning Stock', inStock: 'In Stock',
       deleteConfirmMessage: 'Are you sure you want to delete this item?',
       deleteCategoryConfirmMessage: 'Are you sure you want to delete this category?',
-      errorUpdating: 'Error updating', status: 'Status'
+      errorUpdating: 'Error updating', status: 'Status',
+      takeOutTitle: 'Take out stock', takeOutAvailable: 'available', takeOutQtyLabel: 'Quantity to remove', takeOutNoteLabel: 'Reason / Note', takeOutPlaceholder: 'e.g. Used for maintenance on machine #3', takeOutConfirm: 'Confirm take-out', takeOutCancel: 'Cancel'
     }
   };
 
@@ -309,13 +312,13 @@ function InventoryPage() {
       {takeOutModal && (
         <div className="modal-overlay" onClick={handleTakeOutCancel}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth: 420, padding: 24, display: 'flex', flexDirection: 'column', gap: 16}}>
-            <h2 style={{margin: 0, fontSize: '1.1rem'}}>Take Out Stock</h2>
+            <h2 style={{margin: 0, fontSize: '1.1rem'}}>{t.takeOutTitle}</h2>
             <p style={{margin: 0}}>
               <strong>{takeOutModal.item.designation[language]}</strong>
-              <span style={{marginLeft: 8, color: '#888', fontSize: '0.88rem'}}>(available: {takeOutModal.item.quantity})</span>
+              <span style={{marginLeft: 8, color: '#888', fontSize: '0.88rem'}}>({t.takeOutAvailable}: {takeOutModal.item.quantity})</span>
             </p>
             <div className="form-group">
-              <label>Quantity to remove</label>
+              <label>{t.takeOutQtyLabel}</label>
               <input
                 type="number"
                 min={1}
@@ -327,9 +330,9 @@ function InventoryPage() {
               />
             </div>
             <div className="form-group">
-              <label>Reason / Note</label>
+              <label>{t.takeOutNoteLabel}</label>
               <textarea
-                placeholder="e.g. Used for maintenance on machine #3"
+                placeholder={t.takeOutPlaceholder}
                 value={takeOutNote}
                 onChange={e => setTakeOutNote(e.target.value)}
                 rows={3}
@@ -337,7 +340,7 @@ function InventoryPage() {
               />
             </div>
             <div className="modal-actions">
-              <button type="button" onClick={handleTakeOutCancel}>Cancel</button>
+              <button type="button" onClick={handleTakeOutCancel}>{t.takeOutCancel}</button>
               <button
                 type="button"
                 className="primary"
@@ -345,7 +348,7 @@ function InventoryPage() {
                 disabled={!takeOutQty || parseInt(takeOutQty) <= 0 || parseInt(takeOutQty) > takeOutModal.item.quantity}
                 style={{background: '#ef4444'}}
               >
-                Confirm Take-Out
+                {t.takeOutConfirm}
               </button>
             </div>
           </div>
