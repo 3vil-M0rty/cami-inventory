@@ -470,3 +470,119 @@
 }
 .bl-table tr:last-child td { border-bottom: none; }
 .bl-table tr:hover td { background: #fafafa; }
+
+/* ── BL Controls (company toggle + prestation) ─────────────────────────────── */
+.bl-controls {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+.bl-controls__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bl-controls__label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #888;
+}
+
+/* Company toggle */
+.bl-company-toggle {
+  display: flex;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1.5px solid #e0e0e0;
+}
+
+.bl-company-btn {
+  padding: 9px 18px;
+  border: none;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: #555;
+}
+.bl-company-btn:first-child {
+  border-right: 1px solid #e0e0e0;
+}
+.bl-company-btn:hover {
+  background: #f5f5f5;
+}
+
+.bl-company-btn--active.bl-company-btn--cami {
+  background: #1a1a1a;
+  color: #fff;
+}
+.bl-company-btn--active.bl-company-btn--gimav {
+  background: #1F4E79;
+  color: #fff;
+}
+
+/* Prestation select */
+.bl-prestation-select {
+  padding: 9px 14px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  background: #fff;
+  color: #1a1a1a;
+  cursor: pointer;
+  outline: none;
+  min-width: 280px;
+  transition: border-color 0.15s;
+}
+.bl-prestation-select:focus {
+  border-color: #1a1a1a;
+}
+
+/* Excel export button */
+.bl-excel-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.bl-excel-btn--cami {
+  background: #1a1a1a;
+  color: #fff;
+}
+.bl-excel-btn--cami:hover:not(:disabled) {
+  background: #333;
+}
+.bl-excel-btn--gimav {
+  background: #1F4E79;
+  color: #fff;
+}
+.bl-excel-btn--gimav:hover:not(:disabled) {
+  background: #2563a8;
+}
+.bl-excel-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
