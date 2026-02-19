@@ -4,36 +4,40 @@
  * Types are now stored in the database and managed via the platform UI.
  */
 
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+
 export const ETAT_OPTIONS = ['non_entame', 'en_cours', 'fabrique', 'livre'];
 
 export async function fetchChassisTypes() {
-  const res = await fetch('/api/chassis-types');
+  const res = await fetch(`${API_BASE}/chassis-types`);
   if (!res.ok) throw new Error('Failed to fetch chassis types');
   return res.json();
 }
 
 export async function createChassisType(data) {
-  const res = await fetch('/api/chassis-types', {
+  const res = await fetch(`${API_BASE}/chassis-types`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed to create'); }
-  return res.json();
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || 'Failed to create');
+  return body;
 }
 
 export async function updateChassisType(id, data) {
-  const res = await fetch(`/api/chassis-types/${id}`, {
+  const res = await fetch(`${API_BASE}/chassis-types/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Failed to update');
-  return res.json();
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || 'Failed to update');
+  return body;
 }
 
 export async function deleteChassisType(id) {
-  const res = await fetch(`/api/chassis-types/${id}`, { method: 'DELETE' });
+  const res = await fetch(`${API_BASE}/chassis-types/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete');
 }
 

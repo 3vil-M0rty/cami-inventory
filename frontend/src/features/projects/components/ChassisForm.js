@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useProjects } from '../../../context/ProjectContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { fetchChassisTypes, ETAT_OPTIONS, STATIC_CHASSIS_TYPES } from './ChassisTypesConfig';
@@ -90,16 +90,12 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
         <form onSubmit={handleSubmit} className="chassis-form">
           <div className="chassis-form__section">
             <label className="chassis-form__section-label">{t('chassisType')}</label>
-            <div className="chassis-type-grid">
-              {chassisTypes.map(ct => (
-                <button key={ct.value} type="button"
-                  className={`chassis-type-card ${formData.type===ct.value?'chassis-type-card--active':''} ${ct.composite?'chassis-type-card--composite':''}`}
-                  onClick={()=>handleTypeChange(ct.value)}>
-                  <span className="chassis-type-card__name">{getTypeLabel(ct)}</span>
-                  {ct.composite&&<span className="chassis-type-card__badge">{ct.vantaux}V</span>}
-                </button>
-              ))}
-            </div>
+            <ChassisTypeSearch
+              chassisTypes={chassisTypes}
+              value={formData.type}
+              lang={lang}
+              onChange={handleTypeChange}
+            />
           </div>
 
           <div className="chassis-form__section">
@@ -171,6 +167,82 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+
+// ── Inline search-and-select for chassis type ───────────────────────────────
+function ChassisTypeSearch({ chassisTypes, value, lang, onChange }) {
+  const [query,  setQuery]  = useState('');
+  const [open,   setOpen]   = useState(false);
+  const wrapRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const getLabel = (ct) => ct[lang] || ct.fr || ct.value;
+  const selected = chassisTypes.find(ct => ct.value === value);
+
+  const filtered = chassisTypes.filter(ct => {
+    if (!query.trim()) return true;
+    const q = query.toLowerCase();
+    return getLabel(ct).toLowerCase().includes(q) || ct.value.toLowerCase().includes(q);
+  });
+
+  const handleSelect = (ct) => {
+    onChange(ct.value);
+    setQuery('');
+    setOpen(false);
+  };
+
+  return (
+    <div className="ct-search" ref={wrapRef}>
+      <div className={`ct-search__trigger ${open ? 'ct-search__trigger--open' : ''}`} onClick={() => setOpen(o => !o)}>
+        {selected ? (
+          <span className="ct-search__selected">
+            <span className="ct-search__selected-name">{getLabel(selected)}</span>
+            {selected.composite && <span className="ct-search__badge">{selected.vantaux}V</span>}
+          </span>
+        ) : (
+          <span className="ct-search__placeholder">Sélectionner un type…</span>
+        )}
+        <span className="ct-search__arrow">{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div className="ct-search__dropdown">
+          <div className="ct-search__input-wrap">
+            <input
+              autoFocus
+              type="text"
+              className="ct-search__input"
+              placeholder="Rechercher un type…"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+          <div className="ct-search__list">
+            {filtered.length === 0
+              ? <div className="ct-search__empty">Aucun résultat</div>
+              : filtered.map(ct => (
+                <div
+                  key={ct.value}
+                  className={`ct-search__item ${ct.value === value ? 'ct-search__item--active' : ''} ${ct.composite ? 'ct-search__item--composite' : ''}`}
+                  onClick={() => handleSelect(ct)}
+                >
+                  <span className="ct-search__item-name">{getLabel(ct)}</span>
+                  {ct.composite && <span className="ct-search__badge">{ct.vantaux}V</span>}
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
     </div>
   );
 }
