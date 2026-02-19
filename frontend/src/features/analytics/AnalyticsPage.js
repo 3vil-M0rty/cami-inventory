@@ -11,9 +11,9 @@ const API = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const ETAT_COLORS = {
   non_entame: '#9ca3af',
-  en_cours:   '#f59e0b',
-  fabrique:   '#3b82f6',
-  livre:      '#16a34a',
+  en_cours: '#f59e0b',
+  fabrique: '#3b82f6',
+  livre: '#16a34a',
 };
 
 function CustomTooltip({ active, payload, label }) {
@@ -52,9 +52,9 @@ function Section({ title, wide, children }) {
 
 export default function AnalyticsPage() {
   const { t, currentLanguage: lang } = useLanguage();
-  const [data,    setData]    = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState(null);
+  const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -66,8 +66,8 @@ export default function AnalyticsPage() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) return <div className="an-state">{t('loading')}</div>;
-  if (error)   return <div className="an-state an-state--error">Erreur: {error} <button onClick={load}>{t('refresh')}</button></div>;
-  if (!data)   return null;
+  if (error) return <div className="an-state an-state--error">Erreur: {error} <button onClick={load}>{t('refresh')}</button></div>;
+  if (!data) return null;
 
   const { kpis, chassisStatusCounts, projectConsumption, topItems, monthlyMovements, stockByCategory } = data;
 
@@ -76,23 +76,26 @@ export default function AnalyticsPage() {
     .map(([k, v]) => ({ name: t(`etat_${k}`) || k, value: v, color: ETAT_COLORS[k] }));
 
   const monthLabels = {
-    entrees:        t('mvEntrees'),
-    sorties:        t('mvSorties'),
-    project_use:    t('mvProjectUse'),
+    entrees: t('mvEntrees'),
+    sorties: t('mvSorties'),
+    project_use: t('mvProjectUse'),
     project_return: t('mvProjectReturn'),
   };
 
   const monthlyData = monthlyMovements.map(m => ({
     month: m.month.slice(5),
-    [monthLabels.entrees]:        m.entrees,
-    [monthLabels.sorties]:        m.sorties,
-    [monthLabels.project_use]:    m.project_use,
+    [monthLabels.entrees]: m.entrees,
+    [monthLabels.sorties]: m.sorties,
+    [monthLabels.project_use]: m.project_use,
     [monthLabels.project_return]: m.project_return,
   }));
 
+  console.log('monthLabels:', monthLabels);
+  console.log('monthlyData sample:', monthlyData[0]);
+  
   const barLabel = t('mvBarsUsed');
   const projData = projectConsumption.map(p => ({
-    name:     p.reference || p.projectName,
+    name: p.reference || p.projectName,
     fullName: p.projectName,
     [barLabel]: p.totalBars,
   }));
@@ -108,13 +111,13 @@ export default function AnalyticsPage() {
 
       {/* KPIs */}
       <div className="an-kpi-grid">
-        <KpiCard label={t('kpiProjects')}    value={kpis.totalProjects}       icon="📁" accent="#3b82f6" />
-        <KpiCard label={t('kpiInProgress')}  value={kpis.projectsInProgress}  icon="⚙️" accent="#f59e0b" />
-        <KpiCard label={t('kpiItems')}        value={kpis.totalItems}           icon="📦" accent="#6366f1" />
-        <KpiCard label={t('kpiCritical')}    value={kpis.criticalItems}        icon="⚠️" accent="#ef4444"
+        <KpiCard label={t('kpiProjects')} value={kpis.totalProjects} icon="📁" accent="#3b82f6" />
+        <KpiCard label={t('kpiInProgress')} value={kpis.projectsInProgress} icon="⚙️" accent="#f59e0b" />
+        <KpiCard label={t('kpiItems')} value={kpis.totalItems} icon="📦" accent="#6366f1" />
+        <KpiCard label={t('kpiCritical')} value={kpis.criticalItems} icon="⚠️" accent="#ef4444"
           sub={kpis.criticalItems > 0 ? t('kpiCriticalSub') : '✓ OK'} />
-        <KpiCard label={t('kpiDeliveries')}  value={kpis.deliveriesThisMonth} icon="🚚" accent="#16a34a" />
-        <KpiCard label={t('kpiMovements')}   value={kpis.totalMovements}       icon="↕️" accent="#8b5cf6" />
+        <KpiCard label={t('kpiDeliveries')} value={kpis.deliveriesThisMonth} icon="🚚" accent="#16a34a" />
+        <KpiCard label={t('kpiMovements')} value={kpis.totalMovements} icon="↕️" accent="#8b5cf6" />
       </div>
 
       <div className="an-grid">
@@ -124,15 +127,15 @@ export default function AnalyticsPage() {
           {pieData.length === 0
             ? <p className="an-empty">{t('noData')}</p>
             : <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie data={pieData} dataKey="value" nameKey="name"
-                    cx="50%" cy="50%" innerRadius={60} outerRadius={105} paddingAngle={2}>
-                    {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                  </Pie>
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+              <PieChart>
+                <Pie data={pieData} dataKey="value" nameKey="name"
+                  cx="50%" cy="50%" innerRadius={60} outerRadius={105} paddingAngle={2}>
+                  {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                </Pie>
+                <Tooltip content={<CustomTooltip />} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
           }
         </Section>
 
@@ -141,32 +144,32 @@ export default function AnalyticsPage() {
           {stockByCategory.length === 0
             ? <p className="an-empty">{t('noData')}</p>
             : <div className="an-cat-list">
-                {stockByCategory.map((cat, i) => {
-                  const okPct  = Math.round(cat.ok   / cat.total * 100);
-                  const lowPct = Math.round(cat.low  / cat.total * 100);
-                  const critPct= Math.round(cat.critical / cat.total * 100);
-                  return (
-                    <div key={i} className="an-cat-row">
-                      <div className="an-cat-row__name">
-                        <span className="an-cat-dot" style={{ background: cat.catColor }} />
-                        {cat.catName[lang] || cat.catName.fr}
+              {stockByCategory.map((cat, i) => {
+                const okPct = Math.round(cat.ok / cat.total * 100);
+                const lowPct = Math.round(cat.low / cat.total * 100);
+                const critPct = Math.round(cat.critical / cat.total * 100);
+                return (
+                  <div key={i} className="an-cat-row">
+                    <div className="an-cat-row__name">
+                      <span className="an-cat-dot" style={{ background: cat.catColor }} />
+                      {cat.catName[lang] || cat.catName.fr}
+                    </div>
+                    <div className="an-cat-row__right">
+                      <div className="an-minibar">
+                        <div className="an-minibar__ok" style={{ width: `${okPct}%` }} />
+                        <div className="an-minibar__low" style={{ width: `${lowPct}%` }} />
+                        <div className="an-minibar__crit" style={{ width: `${critPct}%` }} />
                       </div>
-                      <div className="an-cat-row__right">
-                        <div className="an-minibar">
-                          <div className="an-minibar__ok"    style={{ width: `${okPct}%` }} />
-                          <div className="an-minibar__low"   style={{ width: `${lowPct}%` }} />
-                          <div className="an-minibar__crit"  style={{ width: `${critPct}%` }} />
-                        </div>
-                        <div className="an-cat-badges">
-                          {cat.critical > 0 && <span className="an-badge an-badge--crit">⚠ {cat.critical}</span>}
-                          {cat.low      > 0 && <span className="an-badge an-badge--low">~ {cat.low}</span>}
-                          <span className="an-badge an-badge--ok">{cat.total}</span>
-                        </div>
+                      <div className="an-cat-badges">
+                        {cat.critical > 0 && <span className="an-badge an-badge--crit">⚠ {cat.critical}</span>}
+                        {cat.low > 0 && <span className="an-badge an-badge--low">~ {cat.low}</span>}
+                        <span className="an-badge an-badge--ok">{cat.total}</span>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
+            </div>
           }
         </Section>
 
@@ -175,18 +178,18 @@ export default function AnalyticsPage() {
           {monthlyData.every(m => Object.values(m).slice(1).every(v => v === 0))
             ? <p className="an-empty">{t('noData')}</p>
             : <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={monthlyData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#ebebeb" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend iconType="circle" iconSize={8} />
-                  <Line type="monotone" dataKey={monthLabels.entrees}        stroke="#16a34a" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey={monthLabels.sorties}        stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey={monthLabels.project_use}    stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="5 3" />
-                  <Line type="monotone" dataKey={monthLabels.project_return} stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="2 4" />
-                </LineChart>
-              </ResponsiveContainer>
+              <LineChart data={monthlyData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#ebebeb" />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend iconType="circle" iconSize={8} />
+                <Line type="monotone" dataKey={monthLabels.entrees} stroke="#16a34a" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey={monthLabels.sorties} stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey={monthLabels.project_use} stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="5 3" />
+                <Line type="monotone" dataKey={monthLabels.project_return} stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="2 4" />
+              </LineChart>
+            </ResponsiveContainer>
           }
         </Section>
 
@@ -195,19 +198,19 @@ export default function AnalyticsPage() {
           {topItems.length === 0
             ? <p className="an-empty">{t('noData')}</p>
             : <div className="an-top-list">
-                {topItems.map((item, i) => (
-                  <div key={i} className="an-top-row">
-                    <span className="an-top-rank">#{i + 1}</span>
-                    <div className="an-top-info">
-                      <span className="an-top-name">{item.designation?.[lang] || item.designation?.fr || '—'}</span>
-                      <div className="an-top-bar-wrap">
-                        <div className="an-top-bar" style={{ width: `${Math.round(item.total / maxTop * 100)}%` }} />
-                      </div>
+              {topItems.map((item, i) => (
+                <div key={i} className="an-top-row">
+                  <span className="an-top-rank">#{i + 1}</span>
+                  <div className="an-top-info">
+                    <span className="an-top-name">{item.designation?.[lang] || item.designation?.fr || '—'}</span>
+                    <div className="an-top-bar-wrap">
+                      <div className="an-top-bar" style={{ width: `${Math.round(item.total / maxTop * 100)}%` }} />
                     </div>
-                    <span className="an-top-val">{item.total}</span>
                   </div>
-                ))}
-              </div>
+                  <span className="an-top-val">{item.total}</span>
+                </div>
+              ))}
+            </div>
           }
         </Section>
 
@@ -218,15 +221,15 @@ export default function AnalyticsPage() {
         {projData.length === 0
           ? <p className="an-empty">{t('noData')}</p>
           : <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={projData} margin={{ top: 10, right: 20, left: 0, bottom: 60 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ebebeb" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Bar dataKey={barLabel} fill="#1a1a1a" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <BarChart data={projData} margin={{ top: 10, right: 20, left: 0, bottom: 60 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#ebebeb" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+              <Tooltip content={<CustomTooltip />} />
+              <Legend />
+              <Bar dataKey={barLabel} fill="#1a1a1a" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         }
       </Section>
     </div>

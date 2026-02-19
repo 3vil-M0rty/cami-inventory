@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useProjects } from '../../../context/ProjectContext';
-import { exportBLtoExcel, PRESTATION_OPTIONS } from '../services/blExcelExport';
 import { useLanguage } from '../../../context/LanguageContext';
 import ChassisForm from './ChassisForm';
 import ChassisTypeManager from './ChassisTypeManager';
@@ -140,134 +139,76 @@ function generateBLHtml(bl, project) {
 
 function BLPanel({ project, t }) {
   const { getBonsLivraison } = useProjects();
-  const [bls,        setBls]        = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [openBL,     setOpenBL]     = useState(null);
-  const [company,    setCompany]    = useState('CAMI');          // 'CAMI' | 'GIMAV'
-  const [prestation, setPrestation] = useState('fourniture_fabrication_laquage');
-  const [exporting,  setExporting]  = useState(null);           // blId being exported
-
+  const [bls, setBls]        = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [openBL, setOpenBL]  = useState(null);
   const load = useCallback(async () => {
     setLoading(true);
     try   { setBls(await getBonsLivraison(project.id)); }
     catch { setBls([]); }
     finally { setLoading(false); }
   }, [project.id, getBonsLivraison]);
-
   useEffect(() => { load(); }, [load]);
-
-  const handleExport = async (e, bl) => {
-    e.stopPropagation();
-    setExporting(bl.blId);
-    try {
-      await exportBLtoExcel(bl, project, company, prestation);
-    } catch (err) {
-      alert('Erreur export Excel: ' + err.message);
-    } finally {
-      setExporting(null);
-    }
-  };
-
   if (loading) return <div className="bl-loading">{t('loading')}</div>;
-
+  if (bls.length === 0) return (
+    <div className="bl-empty">
+      <div className="bl-empty__icon">📦</div>
+      <p><strong>{t('noBL')}</strong></p>
+      <p className="bl-empty__hint">Marquez des unités comme « Livré » pour générer des BL automatiquement.</p>
+    </div>
+  );
   return (
     <div className="bl-panel">
-      {/* ── Company + Prestation controls ── */}
-      <div className="bl-controls">
-        <div className="bl-controls__section">
-          <span className="bl-controls__label">Société</span>
-          <div className="bl-company-toggle">
-            <button
-              className={"bl-company-btn" + (company === 'CAMI' ? ' bl-company-btn--active bl-company-btn--cami' : '')}
-              onClick={() => setCompany('CAMI')}
-            >
-              🏢 CAMI ALUMINIUM
-            </button>
-            <button
-              className={"bl-company-btn" + (company === 'GIMAV' ? ' bl-company-btn--active bl-company-btn--gimav' : '')}
-              onClick={() => setCompany('GIMAV')}
-            >
-              🏗 GIMAV
-            </button>
-          </div>
-        </div>
-        <div className="bl-controls__section">
-          <span className="bl-controls__label">Type de prestation</span>
-          <select
-            className="bl-prestation-select"
-            value={prestation}
-            onChange={e => setPrestation(e.target.value)}
-          >
-            {PRESTATION_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.labelFr}</option>
-            ))}
-          </select>
-        </div>
+      <div className="bl-panel__header">
+        <h3>{t('blHistory')} <span className="tab-count">{bls.length}</span></h3>
       </div>
-
-      {/* ── BL list or empty state ── */}
-      {bls.length === 0 ? (
-        <div className="bl-empty">
-          <div className="bl-empty__icon">📦</div>
-          <p><strong>{t('noBL')}</strong></p>
-          <p className="bl-empty__hint">Marquez des unités comme « Livré » pour générer des BL automatiquement.</p>
-        </div>
-      ) : (
-        <>
-          <div className="bl-panel__header">
-            <h3>{t('blHistory')} <span className="tab-count">{bls.length}</span></h3>
-          </div>
-          <div className="bl-list">
-            {bls.map(bl => (
-              <div key={bl.deliveryDate} className="bl-card">
-                <div className="bl-card__header" onClick={() => setOpenBL(openBL === bl.deliveryDate ? null : bl.deliveryDate)}>
-                  <div className="bl-card__info">
-                    <span className="bl-card__id">{bl.blId}</span>
-                    <span className="bl-card__date">📅 {fmtDate(bl.deliveryDate + 'T00:00:00')}</span>
-                    <span className="bl-card__count">{bl.units.length} pièce{bl.units.length > 1 ? 's' : ''}</span>
-                  </div>
-                  <div className="bl-card__actions">
-                    <button
-                      className={"bl-excel-btn" + (company === 'GIMAV' ? ' bl-excel-btn--gimav' : ' bl-excel-btn--cami')}
-                      disabled={exporting === bl.blId}
-                      onClick={e => handleExport(e, bl)}
-                    >
-                      {exporting === bl.blId ? '⏳' : '📊'} {exporting === bl.blId ? 'Export...' : 'Export Excel'}
-                    </button>
-                    <span className="bl-card__toggle">{openBL === bl.deliveryDate ? '▲' : '▼'}</span>
-                  </div>
-                </div>
-                {openBL === bl.deliveryDate && (
-                  <div className="bl-card__body">
-                    <table className="bl-table">
-                      <thead>
-                        <tr>
-                          <th>{t('blUnitLabel')}</th>
-                          <th>{t('type')}</th>
-                          <th>{t('dimension')}</th>
-                          <th>{t('blDate')}</th>
-                          <th>{t('unitNotes')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {bl.units.map((u, i) => (
-                          <tr key={i} className={u.isComponent ? 'bl-row--component' : ''}>
-                            <td><strong>{u.unitLabel}</strong></td>
-                            <td>{u.chassisType || '—'}</td>
-                            <td className="dim-cell">{u.dimension}</td>
-                            <td>{fmtDate(u.deliveryDate)}</td>
-                            <td>{u.notes || '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+      <div className="bl-list">
+        {bls.map(bl => (
+          <div key={bl.deliveryDate} className="bl-card">
+            <div className="bl-card__header" onClick={() => setOpenBL(openBL === bl.deliveryDate ? null : bl.deliveryDate)}>
+              <div className="bl-card__info">
+                <span className="bl-card__id">{bl.blId}</span>
+                <span className="bl-card__date">📅 {fmtDate(bl.deliveryDate + 'T00:00:00')}</span>
+                <span className="bl-card__count">{bl.units.length} pièce{bl.units.length > 1 ? 's' : ''}</span>
               </div>
-            ))}
+              <div className="bl-card__actions">
+                <button className="bl-print-btn" onClick={e => {
+                  e.stopPropagation();
+                  const w = window.open('', '_blank');
+                  if (w) { w.document.write(generateBLHtml(bl, project)); w.document.close(); }
+                }}>🖨 {t('blPrint')}</button>
+                <span className="bl-card__toggle">{openBL === bl.deliveryDate ? '▲' : '▼'}</span>
+              </div>
+            </div>
+            {openBL === bl.deliveryDate && (
+              <div className="bl-card__body">
+                <table className="bl-table">
+                  <thead>
+                    <tr>
+                      <th>{t('blUnitLabel')}</th>
+                      <th>{t('type')}</th>
+                      <th>{t('dimension')}</th>
+                      <th>{t('blDate')}</th>
+                      <th>{t('unitNotes')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bl.units.map((u, i) => (
+                      <tr key={i} className={u.isComponent ? 'bl-row--component' : ''}>
+                        <td><strong>{u.unitLabel}</strong></td>
+                        <td>{u.chassisType || '—'}</td>
+                        <td className="dim-cell">{u.dimension}</td>
+                        <td>{fmtDate(u.deliveryDate)}</td>
+                        <td>{u.notes || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        </>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
