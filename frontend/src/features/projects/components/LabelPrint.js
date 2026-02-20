@@ -71,7 +71,7 @@ export function buildLabelHTML(chassisList, project, chassisLabels, language) {
     height: 5.5cm;
     margin: 0 !important;
     padding: 0 !important;
-    background: #fff;
+    background: #860000;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
@@ -90,10 +90,11 @@ export function buildLabelHTML(chassisList, project, chassisLabels, language) {
   .label {
     width: 9.5cm;
     height: 5.5cm;
-    padding: 3mm 4mm;
+    margin-top: -25mm;
+    padding: 0mm 4mm;
     display: flex;
     flex-direction: column;
-    gap: 1.2mm;
+    gap: 0.2mm;
     overflow: hidden;
   }
   .lh    { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #1a1a1a; padding-bottom: 1.2mm; }
@@ -104,11 +105,11 @@ export function buildLabelHTML(chassisList, project, chassisLabels, language) {
   .k     { font-size: 5.5pt; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; margin-right: 2px; }
   .v     { font-size: 6.5pt; font-weight: 500; color: #1a1a1a; }
   .div   { border-top: 1px dashed #ccc; margin: 0; flex-shrink: 0; }
-  .grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5mm 2mm; flex: 1; min-height: 0; }
+  .grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 0.1mm 1mm; flex: 1; min-height: 0; }
   .cell  { display: flex; flex-direction: column; gap: 0mm; }
   .full  { grid-column: 1 / -1; }
-  .repere { font-size: 17pt; font-weight: 900; color: #1a1a1a; letter-spacing: -0.02em; line-height: 1; }
-  .dim   { font-size: 9.5pt; font-weight: 700; color: #1a1a1a; line-height: 1.1; }
+  .repere { font-size: 10pt; font-weight: 900; color: #1a1a1a; letter-spacing: -0.02em; line-height: 0.7; }
+  .dim   { font-size: 7pt; font-weight: 700; color: #1a1a1a; line-height: 0.7; }
   .parent-ref { font-size: 5.5pt; color: #888; }
 </style>
 </head>
