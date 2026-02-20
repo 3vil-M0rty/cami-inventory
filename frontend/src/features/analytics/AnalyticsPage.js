@@ -56,15 +56,32 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [period, setPeriod] = useState('monthly'); // 'monthly' | 'annual' | 'daily'
+  const [chartData, setChartData] = useState(null);
+  const [chartLoading, setChartLoading] = useState(false);
 
-  const load = useCallback(async (p) => {
+  // Full page load — only runs once on mount
+  const load = useCallback(async () => {
     setLoading(true); setError(null);
-    try { setData((await axios.get(`${API}/analytics/dashboard?period=${p || period}`)).data); }
+    try {
+      const res = await axios.get(`${API}/analytics/dashboard?period=monthly`);
+      setData(res.data);
+      setChartData(res.data.monthlyMovements);
+    }
     catch (e) { setError(e.message); }
     finally { setLoading(false); }
-  }, [period]);
+  }, []);
 
-  const changePeriod = (p) => { setPeriod(p); load(p); };
+  // Chart-only reload when period changes — no full page refresh
+  const changePeriod = useCallback(async (p) => {
+    if (p === period) return;
+    setPeriod(p);
+    setChartLoading(true);
+    try {
+      const res = await axios.get(`${API}/analytics/dashboard?period=${p}`);
+      setChartData(res.data.monthlyMovements);
+    } catch (e) { /* silently keep old data */ }
+    finally { setChartLoading(false); }
+  }, [period]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -72,7 +89,8 @@ export default function AnalyticsPage() {
   if (error) return <div className="an-state an-state--error">Erreur: {error} <button onClick={load}>{t('refresh')}</button></div>;
   if (!data) return null;
 
-  const { kpis, chassisStatusCounts, projectConsumption, topItems, monthlyMovements, stockByCategory } = data;
+  const { kpis, chassisStatusCounts, projectConsumption, topItems, stockByCategory } = data;
+  const monthlyMovements = chartData || [];
 
   const pieData = Object.entries(chassisStatusCounts)
     .filter(([, v]) => v > 0)
@@ -192,7 +210,9 @@ export default function AnalyticsPage() {
             </div>
           </div>
         }>
-          {monthlyData.every(m => Object.values(m).slice(1).every(v => v === 0))
+          {chartLoading
+            ? <div className="an-chart-loading"><span className="an-chart-spinner" /></div>
+            : monthlyData.every(m => Object.values(m).slice(1).every(v => v === 0))
             ? <p className="an-empty">{t('noData')}</p>
             : <ResponsiveContainer width="100%" height={260}>
               <LineChart data={monthlyData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>

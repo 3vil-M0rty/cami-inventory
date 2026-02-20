@@ -242,3 +242,25 @@
   border-color: #1a1a1a;
   color: #fff;
 }
+
+/* Chart loading overlay */
+.an-chart-loading {
+  height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.an-chart-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #1a1a1a;
+  border-radius: 50%;
+  animation: an-spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+@keyframes an-spin {
+  to { transform: rotate(360deg); }
+}
