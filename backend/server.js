@@ -1032,7 +1032,10 @@ app.get('/api/analytics/dashboard', async (req, res) => {
     for (const m of movements) {
       const d=new Date(m.createdAt);
       const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      if (monthlyMap[key]) monthlyMap[key][m.type]=(monthlyMap[key][m.type]||0)+m.quantity;
+      if (monthlyMap[key]) {
+        const typeKey = m.type === 'entree' ? 'entrees' : m.type === 'sortie' ? 'sorties' : m.type;
+        monthlyMap[key][typeKey] = (monthlyMap[key][typeKey] || 0) + m.quantity;
+      }
     }
 
     // Stock health by category
