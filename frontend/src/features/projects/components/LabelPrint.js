@@ -61,40 +61,55 @@ export function buildLabelHTML(chassisList, project, chassisLabels, language) {
 <meta charset="utf-8"/>
 <title> </title>
 <style>
-  /* Setting margin:0 on @page removes the browser's space for date/URL headers+footers */
   @page {
     size: 9.5cm 5.5cm;
-    margin: 0;
-  }
-  @media print {
-    html, body { margin: 0 !important; padding: 0 !important; }
-    html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .page { page-break-after: always; }
-    .page:last-child { page-break-after: avoid; }
+    margin: 0mm;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  html, body {
+    width: 9.5cm;
+    height: 5.5cm;
+    margin: 0 !important;
+    padding: 0 !important;
     background: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .page  { width: 9.5cm; height: 5.5cm; overflow: hidden; }
-  .label { width: 100%; height: 100%; padding: 0mm; display: flex; flex-direction: column; gap: 0mm; }
-  .lh    { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #1a1a1a; padding-bottom: 1.5mm; margin-bottom: 1mm; }
-  .brand { font-size: 9pt; font-weight: 900; color: #1a1a1a; letter-spacing: 0.05em; text-transform: uppercase; }
-  .swatch { width: 10mm; height: 6mm; border-radius: 2px; border: 1px solid #ccc; background-color: ${ralHex}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .row   { display: flex; gap: 8mm; }
+  @media print {
+    html, body { margin: 0 !important; padding: 0 !important; }
+    .page { page-break-after: always; page-break-inside: avoid; }
+    .page:last-child { page-break-after: avoid; }
+  }
+  .page  {
+    width: 9.5cm;
+    height: 5.5cm;
+    overflow: hidden;
+    display: block;
+  }
+  .label {
+    width: 9.5cm;
+    height: 5.5cm;
+    padding: 3mm 4mm;
+    display: flex;
+    flex-direction: column;
+    gap: 1.2mm;
+    overflow: hidden;
+  }
+  .lh    { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #1a1a1a; padding-bottom: 1.2mm; }
+  .brand { font-size: 8.5pt; font-weight: 900; color: #1a1a1a; letter-spacing: 0.05em; text-transform: uppercase; }
+  .swatch { width: 10mm; height: 5mm; border-radius: 2px; border: 1px solid #ccc; background-color: ${ralHex}; flex-shrink: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .row   { display: flex; gap: 6mm; }
   .f     { display: flex; gap: 2px; align-items: baseline; }
-  .k     { font-size: 6pt; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; margin-right: 2px; }
-  .v     { font-size: 7pt; font-weight: 500; color: #1a1a1a; }
-  .div   { border-top: 1px dashed #ccc; margin: 1mm 0; }
-  .grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 0mm 1mm; flex: 1; }
-  .cell  { display: flex; flex-direction: column; gap: 0.0mm; }
+  .k     { font-size: 5.5pt; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; margin-right: 2px; }
+  .v     { font-size: 6.5pt; font-weight: 500; color: #1a1a1a; }
+  .div   { border-top: 1px dashed #ccc; margin: 0; flex-shrink: 0; }
+  .grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5mm 2mm; flex: 1; min-height: 0; }
+  .cell  { display: flex; flex-direction: column; gap: 0mm; }
   .full  { grid-column: 1 / -1; }
-  .repere { font-size: 18pt; font-weight: 900; color: #1a1a1a; letter-spacing: -0.02em; line-height: 1; }
-  .dim   { font-size: 10pt; font-weight: 700; color: #1a1a1a; }
-  .parent-ref { font-size: 6pt; color: #888; margin-top: 1mm; }
+  .repere { font-size: 17pt; font-weight: 900; color: #1a1a1a; letter-spacing: -0.02em; line-height: 1; }
+  .dim   { font-size: 9.5pt; font-weight: 700; color: #1a1a1a; line-height: 1.1; }
+  .parent-ref { font-size: 5.5pt; color: #888; }
 </style>
 </head>
 <body>
