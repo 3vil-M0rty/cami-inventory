@@ -1022,10 +1022,11 @@ app.get('/api/analytics/dashboard', async (req, res) => {
     }
     const topItems=Object.values(itemConsMap).sort((a,b)=>b.total-a.total).slice(0,5);
 
-    // Monthly movements (last 12 months)
+    // Monthly movements (from 01/01/2026 to current month)
     const monthlyMap={};
-    for (let i=11;i>=0;i--) {
-      const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    const startDate = new Date(2026, 0, 1);
+    const current = new Date(now.getFullYear(), now.getMonth(), 1);
+    for (let d = new Date(startDate); d <= current; d.setMonth(d.getMonth() + 1)) {
       const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
       monthlyMap[key]={month:key,entrees:0,sorties:0,project_use:0,project_return:0};
     }
