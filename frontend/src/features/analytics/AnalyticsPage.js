@@ -55,13 +55,16 @@ export default function AnalyticsPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [period, setPeriod] = useState('monthly'); // 'monthly' | 'annual' | 'daily'
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (p) => {
     setLoading(true); setError(null);
-    try { setData((await axios.get(`${API}/analytics/dashboard`)).data); }
+    try { setData((await axios.get(`${API}/analytics/dashboard?period=${p || period}`)).data); }
     catch (e) { setError(e.message); }
     finally { setLoading(false); }
-  }, []);
+  }, [period]);
+
+  const changePeriod = (p) => { setPeriod(p); load(p); };
 
   useEffect(() => { load(); }, [load]);
 
@@ -82,16 +85,18 @@ export default function AnalyticsPage() {
     project_return: t('mvProjectReturn'),
   };
 
-  const monthlyData = monthlyMovements.map(m => ({
-    month: m.month.slice(5),
-    [monthLabels.entrees]: m.entrees,
-    [monthLabels.sorties]: m.sorties,
-    [monthLabels.project_use]: m.project_use,
-    [monthLabels.project_return]: m.project_return,
-  }));
+  const monthlyData = monthlyMovements.map(m => {
+    let label = m.period;
+    if (period === 'monthly') label = m.period.slice(5); // show MM
+    return {
+      month: label,
+      [monthLabels.entrees]: m.entrees,
+      [monthLabels.sorties]: m.sorties,
+      [monthLabels.project_use]: m.project_use,
+      [monthLabels.project_return]: m.project_return,
+    };
+  });
 
-  console.log('monthLabels:', monthLabels);
-  console.log('monthlyData sample:', monthlyData[0]);
   
   const barLabel = t('mvBarsUsed');
   const projData = projectConsumption.map(p => ({
@@ -173,14 +178,26 @@ export default function AnalyticsPage() {
           }
         </Section>
 
-        {/* Monthly movements line chart */}
-        <Section title={t('anMonthlyTitle')}>
+        {/* Movements line chart with period toggle */}
+        <Section title={
+          <div className="an-section-title-row">
+            <span>{t('anMonthlyTitle')}</span>
+            <div className="an-period-toggle">
+              {['daily','monthly','annual'].map(p => (
+                <button key={p} className={`an-period-btn${period === p ? ' an-period-btn--active' : ''}`}
+                  onClick={() => changePeriod(p)}>
+                  {p === 'daily' ? t('periodDaily') : p === 'monthly' ? t('periodMonthly') : t('periodAnnual')}
+                </button>
+              ))}
+            </div>
+          </div>
+        }>
           {monthlyData.every(m => Object.values(m).slice(1).every(v => v === 0))
             ? <p className="an-empty">{t('noData')}</p>
             : <ResponsiveContainer width="100%" height={260}>
               <LineChart data={monthlyData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#ebebeb" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} interval={period === 'daily' ? 6 : 0} />
                 <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend iconType="circle" iconSize={8} />

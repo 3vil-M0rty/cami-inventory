@@ -1022,22 +1022,45 @@ app.get('/api/analytics/dashboard', async (req, res) => {
     }
     const topItems=Object.values(itemConsMap).sort((a,b)=>b.total-a.total).slice(0,5);
 
-    // Monthly movements (from 01/01/2026 to current month)
-    const monthlyMap={};
-    const startDate = new Date(2026, 0, 1);
-    const current = new Date(now.getFullYear(), now.getMonth(), 1);
-    for (let d = new Date(startDate); d <= current; d.setMonth(d.getMonth() + 1)) {
-      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      monthlyMap[key]={month:key,entrees:0,sorties:0,project_use:0,project_return:0};
-    }
-    for (const m of movements) {
-      const d=new Date(m.createdAt);
-      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      if (monthlyMap[key]) {
-        const typeKey = m.type === 'entree' ? 'entrees' : m.type === 'sortie' ? 'sorties' : m.type;
-        monthlyMap[key][typeKey] = (monthlyMap[key][typeKey] || 0) + m.quantity;
+    // Movements aggregation — supports period: 'monthly' | 'annual' | 'daily'
+    const period = req.query.period || 'monthly';
+    const movMap = {};
+
+    const fmt = (d) => {
+      if (period === 'annual') return `${d.getFullYear()}`;
+      if (period === 'daily')  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    };
+
+    // Build skeleton keys from earliest movement (or 2026-01-01) to now
+    const skeleton_start = new Date(2026, 0, 1);
+    if (period === 'annual') {
+      for (let y = skeleton_start.getFullYear(); y <= now.getFullYear(); y++) {
+        const key = `${y}`;
+        movMap[key] = { period: key, entrees:0, sorties:0, project_use:0, project_return:0 };
+      }
+    } else if (period === 'monthly') {
+      for (let d = new Date(skeleton_start); d <= now; d.setMonth(d.getMonth()+1)) {
+        const key = fmt(d);
+        movMap[key] = { period: key, entrees:0, sorties:0, project_use:0, project_return:0 };
+      }
+    } else { // daily — last 60 days
+      for (let i = 59; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        const key = fmt(d);
+        movMap[key] = { period: key, entrees:0, sorties:0, project_use:0, project_return:0 };
       }
     }
+
+    for (const m of movements) {
+      const d = new Date(m.createdAt);
+      const key = fmt(d);
+      if (movMap[key]) {
+        const typeKey = m.type === 'entree' ? 'entrees' : m.type === 'sortie' ? 'sorties' : m.type;
+        movMap[key][typeKey] = (movMap[key][typeKey] || 0) + m.quantity;
+      }
+    }
+    const monthlyMap = movMap; // keep same variable name for res.json below
 
     // Stock health by category
     const catMap={};

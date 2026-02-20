@@ -205,3 +205,40 @@
   width: 36px;
   text-align: right;
 }
+
+/* Period toggle */
+.an-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.an-period-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.an-period-btn {
+  padding: 3px 12px;
+  border-radius: 20px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.an-period-btn:hover {
+  border-color: #1a1a1a;
+  color: #1a1a1a;
+}
+
+.an-period-btn--active {
+  background: #1a1a1a;
+  border-color: #1a1a1a;
+  color: #fff;
+}
