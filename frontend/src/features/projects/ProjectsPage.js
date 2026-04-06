@@ -1,8 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { useProjects } from '../../context/ProjectContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useCompany } from '../../context/CompanyContext';
 import ProjectDetail from './components/ProjectDetail';
 import './ProjectsPage.css';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const STATUS_COLORS = {
   en_cours: '#f59e0b',
@@ -13,18 +17,27 @@ const STATUS_COLORS = {
 function ProjectsPage() {
   const { projects, loading, addProject, updateProject, deleteProject, loadProjects } = useProjects();
   const { t, currentLanguage } = useLanguage();
-  const [searchTerm, setSearchTerm]       = useState('');
-  const [showForm, setShowForm]           = useState(false);
+  const { companies, selectedCompany } = useCompany();
+  const [searchTerm, setSearchTerm]         = useState('');
+  const [showForm, setShowForm]             = useState(false);
   const [editingProject, setEditingProject] = useState(null);
-  const [openProjectId, setOpenProjectId] = useState(null);
+  const [openProjectId, setOpenProjectId]   = useState(null);
+  const [filterCompany, setFilterCompany]   = useState('all');
+
+  // Sync filter with global company selector
+  useEffect(() => {
+    setFilterCompany(selectedCompany || 'all');
+  }, [selectedCompany]);
 
   const filteredProjects = projects.filter(p => {
-    if (!searchTerm) return true;
-    return (
+    const matchSearch = !searchTerm || (
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.ralCode.toLowerCase().includes(searchTerm.toLowerCase())
     );
+    const matchCompany = filterCompany === 'all' ||
+      p.companyId?.id === filterCompany || p.companyId?._id === filterCompany;
+    return matchSearch && matchCompany;
   });
 
   const handleDelete = async (projectId) => {
@@ -62,6 +75,20 @@ function ProjectsPage() {
           <span className="projects-page__count">{filteredProjects.length}</span>
         </div>
         <div className="projects-page__header-right">
+          {/* Company filter tabs */}
+          <div className="project-company-tabs">
+            <button
+              className={`proj-company-tab ${filterCompany === 'all' ? 'active' : ''}`}
+              onClick={() => setFilterCompany('all')}
+            >Tous</button>
+            {companies.map(c => (
+              <button
+                key={c.id}
+                className={`proj-company-tab ${filterCompany === c.id ? 'active' : ''}`}
+                onClick={() => setFilterCompany(filterCompany === c.id ? 'all' : c.id)}
+              >{c.name}</button>
+            ))}
+          </div>
           <input
             type="text"
             className="search-input"
@@ -69,7 +96,7 @@ function ProjectsPage() {
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
-          <button className="add-item-btn" onClick={() => setShowForm(true)}>
+          <button className="add-item-btn" onClick={() => { setEditingProject(null); setShowForm(true); }}>
             + {t('addProject')}
           </button>
         </div>
@@ -99,6 +126,7 @@ function ProjectsPage() {
         <ProjectFormModal
           language={currentLanguage}
           project={editingProject}
+          companies={companies}
           t={t}
           onClose={() => { setShowForm(false); setEditingProject(null); }}
           onSave={handleSave}
@@ -119,15 +147,23 @@ function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
       <div className="project-card__body">
         <div className="project-card__top">
           <h3 className="project-card__name">{project.name}</h3>
-          <span className="project-card__status" style={{ backgroundColor: statusColor }}>
-            {statusLabel}
-          </span>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            {project.companyId && (
+              <span className="project-company-tag">{project.companyId.name}</span>
+            )}
+            <span className="project-card__status" style={{ backgroundColor: statusColor }}>
+              {statusLabel}
+            </span>
+          </div>
         </div>
         <div className="project-card__meta">
           <span>{t('ref')} <strong>{project.reference}</strong></span>
           <span>{t('ral')} <strong>{project.ralCode}</strong></span>
           <span>{dateStr}</span>
         </div>
+        {project.clientId && (
+          <div className="project-client-tag">👤 {project.clientId.name}</div>
+        )}
         <div className="project-card__stats">
           <span>{project.chassis?.length || 0} {t('chassisWord')}</span>
           <span>{project.usedBars?.length || 0} {t('barsWord')}</span>
@@ -141,17 +177,28 @@ function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
   );
 }
 
-function ProjectFormModal({ language, project, t, onClose, onSave }) {
+function ProjectFormModal({ language, project, companies, t, onClose, onSave }) {
+  const [clients, setClients] = useState([]);
   const [formData, setFormData] = useState(project ? {
     name:      project.name,
     reference: project.reference,
     ralCode:   project.ralCode,
     ralColor:  project.ralColor || '#ffffff',
     date:      project.date ? project.date.split('T')[0] : '',
+    companyId: project.companyId?.id || project.companyId?._id || '',
+    clientId:  project.clientId?.id  || project.clientId?._id  || '',
   } : {
     name: '', reference: '', ralCode: '', ralColor: '#ffffff',
-    date: new Date().toISOString().split('T')[0]
+    date: new Date().toISOString().split('T')[0],
+    companyId: companies[0]?.id || '',
+    clientId: ''
   });
+
+  useEffect(() => {
+    axios.get(`${API_URL}/clients`)
+      .then(r => setClients(r.data))
+      .catch(console.error);
+  }, []);
 
   const set = (key, val) => setFormData(prev => ({ ...prev, [key]: val }));
 
@@ -160,10 +207,33 @@ function ProjectFormModal({ language, project, t, onClose, onSave }) {
     onSave(formData);
   };
 
+  // Filter clients by selected company (optional, show all if no company)
+  const filteredClients = formData.companyId
+    ? clients.filter(c => !c.companyId || c.companyId?.id === formData.companyId || c.companyId?._id === formData.companyId)
+    : clients;
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal large" onClick={e => e.stopPropagation()}>
         <h2>{project ? t('projectTitleEdit') : t('projectTitleAdd')}</h2>
+
+        {/* Company selector — prominent at top */}
+        <div className="project-form-company-selector">
+          <label style={{ fontWeight: 700, marginBottom: 8, display: 'block' }}>Société *</label>
+          <div className="company-choice-btns">
+            {companies.map(c => (
+              <button
+                key={c.id}
+                type="button"
+                className={`company-choice-btn ${formData.companyId === c.id ? 'active' : ''}`}
+                onClick={() => set('companyId', c.id)}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit}>
           <div className="form-row">
             <div className="form-group">
@@ -195,7 +265,17 @@ function ProjectFormModal({ language, project, t, onClose, onSave }) {
               <input type="date" required value={formData.date}
                 onChange={e => set('date', e.target.value)} />
             </div>
-
+            <div className="form-group">
+              <label>Client (optionnel)</label>
+              <select value={formData.clientId} onChange={e => set('clientId', e.target.value)}>
+                <option value="">— Aucun client —</option>
+                {filteredClients.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}{c.company ? ` (${c.company})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>{t('cancel')}</button>

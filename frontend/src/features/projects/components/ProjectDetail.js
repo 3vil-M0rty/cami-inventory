@@ -99,31 +99,46 @@ function DeliveryDateModal({ defaultDate, onConfirm, onCancel, t }) {
 
 // ─── BL Panel ─────────────────────────────────────────────────────────────────
 function generateBLHtml(bl, project) {
+  const companyName = project.companyId?.name || bl.company?.name || 'CAMI ALUMINIUM';
+  const clientName  = project.clientId?.name  || bl.client?.name  || '';
+  const clientAddr  = project.clientId?.address || bl.client?.address || '';
+  const clientCity  = project.clientId?.city   || bl.client?.city   || '';
   const rows = bl.units.map(u => {
     const bg = u.isComponent ? 'background:#f8f8f8' : '';
     return `<tr style="${bg}"><td>${u.unitLabel}</td><td>${u.chassisType || '—'}</td><td>${u.dimension}</td><td>${fmtDate(u.deliveryDate)}</td><td>${u.notes || '—'}</td></tr>`;
   }).join('');
   const closeScript = '<' + '/script>';
+  const clientBlock = clientName ? `<div class="client-box"><div style="font-size:10px;text-transform:uppercase;color:#888;margin-bottom:6px">Destinataire</div><div style="font-weight:700">${clientName}</div>${clientAddr ? `<div>${clientAddr}</div>` : ''}${clientCity ? `<div>${clientCity}</div>` : ''}</div>` : '';
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${bl.blId}</title>
   <style>body{font-family:Arial,sans-serif;margin:40px;color:#1a1a1a}
-  .header{border-bottom:3px solid #1a1a1a;padding-bottom:20px;margin-bottom:30px;display:flex;justify-content:space-between}
-  .logo{font-size:22px;font-weight:900}
-  .meta{display:flex;gap:30px;margin-bottom:24px}
-  .meta-item label{font-size:10px;text-transform:uppercase;color:#888;display:block}
+  .header{border-bottom:3px solid #1a1a1a;padding-bottom:20px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-start}
+  .logo{font-size:24px;font-weight:900;letter-spacing:-0.5px}
+  .logo-sub{font-size:12px;color:#888;margin-top:2px}
+  .bl-id{font-size:18px;font-weight:700;color:#555;margin-top:4px}
+  .meta{display:flex;gap:24px;margin-bottom:20px;flex-wrap:wrap}
+  .meta-item label{font-size:10px;text-transform:uppercase;color:#888;display:block;margin-bottom:2px}
   .meta-item span{font-size:14px;font-weight:700}
+  .client-box{background:#f8f8f8;border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th{background:#1a1a1a;color:#fff;padding:10px 12px;text-align:left;font-size:10px;text-transform:uppercase}
   td{padding:10px 12px;border-bottom:1px solid #eee}
   .sig{display:flex;justify-content:space-between;margin-top:60px}
-  .sig-box{border-top:1px solid #333;width:200px;padding-top:8px;font-size:12px;text-align:center}
-  .footer{margin-top:30px;border-top:1px solid #eee;padding-top:12px;font-size:11px;color:#888}
+  .sig-box{border-top:1px solid #333;width:220px;padding-top:8px;font-size:12px;text-align:center;color:#555}
+  .footer{margin-top:30px;border-top:1px solid #eee;padding-top:12px;font-size:11px;color:#888;text-align:center}
   @media print{@page{margin:20mm}}</style>
   </head><body>
   <div class="header">
-    <div><div class="logo">CAMI ALUMINIUM</div><div style="font-size:18px;font-weight:700;color:#555">${bl.blId}</div></div>
-    <div style="text-align:right"><div style="font-size:13px;color:#555">Bon de Livraison</div>
-    <div style="font-size:18px;font-weight:700">${new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR')}</div></div>
+    <div>
+      <div class="logo">${companyName}</div>
+      <div class="logo-sub">Bon de Livraison</div>
+      <div class="bl-id">${bl.blId}</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:12px;color:#888;margin-bottom:4px">Date de livraison</div>
+      <div style="font-size:20px;font-weight:700">${new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR')}</div>
+    </div>
   </div>
+  ${clientBlock}
   <div class="meta">
     <div class="meta-item"><label>Projet</label><span>${project.name}</span></div>
     <div class="meta-item"><label>Référence</label><span>${project.reference}</span></div>
@@ -133,7 +148,7 @@ function generateBLHtml(bl, project) {
   <table><thead><tr><th>Repère</th><th>Désignation</th><th>Dimension</th><th>Date livraison</th><th>Notes</th></tr></thead>
   <tbody>${rows}</tbody></table>
   <div class="sig"><div class="sig-box">Signature livreur</div><div class="sig-box">Signature réceptionnaire</div></div>
-  <div class="footer">Généré automatiquement — CAMI ALUMINIUM — ${new Date().toLocaleDateString('fr-FR')}</div>
+  <div class="footer">Généré automatiquement — ${companyName} — ${new Date().toLocaleDateString('fr-FR')}</div>
   <script>window.onload=()=>{window.print();}${closeScript}</body></html>`;
 }
 

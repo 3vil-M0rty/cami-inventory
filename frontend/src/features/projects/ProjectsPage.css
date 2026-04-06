@@ -107,3 +107,68 @@
   .project-form__grid { grid-template-columns: 1fr; }
   .projects-grid { grid-template-columns: 1fr; }
 }
+/* ── Company tabs in projects header ── */
+.project-company-tabs {
+  display: flex;
+  gap: 4px;
+}
+.proj-company-tab {
+  padding: 6px 14px;
+  border: 1.5px solid #ccc;
+  border-radius: 16px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: #555;
+}
+.proj-company-tab:hover { background: #f5f5f5; }
+.proj-company-tab.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+
+/* ── Company tag on project card ── */
+.project-company-tag {
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.4px;
+}
+.project-client-tag {
+  font-size: 0.82rem;
+  color: #555;
+  margin-bottom: 4px;
+}
+
+/* ── Company chooser in project form ── */
+.project-form-company-selector {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+}
+.company-choice-btns {
+  display: flex;
+  gap: 10px;
+}
+.company-choice-btn {
+  flex: 1;
+  padding: 12px 20px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: #555;
+}
+.company-choice-btn:hover { border-color: #1a1a1a; color: #1a1a1a; }
+.company-choice-btn.active {
+  background: #1a1a1a;
+  color: #fff;
+  border-color: #1a1a1a;
+}

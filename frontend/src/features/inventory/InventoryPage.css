@@ -346,3 +346,31 @@
 
 .confirm-takeout-btn:hover:not(:disabled) { background: #dc2626; }
 .confirm-takeout-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Super-category tabs ── */
+.super-cat-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 0;
+  border-bottom: 2px solid #e5e7eb;
+  padding: 0 28px;
+  background: #fff;
+}
+.super-cat-tab {
+  padding: 14px 28px;
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.15s;
+  letter-spacing: 0.2px;
+}
+.super-cat-tab:hover { color: var(--sc-color, #1a1a1a); }
+.super-cat-tab.active {
+  color: var(--sc-color, #1a1a1a);
+  border-bottom-color: var(--sc-color, #1a1a1a);
+}

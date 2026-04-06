@@ -1,0 +1,62 @@
+.devis-page { max-width: 1200px; margin: 0 auto; padding: 28px; }
+.devis-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+.devis-header h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 4px; }
+.devis-subtitle { color: #666; font-size: 0.9rem; }
+.devis-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+.filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter-tab { padding: 7px 14px; border: 1.5px solid #ddd; border-radius: 20px; background: #fff; font-size: 13px; font-weight: 500; cursor: pointer; }
+.filter-tab.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.devis-list { display: flex; flex-direction: column; gap: 14px; }
+.devis-card { background: #fff; border-radius: 12px; border: 1.5px solid #e5e7eb; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.devis-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+.devis-card-header h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+.devis-client { font-size: 0.88rem; color: #555; margin-bottom: 4px; }
+.devis-company-badge { background: #1a1a1a; color: #fff; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+.devis-amount { font-size: 1.15rem; font-weight: 700; margin-bottom: 4px; }
+.status-badge { font-size: 0.78rem; font-weight: 600; padding: 3px 10px; border-radius: 10px; }
+.devis-meta { display: flex; gap: 16px; font-size: 0.82rem; color: #777; margin-bottom: 12px; }
+.devis-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.btn-preview { padding: 6px 14px; background: #fff; border: 1.5px solid #6366f1; color: #6366f1; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.btn-preview:hover { background: #eef2ff; }
+.btn-edit, .btn-delete { padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1.5px solid #ddd; background: #fff; }
+.btn-edit:hover { background: #f5f5f5; }
+.btn-delete { color: #dc2626; }
+.btn-delete:hover { background: #fef2f2; border-color: #dc2626; }
+.status-select { padding: 6px 10px; border: 1.5px solid #ddd; border-radius: 6px; font-size: 12px; background: #fff; cursor: pointer; }
+.empty-state { text-align: center; padding: 60px 20px; }
+.empty-icon { font-size: 3rem; margin-bottom: 12px; }
+.loading-msg { text-align: center; padding: 40px; color: #888; }
+/* Form styles */
+.form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.devis-lines-section { margin: 16px 0; border: 1.5px solid #e5e7eb; border-radius: 10px; padding: 16px; }
+.devis-line-form { background: #f9fafb; border-radius: 8px; padding: 14px; margin-bottom: 12px; border: 1px solid #e5e7eb; }
+.line-form-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 10px; flex-wrap: wrap; }
+.line-total-value { padding: 8px 12px; background: #fff; border: 1.5px solid #ddd; border-radius: 6px; font-weight: 700; font-size: 0.9rem; min-height: 38px; display: flex; align-items: center; }
+.devis-totals { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; margin-top: 16px; padding-top: 12px; border-top: 1.5px solid #e5e7eb; }
+.total-row { display: flex; gap: 40px; justify-content: flex-end; font-size: 0.92rem; }
+.total-row.ttc { font-size: 1.05rem; font-weight: 700; border-top: 2px solid #1a1a1a; padding-top: 6px; }
+.btn-add-line { padding: 7px 14px; background: #fff; border: 1.5px solid #1a1a1a; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btn-remove-line { padding: 8px 12px; background: #fee2e2; border: none; border-radius: 6px; color: #dc2626; font-size: 16px; cursor: pointer; font-weight: 700; align-self: flex-end; }
+.modal.xlarge { max-width: 960px; width: 97vw; }
+/* Preview */
+.preview-toolbar { display: flex; gap: 10px; justify-content: flex-end; margin-bottom: 16px; }
+.btn-print { padding: 8px 18px; background: #1a1a1a; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.devis-doc { background: #fff; padding: 40px; font-family: 'Archivo', sans-serif; max-width: 800px; margin: 0 auto; }
+.devis-doc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; border-bottom: 2px solid #1a1a1a; padding-bottom: 20px; }
+.doc-company-name { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
+.doc-company-info { font-size: 0.85rem; color: #666; }
+.doc-title { font-size: 1.8rem; font-weight: 800; letter-spacing: 2px; }
+.doc-ref { font-size: 1rem; font-weight: 600; color: #555; }
+.doc-date { font-size: 0.85rem; color: #666; }
+.devis-doc-client { background: #f9fafb; padding: 12px 16px; border-radius: 8px; margin-bottom: 24px; font-size: 0.9rem; }
+.devis-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+.devis-table th { background: #1a1a1a; color: #fff; padding: 10px 12px; text-align: left; font-size: 0.82rem; font-weight: 600; }
+.devis-table td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; font-size: 0.88rem; }
+.devis-table tr:last-child td { border-bottom: none; }
+.devis-doc-totals { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; border-top: 2px solid #e5e7eb; padding-top: 12px; margin-bottom: 20px; }
+.doc-total-row { display: flex; gap: 60px; font-size: 0.92rem; }
+.doc-total-row.ttc { font-size: 1.1rem; font-weight: 700; border-top: 2px solid #1a1a1a; padding-top: 6px; margin-top: 4px; }
+.devis-doc-notes { background: #f9fafb; padding: 12px 16px; border-radius: 8px; font-size: 0.88rem; color: #555; }
+.devis-preview { background: #f5f5f5; }
+@media print { .preview-toolbar { display: none; } .devis-doc { padding: 20px; } }
+@media (max-width: 768px) { .form-grid-3 { grid-template-columns: 1fr; } .line-form-row { flex-direction: column; } }

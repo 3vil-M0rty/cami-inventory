@@ -12,7 +12,7 @@ export const LANGUAGE_LABELS = {
 const translations = {
   [LANGUAGES.FR]: {
     appTitle: 'CAMI ALUMINIUM',
-    appSubtitle: 'Système de Gestion d\'Inventaire',
+    appSubtitle: 'PAR HB',
     navInventory: 'Inventaire',
     navProjects: 'Projets',
     image: 'Image', designation: 'Désignation', quantity: 'Quantité',
@@ -101,7 +101,7 @@ const translations = {
   },
   [LANGUAGES.IT]: {
     appTitle: 'CAMI ALUMINIUM',
-    appSubtitle: 'Sistema di Gestione Inventario',
+    appSubtitle: 'DA HB',
     navInventory: 'Inventario', navProjects: 'Progetti',
     image: 'Immagine', designation: 'Designazione', quantity: 'Quantità',
     orderedQuantity: 'Qta Ordinata', threshold: 'Soglia', status: 'Stato',
@@ -186,7 +186,7 @@ const translations = {
   },
   [LANGUAGES.EN]: {
     appTitle: 'CAMI ALUMINIUM',
-    appSubtitle: 'Inventory Management System',
+    appSubtitle: 'BY HICHAM',
     navInventory: 'Inventory', navProjects: 'Projects',
     image: 'Image', designation: 'Designation', quantity: 'Quantity',
     orderedQuantity: 'Ordered Qty', threshold: 'Threshold', status: 'Status',
