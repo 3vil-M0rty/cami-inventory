@@ -192,7 +192,7 @@ const InventoryForm = ({ onSubmit, onCancel, initialData = null }) => {
             onChange={handleInputChange}
             placeholder="20"
             min="0"
-            step="1"
+            step="0.01"
             error={errors.threshold}
             required
           />
