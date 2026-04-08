@@ -2,32 +2,55 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { useLanguage } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
 import './InventoryPage.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
-const SUPER_CATEGORIES = [
-  { key: 'aluminium',   label: { fr: '🔩 Aluminium', en: '🔩 Aluminium', it: '🔩 Alluminio' }, color: '#3b82f6' },
-  { key: 'verre',       label: { fr: '💎 Verre',      en: '💎 Glass',     it: '💎 Vetro'    }, color: '#06b6d4' },
-  { key: 'accessoires', label: { fr: '🔧 Accessoires',en: '🔧 Accessories',it: '🔧 Accessori'}, color: '#f59e0b' },
+// Default built-in super-categories (always present as fallback)
+const DEFAULT_SUPER_CATS = [
+  { key: 'aluminium',   labelFr: '🔩 Aluminium', labelIt: '🔩 Alluminio',  labelEn: '🔩 Aluminium', color: '#3b82f6' },
+  { key: 'verre',       labelFr: '💎 Verre',      labelIt: '💎 Vetro',       labelEn: '💎 Glass',     color: '#06b6d4' },
+  { key: 'accessoires', labelFr: '🔧 Accessoires',labelIt: '🔧 Accessori',   labelEn: '🔧 Accessories',color: '#f59e0b' },
 ];
 
+function getSuperCatLabel(sc, language) {
+  if (sc.label) return sc.label[language] || sc.label.fr || sc.key;
+  const map = { fr: sc.labelFr, it: sc.labelIt, en: sc.labelEn };
+  return map[language] || sc.labelFr || sc.key;
+}
+
 function InventoryPage() {
-  const { currentLanguage: language } = useLanguage();
-  const [activeSuperCat, setActiveSuperCat] = useState('aluminium');
-  const [items, setItems] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const { currentLanguage: language, t } = useLanguage();
+  const { can } = useAuth();
+
+  const [superCats,        setSuperCats]        = useState(DEFAULT_SUPER_CATS);
+  const [activeSuperCat,   setActiveSuperCat]   = useState('aluminium');
+  const [items,            setItems]            = useState([]);
+  const [categories,       setCategories]       = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [filter, setFilter] = useState('all');
-  const [loading, setLoading] = useState(true);
-  const [showAddCategory, setShowAddCategory] = useState(false);
-  const [showAddItem, setShowAddItem] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [exporting, setExporting] = useState(false);
-  const [takeOutModal, setTakeOutModal] = useState(null);
-  const [takeOutQty, setTakeOutQty] = useState(1);
-  const [takeOutNote, setTakeOutNote] = useState('');
+  const [filter,           setFilter]           = useState('all');
+  const [loading,          setLoading]          = useState(true);
+  const [showAddCategory,  setShowAddCategory]  = useState(false);
+  const [editingCategory,  setEditingCategory]  = useState(null);
+  const [showAddItem,      setShowAddItem]      = useState(false);
+  const [editingItem,      setEditingItem]      = useState(null);
+  const [searchTerm,       setSearchTerm]       = useState('');
+  const [exporting,        setExporting]        = useState(false);
+  const [takeOutModal,     setTakeOutModal]     = useState(null);
+  const [takeOutQty,       setTakeOutQty]       = useState(1);
+  const [takeOutNote,      setTakeOutNote]      = useState('');
+  const [showSuperCatMgr,  setShowSuperCatMgr]  = useState(false);
+
+  // Load super-categories from backend if endpoint exists, else fall back to defaults
+  const fetchSuperCats = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_URL}/super-categories`);
+      if (res.data && res.data.length) setSuperCats(res.data);
+    } catch {
+      setSuperCats(DEFAULT_SUPER_CATS);
+    }
+  }, []);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -65,79 +88,25 @@ function InventoryPage() {
     finally { setLoading(false); }
   }, [activeSuperCat, selectedCategory, filter]);
 
+  useEffect(() => { fetchSuperCats(); }, [fetchSuperCats]);
   useEffect(() => { fetchCategories(); }, [fetchCategories]);
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
-  const localT = {
-    fr: {
-      allItems: 'Tout afficher', lowStock: 'Stock faible',
-      addCategory: 'Ajouter catégorie', addItem: 'Ajouter article',
-      quantity: 'Quantité', orderedQuantity: 'Qté Commandée', threshold: 'Seuil',
-      noItems: 'Aucun article trouvé', loading: 'Chargement...',
-      designation: 'Désignation', modifier: 'Modifier', supprimer: 'Supprimer',
-      searchPlaceholder: 'Rechercher...', exportExcel: 'Exporter Excel', exporting: 'Exportation...',
-      exportSuccess: 'Excel exporté', exportError: "Erreur d'exportation",
-      noCategory: 'Sans Catégorie', criticalStock: 'Stock Critique',
-      warningStock: 'Alerte Stock', inStock: 'En Stock',
-      deleteConfirmMessage: 'Supprimer cet article?',
-      deleteCategoryConfirmMessage: 'Supprimer cette catégorie?',
-      errorUpdating: 'Erreur de mise à jour', status: 'Statut',
-      takeOutTitle: 'Retirer du stock', takeOutAvailable: 'disponible',
-      takeOutQtyLabel: 'Quantité à retirer', takeOutNoteLabel: 'Raison / Note',
-      takeOutPlaceholder: 'ex: Utilisé pour...', takeOutConfirm: 'Confirmer', takeOutCancel: 'Annuler'
-    },
-    it: {
-      allItems: 'Mostra tutto', lowStock: 'Scorte basse',
-      addCategory: 'Aggiungi categoria', addItem: 'Aggiungi articolo',
-      quantity: 'Quantità', orderedQuantity: 'Qta Ordinata', threshold: 'Soglia',
-      noItems: 'Nessun articolo trovato', loading: 'Caricamento...',
-      designation: 'Designazione', modifier: 'Modifica', supprimer: 'Elimina',
-      searchPlaceholder: 'Cerca...', exportExcel: 'Esporta Excel', exporting: 'Esportazione...',
-      exportSuccess: 'Excel esportato', exportError: "Errore esportazione",
-      noCategory: 'Senza Categoria', criticalStock: 'Stock Critico',
-      warningStock: 'Avviso Stock', inStock: 'Disponibile',
-      deleteConfirmMessage: 'Eliminare questo articolo?',
-      deleteCategoryConfirmMessage: 'Eliminare questa categoria?',
-      errorUpdating: "Errore aggiornamento", status: 'Stato',
-      takeOutTitle: 'Preleva dal magazzino', takeOutAvailable: 'disponibile',
-      takeOutQtyLabel: 'Quantità da prelevare', takeOutNoteLabel: 'Motivo / Nota',
-      takeOutPlaceholder: 'es: Usato per...', takeOutConfirm: 'Conferma', takeOutCancel: 'Annulla'
-    },
-    en: {
-      allItems: 'Show all', lowStock: 'Low stock',
-      addCategory: 'Add category', addItem: 'Add item',
-      quantity: 'Quantity', orderedQuantity: 'Ordered Qty', threshold: 'Threshold',
-      noItems: 'No items found', loading: 'Loading...',
-      designation: 'Designation', modifier: 'Edit', supprimer: 'Delete',
-      searchPlaceholder: 'Search...', exportExcel: 'Export Excel', exporting: 'Exporting...',
-      exportSuccess: 'Excel exported', exportError: 'Export error',
-      noCategory: 'No Category', criticalStock: 'Critical Stock',
-      warningStock: 'Warning Stock', inStock: 'In Stock',
-      deleteConfirmMessage: 'Delete this item?',
-      deleteCategoryConfirmMessage: 'Delete this category?',
-      errorUpdating: 'Update error', status: 'Status',
-      takeOutTitle: 'Take out stock', takeOutAvailable: 'available',
-      takeOutQtyLabel: 'Quantity to remove', takeOutNoteLabel: 'Reason / Note',
-      takeOutPlaceholder: 'e.g. Used for...', takeOutConfirm: 'Confirm', takeOutCancel: 'Cancel'
-    }
-  };
-  const t = localT[language] || localT.fr;
-
   const getStockStatus = (item) => {
     const total = item.quantity + (item.orderedQuantity || 0);
-    if (total < item.threshold) return { color: '#dc2626', text: t.criticalStock, className: 'status-critical' };
-    if (item.quantity < item.threshold && total >= item.threshold) return { color: '#f59e0b', text: t.warningStock, className: 'status-warning' };
-    return { color: '#16a34a', text: t.inStock, className: 'status-ok' };
+    if (total < item.threshold)                              return { color: '#dc2626', text: t('criticalStock'), className: 'status-critical' };
+    if (item.quantity < item.threshold && total >= item.threshold) return { color: '#f59e0b', text: t('warningStock'),  className: 'status-warning' };
+    return { color: '#16a34a', text: t('inStock'), className: 'status-ok' };
   };
 
   const updateQuantity = async (itemId, amount, note = '') => {
     try {
       const response = await axios.patch(`${API_URL}/inventory/${itemId}/quantity`, { amount, note });
       setItems(items.map(item => item.id === itemId ? response.data : item));
-    } catch (error) { alert(t.errorUpdating); }
+    } catch { alert(t('errorUpdating') || 'Erreur de mise à jour'); }
   };
 
-  const handleMinusClick = (item) => { setTakeOutModal({ item }); setTakeOutQty(1); setTakeOutNote(''); };
+  const handleMinusClick  = (item) => { setTakeOutModal({ item }); setTakeOutQty(1); setTakeOutNote(''); };
   const handleTakeOutConfirm = async () => {
     if (!takeOutModal) return;
     const qty = parseInt(takeOutQty, 10);
@@ -147,7 +116,7 @@ function InventoryPage() {
   };
 
   const deleteItem = async (itemId) => {
-    if (!window.confirm(t.deleteConfirmMessage)) return;
+    if (!window.confirm(t('deleteConfirmMessage'))) return;
     try {
       await axios.delete(`${API_URL}/inventory/${itemId}`);
       setItems(items.filter(item => item.id !== itemId));
@@ -155,7 +124,7 @@ function InventoryPage() {
   };
 
   const deleteCategory = async (categoryId) => {
-    if (!window.confirm(t.deleteCategoryConfirmMessage)) return;
+    if (!window.confirm(t('deleteCategoryConfirmMessage'))) return;
     try {
       await axios.delete(`${API_URL}/categories/${categoryId}`);
       fetchCategories();
@@ -173,7 +142,7 @@ function InventoryPage() {
     try {
       const workbook = XLSX.utils.book_new();
       const categoriesMap = new Map();
-      categoriesMap.set('no-category', { name: t.noCategory, items: [] });
+      categoriesMap.set('no-category', { name: t('noCategory'), items: [] });
       categories.forEach(cat => categoriesMap.set(cat.id, { name: cat.name[language], items: [] }));
       items.forEach(item => {
         const categoryId = item.categoryId?.id || item.categoryId?._id || 'no-category';
@@ -183,44 +152,67 @@ function InventoryPage() {
       categoriesMap.forEach((categoryData) => {
         if (categoryData.items.length === 0) return;
         const sheetData = categoryData.items.map(item => ({
-          [t.designation]: item.designation[language] || item.designation.fr,
-          [t.quantity]: item.quantity, [t.orderedQuantity]: item.orderedQuantity || 0,
-          [t.threshold]: item.threshold, [t.status]: getStockStatus(item).text
+          [t('designation')]: item.designation[language] || item.designation.fr,
+          [t('quantity')]: item.quantity,
+          [t('orderedQuantity')]: item.orderedQuantity || 0,
+          [t('threshold')]: item.threshold,
+          [t('status')]: getStockStatus(item).text
         }));
         const worksheet = XLSX.utils.json_to_sheet(sheetData);
         worksheet['!cols'] = [{ wch: 40 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 20 }];
         XLSX.utils.book_append_sheet(workbook, worksheet, categoryData.name.substring(0, 31));
       });
       XLSX.writeFile(workbook, `inventaire_${activeSuperCat}_${new Date().toISOString().split('T')[0]}.xlsx`);
-      alert(t.exportSuccess);
-    } catch (error) { alert(t.exportError); }
+      alert(t('exportSuccess'));
+    } catch { alert(t('exportError')); }
     finally { setExporting(false); }
   };
 
-  const currentSuperCat = SUPER_CATEGORIES.find(s => s.key === activeSuperCat);
+  const currentSuperCat = superCats.find(s => s.key === activeSuperCat);
+
+  // Permission check for current supercategory
+  const canEdit   = can(`inventory.${activeSuperCat}.edit`)   || can('inventory.edit');
+  const canDelete = can(`inventory.${activeSuperCat}.delete`) || can('inventory.delete');
+  const canView   = can(`inventory.${activeSuperCat}.view`)   || can('inventory.view');
+
+  if (!canView) {
+    return (
+      <div style={{ textAlign: 'center', padding: 80 }}>
+        <div style={{ fontSize: '3rem', marginBottom: 12 }}>🔒</div>
+        <h2 style={{ color: '#374151' }}>{t('accessDenied') || 'Accès refusé'}</h2>
+      </div>
+    );
+  }
 
   return (
     <div className="inventory-app">
       {/* Super-category tabs */}
       <div className="super-cat-tabs">
-        {SUPER_CATEGORIES.map(sc => (
+        {superCats.map(sc => (
           <button
             key={sc.key}
             className={`super-cat-tab ${activeSuperCat === sc.key ? 'active' : ''}`}
             style={{ '--sc-color': sc.color }}
-            onClick={() => { setActiveSuperCat(sc.key); setFilter('all'); }}
+            onClick={() => { setActiveSuperCat(sc.key); setFilter('all'); setSearchTerm(''); }}
           >
-            {sc.label[language] || sc.label.fr}
+            {getSuperCatLabel(sc, language)}
           </button>
         ))}
+        {can('admin.view') && (
+          <button className="super-cat-tab super-cat-tab--manage" onClick={() => setShowSuperCatMgr(true)}>
+            ⚙️
+          </button>
+        )}
       </div>
 
       <header className="inv-header">
-        <h1 style={{ color: currentSuperCat?.color }}>{currentSuperCat?.label[language] || currentSuperCat?.label.fr}</h1>
+        <h1 style={{ color: currentSuperCat?.color }}>
+          {getSuperCatLabel(currentSuperCat || superCats[0], language)}
+        </h1>
         <div className="inv-header__search">
           <input
             type="text"
-            placeholder={t.searchPlaceholder}
+            placeholder={t('searchPlaceholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="inv-search-input"
@@ -233,11 +225,11 @@ function InventoryPage() {
           <button
             className={`filter-btn ${filter === 'all' && selectedCategory === 'all' ? 'active' : ''}`}
             onClick={() => { setFilter('all'); setSelectedCategory('all'); }}
-          >{t.allItems}</button>
+          >{t('showAll')}</button>
           <button
             className={`filter-btn ${filter === 'low-stock' ? 'active low-stock' : ''}`}
             onClick={() => setFilter(filter === 'low-stock' ? 'all' : 'low-stock')}
-          >{t.lowStock}</button>
+          >{t('lowStock')}</button>
           {categories.map(category => (
             <div key={category.id} className="category-btn-wrapper">
               <button
@@ -248,27 +240,36 @@ function InventoryPage() {
                 <span className="category-dot" style={{ backgroundColor: category.color }}></span>
                 {category.name[language]}
               </button>
-              <button className="delete-category-btn" onClick={() => deleteCategory(category.id)} title={t.supprimer}>×</button>
+              {canEdit && (
+                <button className="edit-category-btn" onClick={() => setEditingCategory(category)} title={t('edit')}>✎</button>
+              )}
+              {canDelete && (
+                <button className="delete-category-btn" onClick={() => deleteCategory(category.id)} title={t('delete')}>×</button>
+              )}
             </div>
           ))}
-          <button className="filter-btn add-category-btn" onClick={() => setShowAddCategory(true)}>
-            + {t.addCategory}
-          </button>
+          {canEdit && (
+            <button className="filter-btn add-category-btn" onClick={() => setShowAddCategory(true)}>
+              + {t('addCategory')}
+            </button>
+          )}
         </div>
         <div className="action-buttons">
           <button className="excel-btn" onClick={exportToExcel} disabled={exporting || items.length === 0}>
-            {exporting ? t.exporting : t.exportExcel}
+            {exporting ? t('exporting') : t('exportExcel')}
           </button>
-          <button className="add-item-btn" onClick={() => setShowAddItem(true)}>
-            + {t.addItem}
-          </button>
+          {canEdit && (
+            <button className="add-item-btn" onClick={() => setShowAddItem(true)}>
+              + {t('addNewItem')}
+            </button>
+          )}
         </div>
       </div>
 
       {loading ? (
-        <div className="loading">{t.loading}</div>
+        <div className="loading">{t('loading')}</div>
       ) : filteredItems.length === 0 ? (
-        <div className="no-items">{t.noItems}</div>
+        <div className="no-items">{t('noItems')}</div>
       ) : (
         <div className="items-grid">
           {filteredItems.map(item => (
@@ -278,8 +279,8 @@ function InventoryPage() {
               language={language}
               onUpdateQuantity={updateQuantity}
               onMinusClick={handleMinusClick}
-              onEdit={(item) => setEditingItem(item)}
-              onDelete={deleteItem}
+              onEdit={canEdit   ? (item) => setEditingItem(item) : null}
+              onDelete={canDelete ? deleteItem : null}
               getStockStatus={getStockStatus}
               t={t}
             />
@@ -287,12 +288,15 @@ function InventoryPage() {
         </div>
       )}
 
-      {showAddCategory && (
+      {/* Modals */}
+      {(showAddCategory || editingCategory) && (
         <CategoryModal
           language={language}
           superCategory={activeSuperCat}
-          onClose={() => { setShowAddCategory(false); fetchCategories(); }}
-          onSave={() => { setShowAddCategory(false); fetchCategories(); }}
+          category={editingCategory}
+          t={t}
+          onClose={() => { setShowAddCategory(false); setEditingCategory(null); fetchCategories(); }}
+          onSave={() =>  { setShowAddCategory(false); setEditingCategory(null); fetchCategories(); }}
         />
       )}
       {(showAddItem || editingItem) && (
@@ -301,37 +305,49 @@ function InventoryPage() {
           categories={categories}
           item={editingItem}
           superCategory={activeSuperCat}
+          t={t}
           onClose={() => { setShowAddItem(false); setEditingItem(null); }}
-          onSave={() => { setShowAddItem(false); setEditingItem(null); fetchItems(); }}
+          onSave={() =>  { setShowAddItem(false); setEditingItem(null); fetchItems(); }}
         />
       )}
       {takeOutModal && (
         <div className="modal-overlay" onClick={() => setTakeOutModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth: 420, padding: 24, display: 'flex', flexDirection: 'column', gap: 16}}>
-            <h2 style={{margin: 0, fontSize: '1.1rem'}}>{t.takeOutTitle}</h2>
-            <p style={{margin: 0}}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <h2 style={{ margin: 0, fontSize: '1.1rem' }}>{t('takeOutTitle')}</h2>
+            <p style={{ margin: 0 }}>
               <strong>{takeOutModal.item.designation[language]}</strong>
-              <span style={{marginLeft: 8, color: '#888', fontSize: '0.88rem'}}>({t.takeOutAvailable}: {takeOutModal.item.quantity})</span>
+              <span style={{ marginLeft: 8, color: '#888', fontSize: '0.88rem' }}>({t('takeOutAvailable')}: {takeOutModal.item.quantity})</span>
             </p>
             <div className="form-group">
-              <label>{t.takeOutQtyLabel}</label>
-              <input type="number" min={1} max={takeOutModal.item.quantity} value={takeOutQty} onChange={e => setTakeOutQty(e.target.value)} autoFocus style={{width: 100}} />
+              <label>{t('takeOutQtyLabel')}</label>
+              <input type="number" min={1} max={takeOutModal.item.quantity} value={takeOutQty} onChange={e => setTakeOutQty(e.target.value)} autoFocus style={{ width: 100 }} />
             </div>
             <div className="form-group">
-              <label>{t.takeOutNoteLabel}</label>
-              <textarea placeholder={t.takeOutPlaceholder} value={takeOutNote} onChange={e => setTakeOutNote(e.target.value)} rows={3} style={{width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d0d5dd', fontFamily: 'inherit', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box'}} />
+              <label>{t('takeOutNoteLabel')}</label>
+              <textarea placeholder={t('takeOutPlaceholder')} value={takeOutNote} onChange={e => setTakeOutNote(e.target.value)} rows={3} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d0d5dd', fontFamily: 'inherit', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box' }} />
             </div>
             <div className="modal-actions">
-              <button type="button" onClick={() => setTakeOutModal(null)}>{t.takeOutCancel}</button>
-              <button type="button" className="primary" onClick={handleTakeOutConfirm} disabled={!takeOutQty || parseInt(takeOutQty) <= 0 || parseInt(takeOutQty) > takeOutModal.item.quantity} style={{background: '#ef4444'}}>{t.takeOutConfirm}</button>
+              <button type="button" onClick={() => setTakeOutModal(null)}>{t('takeOutCancel')}</button>
+              <button type="button" className="primary" onClick={handleTakeOutConfirm}
+                disabled={!takeOutQty || parseInt(takeOutQty) <= 0 || parseInt(takeOutQty) > takeOutModal.item.quantity}
+                style={{ background: '#ef4444' }}>{t('takeOutConfirm')}</button>
             </div>
           </div>
         </div>
+      )}
+      {showSuperCatMgr && (
+        <SuperCategoryManager
+          superCats={superCats}
+          language={language}
+          t={t}
+          onClose={() => { setShowSuperCatMgr(false); fetchSuperCats(); }}
+        />
       )}
     </div>
   );
 }
 
+/* ── Item Card ──────────────────────────────────────────────────────── */
 function ItemCard({ item, language, onUpdateQuantity, onMinusClick, onEdit, onDelete, getStockStatus, t }) {
   const status = getStockStatus(item);
   return (
@@ -343,58 +359,76 @@ function ItemCard({ item, language, onUpdateQuantity, onMinusClick, onEdit, onDe
       <div className="item-content">
         <h3>{item.designation[language] || item.designation.fr}</h3>
         <div className="quantity-section">
-          <div className="quantity-display"><span className="quantity-label">{t.quantity}</span><span className={`quantity-value ${item.quantity < item.threshold ? 'low' : ''}`}>{item.quantity}</span></div>
-          <div className="quantity-display"><span className="quantity-label">{t.orderedQuantity}</span><span className="quantity-value">{item.orderedQuantity || 0}</span></div>
-          <div className="threshold-display"><span className="threshold-label">{t.threshold}</span><span className="threshold-value">{item.threshold}</span></div>
+          <div className="quantity-display">
+            <span className="quantity-label">{t('quantity')}</span>
+            <span className={`quantity-value ${item.quantity < item.threshold ? 'low' : ''}`}>{item.quantity}</span>
+          </div>
+          <div className="quantity-display">
+            <span className="quantity-label">{t('orderedQuantity')}</span>
+            <span className="quantity-value">{item.orderedQuantity || 0}</span>
+          </div>
+          <div className="threshold-display">
+            <span className="threshold-label">{t('threshold')}</span>
+            <span className="threshold-value">{item.threshold}</span>
+          </div>
         </div>
         <div className="status-badge" style={{ backgroundColor: status.color, color: '#fff' }}>{status.text}</div>
         <div className="quantity-controls">
           <button className="qty-btn minus" onClick={() => onMinusClick(item)} disabled={item.quantity === 0}>−</button>
-          <button className="qty-btn plus" onClick={() => onUpdateQuantity(item.id, 1)}>+</button>
+          <button className="qty-btn plus"  onClick={() => onUpdateQuantity(item.id, 1)}>+</button>
         </div>
         <div className="item-actions">
-          <button className="edit-btn" onClick={() => onEdit(item)}>{t.modifier}</button>
-          <button className="delete-btn" onClick={() => onDelete(item.id)}>{t.supprimer}</button>
+          {onEdit   && <button className="edit-btn"   onClick={() => onEdit(item)}>{t('edit')}</button>}
+          {onDelete && <button className="delete-btn" onClick={() => onDelete(item.id)}>{t('delete')}</button>}
         </div>
       </div>
     </div>
   );
 }
 
-function CategoryModal({ language, superCategory, onClose, onSave }) {
-  const [formData, setFormData] = useState({ name: { it: '', fr: '', en: '' }, color: '#3b82f6' });
+/* ── Category Modal (add + edit) ─────────────────────────────────── */
+function CategoryModal({ language, superCategory, category, t, onClose, onSave }) {
+  const isEdit = !!category;
+  const [formData, setFormData] = useState(isEdit
+    ? { name: { ...category.name }, color: category.color }
+    : { name: { it: '', fr: '', en: '' }, color: '#3b82f6' }
+  );
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`${API_URL}/categories`, { ...formData, superCategory });
+      if (isEdit) {
+        await axios.put(`${API_URL}/categories/${category.id}`, { ...formData, superCategory });
+      } else {
+        await axios.post(`${API_URL}/categories`, { ...formData, superCategory });
+      }
       onSave();
-    } catch (error) { alert('Erreur lors de la création'); }
+    } catch { alert('Erreur lors de la sauvegarde'); }
   };
-  const labels = {
-    fr: { title: 'Ajouter une catégorie', nameFr: 'Nom (Français)', nameIt: 'Nome (Italiano)', nameEn: 'Name (English)', color: 'Couleur', cancel: 'Annuler', create: 'Créer' },
-    it: { title: 'Aggiungi categoria', nameFr: 'Nom (Français)', nameIt: 'Nome (Italiano)', nameEn: 'Name (English)', color: 'Colore', cancel: 'Annulla', create: 'Crea' },
-    en: { title: 'Add category', nameFr: 'Nom (Français)', nameIt: 'Nome (Italiano)', nameEn: 'Name (English)', color: 'Color', cancel: 'Cancel', create: 'Create' },
-  };
-  const t = labels[language] || labels.fr;
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>{t.title}</h2>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h2>{isEdit ? t('editCategory') : t('addCategory')}</h2>
         <form onSubmit={handleSubmit}>
-          <div className="form-group"><label>{t.nameFr}</label><input type="text" required value={formData.name.fr} onChange={(e) => setFormData({ ...formData, name: { ...formData.name, fr: e.target.value } })} /></div>
-          <div className="form-group"><label>{t.nameIt}</label><input type="text" required value={formData.name.it} onChange={(e) => setFormData({ ...formData, name: { ...formData.name, it: e.target.value } })} /></div>
-          <div className="form-group"><label>{t.nameEn}</label><input type="text" required value={formData.name.en} onChange={(e) => setFormData({ ...formData, name: { ...formData.name, en: e.target.value } })} /></div>
-          <div className="form-group"><label>{t.color}</label><input type="color" value={formData.color} onChange={(e) => setFormData({ ...formData, color: e.target.value })} /></div>
-          <div className="modal-actions"><button type="button" onClick={onClose}>{t.cancel}</button><button type="submit" className="primary">{t.create}</button></div>
+          <div className="form-group"><label>Nom (Français)</label><input type="text" required value={formData.name.fr} onChange={e => setFormData({ ...formData, name: { ...formData.name, fr: e.target.value } })} /></div>
+          <div className="form-group"><label>Nome (Italiano)</label><input type="text" required value={formData.name.it} onChange={e => setFormData({ ...formData, name: { ...formData.name, it: e.target.value } })} /></div>
+          <div className="form-group"><label>Name (English)</label><input  type="text" required value={formData.name.en} onChange={e => setFormData({ ...formData, name: { ...formData.name, en: e.target.value } })} /></div>
+          <div className="form-group"><label>{t('superCategoryColor') || 'Couleur'}</label><input type="color" value={formData.color} onChange={e => setFormData({ ...formData, color: e.target.value })} /></div>
+          <div className="modal-actions">
+            <button type="button" onClick={onClose}>{t('cancel')}</button>
+            <button type="submit" className="primary">{isEdit ? t('update') : t('create')}</button>
+          </div>
         </form>
       </div>
     </div>
   );
 }
 
-function ItemModal({ language, categories, item, superCategory, onClose, onSave }) {
+/* ── Item Modal ──────────────────────────────────────────────────── */
+function ItemModal({ language, categories, item, superCategory, t, onClose, onSave }) {
   const [formData, setFormData] = useState(item ? {
-    image: item.image || '', designation: item.designation,
+    image: item.image || '', designation: { ...item.designation },
     quantity: item.quantity, orderedQuantity: item.orderedQuantity || 0,
     threshold: item.threshold, categoryId: item.categoryId?.id || item.categoryId?._id || '',
     superCategory: item.superCategory || superCategory
@@ -408,40 +442,142 @@ function ItemModal({ language, categories, item, superCategory, onClose, onSave 
     e.preventDefault();
     try {
       if (item) { await axios.put(`${API_URL}/inventory/${item.id}`, formData); }
-      else { await axios.post(`${API_URL}/inventory`, formData); }
+      else       { await axios.post(`${API_URL}/inventory`, formData); }
       onSave();
-    } catch (error) { alert('Erreur lors de la sauvegarde'); }
+    } catch { alert('Erreur lors de la sauvegarde'); }
   };
-
-  const labels = {
-    fr: { titleAdd: 'Ajouter un article', titleEdit: "Modifier l'article", imageUrl: 'URL Image', designationFr: 'Désignation (Français)', designationIt: 'Designazione (Italiano)', designationEn: 'Designation (English)', category: 'Catégorie', noCategory: 'Aucune catégorie', quantity: 'Quantité', orderedQuantity: 'Quantité Commandée', threshold: 'Seuil', cancel: 'Annuler', create: 'Créer', update: 'Mettre à jour' },
-    it: { titleAdd: 'Aggiungi articolo', titleEdit: 'Modifica articolo', imageUrl: 'URL Immagine', designationFr: 'Désignation (Français)', designationIt: 'Designazione (Italiano)', designationEn: 'Designation (English)', category: 'Categoria', noCategory: 'Nessuna categoria', quantity: 'Quantità', orderedQuantity: 'Quantità Ordinata', threshold: 'Soglia', cancel: 'Annulla', create: 'Crea', update: 'Aggiorna' },
-    en: { titleAdd: 'Add item', titleEdit: 'Edit item', imageUrl: 'Image URL', designationFr: 'Désignation (Français)', designationIt: 'Designazione (Italiano)', designationEn: 'Designation (English)', category: 'Category', noCategory: 'No category', quantity: 'Quantity', orderedQuantity: 'Ordered Quantity', threshold: 'Threshold', cancel: 'Cancel', create: 'Create', update: 'Update' },
-  };
-  const t = labels[language] || labels.fr;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal large" onClick={(e) => e.stopPropagation()}>
-        <h2>{item ? t.titleEdit : t.titleAdd}</h2>
+      <div className="modal large" onClick={e => e.stopPropagation()}>
+        <h2>{item ? t('editItem') : t('addNewItem')}</h2>
         <form onSubmit={handleSubmit}>
-          <div className="form-group"><label>{t.imageUrl}</label><input type="url" value={formData.image} onChange={(e) => setFormData({ ...formData, image: e.target.value })} /></div>
-          <div className="form-group"><label>{t.designationFr}</label><input type="text" required value={formData.designation.fr} onChange={(e) => setFormData({ ...formData, designation: { ...formData.designation, fr: e.target.value } })} /></div>
-          <div className="form-group"><label>{t.designationIt}</label><input type="text" required value={formData.designation.it} onChange={(e) => setFormData({ ...formData, designation: { ...formData.designation, it: e.target.value } })} /></div>
-          <div className="form-group"><label>{t.designationEn}</label><input type="text" required value={formData.designation.en} onChange={(e) => setFormData({ ...formData, designation: { ...formData.designation, en: e.target.value } })} /></div>
-          <div className="form-group"><label>{t.category}</label>
-            <select value={formData.categoryId} onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}>
-              <option value="">{t.noCategory}</option>
-              {categories.map(cat => (<option key={cat.id} value={cat.id}>{cat.name[language]}</option>))}
+          <div className="form-group"><label>{t('imageUrl')}</label><input type="url" value={formData.image} onChange={e => setFormData({ ...formData, image: e.target.value })} /></div>
+          <div className="form-group"><label>Désignation (Français)</label><input type="text" required value={formData.designation.fr} onChange={e => setFormData({ ...formData, designation: { ...formData.designation, fr: e.target.value } })} /></div>
+          <div className="form-group"><label>Designazione (Italiano)</label><input type="text" required value={formData.designation.it} onChange={e => setFormData({ ...formData, designation: { ...formData.designation, it: e.target.value } })} /></div>
+          <div className="form-group"><label>Designation (English)</label><input  type="text" required value={formData.designation.en} onChange={e => setFormData({ ...formData, designation: { ...formData.designation, en: e.target.value } })} /></div>
+          <div className="form-group">
+            <label>{t('categoryLabel')}</label>
+            <select value={formData.categoryId} onChange={e => setFormData({ ...formData, categoryId: e.target.value })}>
+              <option value="">{t('noCategory')}</option>
+              {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name[language]}</option>)}
             </select>
           </div>
           <div className="form-row">
-            <div className="form-group"><label>{t.quantity}</label><input type="number" required min="0" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })} /></div>
-            <div className="form-group"><label>{t.orderedQuantity}</label><input type="number" required min="0" value={formData.orderedQuantity} onChange={(e) => setFormData({ ...formData, orderedQuantity: parseInt(e.target.value) || 0 })} /></div>
-            <div className="form-group"><label>{t.threshold}</label><input type="number" required min="0" value={formData.threshold} onChange={(e) => setFormData({ ...formData, threshold: parseInt(e.target.value) || 0 })} /></div>
+            <div className="form-group"><label>{t('quantityLabel')}</label><input type="number" required min="0" value={formData.quantity} onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })} /></div>
+            <div className="form-group"><label>{t('orderedQuantityLabel')}</label><input type="number" required min="0" value={formData.orderedQuantity} onChange={e => setFormData({ ...formData, orderedQuantity: parseInt(e.target.value) || 0 })} /></div>
+            <div className="form-group"><label>{t('thresholdLabel')}</label><input type="number" required min="0" value={formData.threshold} onChange={e => setFormData({ ...formData, threshold: parseInt(e.target.value) || 0 })} /></div>
           </div>
-          <div className="modal-actions"><button type="button" onClick={onClose}>{t.cancel}</button><button type="submit" className="primary">{item ? t.update : t.create}</button></div>
+          <div className="modal-actions">
+            <button type="button" onClick={onClose}>{t('cancel')}</button>
+            <button type="submit" className="primary">{item ? t('update') : t('create')}</button>
+          </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+/* ── Super-Category Manager ──────────────────────────────────────── */
+function SuperCategoryManager({ superCats, language, t, onClose }) {
+  const [list,    setList]    = useState(superCats);
+  const [adding,  setAdding]  = useState(false);
+  const [form,    setForm]    = useState({ key: '', labelFr: '', labelIt: '', labelEn: '', color: '#6366f1' });
+  const [error,   setError]   = useState('');
+  const [saving,  setSaving]  = useState(false);
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!form.key || !form.labelFr) { setError('Identifiant et nom (FR) requis'); return; }
+    if (!/^[a-z0-9_]+$/.test(form.key)) { setError("L'identifiant ne peut contenir que des lettres minuscules, chiffres et _"); return; }
+    setSaving(true);
+    try {
+      const res = await axios.post(`${API_URL}/super-categories`, {
+        key: form.key,
+        label: { fr: form.labelFr, it: form.labelIt || form.labelFr, en: form.labelEn || form.labelFr },
+        color: form.color
+      });
+      setList(prev => [...prev, res.data]);
+      setAdding(false);
+      setForm({ key: '', labelFr: '', labelIt: '', labelEn: '', color: '#6366f1' });
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erreur');
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (key) => {
+    if (!window.confirm(t('deleteSuperCatConfirm'))) return;
+    try {
+      await axios.delete(`${API_URL}/super-categories/${key}`);
+      setList(prev => prev.filter(s => s.key !== key));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Erreur');
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal large" onClick={e => e.stopPropagation()}>
+        <h2>⚙ {t('manageSuperCats')}</h2>
+
+        <div className="supercat-list">
+          {list.map(sc => (
+            <div key={sc.key} className="supercat-row">
+              <span className="supercat-color-dot" style={{ background: sc.color }} />
+              <span className="supercat-label">{getSuperCatLabel(sc, language)}</span>
+              <code className="supercat-key">{sc.key}</code>
+              <button
+                className="btn-sm btn-sm-danger"
+                onClick={() => handleDelete(sc.key)}
+                disabled={['aluminium','verre','accessoires'].includes(sc.key)}
+                title={['aluminium','verre','accessoires'].includes(sc.key) ? 'Catégorie système' : ''}
+              >
+                {t('delete')}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {!adding ? (
+          <button className="btn-primary" style={{ marginTop: 16 }} onClick={() => setAdding(true)}>
+            + {t('addSuperCategory')}
+          </button>
+        ) : (
+          <form onSubmit={handleAdd} style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12, background: '#f9fafb', padding: 16, borderRadius: 10, border: '1px solid #e5e7eb' }}>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label>{t('superCategoryKey')} *</label>
+                <input type="text" placeholder="ex: composite" value={form.key} onChange={e => setForm(f => ({ ...f, key: e.target.value.toLowerCase().replace(/\s/g,'_') }))} required />
+              </div>
+              <div className="form-group">
+                <label>{t('superCategoryColor')}</label>
+                <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label>Nom (Français) *</label>
+                <input type="text" placeholder="🔩 Composite" value={form.labelFr} onChange={e => setForm(f => ({ ...f, labelFr: e.target.value }))} required />
+              </div>
+              <div className="form-group">
+                <label>Nome (Italiano)</label>
+                <input type="text" placeholder="🔩 Composito" value={form.labelIt} onChange={e => setForm(f => ({ ...f, labelIt: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label>Name (English)</label>
+                <input type="text" placeholder="🔩 Composite" value={form.labelEn} onChange={e => setForm(f => ({ ...f, labelEn: e.target.value }))} />
+              </div>
+            </div>
+            {error && <div className="form-error">{error}</div>}
+            <div className="modal-actions">
+              <button type="button" onClick={() => { setAdding(false); setError(''); }}>{t('cancel')}</button>
+              <button type="submit" className="primary" disabled={saving}>{saving ? '...' : t('create')}</button>
+            </div>
+          </form>
+        )}
+
+        <div className="modal-actions" style={{ marginTop: 20 }}>
+          <button onClick={onClose}>{t('close')}</button>
+        </div>
       </div>
     </div>
   );

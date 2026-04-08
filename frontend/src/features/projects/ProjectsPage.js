@@ -4,6 +4,7 @@ import { useProjects } from '../../context/ProjectContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import ProjectDetail from './components/ProjectDetail';
+import './RalPicker.css';
 import './ProjectsPage.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -18,13 +19,12 @@ function ProjectsPage() {
   const { projects, loading, addProject, updateProject, deleteProject, loadProjects } = useProjects();
   const { t, currentLanguage } = useLanguage();
   const { companies, selectedCompany } = useCompany();
-  const [searchTerm, setSearchTerm]         = useState('');
-  const [showForm, setShowForm]             = useState(false);
-  const [editingProject, setEditingProject] = useState(null);
-  const [openProjectId, setOpenProjectId]   = useState(null);
-  const [filterCompany, setFilterCompany]   = useState('all');
+  const [searchTerm,      setSearchTerm]      = useState('');
+  const [showForm,        setShowForm]        = useState(false);
+  const [editingProject,  setEditingProject]  = useState(null);
+  const [openProjectId,   setOpenProjectId]   = useState(null);
+  const [filterCompany,   setFilterCompany]   = useState('all');
 
-  // Sync filter with global company selector
   useEffect(() => {
     setFilterCompany(selectedCompany || 'all');
   }, [selectedCompany]);
@@ -75,27 +75,21 @@ function ProjectsPage() {
           <span className="projects-page__count">{filteredProjects.length}</span>
         </div>
         <div className="projects-page__header-right">
-          {/* Company filter tabs */}
           <div className="project-company-tabs">
             <button
               className={`proj-company-tab ${filterCompany === 'all' ? 'active' : ''}`}
               onClick={() => setFilterCompany('all')}
-            >Tous</button>
+            >{t('allCompanies')}</button>
             {companies.map(c => (
-              <button
-                key={c.id}
+              <button key={c.id}
                 className={`proj-company-tab ${filterCompany === c.id ? 'active' : ''}`}
                 onClick={() => setFilterCompany(filterCompany === c.id ? 'all' : c.id)}
               >{c.name}</button>
             ))}
           </div>
-          <input
-            type="text"
-            className="search-input"
+          <input type="text" className="search-input"
             placeholder={t('projectSearchPlaceholder')}
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-          />
+            value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           <button className="add-item-btn" onClick={() => { setEditingProject(null); setShowForm(true); }}>
             + {t('addProject')}
           </button>
@@ -136,6 +130,7 @@ function ProjectsPage() {
   );
 }
 
+/* ── Project Card ─────────────────────────────────────────────────── */
 function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
   const statusColor = STATUS_COLORS[project.status] || '#999';
   const statusLabel = t(`status_${project.status}`) || project.status || '';
@@ -170,23 +165,167 @@ function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
         </div>
       </div>
       <div className="project-card__actions" onClick={e => e.stopPropagation()}>
-        <button className="edit-btn" onClick={onEdit}>{t('edit')}</button>
+        <button className="edit-btn"   onClick={onEdit}>{t('edit')}</button>
         <button className="delete-btn" onClick={onDelete}>{t('delete')}</button>
       </div>
     </div>
   );
 }
 
+/* ── RAL Picker ─────────────────────────────────────────────────────
+   Loads items from superCategory=poudres and lets user pick one.
+   Falls back to a free-text input if no poudres exist yet.
+─────────────────────────────────────────────────────────────────── */
+function RalPicker({ language, value, colorValue, onChange, t }) {
+  const [poudres,    setPoudres]    = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [manualMode, setManualMode] = useState(false);
+  const [search,     setSearch]     = useState('');
+
+  useEffect(() => {
+    axios.get(`${API_URL}/inventory/poudres`)
+      .then(r => {
+        setPoudres(r.data);
+        // If currently saved value matches a poudre, stay in picker mode
+        // If no poudres at all, auto-switch to manual
+        if (r.data.length === 0) setManualMode(true);
+      })
+      .catch(() => setManualMode(true))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = poudres.filter(p => {
+    const name = p.designation[language] || p.designation.fr || '';
+    return !search || name.toLowerCase().includes(search.toLowerCase());
+  });
+
+  const selectedPoudre = poudres.find(p => {
+    const name = p.designation[language] || p.designation.fr || '';
+    return name === value;
+  });
+
+  if (loading) return <div className="ral-picker__loading">Chargement des poudres...</div>;
+
+  if (manualMode || poudres.length === 0) {
+    return (
+      <div className="ral-picker ral-picker--manual">
+        <div className="form-row" style={{ gap: 8 }}>
+          <div className="form-group" style={{ flex: 1 }}>
+            <input
+              type="text"
+              required
+              placeholder="RAL 9010"
+              value={value}
+              onChange={e => onChange({ ralCode: e.target.value, ralColor: colorValue })}
+            />
+          </div>
+          <div className="form-group" style={{ flex: 'none' }}>
+            <input
+              type="color"
+              value={colorValue}
+              onChange={e => onChange({ ralCode: value, ralColor: e.target.value })}
+              style={{ width: 48, height: 38, padding: 2 }}
+            />
+          </div>
+        </div>
+        {poudres.length > 0 && (
+          <button type="button" className="ral-picker__switch-btn" onClick={() => setManualMode(false)}>
+            ← {t('ralPickerSwitch') || 'Choisir depuis les poudres'}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="ral-picker">
+      {/* Selected display */}
+      {selectedPoudre ? (
+        <div className="ral-picker__selected">
+          <span
+            className="ral-picker__swatch"
+            style={{ background: selectedPoudre.designation[language] ? colorValue : colorValue }}
+          />
+          <span className="ral-picker__selected-name">
+            {selectedPoudre.designation[language] || selectedPoudre.designation.fr}
+          </span>
+          <button type="button" className="ral-picker__clear-btn" onClick={() => onChange({ ralCode: '', ralColor: '#ffffff' })}>✕</button>
+        </div>
+      ) : (
+        <div className="ral-picker__placeholder">
+          <span style={{ color: '#9ca3af', fontSize: 13 }}>
+            {t('ralPickerPlaceholder') || '— Sélectionner une poudre —'}
+          </span>
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="ral-picker__search-wrap">
+        <input
+          type="text"
+          className="ral-picker__search"
+          placeholder={t('searchPlaceholder') || 'Rechercher...'}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </div>
+
+      {/* List */}
+      <div className="ral-picker__list">
+        {filtered.length === 0 ? (
+          <div className="ral-picker__empty">{t('noItems') || 'Aucun résultat'}</div>
+        ) : (
+          filtered.map(p => {
+            const name     = p.designation[language] || p.designation.fr;
+            const isActive = value === name;
+            // Extract color from the item's ralColor field or use a swatch color
+            // Items in poudres should have image or designation referencing the color
+            // We'll use the category color as a fallback swatch
+            const swatchColor = p.categoryId?.color || '#e5e7eb';
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className={`ral-picker__option ${isActive ? 'active' : ''}`}
+                onClick={() => {
+                  onChange({ ralCode: name, ralColor: swatchColor });
+                  setSearch('');
+                }}
+              >
+                {p.image
+                  ? <img src={p.image} alt="" className="ral-picker__option-img" />
+                  : <span className="ral-picker__option-swatch" style={{ background: swatchColor }} />
+                }
+                <span className="ral-picker__option-name">{name}</span>
+                <span className="ral-picker__option-stock">
+                  {t('inStock') || 'En stock'}: {p.quantity}
+                </span>
+                {isActive && <span className="ral-picker__checkmark">✓</span>}
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      {/* Manual fallback */}
+      <button type="button" className="ral-picker__switch-btn" onClick={() => setManualMode(true)}>
+        {t('ralPickerManual') || 'Saisir manuellement'}
+      </button>
+    </div>
+  );
+}
+
+/* ── Project Form Modal ───────────────────────────────────────────── */
 function ProjectFormModal({ language, project, companies, t, onClose, onSave }) {
-  const [clients, setClients] = useState([]);
+  const [clients,  setClients]  = useState([]);
   const [formData, setFormData] = useState(project ? {
     name:      project.name,
     reference: project.reference,
     ralCode:   project.ralCode,
     ralColor:  project.ralColor || '#ffffff',
     date:      project.date ? project.date.split('T')[0] : '',
-    companyId: project.companyId?.id || project.companyId?._id || '',
-    clientId:  project.clientId?.id  || project.clientId?._id  || '',
+    companyId: project.companyId?.id  || project.companyId?._id  || '',
+    clientId:  project.clientId?.id   || project.clientId?._id   || '',
   } : {
     name: '', reference: '', ralCode: '', ralColor: '#ffffff',
     date: new Date().toISOString().split('T')[0],
@@ -195,39 +334,33 @@ function ProjectFormModal({ language, project, companies, t, onClose, onSave }) 
   });
 
   useEffect(() => {
-    axios.get(`${API_URL}/clients`)
-      .then(r => setClients(r.data))
-      .catch(console.error);
+    axios.get(`${API_URL}/clients`).then(r => setClients(r.data)).catch(console.error);
   }, []);
 
   const set = (key, val) => setFormData(prev => ({ ...prev, [key]: val }));
+
+  const filteredClients = formData.companyId
+    ? clients.filter(c => !c.companyId || c.companyId?.id === formData.companyId || c.companyId?._id === formData.companyId)
+    : clients;
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onSave(formData);
   };
 
-  // Filter clients by selected company (optional, show all if no company)
-  const filteredClients = formData.companyId
-    ? clients.filter(c => !c.companyId || c.companyId?.id === formData.companyId || c.companyId?._id === formData.companyId)
-    : clients;
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal large" onClick={e => e.stopPropagation()}>
         <h2>{project ? t('projectTitleEdit') : t('projectTitleAdd')}</h2>
 
-        {/* Company selector — prominent at top */}
+        {/* Company selector */}
         <div className="project-form-company-selector">
-          <label style={{ fontWeight: 700, marginBottom: 8, display: 'block' }}>Société *</label>
+          <label style={{ fontWeight: 700, marginBottom: 8, display: 'block' }}>{t('society')} *</label>
           <div className="company-choice-btns">
             {companies.map(c => (
-              <button
-                key={c.id}
-                type="button"
+              <button key={c.id} type="button"
                 className={`company-choice-btn ${formData.companyId === c.id ? 'active' : ''}`}
-                onClick={() => set('companyId', c.id)}
-              >
+                onClick={() => set('companyId', c.id)}>
                 {c.name}
               </button>
             ))}
@@ -247,18 +380,19 @@ function ProjectFormModal({ language, project, companies, t, onClose, onSave }) 
                 onChange={e => set('reference', e.target.value)} />
             </div>
           </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label>{t('ralCode')}</label>
-              <input type="text" required placeholder="RAL 9010" value={formData.ralCode}
-                onChange={e => set('ralCode', e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>{t('ralColor')}</label>
-              <input type="color" value={formData.ralColor}
-                onChange={e => set('ralColor', e.target.value)} />
-            </div>
+
+          {/* RAL — poudres picker */}
+          <div className="form-group">
+            <label>{t('ralCode')} / {t('poudre') || 'Poudre'}</label>
+            <RalPicker
+              language={language}
+              value={formData.ralCode}
+              colorValue={formData.ralColor}
+              t={t}
+              onChange={({ ralCode, ralColor }) => setFormData(prev => ({ ...prev, ralCode, ralColor }))}
+            />
           </div>
+
           <div className="form-row">
             <div className="form-group">
               <label>{t('date')}</label>
@@ -266,9 +400,9 @@ function ProjectFormModal({ language, project, companies, t, onClose, onSave }) 
                 onChange={e => set('date', e.target.value)} />
             </div>
             <div className="form-group">
-              <label>Client (optionnel)</label>
+              <label>{t('navClients')} ({t('cancel') === 'Annuler' ? 'optionnel' : 'optional'})</label>
               <select value={formData.clientId} onChange={e => set('clientId', e.target.value)}>
-                <option value="">— Aucun client —</option>
+                <option value="">—</option>
                 {filteredClients.map(c => (
                   <option key={c.id} value={c.id}>
                     {c.name}{c.company ? ` (${c.company})` : ''}
@@ -277,6 +411,7 @@ function ProjectFormModal({ language, project, companies, t, onClose, onSave }) 
               </select>
             </div>
           </div>
+
           <div className="modal-actions">
             <button type="button" onClick={onClose}>{t('cancel')}</button>
             <button type="submit" className="primary">

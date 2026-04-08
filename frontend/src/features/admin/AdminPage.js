@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import './AdminPage.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 export default function AdminPage() {
   const { authFetch } = useAuth();
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('users');
   const [users, setUsers]         = useState([]);
   const [roles, setRoles]         = useState([]);
@@ -69,17 +71,17 @@ export default function AdminPage() {
     <div className="admin-page">
       <header className="admin-header">
         <div>
-          <h1>⚙️ Administration</h1>
-          <p className="admin-subtitle">Gestion des comptes et des rôles d'accès</p>
+          <h1>⚙️ {t('adminTitle')}</h1>
+          <p className="admin-subtitle">{t('adminSubtitle')}</p>
         </div>
       </header>
 
       <div className="admin-tabs">
         <button className={`admin-tab ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>
-          👤 Utilisateurs <span className="tab-count">{users.length}</span>
+          👤 {t('tabUsers')} <span className="tab-count">{users.length}</span>
         </button>
         <button className={`admin-tab ${activeTab === 'roles' ? 'active' : ''}`} onClick={() => setActiveTab('roles')}>
-          🔑 Rôles <span className="tab-count">{roles.length}</span>
+          🔑 {t('tabRoles')} <span className="tab-count">{roles.length}</span>
         </button>
       </div>
 
@@ -91,7 +93,7 @@ export default function AdminPage() {
               <div className="admin-section-header">
                 <h2>{users.length} compte(s)</h2>
                 <button className="btn-primary" onClick={() => { setEditUser(null); setShowUserForm(true); }}>
-                  + Nouveau compte
+                  + {t('newUser')}
                 </button>
               </div>
               <div className="users-table-wrap">
@@ -145,7 +147,7 @@ export default function AdminPage() {
               <div className="admin-section-header">
                 <h2>{roles.length} rôle(s)</h2>
                 <button className="btn-primary" onClick={() => { setEditRole(null); setShowRoleForm(true); }}>
-                  + Nouveau rôle
+                  + {t('newRole')}
                 </button>
               </div>
               <div className="roles-grid">
@@ -364,8 +366,9 @@ function RoleForm({ role, permissions, grouped, authFetch, onClose, onSave }) {
               {Object.entries(grouped).map(([group, groupPerms]) => {
                 const allOn = groupPerms.every(p => form.permissions.includes(p.key));
                 const someOn = groupPerms.some(p => form.permissions.includes(p.key));
+                const isSubGroup = group.includes('›');
                 return (
-                  <div key={group} className="perm-group-block">
+                  <div key={group} className={`perm-group-block ${isSubGroup ? 'perm-group-block--sub' : ''}`}>
                     <div className="perm-group-title">
                       <input
                         type="checkbox"
@@ -374,7 +377,9 @@ function RoleForm({ role, permissions, grouped, authFetch, onClose, onSave }) {
                         onChange={() => toggleGroup(groupPerms)}
                         id={`group-${group}`}
                       />
-                      <label htmlFor={`group-${group}`} style={{ fontWeight: 700, cursor: 'pointer' }}>{group}</label>
+                      <label htmlFor={`group-${group}`} style={{ fontWeight: isSubGroup ? 600 : 700, cursor: 'pointer', fontSize: isSubGroup ? '0.82rem' : '0.9rem' }}>
+                        {isSubGroup ? <><span style={{opacity:0.4,marginRight:4}}>└</span>{group.split('›')[1]?.trim()}</> : group}
+                      </label>
                     </div>
                     <div className="perm-items">
                       {groupPerms.map(p => (

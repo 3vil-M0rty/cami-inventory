@@ -607,7 +607,7 @@ function ProjectDetail({ project, onBack }) {
         </div>
       )}
 
-      {activeTab === 'bars' && <UsedBarsPanel project={project} language={language} />}
+      {activeTab === 'bars' && <UsedBarsPanel project={project} />}
       {activeTab === 'bl' && <div className="project-detail__panel"><BLPanel project={project} t={t} language={language} /></div>}
 
       {showChassisForm && (

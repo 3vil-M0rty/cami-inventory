@@ -14,7 +14,7 @@ const STATUS_COLORS = {
 };
 
 export default function OrdersPage() {
-  const { currentLanguage: lang } = useLanguage();
+  const { currentLanguage: lang, t } = useLanguage();
   const { companies, selectedCompany } = useCompany();
   const [orders, setOrders] = useState([]);
   const [items, setItems] = useState([]);
@@ -84,7 +84,7 @@ export default function OrdersPage() {
     <div className="orders-page">
       <header className="orders-header">
         <div>
-          <h1>📦 Commandes</h1>
+          <h1>📦 {t('navOrders')}</h1>
           <p className="orders-subtitle">Gestion des commandes fournisseurs</p>
         </div>
         <button className="btn-primary" onClick={() => { setEditOrder(null); setShowForm(true); }}>+ Nouvelle commande</button>

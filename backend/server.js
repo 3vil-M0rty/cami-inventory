@@ -44,9 +44,23 @@ const companySchema = new mongoose.Schema({
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const Company = mongoose.model('Company', companySchema);
 
+// --- SuperCategory ---
+const superCategorySchema = new mongoose.Schema({
+  key:   { type: String, required: true, unique: true },
+  label: { fr: String, it: String, en: String },
+  color: { type: String, default: '#3b82f6' },
+  order: { type: Number, default: 0 }
+}, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
+const SuperCategory = mongoose.model('SuperCategory', superCategorySchema);
+
+
 // --- Role & User (Auth) ---
 const ALL_PERMISSIONS = [
   'inventory.view', 'inventory.edit', 'inventory.delete',
+  // Per-supercategory inventory permissions
+  'inventory.aluminium.view', 'inventory.aluminium.edit', 'inventory.aluminium.delete',
+  'inventory.verre.view',     'inventory.verre.edit',     'inventory.verre.delete',
+  'inventory.accessoires.view','inventory.accessoires.edit','inventory.accessoires.delete',
   'orders.view', 'orders.edit', 'orders.delete', 'orders.receive',
   'projects.view', 'projects.edit', 'projects.delete',
   'clients.view', 'clients.edit', 'clients.delete',
@@ -86,7 +100,7 @@ const categorySchema = new mongoose.Schema({
   name:          { it: { type: String, required: true }, fr: { type: String, required: true }, en: { type: String, required: true } },
   color:         { type: String, default: '#3b82f6' },
   order:         { type: Number, default: 0 },
-  superCategory: { type: String, enum: ['aluminium', 'verre', 'accessoires'], default: 'aluminium' }
+  superCategory: { type: String, default: 'aluminium' }
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const Category = mongoose.model('Category', categorySchema);
 
@@ -98,7 +112,7 @@ const itemSchema = new mongoose.Schema({
   orderedQuantity: { type: Number, min: 0, default: 0 },
   threshold:       { type: Number, required: true, min: 0, default: 0 },
   categoryId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Category', default: null },
-  superCategory:   { type: String, enum: ['aluminium', 'verre', 'accessoires'], default: 'aluminium' }
+  superCategory:   { type: String, default: 'aluminium' }
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const Item = mongoose.model('Item', itemSchema);
 
@@ -628,11 +642,28 @@ app.delete('/api/users/:id', requireAuth, requirePermission('admin.view'), async
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/permissions', requireAuth, requirePermission('admin.view'), (req, res) => {
+app.get('/api/permissions', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  // Build dynamic per-supercategory permissions
+  const superCats = await SuperCategory.find().sort({ order: 1 }).lean();
+  const allSuperCats = superCats.length ? superCats : [
+    { key: 'aluminium', label: { fr: 'Aluminium', it: 'Alluminio', en: 'Aluminium' } },
+    { key: 'verre',     label: { fr: 'Verre',     it: 'Vetro',     en: 'Glass'     } },
+    { key: 'accessoires',label:{ fr: 'Accessoires',it:'Accessori', en: 'Accessories'} },
+  ];
+  const scPerms = [];
+  for (const sc of allSuperCats) {
+    const name = sc.label?.fr || sc.key;
+    scPerms.push(
+      { key: `inventory.${sc.key}.view`,   label: `${name} — Voir`,            group: `Inventaire › ${name}` },
+      { key: `inventory.${sc.key}.edit`,   label: `${name} — Ajouter/Modifier`,group: `Inventaire › ${name}` },
+      { key: `inventory.${sc.key}.delete`, label: `${name} — Supprimer`,        group: `Inventaire › ${name}` },
+    );
+  }
   res.json([
-    { key: 'inventory.view',    label: 'Inventaire — Voir',           group: 'Inventaire' },
-    { key: 'inventory.edit',    label: 'Inventaire — Ajouter/Modifier',group: 'Inventaire' },
-    { key: 'inventory.delete',  label: 'Inventaire — Supprimer',       group: 'Inventaire' },
+    { key: 'inventory.view',    label: 'Inventaire — Voir (tout)',     group: 'Inventaire' },
+    { key: 'inventory.edit',    label: 'Inventaire — Modifier (tout)', group: 'Inventaire' },
+    { key: 'inventory.delete',  label: 'Inventaire — Supprimer (tout)',group: 'Inventaire' },
+    ...scPerms,
     { key: 'orders.view',       label: 'Commandes — Voir',             group: 'Commandes' },
     { key: 'orders.edit',       label: 'Commandes — Créer/Modifier',   group: 'Commandes' },
     { key: 'orders.receive',    label: 'Commandes — Réceptionner',     group: 'Commandes' },
@@ -1232,6 +1263,63 @@ app.get('/api/analytics/dashboard', async (req, res) => {
     const catMap={};
     for (const item of items) { const catId=item.categoryId?._id?.toString()||'none'; const catName=item.categoryId?.name||{fr:'Sans catégorie',it:'Senza categoria',en:'No category'}; const catColor=item.categoryId?.color||'#9ca3af'; if (!catMap[catId]) catMap[catId]={catId,catName,catColor,total:0,ok:0,low:0,critical:0}; catMap[catId].total++; const total=item.quantity+(item.orderedQuantity||0); if (total<item.threshold) catMap[catId].critical++; else if (item.quantity<item.threshold) catMap[catId].low++; else catMap[catId].ok++; }
     res.json({ kpis:{ totalProjects:projects.length, projectsInProgress, totalItems:items.length, criticalItems:criticalItems.length, deliveriesThisMonth, totalMovements:movements.length }, chassisStatusCounts, projectConsumption, topItems, monthlyMovements:Object.values(movMap), stockByCategory:Object.values(catMap) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==================== SUPER-CATEGORY ROUTES ====================
+app.get('/api/super-categories', async (req, res) => {
+  try {
+    const cats = await SuperCategory.find().sort({ order: 1 });
+    if (cats.length === 0) {
+      // Return defaults if none seeded yet
+      return res.json([
+        { key: 'aluminium',   label: { fr: '🔩 Aluminium', it: '🔩 Alluminio',  en: '🔩 Aluminium' }, color: '#3b82f6' },
+        { key: 'verre',       label: { fr: '💎 Verre',     it: '💎 Vetro',       en: '💎 Glass'     }, color: '#06b6d4' },
+        { key: 'accessoires', label: { fr: '🔧 Accessoires',it:'🔧 Accessori',   en: '🔧 Accessories'}, color: '#f59e0b' },
+        { key: 'poudre', label: { fr: '🎨 Poudre',it:'🎨 Polvere',   en: '🎨 Powder'}, color: '#ff1100' },
+      ]);
+    }
+    res.json(cats);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/super-categories', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const { key, label, color } = req.body;
+    if (!key || !label?.fr) return res.status(400).json({ error: 'key and label.fr required' });
+    if (!/^[a-z0-9_]+$/.test(key)) return res.status(400).json({ error: 'key must be lowercase alphanumeric + underscore' });
+    const count = await SuperCategory.countDocuments();
+    const sc = await SuperCategory.create({ key, label, color: color || '#3b82f6', order: count });
+    // Extend ALL_PERMISSIONS dynamically on the role schema (runtime only)
+    res.status(201).json(sc);
+  } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ error: e.message }); }
+});
+
+app.put('/api/super-categories/:key', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const sc = await SuperCategory.findOneAndUpdate({ key: req.params.key }, { label: req.body.label, color: req.body.color }, { new: true });
+    if (!sc) return res.status(404).json({ error: 'Not found' });
+    res.json(sc);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/super-categories/:key', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const key = req.params.key;
+    if (['aluminium', 'verre', 'accessoires', 'poudres'].includes(key)) {
+      return res.status(400).json({ error: 'Cannot delete built-in super-categories' });
+    }
+    await SuperCategory.deleteOne({ key });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==================== POUDRES / RAL PICKER ====================
+// Returns all items from the 'poudres' super-category for use in the RAL picker
+app.get('/api/inventory/poudres', async (req, res) => {
+  try {
+    const items = await Item.find({ superCategory: 'poudres' }).populate('categoryId').sort({ createdAt: -1 });
+    res.json(items);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

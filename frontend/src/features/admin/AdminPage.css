@@ -65,3 +65,14 @@
 .btn-primary { padding: 10px 22px; background: #1a1a1a; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
 .btn-primary:hover { background: #000; }
 @media (max-width: 640px) { .form-grid-2 { grid-template-columns: 1fr; } .roles-grid { grid-template-columns: 1fr; } .perms-groups { grid-template-columns: 1fr; } }
+
+/* ── Per-supercategory permission sub-groups ── */
+.perm-group-block--sub {
+  margin-left: 20px;
+  border-left: 2px solid #e5e7eb;
+  padding-left: 12px;
+  background: #fafafa;
+}
+.perm-group-block--sub .perm-group-title {
+  color: #6b7280;
+}
