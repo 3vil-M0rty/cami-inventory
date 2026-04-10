@@ -145,11 +145,11 @@ function UsedBarsPanel({ project }) {
         )}
       </div>
 
-      {isPoudre && (
+      {/* {isPoudre && (
         <p style={{ fontSize: 12, color: '#f59e0b', margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
           🎨 {t('poudreDecimalHint') || 'Les quantités en poudre acceptent les décimales (ex: 145.23)'}
         </p>
-      )}
+      )} */}
 
       {error && <p className="ubp__error">{error}</p>}
 

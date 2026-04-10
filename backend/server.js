@@ -10,9 +10,15 @@ const express   = require('express');
 const mongoose  = require('mongoose');
 const cors      = require('cors');
 const helmet    = require('helmet');
+const path = require('path');
+
+
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
+
+// Serve static files from the "public" folder
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
@@ -362,8 +368,8 @@ async function initSampleData() {
   const compCount = await Company.countDocuments();
   if (compCount === 0) {
     await Company.insertMany([
-      { name: 'CAMI',  address: '', phone: '', email: '', color: '#1a1a1a' },
-      { name: 'GIMAV', address: '', phone: '', email: '', color: '#1e40af' }
+      { name: 'CAMI',  address: '', phone: '', email: '', color: '#ac0000', logo: "/cami.png" },
+      { name: 'GIMAV', address: '', phone: '', email: '', color: '#032699' , logo: "/gimav.png" },
     ]);
     console.log('✅ Companies seeded');
   }
