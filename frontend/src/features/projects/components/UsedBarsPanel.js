@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useProjects } from '../../../context/ProjectContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -7,11 +7,24 @@ import './UsedBarsPanel.css';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const SUPER_CATS = [
-  { key: 'aluminium',   icon: '🔩', labelKey: 'superCatAluminium' },
-  { key: 'verre',       icon: '💎', labelKey: 'superCatVerre'      },
-  { key: 'accessoires', icon: '🔧', labelKey: 'superCatAccessoires'},
-  { key: 'poudre', icon: '🎨', labelKey: 'superCatPoudre'},
+  { key: 'aluminium',   icon: '🔩', labelKey: 'superCatAluminium',   label: 'Aluminium'  },
+  { key: 'verre',       icon: '💎', labelKey: 'superCatVerre',        label: 'Verre'      },
+  { key: 'accessoires', icon: '🔧', labelKey: 'superCatAccessoires',  label: 'Accessoires'},
+  { key: 'poudre',      icon: '🎨', labelKey: 'superCatPoudre',       label: 'Poudre'     },
 ];
+
+/**
+ * Format a quantity to at most 2 decimal places, stripping trailing zeros.
+ * 102.8000000000001 → "102.8"
+ * 145.23            → "145.23"
+ * 100               → "100"
+ */
+function fmt(val) {
+  if (val === null || val === undefined) return '0';
+  const n = parseFloat(val);
+  if (isNaN(n)) return '0';
+  return parseFloat(n.toFixed(2)).toString();
+}
 
 function UsedBarsPanel({ project }) {
   const { addUsedBar, removeUsedBar } = useProjects();
@@ -23,6 +36,9 @@ function UsedBarsPanel({ project }) {
   const [quantities,     setQuantities]     = useState({});
   const [searching,      setSearching]      = useState(false);
   const [error,          setError]          = useState('');
+
+  // Decimals allowed only for poudre
+  const isPoudre = activeSuperCat === 'poudre';
 
   // Search inventory filtered by supercategory
   useEffect(() => {
@@ -49,9 +65,17 @@ function UsedBarsPanel({ project }) {
   };
 
   const handleAdd = async (item) => {
-    const qty = Number(quantities[item.id]) || 1;
-    if (qty < 1) return;
+    const qty = isPoudre
+      ? parseFloat(quantities[item.id])
+      : parseInt(quantities[item.id], 10);
+
+    if (!qty || isNaN(qty) || qty <= 0) return;
+    if (qty > item.quantity) {
+      setError(t('criticalStock') || 'Quantité insuffisante en stock');
+      return;
+    }
     setError('');
+
     const result = await addUsedBar(project.id, item.id, qty);
     if (!result.success) {
       setError(result.error || t('criticalStock'));
@@ -64,6 +88,14 @@ function UsedBarsPanel({ project }) {
 
   const handleRemove = async (itemId) => {
     await removeUsedBar(project.id, itemId);
+  };
+
+  // Resolve supercategory label: try translation key first, fall back to static label
+  const getSuperCatLabel = (sc) => {
+    const translated = t(sc.labelKey);
+    // If the translation function returns the key itself (untranslated), use the fallback label
+    if (!translated || translated === sc.labelKey) return sc.label;
+    return translated;
   };
 
   // Group used bars by supercategory
@@ -86,7 +118,7 @@ function UsedBarsPanel({ project }) {
               className={`ubp__super-tab ${activeSuperCat === sc.key ? 'active' : ''}`}
               onClick={() => handleSuperCatChange(sc.key)}
             >
-              {sc.icon} {t(sc.labelKey)}
+              {sc.icon} {getSuperCatLabel(sc)}
               {count > 0 && <span className="ubp__super-count">{count}</span>}
             </button>
           );
@@ -113,13 +145,19 @@ function UsedBarsPanel({ project }) {
         )}
       </div>
 
+      {isPoudre && (
+        <p style={{ fontSize: 12, color: '#f59e0b', margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
+          🎨 {t('poudreDecimalHint') || 'Les quantités en poudre acceptent les décimales (ex: 145.23)'}
+        </p>
+      )}
+
       {error && <p className="ubp__error">{error}</p>}
 
       {/* ── Search results ── */}
       {searchResults.length > 0 && (
         <div className="ubp__results">
           <div className="ubp__results-header">
-            <span>{searchResults.length} {t('loading') === 'Chargement...' ? 'résultats' : 'results'}</span>
+            <span>{searchResults.length} résultats</span>
           </div>
           {searchResults.map(item => (
             <div key={item.id} className="ubp__result-row">
@@ -128,15 +166,22 @@ function UsedBarsPanel({ project }) {
                 <div>
                   <div className="ubp__result-name">{item.designation[language] || item.designation.fr}</div>
                   <div className="ubp__result-stock">
-                    {t('inStock')}: <strong className={item.quantity === 0 ? 'stock-zero' : ''}>{item.quantity}</strong>
-                    {item.categoryId && <span className="ubp__result-cat" style={{ background: item.categoryId.color }}>{item.categoryId.name[language]}</span>}
+                    {t('inStock')}: <strong className={item.quantity === 0 ? 'stock-zero' : ''}>{fmt(item.quantity)}</strong>
+                    {item.categoryId && (
+                      <span className="ubp__result-cat" style={{ background: item.categoryId.color }}>
+                        {item.categoryId.name[language]}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
               <div className="ubp__result-add">
                 <input
-                  type="number" min="1" max={item.quantity} step="1"
-                  placeholder="Qté"
+                  type="number"
+                  min={isPoudre ? '0.01' : '1'}
+                  max={item.quantity}
+                  step={isPoudre ? '0.01' : '1'}
+                  placeholder={isPoudre ? '0.00' : 'Qté'}
                   value={quantities[item.id] || ''}
                   onChange={e => setQuantities(prev => ({ ...prev, [item.id]: e.target.value }))}
                   className="ubp__qty-input"
@@ -181,20 +226,23 @@ function UsedBarsPanel({ project }) {
               {(usedBySuper[activeSuperCat] || []).map(bar => {
                 const item = bar.itemId;
                 if (!item || typeof item !== 'object') return null;
+                const isItemPoudre = (item.superCategory || activeSuperCat) === 'poudre';
                 return (
                   <tr key={item.id || item._id}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {item.image && <img src={item.image} alt="" style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4 }} />}
+                        {item.image && (
+                          <img src={item.image} alt="" style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4 }} />
+                        )}
                         <span>{item.designation?.[language] || item.designation?.fr}</span>
                       </div>
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <span className="ubp__qty-badge">{bar.quantity}</span>
+                      <span className="ubp__qty-badge">{fmt(bar.quantity)}</span>
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <span className={`ubp__stock-val ${item.quantity < (item.threshold || 0) ? 'low' : ''}`}>
-                        {item.quantity}
+                        {isItemPoudre ? fmt(item.quantity) : Math.floor(item.quantity)}
                       </span>
                     </td>
                     <td>
@@ -219,7 +267,7 @@ function UsedBarsPanel({ project }) {
             const total = items.reduce((s, b) => s + b.quantity, 0);
             return (
               <div key={sc.key} className="ubp__summary-pill">
-                {sc.icon} {t(sc.labelKey)}: <strong>{total}</strong>
+                {sc.icon} {getSuperCatLabel(sc)}: <strong>{fmt(total)}</strong>
               </div>
             );
           })}

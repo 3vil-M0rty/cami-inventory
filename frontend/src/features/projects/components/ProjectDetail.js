@@ -401,7 +401,7 @@ function ProjectDetail({ project, onBack }) {
       <div className="project-detail__tabs">
         {[
           { key: 'chassis', label: t('tabChassis'), count: totalDisplayRows },
-          { key: 'bars',    label: t('tabBars'),    count: project.usedBars?.length || 0 },
+          { key: 'bars',    label: t('cons'),    count: project.usedBars?.length || 0 },
           { key: 'bl',      label: t('tabBL'),      count: null },
         ].map(tab => (
           <button key={tab.key}

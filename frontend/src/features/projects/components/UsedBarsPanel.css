@@ -1,7 +1,7 @@
 .ubp { display: flex; flex-direction: column; gap: 16px; }
 
 /* Super-cat tabs */
-.ubp__super-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.ubp__super-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 15px;}
 .ubp__super-tab {
   display: flex; align-items: center; gap: 6px;
   padding: 7px 16px; border-radius: 20px;

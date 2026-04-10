@@ -7,6 +7,17 @@ import './InventoryPage.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
+/**
+ * Format a quantity to at most 2 decimal places, stripping trailing zeros.
+ * 102.8000000000001 → "102.8"   |   145.23 → "145.23"   |   100 → "100"
+ */
+function fmt(val) {
+  if (val === null || val === undefined) return '0';
+  const n = parseFloat(val);
+  if (isNaN(n)) return '0';
+  return parseFloat(n.toFixed(2)).toString();
+}
+
 // Default built-in super-categories (always present as fallback)
 const DEFAULT_SUPER_CATS = [
   { key: 'aluminium',   labelFr: '🔩 Aluminium', labelIt: '🔩 Alluminio',  labelEn: '🔩 Aluminium', color: '#3b82f6' },
@@ -328,7 +339,7 @@ function InventoryPage() {
             <h2 style={{ margin: 0, fontSize: '1.1rem' }}>{t('takeOutTitle')}</h2>
             <p style={{ margin: 0 }}>
               <strong>{takeOutModal.item.designation[language]}</strong>
-              <span style={{ marginLeft: 8, color: '#888', fontSize: '0.88rem' }}>({t('takeOutAvailable')}: {takeOutModal.item.quantity})</span>
+              <span style={{ marginLeft: 8, color: '#888', fontSize: '0.88rem' }}>({t('takeOutAvailable')}: {fmt(takeOutModal.item.quantity)})</span>
             </p>
             <div className="form-group">
               <label>{t('takeOutQtyLabel')}</label>
@@ -382,8 +393,8 @@ function InventoryPage() {
 function ItemCard({ item, language, isPoudre, onUpdateQuantity, onMinusClick, onEdit, onDelete, getStockStatus, t }) {
   const status = getStockStatus(item);
 
-  // Format quantity: show decimals for poudre, integer for others
-  const formatQty = (val) => isPoudre ? val : Math.floor(val);
+  // Format quantity: 2dp max for poudre, integer for others
+  const formatQty = (val) => isPoudre ? fmt(val) : Math.floor(val);
 
   return (
     <div className={`item-card ${status.className}`}>

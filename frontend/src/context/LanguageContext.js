@@ -46,11 +46,11 @@ const translations = {
     takeOutQtyLabel: 'Quantité à retirer', takeOutNoteLabel: 'Raison / Note',
     takeOutPlaceholder: 'ex: Utilisé pour...', takeOutConfirm: 'Confirmer', takeOutCancel: 'Annuler',
     // Super categories
-    superCatAluminium: '🔩 Aluminium', superCatVerre: '💎 Verre', superCatAccessoires: '🔧 Accessoires',
+    superCatAluminium: 'Aluminium', superCatVerre: 'Verre', superCatAccessoires: 'Accessoires',
     addSuperCategory: 'Ajouter super-catégorie', superCategoryName: 'Nom', superCategoryKey: 'Identifiant (unique)',
     superCategoryColor: 'Couleur', deleteSuperCatConfirm: 'Supprimer cette super-catégorie? Tous les articles et catégories associés seront affectés.',
     manageSuperCats: 'Gérer les super-catégories',
-    superCatPoudres: '🎨 Poudres',
+    superCatPoudre: 'Poudre',
     poudre: 'Poudre',
     ralPickerPlaceholder: '— Sélectionner une poudre —',
     ralPickerSwitch: 'Choisir depuis les poudres',
@@ -69,6 +69,7 @@ const translations = {
     projectStatus: 'Statut', ref: 'Réf.', ral: 'RAL',
     backToProjects: '← Projets', tabChassis: 'Châssis',
     tabBars: 'Barres', tabVerre: 'Verre', tabAccessoires: 'Accessoires',
+    cons: 'Consommation',
     addChassis: 'Ajouter châssis', exportPDF: 'Exporter PDF',
     printSelected: 'Imprimer sélection', printLabel: 'Étiquette',
     selectAll: 'Tout sélectionner', deselectAll: 'Tout désélectionner',
@@ -121,6 +122,7 @@ const translations = {
   },
   it: {
     appTitle: 'CAMI ALUMINIUM', appSubtitle: 'DA HB',
+    cons: 'Consommazione',
     navInventory: 'Inventario', navOrders: 'Ordini', navProjects: 'Progetti',
     navClients: 'Clienti', navDevis: 'Preventivi', navMovements: 'Movimenti',
     navAnalytics: 'Dashboard', navAdmin: 'Admin',
@@ -224,6 +226,7 @@ const translations = {
   },
   en: {
     appTitle: 'CAMI ALUMINIUM', appSubtitle: 'BY HB',
+    cons: 'Consumption',
     navInventory: 'Inventory', navOrders: 'Orders', navProjects: 'Projects',
     navClients: 'Clients', navDevis: 'Quotes', navMovements: 'Movements',
     navAnalytics: 'Dashboard', navAdmin: 'Admin',

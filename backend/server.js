@@ -246,7 +246,7 @@ const projectSchema = new mongoose.Schema({
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
   clientId:  { type: mongoose.Schema.Types.ObjectId, ref: 'Client', default: null },
   chassis:   [chassisSchema],
-  usedBars:  [{ itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true }, quantity: { type: Number, required: true, min: 1 } }]
+  usedBars:  [{ itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true }, quantity: { type: Number, required: true, min: 0.01 } }]
 }, {
   timestamps: true,
   toJSON: {
@@ -1154,7 +1154,7 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
 app.post('/api/projects/:id/bars', async (req, res) => {
   try {
     const { itemId, quantity } = req.body;
-    if (!itemId || !quantity || quantity < 1) return res.status(400).json({ error: 'itemId and quantity (≥1) required' });
+    if (!itemId || !quantity || quantity <= 0) return res.status(400).json({ error: 'itemId and quantity (>0) required' });
     const [project, item] = await Promise.all([Project.findById(req.params.id), Item.findById(itemId)]);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     if (!item) return res.status(404).json({ error: 'Item not found' });
@@ -1225,7 +1225,7 @@ app.get('/api/movements', async (req, res) => {
     if (itemId) filter.itemId = itemId;
     if (type && type !== 'all') filter.type = type;
     if (from || to) { filter.createdAt = {}; if (from) filter.createdAt.$gte = new Date(from); if (to) filter.createdAt.$lte = new Date(new Date(to).setHours(23,59,59,999)); }
-    const movements = await StockMovement.find(filter).populate('itemId', 'designation categoryId').sort({ createdAt: -1 }).limit(Number(limit));
+    const movements = await StockMovement.find(filter).populate('itemId', 'designation categoryId superCategory').sort({ createdAt: -1 }).limit(Number(limit));
     res.json(movements);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

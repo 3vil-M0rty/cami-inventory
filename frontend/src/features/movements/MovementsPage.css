@@ -182,3 +182,84 @@
   color: #aaa;
   border-top: 1px solid #f0f0f0;
 }
+
+
+/* ── Append these rules to your existing MovementsPage.css ── */
+
+/* Graph panel */
+.mv-graph-panel {
+  background: var(--color-background-primary, #fff);
+  border: 0.5px solid var(--color-border-tertiary, #e5e7eb);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+/* Graph controls row */
+.mv-graph-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.mv-graph-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mv-graph-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-secondary, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mv-graph-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Toggle buttons (grouping, chart type, series) */
+.mv-toggle-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 0.5px solid var(--color-border-secondary, #d1d5db);
+  background: transparent;
+  color: var(--color-text-secondary, #6b7280);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.mv-toggle-btn:hover {
+  background: var(--color-background-secondary, #f3f4f6);
+}
+
+.mv-toggle-btn.active {
+  border-color: #3b82f6;
+  color: #3b82f6;
+  background: #eff6ff;
+  font-weight: 500;
+}
+
+/* Series buttons keep their own color when active (set via inline style) */
+.mv-series-btn.active {
+  border-color: inherit;
+}
+
+/* Supercategory badge in table */
+.mv-supercat-badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--color-background-secondary, #f3f4f6);
+  color: var(--color-text-secondary, #6b7280);
+  white-space: nowrap;
+}
