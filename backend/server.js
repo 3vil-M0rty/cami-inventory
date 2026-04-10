@@ -61,6 +61,7 @@ const ALL_PERMISSIONS = [
   'inventory.aluminium.view', 'inventory.aluminium.edit', 'inventory.aluminium.delete',
   'inventory.verre.view',     'inventory.verre.edit',     'inventory.verre.delete',
   'inventory.accessoires.view','inventory.accessoires.edit','inventory.accessoires.delete',
+  'inventory.poudre.view','inventory.poudre.edit','inventory.poudre.delete',
   'orders.view', 'orders.edit', 'orders.delete', 'orders.receive',
   'projects.view', 'projects.edit', 'projects.delete',
   'clients.view', 'clients.edit', 'clients.delete',
@@ -649,6 +650,7 @@ app.get('/api/permissions', requireAuth, requirePermission('admin.view'), async 
     { key: 'aluminium', label: { fr: 'Aluminium', it: 'Alluminio', en: 'Aluminium' } },
     { key: 'verre',     label: { fr: 'Verre',     it: 'Vetro',     en: 'Glass'     } },
     { key: 'accessoires',label:{ fr: 'Accessoires',it:'Accessori', en: 'Accessories'} },
+    { key: 'poudre',label:{ fr: 'Poudre',it:'Polvere', en: 'Powder'} },
   ];
   const scPerms = [];
   for (const sc of allSuperCats) {
@@ -1306,7 +1308,7 @@ app.put('/api/super-categories/:key', requireAuth, requirePermission('admin.view
 app.delete('/api/super-categories/:key', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     const key = req.params.key;
-    if (['aluminium', 'verre', 'accessoires', 'poudres'].includes(key)) {
+    if (['aluminium', 'verre', 'accessoires', 'poudre'].includes(key)) {
       return res.status(400).json({ error: 'Cannot delete built-in super-categories' });
     }
     await SuperCategory.deleteOne({ key });

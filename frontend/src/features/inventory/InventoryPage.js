@@ -12,6 +12,7 @@ const DEFAULT_SUPER_CATS = [
   { key: 'aluminium',   labelFr: '🔩 Aluminium', labelIt: '🔩 Alluminio',  labelEn: '🔩 Aluminium', color: '#3b82f6' },
   { key: 'verre',       labelFr: '💎 Verre',      labelIt: '💎 Vetro',       labelEn: '💎 Glass',     color: '#06b6d4' },
   { key: 'accessoires', labelFr: '🔧 Accessoires',labelIt: '🔧 Accessori',   labelEn: '🔧 Accessories',color: '#f59e0b' },
+  { key: 'poudre', labelFr: '🎨 Poudre',labelIt: '🎨 Polvere',   labelEn: '🎨 Powder',color: '#ff1100' },
 ];
 
 function getSuperCatLabel(sc, language) {
@@ -41,6 +42,9 @@ function InventoryPage() {
   const [takeOutQty,       setTakeOutQty]       = useState(1);
   const [takeOutNote,      setTakeOutNote]      = useState('');
   const [showSuperCatMgr,  setShowSuperCatMgr]  = useState(false);
+
+  // Decimals allowed only for 'poudre'
+  const isPoudre = activeSuperCat === 'poudre';
 
   // Load super-categories from backend if endpoint exists, else fall back to defaults
   const fetchSuperCats = useCallback(async () => {
@@ -106,10 +110,16 @@ function InventoryPage() {
     } catch { alert(t('errorUpdating') || 'Erreur de mise à jour'); }
   };
 
-  const handleMinusClick  = (item) => { setTakeOutModal({ item }); setTakeOutQty(1); setTakeOutNote(''); };
+  const handleMinusClick  = (item) => {
+    setTakeOutModal({ item });
+    // Default take-out qty: 0.01 for poudre so user types the real value, 1 for others
+    setTakeOutQty(isPoudre ? '' : 1);
+    setTakeOutNote('');
+  };
+
   const handleTakeOutConfirm = async () => {
     if (!takeOutModal) return;
-    const qty = parseInt(takeOutQty, 10);
+    const qty = parseFloat(takeOutQty);
     if (!qty || qty <= 0) return;
     await updateQuantity(takeOutModal.item.id, -qty, takeOutNote);
     setTakeOutModal(null);
@@ -277,6 +287,7 @@ function InventoryPage() {
               key={item.id}
               item={item}
               language={language}
+              isPoudre={isPoudre}
               onUpdateQuantity={updateQuantity}
               onMinusClick={handleMinusClick}
               onEdit={canEdit   ? (item) => setEditingItem(item) : null}
@@ -305,6 +316,7 @@ function InventoryPage() {
           categories={categories}
           item={editingItem}
           superCategory={activeSuperCat}
+          isPoudre={isPoudre}
           t={t}
           onClose={() => { setShowAddItem(false); setEditingItem(null); }}
           onSave={() =>  { setShowAddItem(false); setEditingItem(null); fetchItems(); }}
@@ -320,17 +332,36 @@ function InventoryPage() {
             </p>
             <div className="form-group">
               <label>{t('takeOutQtyLabel')}</label>
-              <input type="number" min={1} max={takeOutModal.item.quantity} value={takeOutQty} onChange={e => setTakeOutQty(e.target.value)} autoFocus style={{ width: 100 }} />
+              <input
+                type="number"
+                min={isPoudre ? 0.01 : 1}
+                max={takeOutModal.item.quantity}
+                step={isPoudre ? 0.01 : 1}
+                value={takeOutQty}
+                onChange={e => setTakeOutQty(e.target.value)}
+                autoFocus
+                style={{ width: 100 }}
+              />
             </div>
             <div className="form-group">
               <label>{t('takeOutNoteLabel')}</label>
-              <textarea placeholder={t('takeOutPlaceholder')} value={takeOutNote} onChange={e => setTakeOutNote(e.target.value)} rows={3} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d0d5dd', fontFamily: 'inherit', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box' }} />
+              <textarea
+                placeholder={t('takeOutPlaceholder')}
+                value={takeOutNote}
+                onChange={e => setTakeOutNote(e.target.value)}
+                rows={3}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d0d5dd', fontFamily: 'inherit', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box' }}
+              />
             </div>
             <div className="modal-actions">
               <button type="button" onClick={() => setTakeOutModal(null)}>{t('takeOutCancel')}</button>
-              <button type="button" className="primary" onClick={handleTakeOutConfirm}
-                disabled={!takeOutQty || parseInt(takeOutQty) <= 0 || parseInt(takeOutQty) > takeOutModal.item.quantity}
-                style={{ background: '#ef4444' }}>{t('takeOutConfirm')}</button>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleTakeOutConfirm}
+                disabled={!takeOutQty || parseFloat(takeOutQty) <= 0 || parseFloat(takeOutQty) > takeOutModal.item.quantity}
+                style={{ background: '#ef4444' }}
+              >{t('takeOutConfirm')}</button>
             </div>
           </div>
         </div>
@@ -348,8 +379,12 @@ function InventoryPage() {
 }
 
 /* ── Item Card ──────────────────────────────────────────────────────── */
-function ItemCard({ item, language, onUpdateQuantity, onMinusClick, onEdit, onDelete, getStockStatus, t }) {
+function ItemCard({ item, language, isPoudre, onUpdateQuantity, onMinusClick, onEdit, onDelete, getStockStatus, t }) {
   const status = getStockStatus(item);
+
+  // Format quantity: show decimals for poudre, integer for others
+  const formatQty = (val) => isPoudre ? val : Math.floor(val);
+
   return (
     <div className={`item-card ${status.className}`}>
       <div className="item-image">
@@ -361,21 +396,22 @@ function ItemCard({ item, language, onUpdateQuantity, onMinusClick, onEdit, onDe
         <div className="quantity-section">
           <div className="quantity-display">
             <span className="quantity-label">{t('quantity')}</span>
-            <span className={`quantity-value ${item.quantity < item.threshold ? 'low' : ''}`}>{item.quantity}</span>
+            <span className={`quantity-value ${item.quantity < item.threshold ? 'low' : ''}`}>{formatQty(item.quantity)}</span>
           </div>
           <div className="quantity-display">
             <span className="quantity-label">{t('orderedQuantity')}</span>
-            <span className="quantity-value">{item.orderedQuantity || 0}</span>
+            <span className="quantity-value">{formatQty(item.orderedQuantity || 0)}</span>
           </div>
           <div className="threshold-display">
             <span className="threshold-label">{t('threshold')}</span>
-            <span className="threshold-value">{item.threshold}</span>
+            <span className="threshold-value">{formatQty(item.threshold)}</span>
           </div>
         </div>
         <div className="status-badge" style={{ backgroundColor: status.color, color: '#fff' }}>{status.text}</div>
         <div className="quantity-controls">
           <button className="qty-btn minus" onClick={() => onMinusClick(item)} disabled={item.quantity === 0}>−</button>
-          <button className="qty-btn plus"  onClick={() => onUpdateQuantity(item.id, 1)}>+</button>
+          {/* + button adds 1 for normal categories, 0.01 for poudre — user should use edit for precise poudre additions */}
+          <button className="qty-btn plus" onClick={() => onUpdateQuantity(item.id, isPoudre ? 0.01 : 1)}>+</button>
         </div>
         <div className="item-actions">
           {onEdit   && <button className="edit-btn"   onClick={() => onEdit(item)}>{t('edit')}</button>}
@@ -426,7 +462,7 @@ function CategoryModal({ language, superCategory, category, t, onClose, onSave }
 }
 
 /* ── Item Modal ──────────────────────────────────────────────────── */
-function ItemModal({ language, categories, item, superCategory, t, onClose, onSave }) {
+function ItemModal({ language, categories, item, superCategory, isPoudre, t, onClose, onSave }) {
   const [formData, setFormData] = useState(item ? {
     image: item.image || '', designation: { ...item.designation },
     quantity: item.quantity, orderedQuantity: item.orderedQuantity || 0,
@@ -437,6 +473,9 @@ function ItemModal({ language, categories, item, superCategory, t, onClose, onSa
     quantity: 0, orderedQuantity: 0, threshold: 0, categoryId: '',
     superCategory
   });
+
+  // Parse helper: float for poudre, integer for others
+  const parseQty = (val) => isPoudre ? parseFloat(val) || 0 : parseInt(val, 10) || 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -464,9 +503,42 @@ function ItemModal({ language, categories, item, superCategory, t, onClose, onSa
             </select>
           </div>
           <div className="form-row">
-            <div className="form-group"><label>{t('quantityLabel')}</label><input type="number" required min="0" value={formData.quantity} onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })} /></div>
-            <div className="form-group"><label>{t('orderedQuantityLabel')}</label><input type="number" required min="0" value={formData.orderedQuantity} onChange={e => setFormData({ ...formData, orderedQuantity: parseInt(e.target.value) || 0 })} /></div>
-            <div className="form-group"><label>{t('thresholdLabel')}</label><input type="number" required min="0" value={formData.threshold} onChange={e => setFormData({ ...formData, threshold: parseInt(e.target.value) || 0 })} /></div>
+            <div className="form-group">
+              <label>{t('quantityLabel')}</label>
+              <input
+                type="number"
+                required
+                min="0"
+                step={isPoudre ? '0.01' : '1'}
+                placeholder={isPoudre ? '145.23' : '100'}
+                value={formData.quantity}
+                onChange={e => setFormData({ ...formData, quantity: parseQty(e.target.value) })}
+              />
+            </div>
+            <div className="form-group">
+              <label>{t('orderedQuantityLabel')}</label>
+              <input
+                type="number"
+                required
+                min="0"
+                step={isPoudre ? '0.01' : '1'}
+                placeholder={isPoudre ? '50.00' : '0'}
+                value={formData.orderedQuantity}
+                onChange={e => setFormData({ ...formData, orderedQuantity: parseQty(e.target.value) })}
+              />
+            </div>
+            <div className="form-group">
+              <label>{t('thresholdLabel')}</label>
+              <input
+                type="number"
+                required
+                min="0"
+                step={isPoudre ? '0.01' : '1'}
+                placeholder={isPoudre ? '10.50' : '20'}
+                value={formData.threshold}
+                onChange={e => setFormData({ ...formData, threshold: parseQty(e.target.value) })}
+              />
+            </div>
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>{t('cancel')}</button>

@@ -10,10 +10,17 @@ import './InventoryForm.css';
  * 
  * Form for adding/editing inventory items
  * Handles validation and image preview
+ * 
+ * @prop {string} superCategory - current supercategory key (e.g. 'poudre')
+ *   When 'poudre', quantity and threshold inputs accept decimals (step=0.01).
+ *   All other supercategories use integers only (step=1).
  */
 
-const InventoryForm = ({ onSubmit, onCancel, initialData = null }) => {
+const InventoryForm = ({ onSubmit, onCancel, initialData = null, superCategory = '' }) => {
   const { t } = useLanguage();
+
+  // Decimals allowed only for the 'poudre' supercategory
+  const isPoudre = superCategory === 'poudre';
 
   const [formData, setFormData] = useState({
     image: '',
@@ -44,6 +51,13 @@ const InventoryForm = ({ onSubmit, onCancel, initialData = null }) => {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
 
+    let parsedValue = value;
+
+    // Convert comma to dot for decimals (relevant when isPoudre)
+    if (typeof value === 'string') {
+      parsedValue = value.replace(',', '.');
+    }
+
     if (name.startsWith('designation-')) {
       const lang = name.split('-')[1];
       setFormData(prev => ({
@@ -56,11 +70,10 @@ const InventoryForm = ({ onSubmit, onCancel, initialData = null }) => {
     } else {
       setFormData(prev => ({
         ...prev,
-        [name]: value
+        [name]: parsedValue
       }));
     }
 
-    // Clear error for this field
     setErrors(prev => ({
       ...prev,
       [name]: null
@@ -70,9 +83,8 @@ const InventoryForm = ({ onSubmit, onCancel, initialData = null }) => {
   const handleImageChange = (e) => {
     const url = e.target.value;
     setFormData(prev => ({ ...prev, image: url }));
-    
+
     if (url) {
-      // Simulate image loading for preview
       const img = new Image();
       img.onload = () => setImagePreview(url);
       img.onerror = () => setImagePreview(null);
@@ -85,11 +97,19 @@ const InventoryForm = ({ onSubmit, onCancel, initialData = null }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // Prepare data for validation
+    // Parse quantity/threshold: float for poudre, integer for others
+    const parsedQuantity = isPoudre
+      ? parseFloat(formData.quantity)
+      : parseInt(formData.quantity, 10);
+
+    const parsedThreshold = isPoudre
+      ? parseFloat(formData.threshold)
+      : parseInt(formData.threshold, 10);
+
     const dataToValidate = {
       ...formData,
-      quantity: Number(formData.quantity),
-      threshold: Number(formData.threshold)
+      quantity: parsedQuantity,
+      threshold: parsedThreshold
     };
 
     const validation = validateInventoryItem(dataToValidate);
@@ -99,7 +119,6 @@ const InventoryForm = ({ onSubmit, onCancel, initialData = null }) => {
       return;
     }
 
-    // Submit with correct data types
     onSubmit(dataToValidate);
   };
 
@@ -119,9 +138,9 @@ const InventoryForm = ({ onSubmit, onCancel, initialData = null }) => {
           />
           {imagePreview && (
             <div className="inventory-form__preview">
-              <img 
-                src={imagePreview} 
-                alt="Preview" 
+              <img
+                src={imagePreview}
+                alt="Preview"
                 className="inventory-form__preview-image"
                 onError={() => setImagePreview(null)}
               />
@@ -132,7 +151,7 @@ const InventoryForm = ({ onSubmit, onCancel, initialData = null }) => {
         {/* Designations */}
         <div className="inventory-form__section inventory-form__section--full">
           <h3 className="inventory-form__subtitle">{t('designation')}</h3>
-          
+
           <Input
             label={t('designationIt')}
             type="text"
@@ -175,9 +194,9 @@ const InventoryForm = ({ onSubmit, onCancel, initialData = null }) => {
             name="quantity"
             value={formData.quantity}
             onChange={handleInputChange}
-            placeholder="100"
+            placeholder={isPoudre ? '145.23' : '100'}
             min="0"
-            step="1"
+            step={isPoudre ? '0.01' : '1'}
             error={errors.quantity}
             required
           />
@@ -190,9 +209,9 @@ const InventoryForm = ({ onSubmit, onCancel, initialData = null }) => {
             name="threshold"
             value={formData.threshold}
             onChange={handleInputChange}
-            placeholder="20"
+            placeholder={isPoudre ? '10.50' : '20'}
             min="0"
-            step="0.01"
+            step={isPoudre ? '0.01' : '1'}
             error={errors.threshold}
             required
           />
