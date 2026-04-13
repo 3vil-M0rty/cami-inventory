@@ -19,8 +19,8 @@ function fmt(val) {
 const TYPE_META = {
   entree:           { color: '#16a34a', bg: '#f0fdf4', icon: '↑' },
   sortie:           { color: '#ef4444', bg: '#fef2f2', icon: '↓' },
-  project_use:      { color: '#3b82f6', bg: '#eff6ff', icon: '↗' },
-  project_return:   { color: '#f59e0b', bg: '#fffbeb', icon: '↙' },
+  project_use:      { color: '#f59e0b', bg: '#eff6ff', icon: '↙' },
+  project_return:   { color: '#3b82f6', bg: '#fffbeb', icon: '↗' },
   order_reception:  { color: '#d410c4', bg: '#f0fdf4', icon: '↑' },
 };
 
