@@ -34,10 +34,10 @@ function getSuperCatLabel(sc, language) {
 
 function InventoryPage() {
   const { currentLanguage: language, t } = useLanguage();
-  const { can } = useAuth();
+  const { can, permissions } = useAuth();
 
-  const [superCats,        setSuperCats]        = useState(DEFAULT_SUPER_CATS);
-  const [activeSuperCat,   setActiveSuperCat]   = useState('aluminium');
+  const [superCats,        setSuperCats]        = useState([]);
+  const [activeSuperCat,   setActiveSuperCat]   = useState(null); // null until tabs loaded
   const [items,            setItems]            = useState([]);
   const [categories,       setCategories]       = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -57,17 +57,49 @@ function InventoryPage() {
   // Decimals allowed only for 'poudre'
   const isPoudre = activeSuperCat === 'poudre';
 
-  // Load super-categories from backend if endpoint exists, else fall back to defaults
+  // Load super-categories from backend, then filter client-side using the
+  // user's permissions already available in useAuth — no token header needed.
   const fetchSuperCats = useCallback(async () => {
     try {
       const res = await axios.get(`${API_URL}/super-categories`);
-      if (res.data && res.data.length) setSuperCats(res.data);
+      const all = res.data && res.data.length ? res.data : DEFAULT_SUPER_CATS;
+
+      // Filter tabs by what the user can actually view.
+      // Priority: if ANY per-SC view perm exists → show only those SCs.
+      //           if ONLY global inventory.view → show all.
+      //           if admin.view → show all.
+      const hasGlobalView = can('inventory.view') || can('admin.view');
+      const hasAnySCView  = all.some(sc => can(`inventory.${sc.key}.view`));
+
+      let visible;
+      if (can('admin.view')) {
+        visible = all; // admin sees everything
+      } else if (hasAnySCView) {
+        // Per-SC perms are set → show only explicitly allowed tabs (subcategory wins)
+        visible = all.filter(sc => can(`inventory.${sc.key}.view`));
+      } else if (hasGlobalView) {
+        visible = all; // global view only, no SC restrictions
+      } else {
+        visible = []; // no inventory access
+      }
+
+      setSuperCats(visible);
+
+      // Auto-select first visible tab if current selection is not in the list
+      if (visible.length > 0) {
+        const keys = visible.map(sc => sc.key);
+        setActiveSuperCat(prev => (prev && keys.includes(prev)) ? prev : keys[0]);
+      } else {
+        setActiveSuperCat(null);
+      }
     } catch {
       setSuperCats(DEFAULT_SUPER_CATS);
+      setActiveSuperCat(prev => prev || 'aluminium');
     }
-  }, []);
+  }, [can]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchCategories = useCallback(async () => {
+    if (!activeSuperCat) return; // wait until tab is resolved
     try {
       const response = await axios.get(`${API_URL}/categories?superCategory=${activeSuperCat}`);
       setCategories(response.data);
@@ -76,6 +108,7 @@ function InventoryPage() {
   }, [activeSuperCat]);
 
   const fetchItems = useCallback(async () => {
+    if (!activeSuperCat) return; // wait until tab is resolved
     setLoading(true);
     try {
       let url;
@@ -191,10 +224,18 @@ function InventoryPage() {
 
   const currentSuperCat = superCats.find(s => s.key === activeSuperCat);
 
-  // Permission check for current supercategory
-  const canEdit   = can(`inventory.${activeSuperCat}.edit`)   || can('inventory.edit');
-  const canDelete = can(`inventory.${activeSuperCat}.delete`) || can('inventory.delete');
-  const canView   = can(`inventory.${activeSuperCat}.view`)   || can('inventory.view');
+  // Permission check for current supercategory.
+  // If ANY per-SC perm exists on the role, global perms don't override for other SCs.
+  const hasAnySCEdit   = superCats.some(sc => can(`inventory.${sc.key}.edit`));
+  const hasAnySCDelete = superCats.some(sc => can(`inventory.${sc.key}.delete`));
+  const canEdit   = activeSuperCat && (can(`inventory.${activeSuperCat}.edit`)   || (!hasAnySCEdit   && can('inventory.edit')));
+  const canDelete = activeSuperCat && (can(`inventory.${activeSuperCat}.delete`) || (!hasAnySCDelete && can('inventory.delete')));
+  const canView   = activeSuperCat && superCats.some(sc => sc.key === activeSuperCat);
+
+  // Still loading tabs — don't flash access denied
+  if (!activeSuperCat) {
+    return <div className="loading" style={{ textAlign: 'center', padding: 80 }}>Chargement…</div>;
+  }
 
   if (!canView) {
     return (

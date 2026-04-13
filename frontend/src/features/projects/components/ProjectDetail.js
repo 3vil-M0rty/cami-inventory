@@ -43,7 +43,7 @@ function toDateInput(d) { if (!d) return ''; return new Date(d).toISOString().sp
 function resolveCompany(project) {
   const co = project.companyId;
   if (co && typeof co === 'object' && co.name) return co;
-  return { name: '', logo: '', address: '', phone: '', email: '', rc: '', ice: '', color: '#1a1a1a' };
+  return { name: '', logo: '', address: '', phone: '', email: '', rc: '', ice: '', color: '' };
 }
 
 function resolveLogoUrl(logo) {
@@ -52,13 +52,32 @@ function resolveLogoUrl(logo) {
   return `${BACKEND_URL}${logo}`;
 }
 
+// ─── FIX: Fetch logo as Base64 so it renders correctly in print popups ────────
+async function fetchLogoBase64(logoUrl) {
+  if (!logoUrl) return '';
+  try {
+    const resp = await fetch(logoUrl);
+    if (!resp.ok) return '';
+    const blob = await resp.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve(reader.result); // "data:image/...;base64,..."
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.warn('Logo fetch failed, will fall back to initials:', e);
+    return '';
+  }
+}
+
 // ─── BL HTML generator ───────────────────────────────────────────────────────
-function generateBLHtml(bl, project) {
+// logoBase64 is now passed in — either a data-URI string or '' for fallback
+function generateBLHtml(bl, project, logoBase64 = '') {
   const co = resolveCompany(project);
 
   const companyName  = co.name    || '';
   const companyColor = co.color   || '#1a1a1a';
-  const companyLogo  = resolveLogoUrl(co.logo || '');
   const companyAddr  = co.address || '';
   const companyPhone = co.phone   || '';
   const companyEmail = co.email   || '';
@@ -69,10 +88,17 @@ function generateBLHtml(bl, project) {
   const clientAddr = project.clientId?.address || bl.client?.address || '';
   const clientCity = project.clientId?.city    || bl.client?.city    || '';
 
-  const logoBlock = companyLogo
-    ? `<img src="${companyLogo}" alt="${companyName}" style="height:52px;max-width:180px;object-fit:contain;display:block;">`
+ 
+  // FIX: prefer the pre-fetched base64; only fall back to URL if we have nothing
+  const logoSrc = logoBase64 || resolveLogoUrl(co.logo || '');
+
+
+
+  const logoBlock = logoSrc
+    ? `<img src="${logoSrc}" alt="${companyName}" style="height:52px;max-width:180px;object-fit:contain;display:block;">`
     : `<div style="height:52px;width:52px;border-radius:10px;background:${companyColor};display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#fff;">${(companyName || '?').charAt(0)}</div>`;
 
+    
   const coLines = [
     companyAddr  && `<div>${companyAddr}</div>`,
     companyPhone && `<div>Tél : ${companyPhone}</div>`,
@@ -144,7 +170,12 @@ function generateBLHtml(bl, project) {
 
     .footer{margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#aaa;text-align:center;line-height:1.7}
 
-    @media print{body{padding:14mm 16mm}@page{margin:0;size:A4}}
+    /* FIX: force browsers to print background colors and images */
+    @media print{
+      *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+      body{padding:14mm 16mm}
+      @page{margin:0;size:A4}
+    }
   </style>
 </head>
 <body>
@@ -195,7 +226,7 @@ ${clientBlock}
 
 <div class="footer">
   ${[companyName, companyAddr, companyPhone ? 'Tél : ' + companyPhone : '', companyRC ? 'RC : ' + companyRC : '', companyICE ? 'ICE : ' + companyICE : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')}<br>
-  Document généré automatiquement le ${new Date().toLocaleDateString('fr-FR')}
+  
 </div>
 
 <script>
@@ -301,6 +332,16 @@ function BLPanel({ project, t }) {
 
   const co = resolveCompany(project);
 
+  // FIX: async print handler — fetches logo as Base64 before opening the popup
+  const handlePrintBL = async (e, bl) => {
+    e.stopPropagation();
+    const logoUrl    = resolveLogoUrl(co.logo || '');
+    const logoBase64 = await fetchLogoBase64(logoUrl);
+    const html       = generateBLHtml(bl, project, logoBase64);
+    const w          = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
   return (
     <div className="bl-panel">
       <div className="bl-panel__header">
@@ -335,16 +376,10 @@ function BLPanel({ project, t }) {
                 </span>
               </div>
               <div className="bl-card__actions">
+                {/* FIX: now calls async handlePrintBL instead of inline window.open */}
                 <button
                   className="bl-print-btn"
-                  onClick={e => {
-                    e.stopPropagation();
-                    const w = window.open('', '_blank');
-                    if (w) {
-                      w.document.write(generateBLHtml(bl, project));
-                      w.document.close();
-                    }
-                  }}
+                  onClick={e => handlePrintBL(e, bl)}
                 >
                   🖨 {t('blPrint')}
                 </button>

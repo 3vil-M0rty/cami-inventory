@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import CompanyManager from './CompanyManager';
+
 import './AdminPage.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -186,6 +188,7 @@ export default function AdminPage() {
           )}
         </>
       )}
+      <CompanyManager />
 
       {showUserForm && (
         <UserForm

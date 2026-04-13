@@ -368,8 +368,26 @@ async function initSampleData() {
   const compCount = await Company.countDocuments();
   if (compCount === 0) {
     await Company.insertMany([
-      { name: 'CAMI',  address: '', phone: '', email: '', color: '#ac0000', logo: "/cami.png" },
-      { name: 'GIMAV', address: '', phone: '', email: '', color: '#032699' , logo: "/gimav.png" },
+      {
+        name:    'CAMI',
+        address: 'Zone Industrielle, Marrakech, Maroc',
+        phone:   '+212 5XX-XXXXXX',
+        email:   'contact@cami.ma',
+        color:   '#f10000',
+        logo:    '/cami.png',
+        rc:      '',
+        ice:     '',
+      },
+      {
+        name:    'GIMAV',
+        address: 'Zone Industrielle, Marrakech, Maroc',
+        phone:   '+212 5XX-XXXXXX',
+        email:   'contact@gimav.ma',
+        color:   '#032699',
+        logo:    '/gimav.png',
+        rc:      '',
+        ice:     '',
+      },
     ]);
     console.log('✅ Companies seeded');
   }
@@ -497,6 +515,14 @@ app.put('/api/companies/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.delete('/api/companies/:id', async (req, res) => {
+  try {
+    const c = await Company.findByIdAndDelete(req.params.id);
+    if (!c) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ==================== AUTH MIDDLEWARE ====================
 
 async function requireAuth(req, res, next) {
@@ -520,6 +546,107 @@ function requirePermission(perm) {
     }
     next();
   };
+}
+
+/**
+ * Resolves which supercategory keys a user can VIEW.
+ *
+ * Priority rules (subcategory perms always win over global):
+ *
+ *   CASE 1 — subcategory perms present (with or without global):
+ *     → return only the explicitly allowed subcategories
+ *     → global inventory.view is treated as a fallback, not an override
+ *
+ *   CASE 2 — ONLY global inventory.view, no subcategory perms:
+ *     → return null (no DB filter = all supercategories visible)
+ *     → backward-compatible for admin/full-access roles
+ *
+ *   CASE 3 — neither:
+ *     → return [] (no access)
+ *
+ * This means: if you grant inventory.view + accessoires.view,
+ * the user sees ONLY accessoires (subcategory wins).
+ */
+async function resolveAllowedSCs(permissions) {
+  if (!permissions || permissions.length === 0) return [];
+
+  // Collect all known SC keys (built-in + dynamic from DB)
+  const BUILTIN = ["aluminium", "verre", "accessoires", "poudre"];
+  let ALL_SC = [...BUILTIN];
+  try {
+    const dbSCs = await SuperCategory.find().lean();
+    const dbKeys = dbSCs.map(s => s.key);
+    ALL_SC = [...new Set([...BUILTIN, ...dbKeys])];
+  } catch { /* use built-ins */ }
+
+  // Admin shortcut
+  if (permissions.includes("admin.view")) return null;
+
+  // Collect explicitly granted subcategory view perms
+  const scPerms = ALL_SC.filter(sc => permissions.includes(`inventory.${sc}.view`));
+
+  if (scPerms.length > 0) {
+    // Subcategory perms are set → they WIN, restrict to exactly those
+    return scPerms;
+  }
+
+  if (permissions.includes("inventory.view")) {
+    // Global view only, no subcategory restrictions → show all
+    return null;
+  }
+
+  return []; // no inventory access
+}
+
+/**
+ * Can the user edit items in a given supercategory?
+ *
+ * Same priority logic as resolveAllowedSCs:
+ *   - If ANY subcategory edit perm exists → only those subcategories are editable
+ *   - If ONLY global inventory.edit → all editable
+ *   - inventory.edit + sc.edit → only the sc (subcategory wins)
+ */
+function canEditSC(permissions, sc) {
+  if (!permissions || permissions.length === 0) return false;
+  // Check explicit SC edit perm first
+  if (permissions.includes(`inventory.${sc}.edit`)) return true;
+  // Check if any OTHER sc edit perm exists — if so, global doesn't help for THIS sc
+  const BUILTIN = ["aluminium", "verre", "accessoires", "poudre"];
+  const hasAnySCEdit = BUILTIN.some(s => permissions.includes(`inventory.${s}.edit`));
+  if (hasAnySCEdit) return false; // other SCs are explicitly controlled, this one isn't granted
+  // No SC-specific edit perms at all → fall back to global
+  return permissions.includes("inventory.edit");
+}
+
+/**
+ * Can the user delete items in a given supercategory?
+ * Same priority logic as canEditSC.
+ */
+function canDeleteSC(permissions, sc) {
+  if (!permissions || permissions.length === 0) return false;
+  if (permissions.includes(`inventory.${sc}.delete`)) return true;
+  const BUILTIN = ["aluminium", "verre", "accessoires", "poudre"];
+  const hasAnySCDelete = BUILTIN.some(s => permissions.includes(`inventory.${s}.delete`));
+  if (hasAnySCDelete) return false;
+  return permissions.includes("inventory.delete");
+}
+
+/**
+ * Middleware: inject allowedSuperCategories into req (optional auth).
+ * Public routes still work if no token sent (allowed = all).
+ */
+async function optionalAuth(req, res, next) {
+  const token = req.headers["x-auth-token"] || req.headers["authorization"]?.replace("Bearer ", "");
+  if (!token) { req.permissions = []; req.allowedSuperCategories = null; return next(); }
+  try {
+    const session = await Session.findOne({ token, expiresAt: { $gt: new Date() } });
+    if (!session) { req.permissions = []; req.allowedSuperCategories = null; return next(); }
+    const user = await User.findById(session.userId).populate("roleId");
+    req.user = user;
+    req.permissions = user?.roleId?.permissions || [];
+    req.allowedSuperCategories = await resolveAllowedSCs(req.permissions);
+    next();
+  } catch (e) { req.permissions = []; req.allowedSuperCategories = null; next(); }
 }
 
 // ==================== AUTH ROUTES ====================
@@ -723,25 +850,75 @@ app.delete('/api/categories/:id', async (req, res) => {
 });
 
 // ==================== INVENTORY ROUTES ====================
-app.get('/api/inventory', async (req, res) => {
+
+/**
+ * Helper: apply supercategory permission filter to a Mongoose filter object.
+ *
+ * allowedSC:
+ *   null   => user has global inventory.view  => no restriction at all
+ *   []     => user has NO view access         => return false (empty result)
+ *   [...]  => restrict items to these keys
+ *
+ * When the frontend sends ?superCategory=X:
+ *   - If X is in allowedSC => keep the filter as-is (show only X)
+ *   - If X is NOT in allowedSC => clamp to allowedSC (security, tabs should
+ *     have already hidden X but this is a safe fallback)
+ *
+ * Returns false if the caller should immediately return an empty array.
+ */
+function applyScFilter(filter, allowedSC) {
+  if (allowedSC === null) return true;      // global view, no SC restriction
+  if (allowedSC.length === 0) return false; // no access at all
+
+  const requested = filter.superCategory;
+
+  if (requested && typeof requested === 'string') {
+    if (allowedSC.includes(requested)) {
+      // Requested SC is allowed — keep filter as-is
+      return true;
+    } else {
+      // Requested SC is not in allowed list — override with allowed list
+      // (frontend tabs should have prevented this, but safe fallback)
+      filter.superCategory = { $in: allowedSC };
+      return true;
+    }
+  }
+
+  // No specific SC requested — restrict to allowed list
+  filter.superCategory = { $in: allowedSC };
+  return true;
+}
+
+// Also expose allowed supercategories as a dedicated endpoint so the frontend
+// can show/hide tabs without needing to enumerate inventory items.
+app.get('/api/inventory/allowed-supercategories', optionalAuth, (req, res) => {
+  // null => all allowed (admin), array => subset
+  res.json({ allowedSuperCategories: req.allowedSuperCategories });
+});
+
+app.get('/api/inventory', optionalAuth, async (req, res) => {
   try {
     const filter = {};
     if (req.query.categoryId && req.query.categoryId !== 'all') filter.categoryId = req.query.categoryId;
     if (req.query.superCategory && req.query.superCategory !== 'all') filter.superCategory = req.query.superCategory;
+    if (!applyScFilter(filter, req.allowedSuperCategories)) return res.json([]);
     res.json(await Item.find(filter).populate('categoryId').sort({ createdAt: -1 }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/inventory/filter/low-stock', async (req, res) => {
+app.get('/api/inventory/filter/low-stock', optionalAuth, async (req, res) => {
   try {
-    const items = await Item.find().populate('categoryId');
+    const filter = {};
+    if (!applyScFilter(filter, req.allowedSuperCategories)) return res.json([]);
+    const items = await Item.find(filter).populate('categoryId');
     res.json(items.filter(i => i.quantity + (i.orderedQuantity || 0) < i.threshold));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/inventory/search', async (req, res) => {
+app.get('/api/inventory/search', optionalAuth, async (req, res) => {
   try {
     const filter = {};
     if (req.query.categoryId && req.query.categoryId !== 'all') filter.categoryId = req.query.categoryId;
     if (req.query.superCategory && req.query.superCategory !== 'all') filter.superCategory = req.query.superCategory;
+    if (!applyScFilter(filter, req.allowedSuperCategories)) return res.json([]);
     if (req.query.q) filter.$or = [
       { 'designation.it': { $regex: req.query.q, $options: 'i' } },
       { 'designation.fr': { $regex: req.query.q, $options: 'i' } },
@@ -750,44 +927,56 @@ app.get('/api/inventory/search', async (req, res) => {
     res.json(await Item.find(filter).populate('categoryId').sort({ createdAt: -1 }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/inventory/:id', async (req, res) => {
+app.get('/api/inventory/:id', optionalAuth, async (req, res) => {
   try {
     const item = await Item.findById(req.params.id).populate('categoryId');
     if (!item) return res.status(404).json({ error: 'Not found' });
+    // Check per-item supercategory access
+    const sc = item.superCategory || 'aluminium';
+    const allowed = req.allowedSuperCategories;
+    if (allowed !== null && !allowed.includes(sc)) {
+      return res.status(403).json({ error: 'Accès refusé à cette catégorie' });
+    }
     res.json(item);
   } catch (e) { res.status(e.kind === 'ObjectId' ? 400 : 500).json({ error: e.message }); }
 });
-app.post('/api/inventory', async (req, res) => {
+app.post('/api/inventory', optionalAuth, async (req, res) => {
   try {
+    const sc = req.body.superCategory || 'aluminium';
+    if (!canEditSC(req.permissions, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
     const item = new Item({
       image: req.body.image || '', designation: req.body.designation,
       quantity: Number(req.body.quantity) || 0, orderedQuantity: Number(req.body.orderedQuantity) || 0,
       threshold: Number(req.body.threshold) || 0, categoryId: req.body.categoryId || null,
-      superCategory: req.body.superCategory || 'aluminium'
+      superCategory: sc
     });
     await item.save();
     await item.populate('categoryId');
     res.status(201).json(item);
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
-app.put('/api/inventory/:id', async (req, res) => {
+app.put('/api/inventory/:id', optionalAuth, async (req, res) => {
   try {
+    const sc = req.body.superCategory || 'aluminium';
+    if (!canEditSC(req.permissions, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
     const item = await Item.findByIdAndUpdate(req.params.id, {
       image: req.body.image, designation: req.body.designation,
       quantity: Number(req.body.quantity) || 0, orderedQuantity: Number(req.body.orderedQuantity) || 0,
       threshold: Number(req.body.threshold) || 0, categoryId: req.body.categoryId || null,
-      superCategory: req.body.superCategory || 'aluminium'
+      superCategory: sc
     }, { new: true, runValidators: true }).populate('categoryId');
     if (!item) return res.status(404).json({ error: 'Not found' });
     res.json(item);
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
-app.patch('/api/inventory/:id/quantity', async (req, res) => {
+app.patch('/api/inventory/:id/quantity', optionalAuth, async (req, res) => {
   try {
     const { amount, note } = req.body;
     if (typeof amount !== 'number') return res.status(400).json({ error: 'Amount must be a number' });
     const item = await Item.findById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Not found' });
+    const sc = item.superCategory || 'aluminium';
+    if (!canEditSC(req.permissions, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
     item.quantity = Math.max(0, item.quantity + amount);
     await item.save();
     await StockMovement.create({
@@ -798,10 +987,13 @@ app.patch('/api/inventory/:id/quantity', async (req, res) => {
     res.json(item);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/inventory/:id', async (req, res) => {
+app.delete('/api/inventory/:id', optionalAuth, async (req, res) => {
   try {
-    const item = await Item.findByIdAndDelete(req.params.id);
+    const item = await Item.findById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Not found' });
+    const sc = item.superCategory || 'aluminium';
+    if (!canDeleteSC(req.permissions, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.delete` });
+    await Item.findByIdAndDelete(req.params.id);
     res.json({ success: true, id: req.params.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1275,19 +1467,21 @@ app.get('/api/analytics/dashboard', async (req, res) => {
 });
 
 // ==================== SUPER-CATEGORY ROUTES ====================
-app.get('/api/super-categories', async (req, res) => {
+app.get('/api/super-categories', optionalAuth, async (req, res) => {
   try {
     const cats = await SuperCategory.find().sort({ order: 1 });
-    if (cats.length === 0) {
-      // Return defaults if none seeded yet
-      return res.json([
-        { key: 'aluminium',   label: { fr: '🔩 Aluminium', it: '🔩 Alluminio',  en: '🔩 Aluminium' }, color: '#3b82f6' },
-        { key: 'verre',       label: { fr: '💎 Verre',     it: '💎 Vetro',       en: '💎 Glass'     }, color: '#06b6d4' },
-        { key: 'accessoires', label: { fr: '🔧 Accessoires',it:'🔧 Accessori',   en: '🔧 Accessories'}, color: '#f59e0b' },
-        { key: 'poudre', label: { fr: '🎨 Poudre',it:'🎨 Polvere',   en: '🎨 Powder'}, color: '#ff1100' },
-      ]);
-    }
-    res.json(cats);
+    const defaults = [
+      { key: 'aluminium',   label: { fr: '🔩 Aluminium', it: '🔩 Alluminio',  en: '🔩 Aluminium' }, color: '#3b82f6' },
+      { key: 'verre',       label: { fr: '💎 Verre',     it: '💎 Vetro',       en: '💎 Glass'     }, color: '#06b6d4' },
+      { key: 'accessoires', label: { fr: '🔧 Accessoires',it:'🔧 Accessori',   en: '🔧 Accessories'}, color: '#f59e0b' },
+      { key: 'poudre',      label: { fr: '🎨 Poudre',    it:'🎨 Polvere',      en: '🎨 Powder'    }, color: '#ff1100' },
+    ];
+    const all = cats.length === 0 ? defaults : cats;
+    // allowedSuperCategories already resolved by optionalAuth using resolveAllowedSCs
+    // null = all, [] = none, [...] = subset
+    const allowed = req.allowedSuperCategories;
+    const filtered = allowed === null ? all : all.filter(sc => allowed.includes(sc.key));
+    res.json(filtered);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

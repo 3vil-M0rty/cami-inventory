@@ -34,7 +34,7 @@ export default function CompanySettings() {
             logo: c.logo || '',
             rc: c.rc || '',
             ice: c.ice || '',
-            color: c.color || '#1a1a1a',
+            color: c.color || '#ce0000',
           };
         });
         setForms(initial);
