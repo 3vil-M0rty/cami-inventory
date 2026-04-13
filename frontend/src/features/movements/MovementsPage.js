@@ -17,10 +17,11 @@ function fmt(val) {
 }
 
 const TYPE_META = {
-  entree: { color: '#16a34a', bg: '#f0fdf4', icon: '↑' },
-  sortie: { color: '#ef4444', bg: '#fef2f2', icon: '↓' },
-  project_use: { color: '#3b82f6', bg: '#eff6ff', icon: '↗' },
-  project_return: { color: '#f59e0b', bg: '#fffbeb', icon: '↙' },
+  entree:           { color: '#16a34a', bg: '#f0fdf4', icon: '↑' },
+  sortie:           { color: '#ef4444', bg: '#fef2f2', icon: '↓' },
+  project_use:      { color: '#3b82f6', bg: '#eff6ff', icon: '↗' },
+  project_return:   { color: '#f59e0b', bg: '#fffbeb', icon: '↙' },
+  order_reception:  { color: '#d410c4', bg: '#f0fdf4', icon: '↑' },
 };
 
 const SUPER_CATS = [
@@ -232,6 +233,7 @@ export default function MovementsPage() {
     { value: 'sortie', label: t('mvSorties') || 'Sorties' },
     { value: 'project_use', label: t('mvProjectUse') || 'Usage projet' },
     { value: 'project_return', label: t('mvProjectReturn') || 'Retour projet' },
+    { value: 'order_reception', label: t('mvOrderReception') || 'Réception commande' },
   ];
 
   const TYPE_LABELS = {
@@ -239,6 +241,7 @@ export default function MovementsPage() {
     sortie: t('mvSorties') || 'Sorties',
     project_use: t('mvProjectUse') || 'Usage projet',
     project_return: t('mvProjectReturn') || 'Retour projet',
+    order_reception: t('mvOrderReception') || 'Réception commande',
   };
 
   const hasActiveFilters = fromDate || toDate || typeFilter !== 'all' || search || superCat !== 'all';
@@ -433,7 +436,7 @@ export default function MovementsPage() {
                 const designation = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '—';
                 const sc = m.itemId?.superCategory || null;
                 const scMeta = SUPER_CATS.find(s => s.key === sc);
-                const isPositive = m.type === 'entree' || m.type === 'project_return';
+                const isPositive = m.type === 'entree' || m.type === 'project_return' || m.type === 'order_reception';
                 const qty = fmt(m.quantity);
                 const bal = fmt(m.balanceAfter);
                 return (

@@ -119,6 +119,7 @@ const translations = {
     password: 'Mot de passe', role: 'Rôle', society: 'Société', active: 'Actif',
     allSocieties: 'Toutes les sociétés', activate: 'Activer', deactivate: 'Désactiver',
     permissionsCount: 'activées',
+    mvOrderReception: "Réception commande",
   },
   it: {
     appTitle: 'CAMI ALUMINIUM', appSubtitle: 'DA HB',
@@ -223,6 +224,7 @@ const translations = {
     password: 'Password', role: 'Ruolo', society: 'Società', active: 'Attivo',
     allSocieties: 'Tutte le società', activate: 'Attiva', deactivate: 'Disattiva',
     permissionsCount: 'attive',
+    mvOrderReception: "Ricezione ordini",
   },
   en: {
     appTitle: 'CAMI ALUMINIUM', appSubtitle: 'BY HB',
@@ -327,6 +329,7 @@ const translations = {
     password: 'Password', role: 'Role', society: 'Company', active: 'Active',
     allSocieties: 'All companies', activate: 'Activate', deactivate: 'Deactivate',
     permissionsCount: 'active',
+    mvOrderReception: "Order reception",
   }
 };
 
