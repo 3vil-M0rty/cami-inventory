@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import './OrdersPage.css';
+import { exportOrdersExcel, exportOrderPDF } from '../../utils/orderExport';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -25,6 +26,7 @@ export default function OrdersPage() {
   const [receiveQty, setReceiveQty] = useState(0);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [exportingPdf, setExportingPdf] = useState(null);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -80,6 +82,15 @@ export default function OrdersPage() {
     recue: orders.filter(o => o.status === 'recue').length,
   };
 
+  const handleExportPDF = async (order) => {
+    setExportingPdf(order.id);
+    try {
+      const company = companies.find(c => c.id === (order.companyId?.id || order.companyId?._id)) || null;
+      await exportOrderPDF(order, lang, company);
+    } catch (e) { console.error(e); alert('Erreur export PDF'); }
+    finally { setExportingPdf(null); }
+  };
+
   return (
     <div className="orders-page">
       <header className="orders-header">
@@ -87,7 +98,12 @@ export default function OrdersPage() {
           <h1>📦 {t('navOrders')}</h1>
           <p className="orders-subtitle">Gestion des commandes fournisseurs</p>
         </div>
-        <button className="btn-primary" onClick={() => { setEditOrder(null); setShowForm(true); }}>+ Nouvelle commande</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-excel" onClick={() => exportOrdersExcel(filteredOrders, lang)}>
+            📊 Export Excel
+          </button>
+          <button className="btn-primary" onClick={() => { setEditOrder(null); setShowForm(true); }}>+ Nouvelle commande</button>
+        </div>
       </header>
 
       <div className="orders-stats">
@@ -173,6 +189,14 @@ export default function OrdersPage() {
                 </div>
 
                 <div className="order-card-actions">
+                  <button
+                    className="btn-pdf"
+                    onClick={() => handleExportPDF(order)}
+                    disabled={exportingPdf === order.id}
+                    title="Exporter en PDF"
+                  >
+                    {exportingPdf === order.id ? '⏳' : '📄'} PDF
+                  </button>
                   <button className="btn-edit" onClick={() => { setEditOrder(order); setShowForm(true); }}>Modifier</button>
                   <button className="btn-delete" onClick={() => handleDelete(order.id)}>Supprimer</button>
                 </div>

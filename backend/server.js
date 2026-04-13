@@ -1034,13 +1034,62 @@ app.post('/api/orders', async (req, res) => {
 });
 app.put('/api/orders/:id', async (req, res) => {
   try {
-    const o = await Order.findByIdAndUpdate(req.params.id, {
-      reference: req.body.reference, companyId: req.body.companyId || null,
-      supplier: req.body.supplier, orderDate: req.body.orderDate,
-      expectedDate: req.body.expectedDate || null, notes: req.body.notes || '',
-      status: req.body.status
-    }, { new: true, runValidators: true }).populate('lines.itemId').populate('companyId');
+    const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Not found' });
+
+    // Scalar fields
+    o.reference    = req.body.reference;
+    o.companyId    = req.body.companyId    || null;
+    o.supplier     = req.body.supplier     || '';
+    o.orderDate    = req.body.orderDate;
+    o.expectedDate = req.body.expectedDate || null;
+    o.notes        = req.body.notes        || '';
+    o.status       = req.body.status;
+
+    // Lines — update in place to preserve quantityReceived on existing lines,
+    // adjust orderedQuantity on inventory items for added/removed/changed lines
+    if (Array.isArray(req.body.lines)) {
+      const oldLines = o.lines;
+
+      // Reverse old orderedQuantity contributions for lines that are changing qty or being removed
+      for (const oldLine of oldLines) {
+        const incoming = req.body.lines.find(l => l._id && l._id.toString() === oldLine._id.toString());
+        const oldPending = oldLine.quantityOrdered - (oldLine.quantityReceived || 0);
+        if (!incoming) {
+          // Line removed — reverse its pending orderedQuantity
+          if (oldPending > 0) await Item.findByIdAndUpdate(oldLine.itemId, { $inc: { orderedQuantity: -oldPending } });
+        } else if (Number(incoming.quantityOrdered) !== oldLine.quantityOrdered) {
+          // Quantity changed — adjust the delta
+          const newPending = Number(incoming.quantityOrdered) - (oldLine.quantityReceived || 0);
+          const delta = newPending - oldPending;
+          if (delta !== 0) await Item.findByIdAndUpdate(oldLine.itemId, { $inc: { orderedQuantity: delta } });
+        }
+      }
+
+      // Apply orderedQuantity for brand-new lines (no _id)
+      for (const incoming of req.body.lines) {
+        if (!incoming._id) {
+          await Item.findByIdAndUpdate(incoming.itemId, { $inc: { orderedQuantity: Number(incoming.quantityOrdered) || 1 } });
+        }
+      }
+
+      // Build new lines array, preserving quantityReceived for existing lines
+      o.lines = req.body.lines.map(l => {
+        const existing = l._id ? oldLines.find(ol => ol._id.toString() === l._id.toString()) : null;
+        return {
+          _id:              existing?._id,
+          itemId:           l.itemId,
+          quantityOrdered:  Number(l.quantityOrdered) || 1,
+          quantityReceived: existing?.quantityReceived || 0,
+          unitPrice:        Number(l.unitPrice) || 0,
+          note:             l.note || '',
+        };
+      });
+    }
+
+    await o.save();
+    await o.populate('lines.itemId');
+    await o.populate('companyId');
     res.json(o);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
