@@ -7,6 +7,13 @@ import './InventoryPage.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
+// Attach the auth token to every axios request at call time (not module load time)
+axios.interceptors.request.use((config) => {
+  const t = localStorage.getItem('auth_token');
+  if (t) config.headers['Authorization'] = `Bearer ${t}`;
+  return config;
+});
+
 /**
  * Format a quantity to at most 2 decimal places, stripping trailing zeros.
  * 102.8000000000001 → "102.8"   |   145.23 → "145.23"   |   100 → "100"
