@@ -470,3 +470,54 @@
 }
 .bl-table tr:last-child td { border-bottom: none; }
 .bl-table tr:hover td { background: #fafafa; }
+
+
+/* Base styling */
+.etat-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding: 6px 30px 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: #ffffff;
+  color: #1f2937;
+  border-left: 6px solid transparent;
+}
+
+/* Remove default blue focus ring and replace with custom one */
+.etat-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+/* Disabled state */
+.etat-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* State-specific styles */
+.etat-select--non_entame {
+  border-left-color: #9ca3af;
+}
+
+.etat-select--en_cours {
+  border-left-color: #f59e0b;
+}
+
+.etat-select--fabrique {
+  border-left-color: #3b82f6;
+}
+
+.etat-select--livre {
+  border-left-color: #16a34a;
+}
+.etat-select--non_entame { border-left-color: #9ca3af; }
+.etat-select--en_cours  { border-left-color: #f59e0b; }
+.etat-select--fabrique  { border-left-color: #3b82f6; }
+.etat-select--livre     { border-left-color: #16a34a; }

@@ -9,8 +9,8 @@ import { exportProjectPDF, exportBarsPDF } from '../utils/pdfExport';
 import { fetchChassisTypes, buildChassisLabels, CHASSIS_LABELS as STATIC_LABELS } from './ChassisTypesConfig';
 import './ProjectDetail.css';
 
-const ETAT_OPTIONS  = ['non_entame', 'en_cours', 'fabrique', 'livre'];
-const ETAT_COLORS   = { non_entame: '#9ca3af', en_cours: '#f59e0b', fabrique: '#3b82f6', livre: '#16a34a' };
+const ETAT_OPTIONS = ['non_entame', 'en_cours', 'fabrique', 'livre'];
+const ETAT_COLORS = { non_entame: '#9ca3af', en_cours: '#f59e0b', fabrique: '#3b82f6', livre: '#16a34a' };
 const STATUS_COLORS = { en_cours: '#f59e0b', fabrique: '#3b82f6', cloture: '#16a34a' };
 
 const BACKEND_URL = process.env.REACT_APP_API_URL
@@ -32,12 +32,12 @@ function deriveCompositeEtat(unit, components) {
   const n = components.length;
   if (!n) return unit.etat || 'non_entame';
   const states = components.map((comp, i) => getComponentEtat(unit, i, comp));
-  if (states.every(e => e === 'livre'))                     return 'livre';
+  if (states.every(e => e === 'livre')) return 'livre';
   if (states.every(e => e === 'fabrique' || e === 'livre')) return 'fabrique';
-  if (states.some(e => e !== 'non_entame'))                 return 'en_cours';
+  if (states.some(e => e !== 'non_entame')) return 'en_cours';
   return 'non_entame';
 }
-function fmtDate(d)     { if (!d) return ''; return new Date(d).toLocaleDateString('fr-FR'); }
+function fmtDate(d) { if (!d) return ''; return new Date(d).toLocaleDateString('fr-FR'); }
 function toDateInput(d) { if (!d) return ''; return new Date(d).toISOString().split('T')[0]; }
 
 function resolveCompany(project) {
@@ -61,7 +61,7 @@ async function fetchLogoBase64(logoUrl) {
     const blob = await resp.blob();
     return await new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload  = () => resolve(reader.result); // "data:image/...;base64,..."
+      reader.onload = () => resolve(reader.result); // "data:image/...;base64,..."
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
@@ -76,19 +76,19 @@ async function fetchLogoBase64(logoUrl) {
 function generateBLHtml(bl, project, logoBase64 = '') {
   const co = resolveCompany(project);
 
-  const companyName  = co.name    || '';
-  const companyColor = co.color   || '#1a1a1a';
-  const companyAddr  = co.address || '';
-  const companyPhone = co.phone   || '';
-  const companyEmail = co.email   || '';
-  const companyRC    = co.rc      || '';
-  const companyICE   = co.ice     || '';
+  const companyName = co.name || '';
+  const companyColor = co.color || '#1a1a1a';
+  const companyAddr = co.address || '';
+  const companyPhone = co.phone || '';
+  const companyEmail = co.email || '';
+  const companyRC = co.rc || '';
+  const companyICE = co.ice || '';
 
-  const clientName = project.clientId?.name    || bl.client?.name    || '';
+  const clientName = project.clientId?.name || bl.client?.name || '';
   const clientAddr = project.clientId?.address || bl.client?.address || '';
-  const clientCity = project.clientId?.city    || bl.client?.city    || '';
+  const clientCity = project.clientId?.city || bl.client?.city || '';
 
- 
+
   // FIX: prefer the pre-fetched base64; only fall back to URL if we have nothing
   const logoSrc = logoBase64 || resolveLogoUrl(co.logo || '');
 
@@ -98,13 +98,13 @@ function generateBLHtml(bl, project, logoBase64 = '') {
     ? `<img src="${logoSrc}" alt="${companyName}" style="height:52px;max-width:180px;object-fit:contain;display:block;">`
     : `<div style="height:52px;width:52px;border-radius:10px;background:${companyColor};display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#fff;">${(companyName || '?').charAt(0)}</div>`;
 
-    
+
   const coLines = [
-    companyAddr  && `<div>${companyAddr}</div>`,
+    companyAddr && `<div>${companyAddr}</div>`,
     companyPhone && `<div>Tél : ${companyPhone}</div>`,
     companyEmail && `<div>${companyEmail}</div>`,
-    companyRC    && `<div>RC : ${companyRC}</div>`,
-    companyICE   && `<div>ICE : ${companyICE}</div>`,
+    companyRC && `<div>RC : ${companyRC}</div>`,
+    companyICE && `<div>ICE : ${companyICE}</div>`,
   ].filter(Boolean).join('');
 
   const clientBlock = clientName ? `
@@ -199,7 +199,7 @@ function generateBLHtml(bl, project, logoBase64 = '') {
 <div class="info-row">
   <div class="info-card"><div class="info-card__label">Projet</div><div class="info-card__val">${project.name}</div></div>
   <div class="info-card"><div class="info-card__label">Référence</div><div class="info-card__val">${project.reference}</div></div>
-  <div class="info-card"><div class="info-card__label">RAL</div><div class="info-card__val"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${project.ralColor||'#eee'};border:1px solid #ddd;flex-shrink:0"></span>${project.ralCode}</div></div>
+  <div class="info-card"><div class="info-card__label">RAL</div><div class="info-card__val"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${project.ralColor || '#eee'};border:1px solid #ddd;flex-shrink:0"></span>${project.ralCode}</div></div>
   <div class="info-card"><div class="info-card__label">Pièces livrées</div><div class="info-card__val">${bl.units.length}</div></div>
 </div>
 
@@ -307,13 +307,13 @@ function DeliveryDateModal({ defaultDate, onConfirm, onCancel, t }) {
 // ─── BL Panel ─────────────────────────────────────────────────────────────────
 function BLPanel({ project, t }) {
   const { getBonsLivraison } = useProjects();
-  const [bls,     setBls]     = useState([]);
+  const [bls, setBls] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [openBL,  setOpenBL]  = useState(null);
+  const [openBL, setOpenBL] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    try   { setBls(await getBonsLivraison(project.id)); }
+    try { setBls(await getBonsLivraison(project.id)); }
     catch { setBls([]); }
     finally { setLoading(false); }
   }, [project.id, getBonsLivraison]);
@@ -335,10 +335,10 @@ function BLPanel({ project, t }) {
   // FIX: async print handler — fetches logo as Base64 before opening the popup
   const handlePrintBL = async (e, bl) => {
     e.stopPropagation();
-    const logoUrl    = resolveLogoUrl(co.logo || '');
+    const logoUrl = resolveLogoUrl(co.logo || '');
     const logoBase64 = await fetchLogoBase64(logoUrl);
-    const html       = generateBLHtml(bl, project, logoBase64);
-    const w          = window.open('', '_blank');
+    const html = generateBLHtml(bl, project, logoBase64);
+    const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); }
   };
 
@@ -425,31 +425,31 @@ function ProjectDetail({ project, onBack }) {
   const { deleteChassis, updateChassis, updateUnit, updateComponent } = useProjects();
   const { t, currentLanguage } = useLanguage();
 
-  const [activeTab,       setActiveTab]       = useState('chassis');
+  const [activeTab, setActiveTab] = useState('chassis');
   const [showChassisForm, setShowChassisForm] = useState(false);
   const [showTypeManager, setShowTypeManager] = useState(false);
-  const [editingChassis,  setEditingChassis]  = useState(null);
+  const [editingChassis, setEditingChassis] = useState(null);
   const [printingChassis, setPrintingChassis] = useState(null);
-  const [chassisLabels,   setChassisLabels]   = useState(STATIC_LABELS);
-  const [selectedKeys,    setSelectedKeys]    = useState(new Set());
-  const [deliveryModal,   setDeliveryModal]   = useState(null);
-  const [savingKey,       setSavingKey]       = useState(null);
+  const [chassisLabels, setChassisLabels] = useState(STATIC_LABELS);
+  const [selectedKeys, setSelectedKeys] = useState(new Set());
+  const [deliveryModal, setDeliveryModal] = useState(null);
+  const [savingKey, setSavingKey] = useState(null);
 
-  const language    = currentLanguage;
+  const language = currentLanguage;
   const statusColor = STATUS_COLORS[project.status] || '#9ca3af';
-  const dateStr     = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
+  const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
   useEffect(() => {
-    fetchChassisTypes().then(types => setChassisLabels(buildChassisLabels(types))).catch(() => {});
+    fetchChassisTypes().then(types => setChassisLabels(buildChassisLabels(types))).catch(() => { });
   }, [showTypeManager]);
 
   const rows = (project.chassis || []).flatMap(ch => {
-    const qty         = ch.quantity || 1;
-    const chId        = ch._id || ch.id;
+    const qty = ch.quantity || 1;
+    const chId = ch._id || ch.id;
     const isComposite = (ch.components || []).length > 0;
     return Array.from({ length: qty }, (_, unitIndex) => {
-      const unit      = getUnit(ch, unitIndex);
-      const groupKey  = `${chId}-${unitIndex}`;
+      const unit = getUnit(ch, unitIndex);
+      const groupKey = `${chId}-${unitIndex}`;
       const baseLabel = qty > 1 ? `${ch.repere} #${unitIndex + 1}` : ch.repere;
       if (!isComposite) {
         return [{ kind: 'unit', ch, chId, unitIndex, unit, rowKey: groupKey, label: baseLabel, etat: unit.etat || 'non_entame' }];
@@ -461,8 +461,10 @@ function ProjectDetail({ project, onBack }) {
         etat: getComponentEtat(unit, ci, comp),
       }));
       return [
-        { kind: 'groupHead', ch, chId, unitIndex, unit, rowKey: groupKey, label: baseLabel,
-          derivedEtat: deriveCompositeEtat(unit, ch.components), componentRows },
+        {
+          kind: 'groupHead', ch, chId, unitIndex, unit, rowKey: groupKey, label: baseLabel,
+          derivedEtat: deriveCompositeEtat(unit, ch.components), componentRows
+        },
         ...componentRows,
       ];
     });
@@ -507,7 +509,7 @@ function ProjectDetail({ project, onBack }) {
 
   const handleDeleteUnit = async (ch, unitIndex) => {
     const chId = ch._id || ch.id;
-    const qty  = ch.quantity ?? 1;
+    const qty = ch.quantity ?? 1;
     if (qty <= 1) {
       if (!window.confirm(t('deleteChassisConfirm'))) return;
       await deleteChassis(project.id, chId);
@@ -525,8 +527,10 @@ function ProjectDetail({ project, onBack }) {
         toPrint.push({ ...row.ch, _printRowIndex: row.unitIndex, _totalQty: row.ch.quantity || 1 });
       } else if (row.kind === 'component') {
         const roleLabel = row.comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${row.ci}`;
-        toPrint.push({ ...row.ch, _printRowIndex: row.unitIndex, _totalQty: row.ch.quantity || 1,
-          _component: { repere: row.comp.repere || roleLabel, roleLabel, largeur: row.comp.largeur, hauteur: row.comp.hauteur } });
+        toPrint.push({
+          ...row.ch, _printRowIndex: row.unitIndex, _totalQty: row.ch.quantity || 1,
+          _component: { repere: row.comp.repere || roleLabel, roleLabel, largeur: row.comp.largeur, hauteur: row.comp.hauteur }
+        });
       }
     }
     if (!toPrint.length) return;
@@ -567,8 +571,8 @@ function ProjectDetail({ project, onBack }) {
       <div className="project-detail__tabs">
         {[
           { key: 'chassis', label: t('tabChassis'), count: totalDisplayRows },
-          { key: 'bars',    label: t('cons'),       count: project.usedBars?.length || 0 },
-          { key: 'bl',      label: t('tabBL'),      count: null },
+          { key: 'bars', label: t('cons'), count: project.usedBars?.length || 0 },
+          { key: 'bl', label: t('tabBL'), count: null },
         ].map(tab => (
           <button key={tab.key}
             className={`project-detail__tab ${activeTab === tab.key ? 'project-detail__tab--active' : ''}`}
@@ -671,10 +675,17 @@ function ProjectDetail({ project, onBack }) {
                           <td>{comp.largeur || '—'}</td><td>{comp.hauteur || '—'}</td>
                           <td className="dim-cell">{comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}</td>
                           <td>
-                            <select className="etat-select etat-select--component" value={etat} disabled={isSaving}
-                              onChange={e => handleComponentEtatChange(ch, unitIndex, ci, e.target.value, rowKey)}
-                              style={{ borderLeftColor: ETAT_COLORS[etat] }}>
-                              {ETAT_OPTIONS.map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
+                            <select
+                              className={`etat-select etat-select--${etat}`}
+                              value={etat}
+                              disabled={isSaving}
+                              onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)}
+                            >
+                              {ETAT_OPTIONS.map(opt => (
+                                <option key={opt} value={opt}>
+                                  {t(`etat_${opt}`)}
+                                </option>
+                              ))}
                             </select>
                           </td>
                           <td><span className="date-placeholder">—</span></td>
@@ -733,12 +744,12 @@ function ProjectDetail({ project, onBack }) {
       )}
 
       {activeTab === 'bars' && <UsedBarsPanel project={project} />}
-      {activeTab === 'bl'   && <div className="project-detail__panel"><BLPanel project={project} t={t} language={language} /></div>}
+      {activeTab === 'bl' && <div className="project-detail__panel"><BLPanel project={project} t={t} language={language} /></div>}
 
       {showChassisForm && <ChassisForm chassis={editingChassis} projectId={project.id} onClose={() => { setShowChassisForm(false); setEditingChassis(null); }} onSave={() => { setShowChassisForm(false); setEditingChassis(null); }} />}
-      {showTypeManager  && <ChassisTypeManager onClose={() => setShowTypeManager(false)} />}
-      {printingChassis  && <LabelPrint chassis={printingChassis} project={project} chassisLabels={chassisLabels} onClose={() => setPrintingChassis(null)} />}
-      {deliveryModal    && <DeliveryDateModal defaultDate={deliveryModal.currentDate} onConfirm={handleDeliveryConfirm} onCancel={() => setDeliveryModal(null)} t={t} />}
+      {showTypeManager && <ChassisTypeManager onClose={() => setShowTypeManager(false)} />}
+      {printingChassis && <LabelPrint chassis={printingChassis} project={project} chassisLabels={chassisLabels} onClose={() => setPrintingChassis(null)} />}
+      {deliveryModal && <DeliveryDateModal defaultDate={deliveryModal.currentDate} onConfirm={handleDeliveryConfirm} onCancel={() => setDeliveryModal(null)} t={t} />}
     </div>
   );
 }
