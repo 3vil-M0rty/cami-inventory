@@ -61,7 +61,7 @@ async function fetchLogoBase64(logoUrl) {
     const blob = await resp.blob();
     return await new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result); // "data:image/...;base64,..."
+      reader.onload = () => resolve(reader.result);
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
@@ -72,7 +72,6 @@ async function fetchLogoBase64(logoUrl) {
 }
 
 // ─── BL HTML generator ───────────────────────────────────────────────────────
-// logoBase64 is now passed in — either a data-URI string or '' for fallback
 function generateBLHtml(bl, project, logoBase64 = '') {
   const co = resolveCompany(project);
 
@@ -88,16 +87,11 @@ function generateBLHtml(bl, project, logoBase64 = '') {
   const clientAddr = project.clientId?.address || bl.client?.address || '';
   const clientCity = project.clientId?.city || bl.client?.city || '';
 
-
-  // FIX: prefer the pre-fetched base64; only fall back to URL if we have nothing
   const logoSrc = logoBase64 || resolveLogoUrl(co.logo || '');
-
-
 
   const logoBlock = logoSrc
     ? `<img src="${logoSrc}" alt="${companyName}" style="height:52px;max-width:180px;object-fit:contain;display:block;">`
     : `<div style="height:52px;width:52px;border-radius:10px;background:${companyColor};display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#fff;">${(companyName || '?').charAt(0)}</div>`;
-
 
   const coLines = [
     companyAddr && `<div>${companyAddr}</div>`,
@@ -170,7 +164,6 @@ function generateBLHtml(bl, project, logoBase64 = '') {
 
     .footer{margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#aaa;text-align:center;line-height:1.7}
 
-    /* FIX: force browsers to print background colors and images */
     @media print{
       *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
       body{padding:14mm 16mm}
@@ -226,11 +219,9 @@ ${clientBlock}
 
 <div class="footer">
   ${[companyName, companyAddr, companyPhone ? 'Tél : ' + companyPhone : '', companyRC ? 'RC : ' + companyRC : '', companyICE ? 'ICE : ' + companyICE : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')}<br>
-  
 </div>
 
 <script>
-  // Wait for all images to load before printing
   window.onload = () => {
     const images = document.querySelectorAll('img');
     if (images.length === 0) { window.print(); return; }
@@ -332,7 +323,6 @@ function BLPanel({ project, t }) {
 
   const co = resolveCompany(project);
 
-  // FIX: async print handler — fetches logo as Base64 before opening the popup
   const handlePrintBL = async (e, bl) => {
     e.stopPropagation();
     const logoUrl = resolveLogoUrl(co.logo || '');
@@ -376,7 +366,6 @@ function BLPanel({ project, t }) {
                 </span>
               </div>
               <div className="bl-card__actions">
-                {/* FIX: now calls async handlePrintBL instead of inline window.open */}
                 <button
                   className="bl-print-btn"
                   onClick={e => handlePrintBL(e, bl)}
@@ -422,7 +411,8 @@ function BLPanel({ project, t }) {
 
 // ─── Main ProjectDetail ───────────────────────────────────────────────────────
 function ProjectDetail({ project, onBack }) {
-  const { deleteChassis, updateChassis, updateUnit, updateComponent } = useProjects();
+  // FIX: destructure refreshProject from context so we can re-fetch after updates
+  const { deleteChassis, updateChassis, updateUnit, updateComponent, refreshProject } = useProjects();
   const { t, currentLanguage } = useLanguage();
 
   const [activeTab, setActiveTab] = useState('chassis');
@@ -474,6 +464,8 @@ function ProjectDetail({ project, onBack }) {
   const toggleKey = key => setSelectedKeys(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const toggleAll = () => setSelectedKeys(selectedKeys.size === allSelectableKeys.length ? new Set() : new Set(allSelectableKeys));
 
+  // FIX: after each update, call refreshProject so the project prop gets the
+  // latest units array and subsequent etat changes read the correct current value.
   const handleUnitEtatChange = async (ch, unitIndex, newEtat, rowKey) => {
     if (newEtat === 'livre') {
       const unit = getUnit(ch, unitIndex);
@@ -482,9 +474,13 @@ function ProjectDetail({ project, onBack }) {
     }
     setSavingKey(rowKey);
     await updateUnit(project.id, ch._id || ch.id, unitIndex, { etat: newEtat });
+    // FIX: refresh project so stale units array is replaced with server truth
+    if (refreshProject) await refreshProject(project.id);
     setSavingKey(null);
   };
 
+  // FIX: was incorrectly calling handleUnitEtatChange for components — now has
+  // its own correct handler that calls updateComponent and then refreshProject.
   const handleComponentEtatChange = async (ch, unitIndex, ci, newEtat, rowKey) => {
     if (newEtat === 'livre') {
       setDeliveryModal({ kind: 'component', chId: ch._id || ch.id, unitIndex, ci, rowKey, currentDate: null });
@@ -492,6 +488,8 @@ function ProjectDetail({ project, onBack }) {
     }
     setSavingKey(rowKey);
     await updateComponent(project.id, ch._id || ch.id, unitIndex, ci, { etat: newEtat });
+    // FIX: refresh project so stale componentStates array is replaced
+    if (refreshProject) await refreshProject(project.id);
     setSavingKey(null);
   };
 
@@ -504,6 +502,8 @@ function ProjectDetail({ project, onBack }) {
     } else {
       await updateComponent(project.id, m.chId, m.unitIndex, m.ci, { etat: 'livre', deliveryDate });
     }
+    // FIX: refresh project after delivery confirmation too
+    if (refreshProject) await refreshProject(project.id);
     setSavingKey(null);
   };
 
@@ -517,6 +517,7 @@ function ProjectDetail({ project, onBack }) {
       if (!window.confirm(`Supprimer l'unité #${unitIndex + 1} ? (${qty - 1} restante${qty - 1 > 1 ? 's' : ''})`)) return;
       await updateChassis(project.id, chId, { quantity: qty - 1 });
     }
+    if (refreshProject) await refreshProject(project.id);
   };
 
   const startBatchPrint = () => {
@@ -679,7 +680,8 @@ function ProjectDetail({ project, onBack }) {
                               className={`etat-select etat-select--${etat}`}
                               value={etat}
                               disabled={isSaving}
-                              onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)}
+                              // FIX: was wrongly calling handleUnitEtatChange — now correctly calls handleComponentEtatChange
+                              onChange={e => handleComponentEtatChange(ch, unitIndex, ci, e.target.value, rowKey)}
                             >
                               {ETAT_OPTIONS.map(opt => (
                                 <option key={opt} value={opt}>
@@ -713,7 +715,7 @@ function ProjectDetail({ project, onBack }) {
                         <td>{ch.largeur}</td><td>{ch.hauteur}</td>
                         <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
                         <td>
-                          <select className="etat-select" value={etat} disabled={isSaving}
+                          <select className={`etat-select etat-select--${etat}`} value={etat} disabled={isSaving}
                             onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)}
                             style={{ borderLeftColor: ETAT_COLORS[etat] }}>
                             {ETAT_OPTIONS.map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
