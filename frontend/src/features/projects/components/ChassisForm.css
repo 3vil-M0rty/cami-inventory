@@ -208,9 +208,170 @@
 .ct-search__item--composite .ct-search__item-name { color: #3b82f6; }
 .ct-search__item-name { flex: 1; }
 
-.ct-search__empty {
-  padding: 14px;
-  text-align: center;
-  color: #aaa;
+
+/* ── Etat select (standalone) ── */
+.chassis-form__etat-select {
+  width: 100%;
+  max-width: 280px;
+  padding: 9px 12px;
+  border: 1.5px solid #d0d0d0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  cursor: pointer;
+  outline: none;
+}
+.chassis-form__etat-select:focus { border-color: #1a1a1a; }
+
+/* ── Multi-dim toggle section ── */
+.chassis-form__section--toggle {
+  background: #f8f8f8;
+}
+
+.chassis-multidim-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: default;
+  flex-wrap: wrap;
+}
+
+.chassis-multidim-toggle__label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.chassis-multidim-toggle__hint {
+  font-size: 12px;
+  color: #888;
+  flex: 1;
+}
+
+.chassis-toggle-btn {
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1.5px solid #d0d0d0;
+  background: #fff;
+  color: #888;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  margin-left: auto;
+}
+.chassis-toggle-btn:hover { border-color: #1a1a1a; color: #1a1a1a; }
+.chassis-toggle-btn--on {
+  background: #1a1a1a;
+  color: #fff;
+  border-color: #1a1a1a;
+}
+.chassis-toggle-btn--on:hover { background: #333; }
+
+/* ── Variants section ── */
+.chassis-form__section--variants {
+  background: #fff;
+}
+
+.chassis-variants-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.chassis-variants-total {
+  font-size: 12px;
+  font-weight: 700;
+  color: #3b82f6;
+  background: #eff6ff;
+  padding: 3px 10px;
+  border-radius: 10px;
+}
+
+.chassis-variants-table-wrap {
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.chassis-variants-table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 13px;
 }
+
+.chassis-variants-table thead tr {
+  background: #1a1a1a;
+}
+
+.chassis-variants-table thead th {
+  padding: 9px 12px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: left;
+}
+
+.chassis-variant-row {
+  border-bottom: 1px solid #f0f0f0;
+}
+.chassis-variant-row:last-child { border-bottom: none; }
+.chassis-variant-row:nth-child(even) { background: #fafafa; }
+
+.chassis-variants-table td {
+  padding: 7px 8px;
+  vertical-align: middle;
+}
+
+.chassis-variant-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  background: #fff;
+  box-sizing: border-box;
+  transition: border-color 0.12s;
+}
+.chassis-variant-input:focus { border-color: #1a1a1a; }
+.chassis-variant-input--qty { max-width: 72px; text-align: center; }
+
+.chassis-variant-remove {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid #e0e0e0;
+  background: #fff;
+  color: #bbb;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+  line-height: 1;
+  padding: 0;
+}
+.chassis-variant-remove:hover { border-color: #ef4444; color: #ef4444; background: #fef2f2; }
+
+.chassis-variant-add {
+  padding: 8px 16px;
+  border: 1.5px dashed #d0d0d0;
+  border-radius: 7px;
+  background: transparent;
+  color: #666;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.15s;
+}
+.chassis-variant-add:hover { border-color: #1a1a1a; color: #1a1a1a; background: #f8f8f8; }

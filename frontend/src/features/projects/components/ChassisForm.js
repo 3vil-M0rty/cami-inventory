@@ -15,6 +15,9 @@ function buildComponents(typeObj, existing = []) {
   return components;
 }
 
+// A single dimension variant row: repere, largeur, hauteur, quantity for that size
+const EMPTY_VARIANT = { repere: '', largeur: '', hauteur: '', quantity: 1 };
+
 function ChassisForm({ chassis, projectId, onClose, onSave }) {
   const { addChassis, updateChassis } = useProjects();
   const { t, currentLanguage } = useLanguage();
@@ -28,6 +31,16 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
   useEffect(() => { fetchChassisTypes().then(setChassisTypes).catch(()=>{}); }, []);
 
   const getTypeObj = (v) => chassisTypes.find(ct => ct.value === v);
+
+  // Detect if the existing chassis was saved with variants
+  const hasExistingVariants = Array.isArray(chassis?.variants) && chassis.variants.length > 0;
+
+  const [multiDim, setMultiDim] = useState(hasExistingVariants);
+  const [variants, setVariants] = useState(
+    hasExistingVariants
+      ? chassis.variants
+      : [{ ...EMPTY_VARIANT, repere: chassis?.repere || '', largeur: chassis?.largeur ?? '', hauteur: chassis?.hauteur ?? '', quantity: chassis?.quantity ?? 1 }]
+  );
 
   const [formData, setFormData] = useState({
     type:       initialType,
@@ -49,22 +62,66 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
     setFormData(prev => { const c=[...prev.components]; c[idx]={...c[idx],[key]:val}; return{...prev,components:c}; });
   };
 
+  // ── Variant helpers ──
+  const setVariant = (idx, key, val) => {
+    setVariants(prev => { const v=[...prev]; v[idx]={...v[idx],[key]:val}; return v; });
+  };
+  const addVariant = () => setVariants(prev => [...prev, { ...EMPTY_VARIANT }]);
+  const removeVariant = (idx) => setVariants(prev => prev.filter((_, i) => i !== idx));
+
+  // Toggle multi-dim: when turning on, seed first variant from current single values
+  const handleToggleMultiDim = (on) => {
+    setMultiDim(on);
+    if (on && variants.length === 0) {
+      setVariants([{ repere: formData.repere, largeur: formData.largeur, hauteur: formData.hauteur, quantity: formData.quantity }]);
+    }
+  };
+
+  const totalQty = multiDim
+    ? variants.reduce((sum, v) => sum + (parseInt(v.quantity, 10) || 0), 0)
+    : parseInt(formData.quantity, 10) || 1;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    const qty = parseInt(formData.quantity, 10) || 1;
-    const payload = {
-      ...formData,
-      quantity: qty,
-      largeur:  parseInt(formData.largeur, 10) || 0,
-      hauteur:  parseInt(formData.hauteur, 10) || 0,
-      dimension:`${formData.largeur}×${formData.hauteur}`,
-      components: formData.components.map(c=>({...c, largeur:parseInt(c.largeur,10)||0, hauteur:parseInt(c.hauteur,10)||0}))
-    };
+
+    let payload;
+    if (multiDim) {
+      // Use the first variant as the "main" dimension for backwards compatibility
+      const first = variants[0] || {};
+      payload = {
+        ...formData,
+        repere:    first.repere || formData.repere,
+        largeur:   parseInt(first.largeur, 10) || 0,
+        hauteur:   parseInt(first.hauteur, 10) || 0,
+        dimension: `${first.largeur}×${first.hauteur}`,
+        quantity:  totalQty,
+        multiDim:  true,
+        variants:  variants.map(v => ({
+          repere:  v.repere,
+          largeur: parseInt(v.largeur, 10) || 0,
+          hauteur: parseInt(v.hauteur, 10) || 0,
+          quantity: parseInt(v.quantity, 10) || 1,
+        })),
+        components: formData.components.map(c=>({...c, largeur:parseInt(c.largeur,10)||0, hauteur:parseInt(c.hauteur,10)||0}))
+      };
+    } else {
+      const qty = parseInt(formData.quantity, 10) || 1;
+      payload = {
+        ...formData,
+        quantity:  qty,
+        largeur:   parseInt(formData.largeur, 10) || 0,
+        hauteur:   parseInt(formData.hauteur, 10) || 0,
+        dimension: `${formData.largeur}×${formData.hauteur}`,
+        multiDim:  false,
+        variants:  [],
+        components: formData.components.map(c=>({...c, largeur:parseInt(c.largeur,10)||0, hauteur:parseInt(c.hauteur,10)||0}))
+      };
+    }
+
     try {
       if (isEdit) {
         const originalId = chassis._originalId || chassis._id || chassis.id;
-        // Update chassis template only (no unit states — those are managed per unit)
         const cleanPayload = { ...payload };
         delete cleanPayload._originalId;
         delete cleanPayload._unitIndex;
@@ -78,7 +135,6 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
   };
 
   const isComposite = getTypeObj(formData.type)?.composite;
-  const getTypeLabel = (ct) => ct[lang] || ct.fr;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -88,6 +144,8 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
           <button className="chassis-form__close" onClick={onClose}>×</button>
         </div>
         <form onSubmit={handleSubmit} className="chassis-form">
+
+          {/* Type */}
           <div className="chassis-form__section">
             <label className="chassis-form__section-label">{t('chassisType')}</label>
             <ChassisTypeSearch
@@ -98,36 +156,145 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
             />
           </div>
 
-          <div className="chassis-form__section">
-            <label className="chassis-form__section-label">Dimensions & Informations</label>
-            <div className="chassis-form__fields">
-              <div className="form-group">
-                <label>{t('repere')}</label>
-                <input type="text" required placeholder="ex: A1, F01..." value={formData.repere} onChange={e=>set('repere',e.target.value)}/>
-              </div>
-              <div className="form-group">
-                <label>{t('quantityChassis')}</label>
-                <input type="number" required min="1" step="1" value={formData.quantity} onChange={e=>set('quantity',parseInt(e.target.value,10)||1)}/>
-              </div>
-              <div className="form-group">
-                <label>{t('largeur')} (mm)</label>
-                <input type="number" required min="0" step="1" placeholder="ex: 1200" value={formData.largeur} onChange={e=>set('largeur',e.target.value)}/>
-              </div>
-              <div className="form-group">
-                <label>{t('hauteur')} (mm)</label>
-                <input type="number" required min="0" step="1" placeholder="ex: 2100" value={formData.hauteur} onChange={e=>set('hauteur',e.target.value)}/>
-              </div>
-              {!isEdit && (
-                <div className="form-group">
-                  <label>{t('chassisEtat')}</label>
-                  <select value={formData.etat} onChange={e=>set('etat',e.target.value)}>
-                    {ETAT_OPTIONS.map(o=><option key={o} value={o}>{t(`etat_${o}`)}</option>)}
-                  </select>
-                </div>
-              )}
+          {/* État global (hors mode multi-dim pour garder propre) */}
+          {!isEdit && (
+            <div className="chassis-form__section">
+              <label className="chassis-form__section-label">{t('chassisEtat')}</label>
+              <select
+                className="chassis-form__etat-select"
+                value={formData.etat}
+                onChange={e=>set('etat',e.target.value)}
+              >
+                {ETAT_OPTIONS.map(o=><option key={o} value={o}>{t(`etat_${o}`)}</option>)}
+              </select>
             </div>
+          )}
+
+          {/* Multi-dim toggle */}
+          <div className="chassis-form__section chassis-form__section--toggle">
+            <label className="chassis-multidim-toggle">
+              <span className="chassis-multidim-toggle__label">Dimensions multiples</span>
+              <span className="chassis-multidim-toggle__hint">
+                Châssis coins, séries avec largeurs/hauteurs différentes…
+              </span>
+              <button
+                type="button"
+                className={`chassis-toggle-btn ${multiDim ? 'chassis-toggle-btn--on' : ''}`}
+                onClick={() => handleToggleMultiDim(!multiDim)}
+              >
+                {multiDim ? 'Activé' : 'Désactivé'}
+              </button>
+            </label>
           </div>
 
+          {/* ── SINGLE dimension mode ── */}
+          {!multiDim && (
+            <div className="chassis-form__section">
+              <label className="chassis-form__section-label">Dimensions & Informations</label>
+              <div className="chassis-form__fields">
+                <div className="form-group">
+                  <label>{t('repere')}</label>
+                  <input type="text" required placeholder="ex: A1, F01..." value={formData.repere} onChange={e=>set('repere',e.target.value)}/>
+                </div>
+                <div className="form-group">
+                  <label>{t('quantityChassis')}</label>
+                  <input type="number" required min="1" step="1" value={formData.quantity} onChange={e=>set('quantity',parseInt(e.target.value,10)||1)}/>
+                </div>
+                <div className="form-group">
+                  <label>{t('largeur')} (mm)</label>
+                  <input type="number" required min="0" step="1" placeholder="ex: 1200" value={formData.largeur} onChange={e=>set('largeur',e.target.value)}/>
+                </div>
+                <div className="form-group">
+                  <label>{t('hauteur')} (mm)</label>
+                  <input type="number" required min="0" step="1" placeholder="ex: 2100" value={formData.hauteur} onChange={e=>set('hauteur',e.target.value)}/>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── MULTI dimension mode ── */}
+          {multiDim && (
+            <div className="chassis-form__section chassis-form__section--variants">
+              <div className="chassis-variants-header">
+                <label className="chassis-form__section-label" style={{margin:0}}>Variantes de dimensions</label>
+                <span className="chassis-variants-total">Total : {totalQty} chassis</span>
+              </div>
+
+              <div className="chassis-variants-table-wrap">
+                <table className="chassis-variants-table">
+                  <thead>
+                    <tr>
+                      <th>{t('repere')}</th>
+                      <th>{t('largeur')} (mm)</th>
+                      <th>{t('hauteur')} (mm)</th>
+                      <th>Qté</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {variants.map((v, idx) => (
+                      <tr key={idx} className="chassis-variant-row">
+                        <td>
+                          <input
+                            type="text"
+                            className="chassis-variant-input"
+                            placeholder={`V${idx+1}`}
+                            value={v.repere}
+                            onChange={e => setVariant(idx, 'repere', e.target.value)}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            className="chassis-variant-input"
+                            min="0" step="1"
+                            placeholder="ex: 1200"
+                            value={v.largeur}
+                            onChange={e => setVariant(idx, 'largeur', e.target.value)}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            className="chassis-variant-input"
+                            min="0" step="1"
+                            placeholder="ex: 2100"
+                            value={v.hauteur}
+                            onChange={e => setVariant(idx, 'hauteur', e.target.value)}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            className="chassis-variant-input chassis-variant-input--qty"
+                            min="1" step="1"
+                            value={v.quantity}
+                            onChange={e => setVariant(idx, 'quantity', e.target.value)}
+                          />
+                        </td>
+                        <td>
+                          {variants.length > 1 && (
+                            <button
+                              type="button"
+                              className="chassis-variant-remove"
+                              onClick={() => removeVariant(idx)}
+                              title="Supprimer cette variante"
+                            >×</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <button type="button" className="chassis-variant-add" onClick={addVariant}>
+                + Ajouter une variante
+              </button>
+            </div>
+          )}
+
+          {/* Composite components */}
           {isComposite && formData.components.length > 0 && (
             <div className="chassis-form__section chassis-form__section--composite">
               <label className="chassis-form__section-label">{t('componentsDimensions')}</label>
