@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback } from 'react';
 
 const LanguageContext = createContext(null);
-export const LANGUAGES       = { IT: 'it', FR: 'fr', EN: 'en' };
+export const LANGUAGES = { IT: 'it', FR: 'fr', EN: 'en' };
 export const LANGUAGE_LABELS = { [LANGUAGES.IT]: 'Italiano', [LANGUAGES.FR]: 'Français', [LANGUAGES.EN]: 'English' };
 
 const translations = {
@@ -45,6 +45,11 @@ const translations = {
     takeOutTitle: 'Retirer du stock', takeOutAvailable: 'disponible',
     takeOutQtyLabel: 'Quantité à retirer', takeOutNoteLabel: 'Raison / Note',
     takeOutPlaceholder: 'ex: Utilisé pour...', takeOutConfirm: 'Confirmer', takeOutCancel: 'Annuler',
+
+    addInTitle: 'Ajouter au stock', 
+    addInQtyLabel: 'Quantité à ajouter', addInNoteLabel: 'Raison / Note',
+    addInPlaceholder: 'Raison d\'ajout...', addInConfirm: 'Confirmer', addInCancel: 'Annuler',
+
     // Super categories
     superCatAluminium: 'Aluminium', superCatVerre: 'Verre', superCatAccessoires: 'Accessoires',
     addSuperCategory: 'Ajouter super-catégorie', superCategoryName: 'Nom', superCategoryKey: 'Identifiant (unique)',

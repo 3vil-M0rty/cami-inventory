@@ -8,10 +8,10 @@ import { exportOrdersExcel, exportOrderPDF } from '../../utils/orderExport';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const STATUS_COLORS = {
-  en_attente: { bg: '#fef3c7', text: '#92400e', label: { fr: 'En attente', en: 'Pending', it: 'In attesa' } },
-  partielle:  { bg: '#dbeafe', text: '#1e40af', label: { fr: 'Partielle',  en: 'Partial',  it: 'Parziale' } },
-  recue:      { bg: '#dcfce7', text: '#166534', label: { fr: 'Reçue',      en: 'Received', it: 'Ricevuta' } },
-  annulee:    { bg: '#fee2e2', text: '#991b1b', label: { fr: 'Annulée',    en: 'Cancelled',it: 'Annullata'} },
+  en_attente: { bg: '#fef3c7', text: '#92400e', label: { fr: 'En attente', en: 'Pending',   it: 'In attesa' } },
+  partielle:  { bg: '#dbeafe', text: '#1e40af', label: { fr: 'Partielle',  en: 'Partial',   it: 'Parziale'  } },
+  recue:      { bg: '#dcfce7', text: '#166534', label: { fr: 'Reçue',      en: 'Received',  it: 'Ricevuta'  } },
+  annulee:    { bg: '#fee2e2', text: '#991b1b', label: { fr: 'Annulée',    en: 'Cancelled', it: 'Annullata' } },
 };
 
 export default function OrdersPage() {
@@ -22,7 +22,8 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editOrder, setEditOrder] = useState(null);
-  const [receiveModal, setReceiveModal] = useState(null); // { order, line }
+  const [selectedOrder, setSelectedOrder] = useState(null); // detail view
+  const [receiveModal, setReceiveModal] = useState(null);
   const [receiveQty, setReceiveQty] = useState(0);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -45,9 +46,18 @@ export default function OrdersPage() {
 
   useEffect(() => { fetchOrders(); fetchItems(); }, [fetchOrders, fetchItems]);
 
+  // Keep selectedOrder in sync after a re-fetch
+  useEffect(() => {
+    if (selectedOrder) {
+      const updated = orders.find(o => o.id === selectedOrder.id);
+      if (updated) setSelectedOrder(updated);
+    }
+  }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleDelete = async (id) => {
     if (!window.confirm('Supprimer cette commande ?')) return;
     await axios.delete(`${API_URL}/orders/${id}`);
+    if (selectedOrder?.id === id) setSelectedOrder(null);
     fetchOrders();
   };
 
@@ -56,7 +66,7 @@ export default function OrdersPage() {
     try {
       await axios.patch(`${API_URL}/orders/${receiveModal.order.id}/receive`, {
         lineId: receiveModal.line._id || receiveModal.line.id,
-        quantityReceived: Number(receiveQty)
+        quantityReceived: Number(receiveQty),
       });
       fetchOrders();
       setReceiveModal(null);
@@ -68,11 +78,25 @@ export default function OrdersPage() {
     setReceiveQty(line.quantityReceived || 0);
   };
 
+  // Flexible search: split into tokens, check each against multiple fields
+  const matchesSearch = (order) => {
+    if (!searchTerm.trim()) return true;
+    const tokens = searchTerm.toLowerCase().split(/\s+/).filter(Boolean);
+    const haystack = [
+      order.reference,
+      order.supplier,
+      order.notes,
+      ...(order.lines || []).map(l =>
+        l.itemId?.designation?.[lang] || l.itemId?.designation?.fr || ''
+      ),
+    ].join(' ').toLowerCase();
+    return tokens.every(tok => haystack.includes(tok));
+  };
+
   const filteredOrders = orders.filter(o => {
     if (selectedCompany && o.companyId?.id !== selectedCompany && o.companyId?._id !== selectedCompany) return false;
     if (filterStatus !== 'all' && o.status !== filterStatus) return false;
-    if (searchTerm && !o.reference.toLowerCase().includes(searchTerm.toLowerCase()) && !o.supplier?.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-    return true;
+    return matchesSearch(o);
   });
 
   const stats = {
@@ -87,10 +111,153 @@ export default function OrdersPage() {
     try {
       const company = companies.find(c => c.id === (order.companyId?.id || order.companyId?._id)) || null;
       await exportOrderPDF(order, lang, company);
-    } catch (e) { console.error(e); alert('Erreur export PDF'); }
+    } catch(e) { console.error(e); alert('Erreur export PDF'); }
     finally { setExportingPdf(null); }
   };
 
+  // ── Detail view ──────────────────────────────────────────────────
+  if (selectedOrder) {
+    const order = selectedOrder;
+    const st = STATUS_COLORS[order.status] || STATUS_COLORS.en_attente;
+    const totalOrdered  = (order.lines || []).reduce((s, l) => s + l.quantityOrdered, 0);
+    const totalReceived = (order.lines || []).reduce((s, l) => s + (l.quantityReceived || 0), 0);
+    const progress = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
+
+    return (
+      <div className="orders-page">
+        <div className="order-detail-back">
+          <button className="btn-back" onClick={() => setSelectedOrder(null)}>
+            ← Retour aux commandes
+          </button>
+          <div className="order-detail-actions">
+            <button
+              className="btn-pdf"
+              onClick={() => handleExportPDF(order)}
+              disabled={exportingPdf === order.id}
+            >
+              {exportingPdf === order.id ? '⏳' : '📄'} PDF
+            </button>
+            <button className="btn-edit" onClick={() => { setEditOrder(order); setShowForm(true); }}>
+              ✏️ Modifier
+            </button>
+            <button className="btn-delete" onClick={() => handleDelete(order.id)}>
+              🗑 Supprimer
+            </button>
+          </div>
+        </div>
+
+        <div className="order-detail-header">
+          <div>
+            <h1 className="order-detail-ref">{order.reference}</h1>
+            <div className="order-detail-meta">
+              {order.companyId && <span className="order-company-badge">{order.companyId.name}</span>}
+              {order.supplier  && <span className="order-supplier">— {order.supplier}</span>}
+              <span className="order-date" style={{ marginLeft: 8 }}>
+                📅 {new Date(order.orderDate).toLocaleDateString('fr-FR')}
+              </span>
+              {order.expectedDate && (
+                <span className="order-date">
+                  🚚 {new Date(order.expectedDate).toLocaleDateString('fr-FR')}
+                </span>
+              )}
+            </div>
+          </div>
+          <span className="status-badge status-badge--lg" style={{ background: st.bg, color: st.text }}>
+            {st.label[lang] || st.label.fr}
+          </span>
+        </div>
+
+        <div className="order-detail-progress-wrap">
+          <div className="order-progress-bar order-progress-bar--lg">
+            <div className="order-progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+          <div className="order-progress-label">
+            {totalReceived} / {totalOrdered} articles reçus ({progress}%)
+          </div>
+        </div>
+
+        {order.notes && (
+          <div className="order-detail-notes">
+            <strong>Notes :</strong> {order.notes}
+          </div>
+        )}
+
+        <div className="order-detail-lines">
+          <h2 className="order-detail-lines-title">Articles commandés</h2>
+          {(order.lines || []).map((line, idx) => {
+            const item = line.itemId;
+            const received = line.quantityReceived || 0;
+            const isComplete = received >= line.quantityOrdered;
+            const linePct = line.quantityOrdered > 0 ? Math.round((received / line.quantityOrdered) * 100) : 0;
+            return (
+              <div key={idx} className={`order-detail-line ${isComplete ? 'line-complete' : ''}`}>
+                <div className="detail-line-image">
+                  {item?.image
+                    ? <img src={item.image} alt={item.designation?.[lang] || ''} />
+                    : <div className="detail-line-no-image">📦</div>
+                  }
+                </div>
+                <div className="detail-line-body">
+                  <div className="detail-line-name">
+                    {item?.designation?.[lang] || item?.designation?.fr || 'Article supprimé'}
+                  </div>
+                  {item?.categoryId && (
+                    <span className="detail-line-cat" style={{ background: item.categoryId.color }}>
+                      {item.categoryId.name?.[lang] || item.categoryId.name?.fr}
+                    </span>
+                  )}
+                  {line.unitPrice > 0 && (
+                    <span className="detail-line-price">{line.unitPrice.toFixed(2)} €/u</span>
+                  )}
+                  {line.note && <p className="detail-line-note">📝 {line.note}</p>}
+                </div>
+                <div className="detail-line-qty-block">
+                  <div className="detail-line-qty-bar">
+                    <div className="detail-line-qty-fill" style={{ width: `${linePct}%`, background: isComplete ? '#16a34a' : '#2563eb' }} />
+                  </div>
+                  <div className="detail-line-qty-text">
+                    {received} / {line.quantityOrdered}
+                    {isComplete && <span className="line-check"> ✓</span>}
+                  </div>
+                </div>
+                {!isComplete && order.status !== 'annulee' && (
+                  <button className="btn-receive" onClick={() => openReceive(order, line)}>
+                    Réceptionner
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Receive modal */}
+        {receiveModal && (
+          <ReceiveModal
+            receiveModal={receiveModal}
+            receiveQty={receiveQty}
+            lang={lang}
+            setReceiveQty={setReceiveQty}
+            onConfirm={handleReceive}
+            onClose={() => setReceiveModal(null)}
+          />
+        )}
+
+        {/* Edit form */}
+        {showForm && (
+          <OrderForm
+            order={editOrder}
+            items={items}
+            companies={companies}
+            lang={lang}
+            onClose={() => { setShowForm(false); setEditOrder(null); }}
+            onSave={() => { setShowForm(false); setEditOrder(null); fetchOrders(); }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ── Cards list view ──────────────────────────────────────────────
   return (
     <div className="orders-page">
       <header className="orders-header">
@@ -102,16 +269,18 @@ export default function OrdersPage() {
           <button className="btn-excel" onClick={() => exportOrdersExcel(filteredOrders, lang)}>
             📊 Export Excel
           </button>
-          <button className="btn-primary" onClick={() => { setEditOrder(null); setShowForm(true); }}>+ Nouvelle commande</button>
+          <button className="btn-primary" onClick={() => { setEditOrder(null); setShowForm(true); }}>
+            + Nouvelle commande
+          </button>
         </div>
       </header>
 
       <div className="orders-stats">
         {[
-          { label: 'Total', value: stats.total, color: '#6b7280' },
-          { label: 'En attente', value: stats.enAttente, color: '#d97706' },
-          { label: 'Partielles', value: stats.partielle, color: '#2563eb' },
-          { label: 'Reçues', value: stats.recue, color: '#16a34a' },
+          { label: 'Total',      value: stats.total,      color: '#6b7280' },
+          { label: 'En attente', value: stats.enAttente,  color: '#d97706' },
+          { label: 'Partielles', value: stats.partielle,  color: '#2563eb' },
+          { label: 'Reçues',     value: stats.recue,      color: '#16a34a' },
         ].map(s => (
           <div key={s.label} className="orders-stat-card" style={{ borderLeftColor: s.color }}>
             <span className="stat-value" style={{ color: s.color }}>{s.value}</span>
@@ -121,10 +290,19 @@ export default function OrdersPage() {
       </div>
 
       <div className="orders-controls">
-        <input className="search-input" placeholder="Rechercher (référence, fournisseur)..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+        <input
+          className="search-input"
+          placeholder="Rechercher (référence, fournisseur, article, notes…)"
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+        />
         <div className="filter-tabs">
           {['all', 'en_attente', 'partielle', 'recue', 'annulee'].map(s => (
-            <button key={s} className={`filter-tab ${filterStatus === s ? 'active' : ''}`} onClick={() => setFilterStatus(s)}>
+            <button
+              key={s}
+              className={`filter-tab ${filterStatus === s ? 'active' : ''}`}
+              onClick={() => setFilterStatus(s)}
+            >
               {s === 'all' ? 'Toutes' : STATUS_COLORS[s]?.label?.fr}
             </button>
           ))}
@@ -132,7 +310,7 @@ export default function OrdersPage() {
       </div>
 
       {loading ? (
-        <div className="loading-msg">Chargement...</div>
+        <div className="loading-msg">Chargement…</div>
       ) : filteredOrders.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">📋</div>
@@ -143,62 +321,58 @@ export default function OrdersPage() {
         <div className="orders-list">
           {filteredOrders.map(order => {
             const st = STATUS_COLORS[order.status] || STATUS_COLORS.en_attente;
-            const totalOrdered = (order.lines || []).reduce((s, l) => s + l.quantityOrdered, 0);
+            const totalOrdered  = (order.lines || []).reduce((s, l) => s + l.quantityOrdered, 0);
             const totalReceived = (order.lines || []).reduce((s, l) => s + (l.quantityReceived || 0), 0);
             const progress = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
             return (
-              <div key={order.id} className="order-card">
+              <div
+                key={order.id}
+                className="order-card order-card--clickable"
+                onClick={() => setSelectedOrder(order)}
+              >
                 <div className="order-card-header">
                   <div className="order-card-title">
                     <h3>{order.reference}</h3>
                     {order.companyId && <span className="order-company-badge">{order.companyId.name}</span>}
-                    {order.supplier && <span className="order-supplier">— {order.supplier}</span>}
+                    {order.supplier  && <span className="order-supplier">— {order.supplier}</span>}
                   </div>
                   <div className="order-card-meta">
-                    <span className="status-badge" style={{ background: st.bg, color: st.text }}>{st.label[lang] || st.label.fr}</span>
+                    <span className="status-badge" style={{ background: st.bg, color: st.text }}>
+                      {st.label[lang] || st.label.fr}
+                    </span>
                     <span className="order-date">{new Date(order.orderDate).toLocaleDateString('fr-FR')}</span>
                   </div>
                 </div>
 
                 <div className="order-progress-bar">
-                  <div className="order-progress-fill" style={{ width: `${progress}%` }}></div>
+                  <div className="order-progress-fill" style={{ width: `${progress}%` }} />
                 </div>
-                <div className="order-progress-label">{totalReceived} / {totalOrdered} barres reçues ({progress}%)</div>
-
-                <div className="order-lines">
-                  {(order.lines || []).map((line, idx) => {
-                    const item = line.itemId;
-                    const received = line.quantityReceived || 0;
-                    const pct = line.quantityOrdered > 0 ? Math.round((received / line.quantityOrdered) * 100) : 0;
-                    const isComplete = received >= line.quantityOrdered;
-                    return (
-                      <div key={idx} className={`order-line ${isComplete ? 'line-complete' : ''}`}>
-                        <div className="line-info">
-                          <span className="line-name">{item?.designation?.[lang] || item?.designation?.fr || 'Article supprimé'}</span>
-                          <span className="line-qty">{received}/{line.quantityOrdered}</span>
-                          {isComplete && <span className="line-check">✓</span>}
-                        </div>
-                        {!isComplete && order.status !== 'annulee' && (
-                          <button className="btn-receive" onClick={() => openReceive(order, line)}>
-                            Réceptionner
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
+                <div className="order-progress-label">
+                  {totalReceived} / {totalOrdered} articles reçus ({progress}%)
                 </div>
 
-                <div className="order-card-actions">
-                  <button
-                    className="btn-pdf"
-                    onClick={() => handleExportPDF(order)}
-                    disabled={exportingPdf === order.id}
-                    title="Exporter en PDF"
-                  >
-                    {exportingPdf === order.id ? '⏳' : '📄'} PDF
-                  </button>
-                  <button className="btn-edit" onClick={() => { setEditOrder(order); setShowForm(true); }}>Modifier</button>
-                  <button className="btn-delete" onClick={() => handleDelete(order.id)}>Supprimer</button>
+                {/* Article thumbnails preview */}
+                <div className="order-card-thumbs">
+                  {(order.lines || []).slice(0, 5).map((line, idx) => (
+                    <div key={idx} className="order-card-thumb" title={line.itemId?.designation?.[lang] || ''}>
+                      {line.itemId?.image
+                        ? <img src={line.itemId.image} alt="" />
+                        : <span>📦</span>
+                      }
+                    </div>
+                  ))}
+                  {(order.lines || []).length > 5 && (
+                    <div className="order-card-thumb order-card-thumb--more">
+                      +{order.lines.length - 5}
+                    </div>
+                  )}
+                </div>
+
+                <div className="order-card-footer">
+                  <span className="order-card-lines-count">
+                    {(order.lines || []).length} article{(order.lines || []).length !== 1 ? 's' : ''}
+                  </span>
+                  <span className="order-card-open-hint">Voir détails →</span>
                 </div>
               </div>
             );
@@ -218,60 +392,139 @@ export default function OrdersPage() {
       )}
 
       {receiveModal && (
-        <div className="modal-overlay" onClick={() => setReceiveModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, padding: 28 }}>
-            <h2 style={{ marginBottom: 8 }}>Réceptionner des barres</h2>
-            <p style={{ color: '#555', marginBottom: 16 }}>
-              <strong>{receiveModal.line.itemId?.designation?.[lang] || receiveModal.line.itemId?.designation?.fr}</strong>
-            </p>
-            <p style={{ fontSize: '0.88rem', color: '#888', marginBottom: 20 }}>
-              Déjà reçu : {receiveModal.line.quantityReceived || 0} / {receiveModal.line.quantityOrdered}
-            </p>
-            <div className="form-group">
-              <label>Quantité totale reçue (cumulative)</label>
-              <input
-                type="number"
-                min={receiveModal.line.quantityReceived || 0}
-                max={receiveModal.line.quantityOrdered}
-                value={receiveQty}
-                onChange={e => setReceiveQty(e.target.value)}
-                autoFocus
-                style={{ width: 120 }}
-              />
-              <span style={{ marginLeft: 8, fontSize: '0.85rem', color: '#888' }}>/ {receiveModal.line.quantityOrdered}</span>
-            </div>
-            <div className="modal-actions" style={{ marginTop: 20 }}>
-              <button onClick={() => setReceiveModal(null)}>Annuler</button>
-              <button
-                className="primary"
-                onClick={handleReceive}
-                disabled={Number(receiveQty) <= (receiveModal.line.quantityReceived || 0)}
-                style={{ background: '#16a34a' }}
-              >
-                ✓ Confirmer réception
-              </button>
-            </div>
-          </div>
-        </div>
+        <ReceiveModal
+          receiveModal={receiveModal}
+          receiveQty={receiveQty}
+          lang={lang}
+          setReceiveQty={setReceiveQty}
+          onConfirm={handleReceive}
+          onClose={() => setReceiveModal(null)}
+        />
       )}
     </div>
   );
 }
 
+/* ── Receive Modal (shared between list & detail view) ──────────── */
+function ReceiveModal({ receiveModal, receiveQty, lang, setReceiveQty, onConfirm, onClose }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, padding: 28 }}>
+        <h2 style={{ marginBottom: 8 }}>Réceptionner des articles</h2>
+        <p style={{ color: '#555', marginBottom: 16 }}>
+          <strong>{receiveModal.line.itemId?.designation?.[lang] || receiveModal.line.itemId?.designation?.fr}</strong>
+        </p>
+        <p style={{ fontSize: '0.88rem', color: '#888', marginBottom: 20 }}>
+          Déjà reçu : {receiveModal.line.quantityReceived || 0} / {receiveModal.line.quantityOrdered}
+        </p>
+        <div className="form-group">
+          <label>Quantité totale reçue (cumulative)</label>
+          <input
+            type="number"
+            min={receiveModal.line.quantityReceived || 0}
+            max={receiveModal.line.quantityOrdered}
+            value={receiveQty}
+            onChange={e => setReceiveQty(e.target.value)}
+            autoFocus
+            style={{ width: 120 }}
+          />
+          <span style={{ marginLeft: 8, fontSize: '0.85rem', color: '#888' }}>
+            / {receiveModal.line.quantityOrdered}
+          </span>
+        </div>
+        <div className="modal-actions" style={{ marginTop: 20 }}>
+          <button onClick={onClose}>Annuler</button>
+          <button
+            className="primary"
+            onClick={onConfirm}
+            disabled={Number(receiveQty) <= (receiveModal.line.quantityReceived || 0)}
+            style={{ background: '#16a34a' }}
+          >
+            ✓ Confirmer réception
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Order Form ─────────────────────────────────────────────────── */
 function OrderForm({ order, items, companies, lang, onClose, onSave }) {
   const today = new Date().toISOString().split('T')[0];
+
+  // Build super-categories and category maps from items list
+  const superCatMap = {};
+  items.forEach(it => {
+    const sc = it.superCategory || 'autre';
+    if (!superCatMap[sc]) superCatMap[sc] = { key: sc, label: sc, categories: {} };
+    const catId = it.categoryId?.id || it.categoryId?._id;
+    if (catId && it.categoryId) {
+      superCatMap[sc].categories[catId] = {
+        id: catId,
+        name: it.categoryId.name?.[lang] || it.categoryId.name?.fr || catId,
+        color: it.categoryId.color,
+      };
+    }
+  });
+  const superCats = Object.values(superCatMap);
+
   const [form, setForm] = useState(order ? {
-    reference: order.reference, companyId: order.companyId?.id || order.companyId?._id || '',
-    supplier: order.supplier || '', orderDate: order.orderDate?.split('T')[0] || today,
-    expectedDate: order.expectedDate?.split('T')[0] || '', notes: order.notes || '', status: order.status,
-    lines: (order.lines || []).map(l => ({ itemId: l.itemId?.id || l.itemId?._id || l.itemId, quantityOrdered: l.quantityOrdered, unitPrice: l.unitPrice || 0, note: l.note || '' }))
+    reference: order.reference,
+    companyId: order.companyId?.id || order.companyId?._id || '',
+    supplier: order.supplier || '',
+    orderDate: order.orderDate?.split('T')[0] || today,
+    expectedDate: order.expectedDate?.split('T')[0] || '',
+    notes: order.notes || '',
+    status: order.status,
+    lines: (order.lines || []).map(l => ({
+      itemId: l.itemId?.id || l.itemId?._id || l.itemId,
+      quantityOrdered: l.quantityOrdered,
+      unitPrice: l.unitPrice || 0,
+      note: l.note || '',
+    })),
   } : {
-    reference: '', companyId: companies[0]?.id || '', supplier: '', orderDate: today, expectedDate: '', notes: '', status: 'en_attente', lines: []
+    reference: '', companyId: companies[0]?.id || '', supplier: '',
+    orderDate: today, expectedDate: '', notes: '', status: 'en_attente', lines: [],
   });
 
-  const addLine = () => setForm(f => ({ ...f, lines: [...f.lines, { itemId: items[0]?.id || '', quantityOrdered: 1, unitPrice: 0, note: '' }] }));
-  const removeLine = (idx) => setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }));
-  const updateLine = (idx, field, val) => setForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, [field]: val } : l) }));
+  // Per-line search/filter state — pre-populate one entry per existing line when editing
+  const [lineFilters, setLineFilters] = useState(
+    () => (order?.lines || []).map(() => ({ search: '', superCat: '', category: '' }))
+  );
+
+  const addLine = () => {
+    setForm(f => ({ ...f, lines: [...f.lines, { itemId: items[0]?.id || '', quantityOrdered: 1, unitPrice: 0, note: '' }] }));
+    setLineFilters(f => [...f, { search: '', superCat: '', category: '' }]);
+  };
+
+  const removeLine = (idx) => {
+    setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }));
+    setLineFilters(f => f.filter((_, i) => i !== idx));
+  };
+
+  const updateLine = (idx, field, val) =>
+    setForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, [field]: val } : l) }));
+
+  const updateLineFilter = (idx, field, val) =>
+    setLineFilters(f => f.map((lf, i) => i === idx ? { ...lf, [field]: val } : lf));
+
+  // Filter items for a specific line based on its search/supercat/category filters
+  const getFilteredItems = (idx) => {
+    const lf = lineFilters[idx] || { search: '', superCat: '', category: '' };
+    return items.filter(it => {
+      if (lf.superCat && (it.superCategory || 'autre') !== lf.superCat) return false;
+      if (lf.category) {
+        const catId = it.categoryId?.id || it.categoryId?._id;
+        if (catId !== lf.category) return false;
+      }
+      if (lf.search) {
+        const tokens = lf.search.toLowerCase().split(/\s+/).filter(Boolean);
+        const name = (it.designation?.[lang] || it.designation?.fr || '').toLowerCase();
+        if (!tokens.every(tok => name.includes(tok))) return false;
+      }
+      return true;
+    });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -295,7 +548,7 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
             <div className="form-group">
               <label>Société *</label>
               <select required value={form.companyId} onChange={e => setForm(f => ({ ...f, companyId: e.target.value }))}>
-                <option value="">Choisir...</option>
+                <option value="">Choisir…</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
@@ -338,31 +591,126 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
               <h3 style={{ margin: 0 }}>Articles commandés</h3>
               <button type="button" className="btn-add-line" onClick={addLine}>+ Ajouter ligne</button>
             </div>
-            {form.lines.length === 0 && <p style={{ color: '#888', textAlign: 'center', padding: 16 }}>Aucune ligne. Cliquez sur "+ Ajouter ligne"</p>}
-            {form.lines.map((line, idx) => (
-              <div key={idx} className="order-line-form">
-                <div className="form-group" style={{ flex: 3 }}>
-                  <label>Article</label>
-                  <select value={line.itemId} onChange={e => updateLine(idx, 'itemId', e.target.value)}>
-                    {items.map(it => <option key={it.id} value={it.id}>{it.designation?.[lang] || it.designation?.fr}</option>)}
-                  </select>
+
+            {form.lines.length === 0 && (
+              <p style={{ color: '#888', textAlign: 'center', padding: 16 }}>
+                Aucune ligne. Cliquez sur "+ Ajouter ligne"
+              </p>
+            )}
+
+            {form.lines.map((line, idx) => {
+              const lf = lineFilters[idx] || { search: '', superCat: '', category: '' };
+              const filteredForLine = getFilteredItems(idx);
+              const selectedItem = items.find(it => it.id === line.itemId || it._id === line.itemId);
+              const scCategories = lf.superCat ? Object.values(superCatMap[lf.superCat]?.categories || {}) : [];
+
+              return (
+                <div key={idx} className="order-line-form order-line-form--rich">
+                  {/* Search & filter row */}
+                  <div className="order-line-filters">
+                    <select
+                      className="line-filter-select"
+                      value={lf.superCat}
+                      onChange={e => updateLineFilter(idx, 'superCat', e.target.value)}
+                    >
+                      <option value="">Toutes super-catégories</option>
+                      {superCats.map(sc => (
+                        <option key={sc.key} value={sc.key}>{sc.label}</option>
+                      ))}
+                    </select>
+
+                    {scCategories.length > 0 && (
+                      <select
+                        className="line-filter-select"
+                        value={lf.category}
+                        onChange={e => updateLineFilter(idx, 'category', e.target.value)}
+                      >
+                        <option value="">Toutes catégories</option>
+                        {scCategories.map(cat => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                      </select>
+                    )}
+
+                    <input
+                      className="line-filter-search"
+                      type="text"
+                      placeholder="Rechercher un article…"
+                      value={lf.search}
+                      onChange={e => updateLineFilter(idx, 'search', e.target.value)}
+                    />
+                  </div>
+
+                  {/* Article selector with image preview */}
+                  <div className="order-line-main">
+                    <div className="line-item-selector">
+                      {selectedItem?.image && (
+                        <img className="line-item-preview" src={selectedItem.image} alt="" />
+                      )}
+                      {!selectedItem?.image && (
+                        <div className="line-item-preview line-item-preview--placeholder">📦</div>
+                      )}
+                      <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                        <label>Article</label>
+                        <select
+                          value={line.itemId}
+                          onChange={e => updateLine(idx, 'itemId', e.target.value)}
+                        >
+                          {filteredForLine.length === 0 && (
+                            <option value="">Aucun article trouvé</option>
+                          )}
+                          {filteredForLine.map(it => (
+                            <option key={it.id} value={it.id}>
+                              {it.designation?.[lang] || it.designation?.fr}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{ flex: '0 0 90px' }}>
+                      <label>Qté</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={line.quantityOrdered}
+                        onChange={e => updateLine(idx, 'quantityOrdered', Number(e.target.value))}
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ flex: '0 0 110px' }}>
+                      <label>Prix unit.</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={line.unitPrice}
+                        onChange={e => updateLine(idx, 'unitPrice', Number(e.target.value))}
+                      />
+                    </div>
+
+                    <button type="button" className="btn-remove-line" onClick={() => removeLine(idx)}>×</button>
+                  </div>
+
+                  <div className="form-group" style={{ margin: '8px 0 0' }}>
+                    <label>Note de ligne</label>
+                    <input
+                      type="text"
+                      placeholder="Remarque spécifique à cet article…"
+                      value={line.note}
+                      onChange={e => updateLine(idx, 'note', e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label>Qté</label>
-                  <input type="number" min={1} value={line.quantityOrdered} onChange={e => updateLine(idx, 'quantityOrdered', Number(e.target.value))} />
-                </div>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label>Prix unit.</label>
-                  <input type="number" min={0} step="0.01" value={line.unitPrice} onChange={e => updateLine(idx, 'unitPrice', Number(e.target.value))} />
-                </div>
-                <button type="button" className="btn-remove-line" onClick={() => removeLine(idx)}>×</button>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Annuler</button>
-            <button type="submit" className="primary">{order ? 'Mettre à jour' : 'Créer la commande'}</button>
+            <button type="submit" className="primary">
+              {order ? 'Mettre à jour' : 'Créer la commande'}
+            </button>
           </div>
         </form>
       </div>

@@ -59,6 +59,9 @@ function InventoryPage() {
   const [takeOutModal,     setTakeOutModal]     = useState(null);
   const [takeOutQty,       setTakeOutQty]       = useState(1);
   const [takeOutNote,      setTakeOutNote]      = useState('');
+  const [addInModal,       setAddInModal]       = useState(null); // { item }
+  const [addInQty,         setAddInQty]         = useState(1);
+  const [addInNote,        setAddInNote]        = useState('');
   const [showSuperCatMgr,  setShowSuperCatMgr]  = useState(false);
 
   // Decimals allowed only for 'poudre'
@@ -174,6 +177,20 @@ function InventoryPage() {
     if (!qty || qty <= 0) return;
     await updateQuantity(takeOutModal.item.id, -qty, takeOutNote);
     setTakeOutModal(null);
+  };
+
+  const handlePlusClick = (item) => {
+    setAddInModal({ item });
+    setAddInQty(isPoudre ? '' : 1);
+    setAddInNote('');
+  };
+
+  const handleAddInConfirm = async () => {
+    if (!addInModal) return;
+    const qty = parseFloat(addInQty);
+    if (!qty || qty <= 0) return;
+    await updateQuantity(addInModal.item.id, qty, addInNote);
+    setAddInModal(null);
   };
 
   const deleteItem = async (itemId) => {
@@ -349,6 +366,7 @@ function InventoryPage() {
               isPoudre={isPoudre}
               onUpdateQuantity={updateQuantity}
               onMinusClick={handleMinusClick}
+              onPlusClick={handlePlusClick}
               onEdit={canEdit   ? (item) => setEditingItem(item) : null}
               onDelete={canDelete ? deleteItem : null}
               getStockStatus={getStockStatus}
@@ -425,6 +443,49 @@ function InventoryPage() {
           </div>
         </div>
       )}
+      {addInModal && (
+        <div className="modal-overlay" onClick={() => setAddInModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <h2 style={{ margin: 0, fontSize: '1.1rem' }}>{t('addInTitle') || 'Ajouter au stock'}</h2>
+            <p style={{ margin: 0 }}>
+              <strong>{addInModal.item.designation[language]}</strong>
+              <span style={{ marginLeft: 8, color: '#888', fontSize: '0.88rem' }}>({t('takeOutAvailable') || 'Stock actuel'}: {addInModal.item.quantity})</span>
+            </p>
+            <div className="form-group">
+              <label>{t('addInQtyLabel') || 'Quantité à ajouter'}</label>
+              <input
+                type="number"
+                min={isPoudre ? 0.01 : 1}
+                step={isPoudre ? 0.01 : 1}
+                value={addInQty}
+                onChange={e => setAddInQty(e.target.value)}
+                autoFocus
+                style={{ width: 100 }}
+              />
+            </div>
+            <div className="form-group">
+              <label>{t('takeOutNoteLabel') || 'Note'}</label>
+              <textarea
+                placeholder={t('addInPlaceholder') || 'Raison de l\'ajout, livraison, correction…'}
+                value={addInNote}
+                onChange={e => setAddInNote(e.target.value)}
+                rows={3}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d0d5dd', fontFamily: 'inherit', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div className="modal-actions">
+              <button type="button" onClick={() => setAddInModal(null)}>{t('takeOutCancel') || 'Annuler'}</button>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleAddInConfirm}
+                disabled={!addInQty || parseFloat(addInQty) <= 0}
+                style={{ background: '#16a34a' }}
+              >{t('addInConfirm') || '✓ Confirmer l\'ajout'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showSuperCatMgr && (
         <SuperCategoryManager
           superCats={superCats}
@@ -438,7 +499,7 @@ function InventoryPage() {
 }
 
 /* ── Item Card ──────────────────────────────────────────────────────── */
-function ItemCard({ item, language, isPoudre, onUpdateQuantity, onMinusClick, onEdit, onDelete, getStockStatus, t }) {
+function ItemCard({ item, language, isPoudre, onUpdateQuantity, onMinusClick, onPlusClick, onEdit, onDelete, getStockStatus, t }) {
   const status = getStockStatus(item);
 
   // Format quantity: 2dp max for poudre, integer for others
@@ -469,8 +530,7 @@ function ItemCard({ item, language, isPoudre, onUpdateQuantity, onMinusClick, on
         <div className="status-badge" style={{ backgroundColor: status.color, color: '#fff' }}>{status.text}</div>
         <div className="quantity-controls">
           <button className="qty-btn minus" onClick={() => onMinusClick(item)} disabled={item.quantity === 0}>−</button>
-          {/* + button adds 1 for normal categories, 0.01 for poudre — user should use edit for precise poudre additions */}
-          <button className="qty-btn plus" onClick={() => onUpdateQuantity(item.id, isPoudre ? 0.01 : 1)}>+</button>
+          <button className="qty-btn plus" onClick={() => onPlusClick(item)}>+</button>
         </div>
         <div className="item-actions">
           {onEdit   && <button className="edit-btn"   onClick={() => onEdit(item)}>{t('edit')}</button>}

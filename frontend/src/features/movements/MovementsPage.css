@@ -184,7 +184,162 @@
 }
 
 
-/* ── Append these rules to your existing MovementsPage.css ── */
+
+/* ── Clickable rows ── */
+.mv-row-clickable {
+  cursor: pointer;
+}
+
+/* ── Delete button ── */
+.mv-delete-btn {
+  padding: 3px 8px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 6px;
+  background: transparent;
+  color: #bbb;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  line-height: 1;
+}
+.mv-delete-btn:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+/* ── Detail Modal ── */
+.mv-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.mv-modal {
+  background: #fff;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 520px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.mv-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.mv-modal-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #aaa;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+}
+.mv-modal-close:hover { background: #f3f4f6; color: #555; }
+
+.mv-modal-title {
+  padding: 14px 20px 8px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.mv-modal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 0 20px 12px;
+}
+
+.mv-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+.mv-modal-field:nth-child(odd) { padding-right: 16px; }
+.mv-modal-field:nth-child(even) { padding-left: 16px; border-left: 1px solid #f5f5f5; }
+
+.mv-modal-field__label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #aaa;
+}
+
+.mv-modal-field__val {
+  font-size: 14px;
+  color: #1a1a1a;
+  font-weight: 500;
+}
+
+.mv-modal-note {
+  margin: 4px 20px 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.mv-modal-note__body {
+  font-size: 14px;
+  color: #374151;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.mv-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 14px 20px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+.mv-modal-hide-btn {
+  padding: 8px 16px;
+  border: 1.5px solid #ef4444;
+  border-radius: 7px;
+  background: transparent;
+  color: #ef4444;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mv-modal-hide-btn:hover { background: #fef2f2; }
+
+.mv-modal-close-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 7px;
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mv-modal-close-btn:hover { opacity: 0.8; }
+
 
 /* Graph panel */
 .mv-graph-panel {

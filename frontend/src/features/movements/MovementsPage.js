@@ -169,6 +169,31 @@ export default function MovementsPage() {
   const [toDate, setToDate] = useState('');
   const [search, setSearch] = useState('');
 
+  // Hidden movements (soft-delete, persisted in localStorage)
+  const [hiddenIds, setHiddenIds] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('mv_hidden') || '[]')); }
+    catch { return new Set(); }
+  });
+
+  // Detail modal
+  const [selectedMovement, setSelectedMovement] = useState(null);
+
+  const hideMovement = (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm('Masquer ce mouvement ? Il ne sera plus affiché dans le tableau.')) return;
+    setHiddenIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      localStorage.setItem('mv_hidden', JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  const restoreAll = () => {
+    setHiddenIds(new Set());
+    localStorage.removeItem('mv_hidden');
+  };
+
   // Graph controls
   const [showGraph, setShowGraph] = useState(false);
   const [groupBy, setGroupBy] = useState('day');
@@ -206,8 +231,9 @@ export default function MovementsPage() {
     );
   };
 
-  // Client-side filtering (supercategory + search)
+  // Client-side filtering (supercategory + search + hidden)
   const filtered = movements.filter(m => {
+    if (hiddenIds.has(m._id || m.id)) return false;
     if (superCat !== 'all') {
       const sc = m.itemId?.superCategory;
       if (!sc || sc !== superCat) return false;
@@ -245,6 +271,7 @@ export default function MovementsPage() {
   };
 
   const hasActiveFilters = fromDate || toDate || typeFilter !== 'all' || search || superCat !== 'all';
+  const hiddenCount = hiddenIds.size;
 
   return (
     <div className="mv-page">
@@ -263,6 +290,11 @@ export default function MovementsPage() {
           >
             {showGraph ? '✕ Masquer graphique' : '📈 Graphique'}
           </button>
+          {hiddenCount > 0 && (
+            <button className="mv-refresh-btn" onClick={restoreAll} style={{ background: '#6b7280' }}>
+              ↩ Restaurer ({hiddenCount})
+            </button>
+          )}
           <button className="mv-refresh-btn" onClick={load}>↻ {t('refresh') || 'Actualiser'}</button>
         </div>
       </div>
@@ -428,6 +460,7 @@ export default function MovementsPage() {
                 <th className="td-right">{t('mvColBalance') || 'Solde'}</th>
                 <th>{t('mvColProject') || 'Projet'}</th>
                 <th>{t('mvColNote') || 'Note'}</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -440,7 +473,11 @@ export default function MovementsPage() {
                 const qty = fmt(m.quantity);
                 const bal = fmt(m.balanceAfter);
                 return (
-                  <tr key={m._id || i}>
+                  <tr
+                    key={m._id || i}
+                    className="mv-row-clickable"
+                    onClick={() => setSelectedMovement(m)}
+                  >
                     <td className="mv-col-date">{fmtDate(m.createdAt)}</td>
                     <td>
                       <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg }}>
@@ -461,6 +498,15 @@ export default function MovementsPage() {
                     <td className="td-right mv-balance">{bal}</td>
                     <td className="mv-col-project">{m.projectName || '—'}</td>
                     <td className="mv-col-note">{m.note || '—'}</td>
+                    <td>
+                      <button
+                        className="mv-delete-btn"
+                        onClick={(e) => hideMovement(m._id || m.id, e)}
+                        title="Masquer ce mouvement"
+                      >
+                        ✕
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -469,6 +515,94 @@ export default function MovementsPage() {
           <div className="mv-count">{filtered.length} {t('mvRows') || 'lignes'}</div>
         </div>
       )}
+
+      {/* Detail modal */}
+      {selectedMovement && (() => {
+        const m = selectedMovement;
+        const meta = TYPE_META[m.type] || { color: '#888', bg: '#f9f9f9', icon: '•' };
+        const designation = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '—';
+        const sc = m.itemId?.superCategory || null;
+        const scMeta = SUPER_CATS.find(s => s.key === sc);
+        const isPositive = m.type === 'entree' || m.type === 'project_return' || m.type === 'order_reception';
+        const mid = m._id || m.id;
+        return (
+          <div className="mv-modal-overlay" onClick={() => setSelectedMovement(null)}>
+            <div className="mv-modal" onClick={e => e.stopPropagation()}>
+              <div className="mv-modal-header">
+                <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg, fontSize: 14, padding: '5px 12px' }}>
+                  {meta.icon} {TYPE_LABELS[m.type] || m.type}
+                </span>
+                <button className="mv-modal-close" onClick={() => setSelectedMovement(null)}>✕</button>
+              </div>
+
+              <div className="mv-modal-title">{designation}</div>
+
+              <div className="mv-modal-grid">
+                <div className="mv-modal-field">
+                  <span className="mv-modal-field__label">Date</span>
+                  <span className="mv-modal-field__val">{fmtDate(m.createdAt)}</span>
+                </div>
+                <div className="mv-modal-field">
+                  <span className="mv-modal-field__label">Catégorie</span>
+                  <span className="mv-modal-field__val">
+                    <span className="mv-supercat-badge">{scMeta ? scMeta.labelFr : (sc || '—')}</span>
+                  </span>
+                </div>
+                <div className="mv-modal-field">
+                  <span className="mv-modal-field__label">Quantité</span>
+                  <span className="mv-modal-field__val mv-qty" style={{ color: meta.color }}>
+                    {isPositive ? '+' : '−'}{fmt(m.quantity)}
+                  </span>
+                </div>
+                <div className="mv-modal-field">
+                  <span className="mv-modal-field__label">Solde après</span>
+                  <span className="mv-modal-field__val mv-balance">{fmt(m.balanceAfter)}</span>
+                </div>
+                {m.projectName && (
+                  <div className="mv-modal-field">
+                    <span className="mv-modal-field__label">Projet</span>
+                    <span className="mv-modal-field__val mv-col-project">{m.projectName}</span>
+                  </div>
+                )}
+                {m.user && (
+                  <div className="mv-modal-field">
+                    <span className="mv-modal-field__label">Utilisateur</span>
+                    <span className="mv-modal-field__val">{m.user}</span>
+                  </div>
+                )}
+              </div>
+
+              {m.note && (
+                <div className="mv-modal-note">
+                  <div className="mv-modal-field__label" style={{ marginBottom: 6 }}>Note</div>
+                  <div className="mv-modal-note__body">{m.note}</div>
+                </div>
+              )}
+
+              <div className="mv-modal-actions">
+                <button
+                  className="mv-modal-hide-btn"
+                  onClick={() => {
+                    if (!window.confirm('Masquer ce mouvement ?')) return;
+                    setHiddenIds(prev => {
+                      const next = new Set(prev);
+                      next.add(mid);
+                      localStorage.setItem('mv_hidden', JSON.stringify([...next]));
+                      return next;
+                    });
+                    setSelectedMovement(null);
+                  }}
+                >
+                  🗑 Masquer ce mouvement
+                </button>
+                <button className="mv-modal-close-btn" onClick={() => setSelectedMovement(null)}>
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
