@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import CompanyManager from './CompanyManager';
+import AtelierTablesPage from '../AtelierTables';
 
 import './AdminPage.css';
 
@@ -71,6 +72,7 @@ export default function AdminPage() {
 
   return (
     <div className="admin-page">
+      <AtelierTablesPage/>
       <header className="admin-header">
         <div>
           <h1>⚙️ {t('adminTitle')}</h1>

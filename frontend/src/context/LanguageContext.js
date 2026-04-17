@@ -11,6 +11,7 @@ const translations = {
     navInventory: 'Inventaire', navOrders: 'Commandes', navProjects: 'Projets',
     navClients: 'Clients', navDevis: 'Devis', navMovements: 'Mouvements',
     navAnalytics: 'Dashboard', navAdmin: 'Admin',
+    navAtelierTables: 'AtelierTables',
     // Header UI
     allCompanies: 'Tout', company: 'Société', language: 'Langue',
     changePassword: 'Changer le mot de passe', logout: 'Se déconnecter',

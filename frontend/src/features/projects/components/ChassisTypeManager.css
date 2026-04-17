@@ -3,10 +3,12 @@
    ============================================================ */
 
 .ct-manager-modal {
-  max-width: 760px !important;
+  max-width: 1760px !important;
   max-height: 90vh;
   overflow-y: auto;
 }
+
+
 
 .ct-manager__header {
   display: flex;
@@ -74,3 +76,661 @@
 
 .ct-manager__actions { display: flex; gap: 6px; }
 .ct-manager__loading { color: #aaa; padding: 16px 0; font-size: 14px; }
+
+
+/* ============================================================
+   ACCESSORY CONFIGURATION FORMS
+   Compatible with ChassisTypeManager.css + ProjectDetail.css
+   B&W theme — paste into the appropriate CSS file
+   ============================================================ */
+
+
+/* ════════════════════════════════════════════════════════════
+   SECTION A — ChassisTypeManager.css additions
+   (AccessoryEditor modal: search-only entry, full add-form)
+   ════════════════════════════════════════════════════════════ */
+
+/* ── Accessory modal sizing ── */
+.ct-acc-modal {
+  max-width: 780px !important;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+/* ── Intro hint text ── */
+.ct-acc-hint {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.55;
+  margin: 0 0 20px;
+  padding: 10px 14px;
+  background: #f9f9f9;
+  border-left: 3px solid #d1d5db;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ── Search bar wrapper (replaces the long selectable list) ── */
+.ct-acc-search-wrap {
+  margin-bottom: 24px;
+}
+
+.ct-acc-search-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+/* The InventoryAutocompleteInput sits inside this; make it feel integrated */
+.ct-acc-search-field {
+  position: relative;
+}
+
+.ct-acc-search-field input {
+  width: 100%;
+  padding: 11px 40px 11px 40px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+  color: #111827;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+
+.ct-acc-search-field input:focus {
+  border-color: #1a1a1a;
+  box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.08);
+}
+
+.ct-acc-search-field input::placeholder { color: #9ca3af; }
+
+/* Icon positioned inside the field */
+.ct-acc-search-icon {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  color: #9ca3af;
+  pointer-events: none;
+  line-height: 1;
+}
+
+/* ── Selected/linked accessories summary table ── */
+.ct-acc-linked {
+  margin-bottom: 24px;
+}
+
+.ct-acc-linked h3 {
+  font-size: 11px;
+  font-weight: 700;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 10px;
+}
+
+.ct-acc-linked-table { margin: 0; }
+
+.ct-acc-linked-table td:last-child {
+  text-align: right;
+  width: 40px;
+}
+
+/* ── Quantity input inside linked table ── */
+.ct-acc-qty-input {
+  padding: 5px 8px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 5px;
+  font-size: 13px;
+  background: #fff;
+  color: #1a1a1a;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 72px;
+  text-align: right;
+}
+.ct-acc-qty-input:focus { border-color: #1a1a1a; }
+.ct-acc-qty-input:disabled { background: #f5f5f5; color: #aaa; cursor: not-allowed; }
+
+/* Unit badge next to qty */
+.ct-acc-unit {
+  font-size: 11px;
+  color: #777;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+/* ════════════════════════════════════════════════════════════
+   NEW ACCESSORY ADD FORM — ChassisTypeManager
+   Full-width card with search, unit dropdown, qty/formula
+   ════════════════════════════════════════════════════════════ */
+
+.ct-acc-add-form {
+  background: #f8f8f8;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  padding: 20px 22px;
+  margin-bottom: 24px;
+}
+
+.ct-acc-add-form__title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Two-column grid: search spans full width, then qty/unit/formula side by side */
+.ct-acc-add-form__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 16px;
+}
+
+.ct-acc-add-form__search { grid-column: 1 / -1; } /* full width */
+
+/* Mode toggle: fixed qty vs formula — exclusive choice */
+.ct-acc-add-form__mode-row {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.ct-acc-mode-card {
+  flex: 1;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  position: relative;
+}
+.ct-acc-mode-card:hover { border-color: #aaa; background: #fafafa; }
+.ct-acc-mode-card--active {
+  border-color: #1a1a1a;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(26,26,26,0.08);
+}
+
+.ct-acc-mode-card__label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #555;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ct-acc-mode-card--active .ct-acc-mode-card__label { color: #1a1a1a; }
+
+/* Dot indicator on active card */
+.ct-acc-mode-card__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d0d0d0;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.ct-acc-mode-card--active .ct-acc-mode-card__dot { background: #1a1a1a; }
+
+/* Qty + unit row inside mode card */
+.ct-acc-qty-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Unit dropdown — styled to match etat-select aesthetic */
+.ct-acc-unit-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 7px 28px 7px 10px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' viewBox='0 0 10 6'%3E%3Cpath stroke='%23555' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M1 1l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 10px center;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  min-width: 80px;
+  outline: none;
+}
+.ct-acc-unit-select:focus { border-color: #1a1a1a; }
+
+/* Formula input */
+.ct-acc-formula-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: #1a1a1a;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.ct-acc-formula-input:focus { border-color: #1a1a1a; }
+.ct-acc-formula-input::placeholder { color: #9ca3af; font-style: italic; }
+
+/* Formula preview pill */
+.ct-acc-formula-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0369a1;
+}
+.ct-acc-formula-preview--invalid {
+  background: #fff5f5;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+/* Submit row */
+.ct-acc-add-form__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ── Autocomplete search input ── */
+.ct-acc-search-input {
+  width: 100%;
+  padding: 10px 38px 10px 38px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+  color: #111827;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+.ct-acc-search-input:focus {
+  border-color: #1a1a1a;
+  box-shadow: 0 0 0 3px rgba(26,26,26,0.08);
+}
+.ct-acc-search-input::placeholder { color: #9ca3af; }
+
+/* ── Suggestions dropdown ── */
+.ct-acc-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06);
+  z-index: 9999;
+  overflow: hidden;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.ct-acc-dropdown__header {
+  padding: 7px 14px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #9ca3af;
+  background: #f9f9f9;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.ct-acc-dropdown__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  color: #1a1a1a;
+  cursor: pointer;
+  border-bottom: 1px solid #f5f5f5;
+  transition: background 0.1s;
+}
+.ct-acc-dropdown__item:last-child { border-bottom: none; }
+.ct-acc-dropdown__item:hover { background: #f5f5f5; }
+
+.ct-acc-dropdown__unit {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #f0f0f0;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #555;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+/* Accessory config button in chassis types table */
+.ct-acc-btn {
+  padding: 5px 12px;
+  background: #fff;
+  border: 1.5px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a1a1a;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.ct-acc-btn:hover {
+  background: #1a1a1a;
+  color: #fff;
+  border-color: #1a1a1a;
+}
+
+
+/* ════════════════════════════════════════════════════════════
+   SECTION B — ProjectDetail.css additions
+   (ChassisLineAccessoryEditor modal)
+   ════════════════════════════════════════════════════════════ */
+
+/* ── Per-chassis accessory modal sizing ── */
+.proj-acc-modal {
+  max-width: 780px !important;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+/* ── Accessory table (existing accessories) ── */
+.proj-acc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e8e8e8;
+}
+
+.proj-acc-table th {
+  background: #1a1a1a;
+  color: #fff;
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.proj-acc-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  vertical-align: middle;
+  background: #fff;
+}
+.proj-acc-table tr:last-child td { border-bottom: none; }
+.proj-acc-table tr:hover td { background: #fafafa; }
+
+/* Editable cell inputs inside the table */
+.proj-acc-table .ct-acc-qty-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+}
+
+/* Formula column */
+.proj-acc-table .proj-acc-formula-cell input {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Preview cell */
+.proj-acc-preview-cell {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1d4ed8;
+  white-space: nowrap;
+}
+.proj-acc-preview-cell--invalid { color: #dc2626; }
+
+/* ════════════════════════════════════════════════════════════
+   NEW ACCESSORY ADD FORM — ProjectDetail
+   Card with search, unit dropdown, qty/formula toggle
+   ════════════════════════════════════════════════════════════ */
+
+.proj-acc-add-form {
+  background: #f8f8f8;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  padding: 20px 22px;
+  margin-bottom: 20px;
+}
+
+.proj-acc-add-form__title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Grid layout: search full width, then quantity controls */
+.proj-acc-add-form__grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 14px 16px;
+  align-items: start;
+}
+
+.proj-acc-add-form__search  { grid-column: 1 / -1; }
+.proj-acc-add-form__actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Quantity / unit row */
+.proj-acc-qty-unit-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Unit dropdown reuse (same as ChassisTypeManager) */
+.proj-acc-unit-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 8px 28px 8px 10px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' viewBox='0 0 10 6'%3E%3Cpath stroke='%23555' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M1 1l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 10px center;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  min-width: 90px;
+  outline: none;
+}
+.proj-acc-unit-select:focus { border-color: #1a1a1a; }
+
+/* Mode toggle cards (same pattern as ChassisTypeManager) */
+.proj-acc-mode-row {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.proj-acc-mode-card {
+  flex: 1;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.proj-acc-mode-card:hover { border-color: #aaa; }
+.proj-acc-mode-card--active {
+  border-color: #1a1a1a;
+  box-shadow: 0 0 0 2px rgba(26,26,26,0.08);
+}
+
+.proj-acc-mode-card__label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #555;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.proj-acc-mode-card--active .proj-acc-mode-card__label { color: #1a1a1a; }
+
+.proj-acc-mode-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d0d0d0;
+  flex-shrink: 0;
+}
+.proj-acc-mode-card--active .proj-acc-mode-dot { background: #1a1a1a; }
+
+/* Formula input */
+.proj-acc-formula-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: #1a1a1a;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.proj-acc-formula-input:focus { border-color: #1a1a1a; }
+.proj-acc-formula-input::placeholder { color: #9ca3af; font-style: italic; }
+
+/* Formula variable hint */
+.proj-acc-formula-hint {
+  font-size: 11px;
+  color: #888;
+  margin-top: 5px;
+}
+.proj-acc-formula-hint strong { color: #1a1a1a; }
+
+/* Live formula result preview */
+.proj-acc-formula-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0369a1;
+}
+.proj-acc-formula-preview--invalid {
+  background: #fff5f5;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+/* ── "Load defaults" button — sits in header area ── */
+.proj-acc-load-defaults-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: 1.5px solid #e0e0e0;
+  background: #fff;
+  color: #1a1a1a;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.proj-acc-load-defaults-btn:hover { border-color: #1a1a1a; background: #f5f5f5; }
+.proj-acc-load-defaults-btn:disabled { opacity: 0.5; cursor: wait; }
+
+/* ── Empty state ── */
+.proj-acc-empty {
+  padding: 18px 0 10px;
+  color: #9ca3af;
+  font-style: italic;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ════════════════════════════════════════════════════════════
+   SHARED — unit <select> options reference
+   Use this <select> markup in both forms:
+
+   <select className="ct-acc-unit-select" (or proj-acc-unit-select)>
+     <option value="">—</option>
+     <option value="UN">UN</option>
+     <option value="ML">ML</option>
+     <option value="M2">M²</option>
+     <option value="M3">M³</option>
+     <option value="KG">KG</option>
+     <option value="L">L</option>
+     <option value="PAIRE">PAIRE</option>
+     <option value="JEU">JEU</option>
+     <option value="ROULEAU">ROULEAU</option>
+   </select>
+   ════════════════════════════════════════════════════════════ */
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .ct-acc-add-form__grid,
+  .proj-acc-add-form__grid { grid-template-columns: 1fr; }
+
+  .ct-acc-add-form__search,
+  .proj-acc-add-form__search,
+  .ct-acc-add-form__mode-row,
+  .proj-acc-mode-row,
+  .ct-acc-add-form__actions,
+  .proj-acc-add-form__actions { grid-column: 1 / 1; }
+
+  .ct-acc-mode-row,
+  .proj-acc-mode-row { flex-direction: column; }
+}

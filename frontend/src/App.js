@@ -15,6 +15,7 @@ import ClientsPage from './features/clients/ClientsPage';
 import DevisPage from './features/devis/DevisPage';
 import AdminPage from './features/admin/AdminPage';
 import './App.css';
+import AtelierTablesPage from './features/AtelierTables';
 
 function AppInner() {
   const { user, loading, can } = useAuth();
@@ -42,7 +43,7 @@ function AppInner() {
   const pagePerms = {
     inventory: 'inventory.view', orders: 'orders.view', projects: 'projects.view',
     clients: 'clients.view', devis: 'devis.view', movements: 'movements.view',
-    analytics: 'analytics.view', admin: 'admin.view',
+    analytics: 'analytics.view', admin: 'admin.view', ateliertables: 'ateliertables.view'
   };
   const currentAllowed = !pagePerms[activePage] || can(pagePerms[activePage]);
 
@@ -69,6 +70,7 @@ function AppInner() {
                   {activePage === 'analytics'  && can('analytics.view')  && <AnalyticsPage />}
                   {activePage === 'movements'  && can('movements.view')  && <MovementsPage />}
                   {activePage === 'admin'      && can('admin.view')      && <AdminPage />}
+                  {activePage === 'ateliertables'      && can('ateliertables.view')      && <AtelierTablesPage />}
                 </>
               )}
             </main>

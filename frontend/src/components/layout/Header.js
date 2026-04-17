@@ -3,11 +3,12 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import { useAuth } from '../../context/AuthContext';
 import ChangePasswordModal from '../../features/admin/ChangePasswordModal';
+
 import './Header.css';
 
 const NAV_ICONS = {
   inventory: '📦', orders: '🛒', projects: '🏗', clients: '👥',
-  devis: '📄', movements: '📊', analytics: '📈', admin: '⚙️',
+  devis: '📄', movements: '📊', analytics: '📈', admin: '⚙️', ateliertables: '🏭',
 };
 
 const Header = ({ activePage, onNavigate }) => {
@@ -37,6 +38,7 @@ const Header = ({ activePage, onNavigate }) => {
     { key: 'movements', label: t('navMovements'), perm: 'movements.view' },
     { key: 'analytics', label: t('navAnalytics'), perm: 'analytics.view' },
     { key: 'admin',     label: t('navAdmin'),     perm: 'admin.view'     },
+    { key: 'ateliertables', label: t('navAtelierTables'), perm: 'ateliertables.view' },
   ].filter(item => can(item.perm));
 
   const navigate = (key) => { onNavigate(key); setMobileOpen(false); };
@@ -60,7 +62,7 @@ const Header = ({ activePage, onNavigate }) => {
               <span className="hdr__subtitle">{t('appSubtitle')}</span>
             </div>
           </div>
-
+          
           <div className="hdr__controls desktop-only">
             <div className="hdr__companies">
               <button className={`hdr__company-pill ${!selectedCompany ? 'active' : ''}`} onClick={() => setSelectedCompany(null)}>

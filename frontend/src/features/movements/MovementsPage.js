@@ -157,10 +157,20 @@ function MovementsChart({ movements, groupBy, activeTypes, chartType }) {
 export default function MovementsPage() {
   const { t, currentLanguage: lang } = useLanguage();
 
+  // Main tab: 'inventory' | 'tables'
+  const [mainTab, setMainTab] = useState('inventory');
+
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [chartJsReady, setChartJsReady] = useState(false);
+
+  // Table consumptions state
+  const [tableMovements, setTableMovements] = useState([]);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [tableError, setTableError] = useState(null);
+  const [tableSearch, setTableSearch] = useState('');
+  const [tableTypeFilter, setTableTypeFilter] = useState('all');
 
   // Filters
   const [superCat, setSuperCat] = useState('all');
@@ -225,6 +235,20 @@ export default function MovementsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Load table consumptions when on table tab
+  const loadTableMovements = useCallback(async () => {
+    setTableLoading(true); setTableError(null);
+    try {
+      const res = await axios.get(`${API}/table-consumption`);
+      setTableMovements(res.data || []);
+    } catch (e) { setTableError(e.message); }
+    finally { setTableLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (mainTab === 'tables') loadTableMovements();
+  }, [mainTab, loadTableMovements]);
+
   const toggleType = (type) => {
     setActiveTypes(prev =>
       prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
@@ -270,6 +294,29 @@ export default function MovementsPage() {
     order_reception: t('mvOrderReception') || 'Réception commande',
   };
 
+  const TABLE_TYPE_LABELS = {
+    chassis_assignment: 'Affectation châssis',
+    manual_in: 'Appro. manuel',
+    manual_out: 'Retrait manuel',
+  };
+  const TABLE_TYPE_META = {
+    chassis_assignment: { color: '#f59e0b', bg: '#fffbeb', icon: '🔧' },
+    manual_in:          { color: '#16a34a', bg: '#f0fdf4', icon: '↑' },
+    manual_out:         { color: '#ef4444', bg: '#fef2f2', icon: '↓' },
+  };
+
+  const filteredTableMovements = tableMovements.filter(m => {
+    if (tableTypeFilter !== 'all' && m.type !== tableTypeFilter) return false;
+    if (!tableSearch.trim()) return true;
+    const q = tableSearch.toLowerCase();
+    return (
+      (m.label || '').toLowerCase().includes(q) ||
+      (m.tableName || '').toLowerCase().includes(q) ||
+      (m.projectName || '').toLowerCase().includes(q) ||
+      (m.chassisRef || '').toLowerCase().includes(q)
+    );
+  });
+
   const hasActiveFilters = fromDate || toDate || typeFilter !== 'all' || search || superCat !== 'all';
   const hiddenCount = hiddenIds.size;
 
@@ -278,26 +325,62 @@ export default function MovementsPage() {
       <div className="mv-header">
         <h2 className="mv-header__title">{t('navMovements') || 'Mouvements'}</h2>
         <div style={{ display: 'flex', gap: 8 }}>
-
-          <button
-            className="mv-refresh-btn"
-            onClick={() => setShowGraph(g => !g)}
-            style={{
-              background: showGraph ? '#3b82f6' : '#ffffff',
-              color: showGraph ? '#ffffff' : '#000000',
-              borderColor: showGraph ? '#3b82f6' : '#d1d5db'
-            }}
-          >
-            {showGraph ? '✕ Masquer graphique' : '📈 Graphique'}
-          </button>
-          {hiddenCount > 0 && (
-            <button className="mv-refresh-btn" onClick={restoreAll} style={{ background: '#6b7280' }}>
-              ↩ Restaurer ({hiddenCount})
-            </button>
+          {mainTab === 'inventory' && (
+            <>
+              <button
+                className="mv-refresh-btn"
+                onClick={() => setShowGraph(g => !g)}
+                style={{
+                  background: showGraph ? '#3b82f6' : '#ffffff',
+                  color: showGraph ? '#ffffff' : '#000000',
+                  borderColor: showGraph ? '#3b82f6' : '#d1d5db'
+                }}
+              >
+                {showGraph ? '✕ Masquer graphique' : '📈 Graphique'}
+              </button>
+              {hiddenCount > 0 && (
+                <button className="mv-refresh-btn" onClick={restoreAll} style={{ background: '#6b7280' }}>
+                  ↩ Restaurer ({hiddenCount})
+                </button>
+              )}
+              <button className="mv-refresh-btn" onClick={load}>↻ {t('refresh') || 'Actualiser'}</button>
+            </>
           )}
-          <button className="mv-refresh-btn" onClick={load}>↻ {t('refresh') || 'Actualiser'}</button>
+          {mainTab === 'tables' && (
+            <button className="mv-refresh-btn" onClick={loadTableMovements}>↻ {t('refresh') || 'Actualiser'}</button>
+          )}
         </div>
       </div>
+
+      {/* Main tab switcher */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '2px solid #e5e7eb', paddingBottom: 0 }}>
+        {[
+          { key: 'inventory', label: '📦 Inventaire' },
+          { key: 'tables', label: '🏭 Mouvements Atelier' },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setMainTab(tab.key)}
+            style={{
+              padding: '8px 18px',
+              fontSize: 13,
+              fontWeight: mainTab === tab.key ? 700 : 500,
+              color: mainTab === tab.key ? '#3b82f6' : '#6b7280',
+              background: 'none',
+              border: 'none',
+              borderBottom: mainTab === tab.key ? '2.5px solid #3b82f6' : '2.5px solid transparent',
+              cursor: 'pointer',
+              marginBottom: -2,
+              transition: 'all .15s',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── INVENTORY TAB ── */}
+      {mainTab === 'inventory' && (<>
 
       {/* Summary chips */}
       <div className="mv-summary">
@@ -603,6 +686,105 @@ export default function MovementsPage() {
           </div>
         );
       })()}
+
+      </>)}
+
+      {/* ── TABLES ATELIER TAB ── */}
+      {mainTab === 'tables' && (
+        <div>
+          {/* Summary chips for table movements */}
+          <div className="mv-summary">
+            {Object.entries(TABLE_TYPE_META).map(([type, meta]) => {
+              const total = filteredTableMovements
+                .filter(m => m.type === type)
+                .reduce((s, m) => s + (m.quantity || 0), 0);
+              return (
+                <div key={type} className="mv-chip" style={{ borderColor: meta.color, background: meta.bg }}>
+                  <span className="mv-chip__icon" style={{ color: meta.color }}>{meta.icon}</span>
+                  <span className="mv-chip__label" style={{ color: meta.color }}>{TABLE_TYPE_LABELS[type]}</span>
+                  <span className="mv-chip__val" style={{ color: meta.color }}>{fmt(total)}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Filters */}
+          <div className="mv-filters">
+            <input
+              className="mv-search"
+              type="text"
+              placeholder="Rechercher accessoire, table, projet, châssis…"
+              value={tableSearch}
+              onChange={e => setTableSearch(e.target.value)}
+            />
+            <select className="mv-select" value={tableTypeFilter} onChange={e => setTableTypeFilter(e.target.value)}>
+              <option value="all">Tous les types</option>
+              {Object.entries(TABLE_TYPE_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+            {(tableSearch || tableTypeFilter !== 'all') && (
+              <button className="mv-clear-btn" onClick={() => { setTableSearch(''); setTableTypeFilter('all'); }}>
+                ✕ Effacer
+              </button>
+            )}
+          </div>
+
+          {/* Table */}
+          {tableLoading ? (
+            <div className="mv-state">Chargement…</div>
+          ) : tableError ? (
+            <div className="mv-state mv-state--error">Erreur: {tableError}</div>
+          ) : filteredTableMovements.length === 0 ? (
+            <div className="mv-state">Aucun mouvement atelier</div>
+          ) : (
+            <div className="mv-table-wrap">
+              <table className="mv-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Table</th>
+                    <th>Accessoire</th>
+                    <th className="td-right">Qté</th>
+                    <th>Unité</th>
+                    <th>Projet</th>
+                    <th>Châssis</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTableMovements.map((m, i) => {
+                    const meta = TABLE_TYPE_META[m.type] || { color: '#888', bg: '#f9f9f9', icon: '•' };
+                    const isOut = m.type === 'chassis_assignment' || m.type === 'manual_out';
+                    return (
+                      <tr key={m._id || i}>
+                        <td className="mv-col-date">{fmtDate(m.date || m.createdAt)}</td>
+                        <td>
+                          <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg }}>
+                            {meta.icon} {TABLE_TYPE_LABELS[m.type] || m.type}
+                          </span>
+                        </td>
+                        <td><strong>{m.tableName || '—'}</strong></td>
+                        <td className="mv-col-item">{m.label || '—'}</td>
+                        <td className="td-right">
+                          <span className="mv-qty" style={{ color: meta.color }}>
+                            {isOut ? '−' : '+'}{fmt(m.quantity)}
+                          </span>
+                        </td>
+                        <td>{m.unit || '—'}</td>
+                        <td className="mv-col-project">{m.projectName || '—'}</td>
+                        <td>{m.chassisRef ? <code style={{ fontSize: 11, background: '#f3f4f6', padding: '2px 5px', borderRadius: 3 }}>{m.chassisRef}</code> : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="mv-count">{filteredTableMovements.length} lignes</div>
+            </div>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }
