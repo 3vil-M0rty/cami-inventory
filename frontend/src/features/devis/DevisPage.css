@@ -1,62 +1,55 @@
-.devis-page { max-width: 1200px; margin: 0 auto; padding: 28px; }
-.devis-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-.devis-header h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 4px; }
-.devis-subtitle { color: #666; font-size: 0.9rem; }
-.devis-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
-.filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
-.filter-tab { padding: 7px 14px; border: 1.5px solid #ddd; border-radius: 20px; background: #fff; font-size: 13px; font-weight: 500; cursor: pointer; }
-.filter-tab.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
-.devis-list { display: flex; flex-direction: column; gap: 14px; }
-.devis-card { background: #fff; border-radius: 12px; border: 1.5px solid #e5e7eb; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-.devis-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-.devis-card-header h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
-.devis-client { font-size: 0.88rem; color: #555; margin-bottom: 4px; }
-.devis-company-badge { background: #1a1a1a; color: #fff; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
-.devis-amount { font-size: 1.15rem; font-weight: 700; margin-bottom: 4px; }
-.status-badge { font-size: 0.78rem; font-weight: 600; padding: 3px 10px; border-radius: 10px; }
-.devis-meta { display: flex; gap: 16px; font-size: 0.82rem; color: #777; margin-bottom: 12px; }
-.devis-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.btn-preview { padding: 6px 14px; background: #fff; border: 1.5px solid #6366f1; color: #6366f1; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
-.btn-preview:hover { background: #eef2ff; }
-.btn-edit, .btn-delete { padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1.5px solid #ddd; background: #fff; }
-.btn-edit:hover { background: #f5f5f5; }
-.btn-delete { color: #dc2626; }
-.btn-delete:hover { background: #fef2f2; border-color: #dc2626; }
-.status-select { padding: 6px 10px; border: 1.5px solid #ddd; border-radius: 6px; font-size: 12px; background: #fff; cursor: pointer; }
-.empty-state { text-align: center; padding: 60px 20px; }
-.empty-icon { font-size: 3rem; margin-bottom: 12px; }
-.loading-msg { text-align: center; padding: 40px; color: #888; }
-/* Form styles */
-.form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-.devis-lines-section { margin: 16px 0; border: 1.5px solid #e5e7eb; border-radius: 10px; padding: 16px; }
-.devis-line-form { background: #f9fafb; border-radius: 8px; padding: 14px; margin-bottom: 12px; border: 1px solid #e5e7eb; }
-.line-form-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 10px; flex-wrap: wrap; }
-.line-total-value { padding: 8px 12px; background: #fff; border: 1.5px solid #ddd; border-radius: 6px; font-weight: 700; font-size: 0.9rem; min-height: 38px; display: flex; align-items: center; }
-.devis-totals { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; margin-top: 16px; padding-top: 12px; border-top: 1.5px solid #e5e7eb; }
-.total-row { display: flex; gap: 40px; justify-content: flex-end; font-size: 0.92rem; }
-.total-row.ttc { font-size: 1.05rem; font-weight: 700; border-top: 2px solid #1a1a1a; padding-top: 6px; }
-.btn-add-line { padding: 7px 14px; background: #fff; border: 1.5px solid #1a1a1a; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
-.btn-remove-line { padding: 8px 12px; background: #fee2e2; border: none; border-radius: 6px; color: #dc2626; font-size: 16px; cursor: pointer; font-weight: 700; align-self: flex-end; }
-.modal.xlarge { max-width: 960px; width: 97vw; }
-/* Preview */
-.preview-toolbar { display: flex; gap: 10px; justify-content: flex-end; margin-bottom: 16px; }
-.btn-print { padding: 8px 18px; background: #1a1a1a; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
-.devis-doc { background: #fff; padding: 40px; font-family: 'Archivo', sans-serif; max-width: 800px; margin: 0 auto; }
-.devis-doc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; border-bottom: 2px solid #1a1a1a; padding-bottom: 20px; }
-.doc-company-name { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
-.doc-company-info { font-size: 0.85rem; color: #666; }
-.doc-title { font-size: 1.8rem; font-weight: 800; letter-spacing: 2px; }
-.doc-ref { font-size: 1rem; font-weight: 600; color: #555; }
-.doc-date { font-size: 0.85rem; color: #666; }
-.devis-doc-client { background: #f9fafb; padding: 12px 16px; border-radius: 8px; margin-bottom: 24px; font-size: 0.9rem; }
-.devis-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
-.devis-table th { background: #1a1a1a; color: #fff; padding: 10px 12px; text-align: left; font-size: 0.82rem; font-weight: 600; }
-.devis-table td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; font-size: 0.88rem; }
-.devis-table tr:last-child td { border-bottom: none; }
-.devis-doc-totals { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; border-top: 2px solid #e5e7eb; padding-top: 12px; margin-bottom: 20px; }
-.doc-total-row { display: flex; gap: 60px; font-size: 0.92rem; }
-.doc-total-row.ttc { font-size: 1.1rem; font-weight: 700; border-top: 2px solid #1a1a1a; padding-top: 6px; margin-top: 4px; }
-.devis-doc-notes { background: #f9fafb; padding: 12px 16px; border-radius: 8px; font-size: 0.88rem; color: #555; }
-.devis-preview { background: #f5f5f5; }
-@media print { .preview-toolbar { display: none; } .devis-doc { padding: 20px; } }
-@media (max-width: 768px) { .form-grid-3 { grid-template-columns: 1fr; } .line-form-row { flex-direction: column; } }
+/* DEVIS PAGE */
+.devis-page { max-width:var(--page-max);margin:0 auto;padding:var(--page-pad); }
+.devis-header { display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--sp-6);gap:var(--sp-4);flex-wrap:wrap; }
+.devis-header h1 { font-size:20px;font-weight:800;margin-bottom:3px;letter-spacing:-.02em; }
+.devis-subtitle { color:var(--text-3);font-size:13px; }
+.devis-controls { display:flex;gap:var(--sp-3);align-items:center;margin-bottom:var(--sp-5);flex-wrap:wrap; }
+.devis-search { flex:1;min-width:200px;padding:9px 12px 9px 34px;border:1.5px solid var(--border);border-radius:var(--r-md);font-size:13px;font-family:inherit;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E'") no-repeat 10px center;outline:none;color:var(--text);transition:border-color var(--t); }
+.devis-search:focus { border-color:var(--900); }
+.filter-tabs { display:flex;gap:var(--sp-2);flex-wrap:wrap; }
+.filter-tab { padding:6px 14px;border:1.5px solid var(--border);border-radius:var(--r-full);background:var(--surface);font-size:12px;font-weight:600;cursor:pointer;color:var(--text-2);transition:all var(--t);font-family:inherit; }
+.filter-tab:hover:not(.active) { border-color:var(--700);color:var(--text);background:var(--50); }
+.filter-tab.active { background:var(--900);color:#fff;border-color:var(--900); }
+.devis-list { display:flex;flex-direction:column;gap:var(--sp-3); }
+.devis-card { background:var(--surface);border-radius:var(--r-xl);border:1.5px solid var(--border);padding:var(--sp-5);box-shadow:var(--sh-sm);transition:box-shadow var(--t),border-color var(--t),transform var(--t);animation:fadeUp .2s ease-out; }
+.devis-card:hover { box-shadow:var(--sh-md);border-color:var(--400);transform:translateY(-1px); }
+.devis-card-header { display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:var(--sp-3); }
+.devis-card-header h3 { font-size:14px;font-weight:700;margin-bottom:4px; }
+.devis-client { font-size:13px;color:var(--text-2);margin-bottom:4px; }
+.devis-company-badge { background:var(--900);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:var(--r-full); }
+.devis-amount { font-size:18px;font-weight:900;margin-bottom:4px;letter-spacing:-.02em; }
+.devis-meta { display:flex;gap:var(--sp-4);font-size:11px;color:var(--text-3);margin-bottom:var(--sp-3); }
+.devis-actions { display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap; }
+.status-select { padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--surface);cursor:pointer;outline:none;font-family:inherit;color:var(--text);transition:border-color var(--t); }
+.status-select:focus { border-color:var(--900); }
+.btn-preview { padding:6px 14px;background:var(--surface);border:1.5px solid var(--info-bd);color:var(--info);border-radius:var(--r);font-size:12px;font-weight:600;cursor:pointer;transition:all var(--t);font-family:inherit; }
+.btn-preview:hover { background:var(--info-bg); }
+.devis-lines-section { margin:var(--sp-4) 0;border:1.5px solid var(--border);border-radius:var(--r-lg);padding:var(--sp-5); }
+.devis-line-form { background:var(--50);border-radius:var(--r-md);padding:var(--sp-4);margin-bottom:var(--sp-3);border:1px solid var(--border); }
+.line-form-row { display:flex;gap:10px;align-items:flex-end;margin-bottom:10px;flex-wrap:wrap; }
+.line-total-value { padding:8px 12px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);font-weight:700;font-size:13px;min-height:38px;display:flex;align-items:center; }
+.devis-totals { display:flex;flex-direction:column;gap:6px;align-items:flex-end;margin-top:var(--sp-4);padding-top:var(--sp-3);border-top:1.5px solid var(--border); }
+.total-row { display:flex;gap:var(--sp-10);justify-content:flex-end;font-size:13px;color:var(--text-2); }
+.total-row strong { color:var(--text); }
+.total-row.ttc { font-size:15px;font-weight:800;color:var(--text);border-top:2px solid var(--900);padding-top:6px; }
+.preview-toolbar { display:flex;gap:10px;justify-content:flex-end;margin-bottom:var(--sp-4); }
+.btn-print { padding:8px 18px;background:var(--900);color:#fff;border:none;border-radius:var(--r-md);cursor:pointer;font-weight:600;transition:opacity var(--t);font-family:inherit; }
+.btn-print:hover { opacity:.85; }
+.devis-preview { background:var(--100);padding:var(--sp-5);border-radius:var(--r-md); }
+.devis-doc { background:var(--surface);padding:40px;font-family:var(--font);max-width:800px;margin:0 auto;border-radius:var(--r-md); }
+.devis-doc-header { display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;border-bottom:2px solid var(--900);padding-bottom:var(--sp-5);gap:var(--sp-4);flex-wrap:wrap; }
+.doc-company-name { font-size:18px;font-weight:700;margin-bottom:4px; }
+.doc-company-info { font-size:12px;color:var(--text-2);line-height:1.6; }
+.doc-title { font-size:26px;font-weight:900;letter-spacing:2px;text-align:right; }
+.doc-ref { font-size:15px;font-weight:600;color:var(--text-2);text-align:right; }
+.doc-date { font-size:12px;color:var(--text-3);text-align:right; }
+.devis-doc-client { background:var(--50);padding:12px var(--sp-4);border-radius:var(--r-md);margin-bottom:var(--sp-6);font-size:13px;border:1px solid var(--border); }
+.devis-table { width:100%;border-collapse:collapse;margin-bottom:var(--sp-6); }
+.devis-table th { background:var(--900);color:#fff;padding:10px 12px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em; }
+.devis-table td { padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px; }
+.devis-doc-totals { display:flex;flex-direction:column;gap:6px;align-items:flex-end;border-top:2px solid var(--border);padding-top:var(--sp-3);margin-bottom:var(--sp-5); }
+.doc-total-row { display:flex;gap:60px;font-size:13px; }
+.doc-total-row.ttc { font-size:15px;font-weight:700;border-top:2px solid var(--900);padding-top:6px;margin-top:4px; }
+.devis-doc-notes { background:var(--50);padding:12px var(--sp-4);border-radius:var(--r-md);font-size:13px;color:var(--text-2);border:1px solid var(--border); }
+@media (max-width:768px) { .form-grid-3 { grid-template-columns:1fr; } .line-form-row { flex-direction:column; } .devis-doc { padding:var(--sp-5); } }
+@media print { .preview-toolbar { display:none; } .devis-doc { padding:20px; } }

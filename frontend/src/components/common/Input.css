@@ -1,73 +1,12 @@
-.input-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 20px;
-}
-
-.input-label {
-  font-family: 'Archivo', sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  color: #0a0a0a;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
-}
-
-.input-required {
-  color: #dc2626;
-  margin-left: 4px;
-}
-
-.input-field {
-  font-family: 'Archivo', sans-serif;
-  font-size: 15px;
-  padding: 12px 16px;
-  border: 1px solid #d0d0d0;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #0a0a0a;
-  transition: all 0.2s;
-  outline: none;
-}
-
-.input-field:hover:not(:disabled) {
-  border-color: #a0a0a0;
-}
-
-.input-field:focus {
-  border-color: #0a0a0a;
-  box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.1);
-}
-
-.input-field::placeholder {
-  color: #999;
-}
-
-.input-field:disabled {
-  background: #f5f5f5;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.input-field--error {
-  border-color: #dc2626;
-}
-
-.input-field--error:focus {
-  border-color: #dc2626;
-  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
-}
-
-.input-error {
-  font-family: 'Archivo', sans-serif;
-  font-size: 12px;
-  color: #dc2626;
-  margin-top: -2px;
-}
-
-/* Number input arrows */
-.input-field[type="number"]::-webkit-inner-spin-button,
-.input-field[type="number"]::-webkit-outer-spin-button {
-  opacity: 1;
-}
+/* Input.css */
+.input-group { display:flex;flex-direction:column;gap:6px;margin-bottom:var(--sp-5); }
+.input-label { font-family:var(--font);font-size:11px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.06em; }
+.input-required { color:var(--danger);margin-left:4px; }
+.input-field { font-family:var(--font);font-size:14px;padding:10px 14px;border:1.5px solid var(--border-2);border-radius:var(--r-md);background:var(--surface);color:var(--text);transition:all var(--t);outline:none;width:100%; }
+.input-field:hover:not(:disabled) { border-color:var(--400); }
+.input-field:focus { border-color:var(--900);box-shadow:0 0 0 3px rgba(10,10,10,.08); }
+.input-field::placeholder { color:var(--text-4); }
+.input-field:disabled { background:var(--50);cursor:not-allowed;opacity:.6; }
+.input-field--error { border-color:var(--danger); }
+.input-field--error:focus { box-shadow:0 0 0 3px rgba(220,38,38,.1); }
+.input-error { font-size:12px;color:var(--danger);margin-top:-2px; }

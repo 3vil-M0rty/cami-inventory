@@ -1,14 +1,89 @@
-/* CSS Reset and Base Styles */
-html {
-  font-size: 16px;
+/* ============================================================
+   CAMI · INDEX.CSS — Design tokens + global reset
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  /* Greyscale palette */
+  --black:  #0a0a0a;
+  --900:    #1a1a1a;
+  --800:    #2d2d2d;
+  --700:    #444;
+  --600:    #666;
+  --500:    #888;
+  --400:    #aaa;
+  --300:    #ccc;
+  --200:    #e0e0e0;
+  --150:    #eaeaea;
+  --100:    #f0f0f0;
+  --50:     #f7f7f7;
+  --white:  #fff;
+
+  /* Semantic surfaces */
+  --bg:        #f0f0f0;
+  --surface:   #fff;
+  --surface-2: #f7f7f7;
+  --border:    #e0e0e0;
+  --border-2:  #d0d0d0;
+  --text:      #1a1a1a;
+  --text-2:    #555;
+  --text-3:    #888;
+  --text-4:    #aaa;
+  --text-inv:  #fff;
+
+  /* Status — color is meaningful, used sparingly */
+  --danger:     #dc2626; --danger-bg:  #fef2f2; --danger-bd:  #fca5a5;
+  --warning:    #d97706; --warning-bg: #fffbeb; --warning-bd: #fcd34d;
+  --success:    #16a34a; --success-bg: #f0fdf4; --success-bd: #86efac;
+  --info:       #2563eb; --info-bg:    #eff6ff; --info-bd:    #bfdbfe;
+
+  /* Typography */
+  --font: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono: 'DM Mono', 'Courier New', monospace;
+
+  /* Spacing */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
+  --sp-6:24px; --sp-7:28px; --sp-8:32px; --sp-10:40px;
+
+  /* Radius */
+  --r-sm:4px; --r:6px; --r-md:8px; --r-lg:10px; --r-xl:12px; --r-full:9999px;
+
+  /* Shadow */
+  --sh-sm: 0 1px 3px rgba(0,0,0,.07);
+  --sh:    0 2px 8px rgba(0,0,0,.09);
+  --sh-md: 0 4px 16px rgba(0,0,0,.11);
+  --sh-lg: 0 12px 40px rgba(0,0,0,.15);
+  --sh-xl: 0 24px 64px rgba(0,0,0,.20);
+
+  /* Motion */
+  --t: .15s ease;
+
+  /* Layout */
+  --page-max: 1400px;
+  --page-pad: 28px;
 }
 
-body {
-  margin: 0;
-  padding: 0;
-  font-family: 'Archivo', sans-serif;
-}
+/* Reset */
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { font-size:16px; -webkit-text-size-adjust:100%; }
+body { font-family:var(--font); background:var(--bg); color:var(--text);
+  -webkit-font-smoothing:antialiased; min-height:100vh; line-height:1.5; }
+img,svg { display:block; max-width:100%; }
+button { font-family:inherit; cursor:pointer; }
+a { color:inherit; text-decoration:none; }
+input,select,textarea { font-family:inherit; }
+#root { min-height:100vh; display:flex; flex-direction:column; }
 
-#root {
-  min-height: 100vh;
-}
+/* Scrollbar */
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--300); border-radius:var(--r-full); }
+::-webkit-scrollbar-thumb:hover { background:var(--500); }
+
+/* Animations */
+@keyframes fadeUp  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+@keyframes modalIn { from{opacity:0;transform:translateY(12px) scale(.97)} to{opacity:1;transform:none} }
+@keyframes slideIn { from{transform:translateX(100%);opacity:0} to{transform:none;opacity:1} }
+@keyframes spin    { to{transform:rotate(360deg)} }
+@keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:.5} }
