@@ -53,28 +53,85 @@
 /* Items grid */
 .items-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--sp-5); }
 
-/* Item card */
+/* ── Item card ── */
 .item-card { background:var(--surface);border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--border);box-shadow:var(--sh-sm);transition:box-shadow var(--t),transform var(--t);animation:fadeUp .22s ease-out; }
 .item-card:hover { box-shadow:var(--sh-md);transform:translateY(-2px); }
 .item-card.status-critical { border-top:3px solid var(--danger); }
 .item-card.status-warning  { border-top:3px solid var(--warning); }
 .item-card.status-ok       { border-top:3px solid var(--success); }
-.item-image { width:100%;height:160px;overflow:hidden;background:var(--50);display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--150); }
+
+.item-image { width:100%;height:160px;overflow:hidden;background:var(--50);display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--150);position:relative; }
 .item-image img { width:100%;height:100%;object-fit:contain; }
 .no-image { color:var(--300); }
 .no-image svg { width:40px;height:40px; }
 .item-category { position:absolute;top:10px;right:10px;padding:3px 9px;border-radius:var(--r-sm);color:#fff;font-size:10px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.18); }
-.item-content { padding:var(--sp-5);position:relative; }
-.item-content h3 { font-size:14px;color:var(--text);margin-bottom:var(--sp-4);line-height:1.4;font-weight:700;min-height:40px; }
-.quantity-section { display:flex;justify-content:space-between;margin-bottom:var(--sp-4);padding:var(--sp-4);background:var(--50);border-radius:var(--r-md);border:1px solid var(--150); }
-.quantity-display,.threshold-display { display:flex;flex-direction:column;gap:2px;flex:1;text-align:center; }
-.quantity-label,.threshold-label { font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:.05em; }
-.quantity-value,.threshold-value { font-size:22px;font-weight:800;color:var(--text);line-height:1; }
-.quantity-controls { display:flex;gap:var(--sp-2);margin-bottom:var(--sp-4); margin-top: 5px; }
-.qty-btn { flex:1;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-md);font-size:20px;font-weight:700;cursor:pointer;transition:all var(--t);background:var(--surface);color:var(--text); }
+
+.item-content { padding:var(--sp-4);position:relative; }
+.item-content h3 { font-size:13px;color:var(--text);margin-bottom:var(--sp-3);line-height:1.4;font-weight:700;min-height:unset; }
+
+/* ── Quantity section — 3 equal columns, nothing overflows ── */
+.quantity-section {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: var(--sp-3);
+  padding: 8px 6px;
+  background: var(--50);
+  border-radius: var(--r-md);
+  border: 1px solid var(--150);
+}
+.quantity-display,
+.threshold-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+.quantity-label,
+.threshold-label {
+  font-size: 9px;
+  color: var(--text-3);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  text-align: center;
+}
+.quantity-value,
+.threshold-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+  text-align: center;
+  word-break: break-all;
+}
+.quantity-value.low { color: var(--danger); }
+
+/* Status badge */
+.status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-full);
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: var(--sp-3);
+}
+
+/* +/- controls */
+.quantity-controls { display:flex;gap:6px;margin-bottom:var(--sp-3);margin-top:2px; }
+.qty-btn { flex:1;padding:8px;border:1.5px solid var(--border);border-radius:var(--r-md);font-size:18px;font-weight:700;cursor:pointer;transition:all var(--t);background:var(--surface);color:var(--text); }
 .qty-btn:hover:not(:disabled) { background:var(--900);color:#fff;border-color:var(--900); }
 .qty-btn:disabled { opacity:.25;cursor:not-allowed; }
-.item-actions { display:flex;gap:var(--sp-2); }
+
+.item-actions { display:flex;gap:6px; }
+.item-actions .edit-btn,
+.item-actions .delete-btn { flex:1;font-size:12px;padding:6px 8px; }
 
 /* Take-out modal */
 .modal-box { background:var(--surface);border-radius:var(--r-xl);width:420px;max-width:95vw;box-shadow:var(--sh-xl);overflow:hidden;border:1px solid var(--border); }
@@ -98,6 +155,7 @@
 .confirm-takeout-btn:hover:not(:disabled) { background:#b91c1c; }
 .confirm-takeout-btn:disabled { opacity:.45;cursor:not-allowed; }
 
+/* ── Tablet ── */
 @media (max-width:768px) {
   .inv-header { flex-direction:column;align-items:stretch; }
   .inv-search-input { width:100%; }
@@ -105,8 +163,32 @@
   .filter-buttons,.action-buttons { width:100%; }
   .items-grid { grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--sp-3); }
   .super-cat-tab { padding:10px 14px; }
+  .item-image { height:120px; }
+  .item-content { padding:10px; }
+  .item-content h3 { font-size:12px;margin-bottom:8px; }
+  .quantity-value, .threshold-value { font-size:15px; }
+  .quantity-label, .threshold-label { font-size:8px; }
+  .quantity-section { padding:6px 4px;gap:2px; }
 }
+
+/* ── Phone ── */
 @media (max-width:480px) {
   .items-grid { grid-template-columns:1fr 1fr; }
-  .item-image { height:120px; }
+  .item-image { height:100px; }
+  .item-content { padding:8px; }
+  .item-content h3 { font-size:11px;margin-bottom:6px;min-height:unset; }
+  .quantity-value, .threshold-value { font-size:14px; }
+  .quantity-label, .threshold-label { font-size:8px;letter-spacing:0; }
+  .quantity-section { padding:5px 3px;gap:2px;margin-bottom:8px; }
+  .status-badge { font-size:10px;padding:2px 8px;margin-bottom:8px; }
+  .qty-btn { padding:6px;font-size:16px; }
+  .item-actions .edit-btn,
+  .item-actions .delete-btn { font-size:11px;padding:5px 4px; }
+}
+
+/* ── Very small phones (360px and below) ── */
+@media (max-width:360px) {
+  .items-grid { grid-template-columns:1fr; }
+  .item-image { height:140px; }
+  .quantity-value, .threshold-value { font-size:16px; }
 }
