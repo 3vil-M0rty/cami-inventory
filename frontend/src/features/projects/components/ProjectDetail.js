@@ -10,6 +10,7 @@ import LabelPrint, { buildLabelHTML } from './LabelPrint';
 import { exportProjectPDF, exportBarsPDF } from '../utils/pdfExport';
 import { fetchChassisTypes, buildChassisLabels, CHASSIS_LABELS as STATIC_LABELS } from './ChassisTypesConfig';
 import { BarresLaquerPanel, AccessoiresLaquerPanel } from './LaquagePanel';
+import { useAuth } from '../../../context/AuthContext';
 import './ProjectDetail.css';
 
 const ETAT_OPTIONS = ['non_entame', 'en_cours', 'fabrique', 'livre'];
@@ -1406,6 +1407,14 @@ function ProjectDetail({ project, onBack, currentUser }) {
 
   const totalDisplayRows = (project.chassis || []).reduce((acc, ch) => acc + (ch.quantity || 1), 0);
 
+  const { user } = useAuth();
+  const userRole = user?.role;
+  const adminThing = userRole === 'Admin'
+  const laquageThing = userRole === 'Admin' || ['Laquage'].includes(userRole);
+  const barreThing = userRole === 'Admin' || ['BARREMAN'].includes(userRole);
+  const coordinateurThing = userRole === 'Admin' || ['Coordinateur'].includes(userRole);
+  const magThing = userRole === 'Admin' || ['Magasinier'].includes(userRole);
+
   return (
     <div className="project-detail">
       <button className="project-detail__back" onClick={onBack}>{t('backToProjects')}</button>
@@ -1453,8 +1462,15 @@ function ProjectDetail({ project, onBack, currentUser }) {
       {activeTab === 'chassis' && (
         <div className="project-detail__panel">
           <div className="panel-toolbar">
-            <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>+ {t('addChassis')}</button>
-            <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}>⚙️ {t('chassisTypeConfig')}</button>
+            {adminThing && (
+              <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>+ {t('addChassis')}</button>
+            )}
+
+            {magThing && (
+              <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}>⚙️ {t('chassisTypeConfig')}</button>
+            )}
+            
+            
             {rows.length > 0 && (
               <div className="selection-toolbar">
                 <button className="select-btn" onClick={toggleAll}>{selectedKeys.size === allSelectableKeys.length ? t('deselectAll') : t('selectAll')}</button>

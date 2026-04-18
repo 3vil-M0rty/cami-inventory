@@ -4,6 +4,7 @@ import { useProjects } from '../../context/ProjectContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import ProjectDetail from './components/ProjectDetail';
+import { useAuth } from '../../context/AuthContext';
 import './RalPicker.css';
 import './ProjectsPage.css';
 
@@ -12,18 +13,22 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 const STATUS_COLORS = {
   en_cours: '#f59e0b',
   fabrique: '#3b82f6',
-  cloture:  '#16a34a'
+  cloture: '#16a34a'
 };
+
+
 
 function ProjectsPage() {
   const { projects, loading, addProject, updateProject, deleteProject, loadProjects } = useProjects();
   const { t, currentLanguage } = useLanguage();
   const { companies, selectedCompany } = useCompany();
-  const [searchTerm,      setSearchTerm]      = useState('');
-  const [showForm,        setShowForm]        = useState(false);
-  const [editingProject,  setEditingProject]  = useState(null);
-  const [openProjectId,   setOpenProjectId]   = useState(null);
-  const [filterCompany,   setFilterCompany]   = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [openProjectId, setOpenProjectId] = useState(null);
+  const [filterCompany, setFilterCompany] = useState('all');
+
+  
 
   useEffect(() => {
     setFilterCompany(selectedCompany || 'all');
@@ -135,6 +140,10 @@ function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
   const statusColor = STATUS_COLORS[project.status] || '#999';
   const statusLabel = t(`status_${project.status}`) || project.status || '';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
+  const { user } = useAuth();
+  const userRole = user?.role;
+
+  const adminThing = userRole === 'Admin';
 
   return (
     <div className="project-card" onClick={onOpen} style={{ borderTopColor: project.ralColor || '#ccc' }}>
@@ -165,8 +174,14 @@ function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
         </div>
       </div>
       <div className="project-card__actions" onClick={e => e.stopPropagation()}>
-        <button className="edit-btn"   onClick={onEdit}>{t('edit')}</button>
-        <button className="delete-btn" onClick={onDelete}>{t('delete')}</button>
+        {adminThing && (
+          <button className="edit-btn"   onClick={onEdit}>{t('edit')}</button>
+        )}
+        {adminThing && (
+          <button className="delete-btn" onClick={onDelete}>{t('delete')}</button>
+        )}
+        
+
       </div>
     </div>
   );
@@ -177,10 +192,10 @@ function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
    Falls back to a free-text input if no poudres exist yet.
 ─────────────────────────────────────────────────────────────────── */
 function RalPicker({ language, value, colorValue, onChange, t }) {
-  const [poudres,    setPoudres]    = useState([]);
-  const [loading,    setLoading]    = useState(true);
+  const [poudres, setPoudres] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [manualMode, setManualMode] = useState(false);
-  const [search,     setSearch]     = useState('');
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     axios.get(`${API_URL}/inventory/poudres`)
@@ -276,7 +291,7 @@ function RalPicker({ language, value, colorValue, onChange, t }) {
           <div className="ral-picker__empty">{t('noItems') || 'Aucun résultat'}</div>
         ) : (
           filtered.map(p => {
-            const name     = p.designation[language] || p.designation.fr;
+            const name = p.designation[language] || p.designation.fr;
             const isActive = value === name;
             // Extract color from the item's ralColor field or use a swatch color
             // Items in poudres should have image or designation referencing the color
@@ -317,15 +332,15 @@ function RalPicker({ language, value, colorValue, onChange, t }) {
 
 /* ── Project Form Modal ───────────────────────────────────────────── */
 function ProjectFormModal({ language, project, companies, t, onClose, onSave }) {
-  const [clients,  setClients]  = useState([]);
+  const [clients, setClients] = useState([]);
   const [formData, setFormData] = useState(project ? {
-    name:      project.name,
+    name: project.name,
     reference: project.reference,
-    ralCode:   project.ralCode,
-    ralColor:  project.ralColor || '#ffffff',
-    date:      project.date ? project.date.split('T')[0] : '',
-    companyId: project.companyId?.id  || project.companyId?._id  || '',
-    clientId:  project.clientId?.id   || project.clientId?._id   || '',
+    ralCode: project.ralCode,
+    ralColor: project.ralColor || '#ffffff',
+    date: project.date ? project.date.split('T')[0] : '',
+    companyId: project.companyId?.id || project.companyId?._id || '',
+    clientId: project.clientId?.id || project.clientId?._id || '',
   } : {
     name: '', reference: '', ralCode: '', ralColor: '#ffffff',
     date: new Date().toISOString().split('T')[0],
