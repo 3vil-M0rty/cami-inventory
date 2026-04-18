@@ -9,6 +9,7 @@ import UsedBarsPanel from './UsedBarsPanel';
 import LabelPrint, { buildLabelHTML } from './LabelPrint';
 import { exportProjectPDF, exportBarsPDF } from '../utils/pdfExport';
 import { fetchChassisTypes, buildChassisLabels, CHASSIS_LABELS as STATIC_LABELS } from './ChassisTypesConfig';
+import { BarresLaquerPanel, AccessoiresLaquerPanel } from './LaquagePanel';
 import './ProjectDetail.css';
 
 const ETAT_OPTIONS = ['non_entame', 'en_cours', 'fabrique', 'livre'];
@@ -1200,7 +1201,7 @@ function buildChassisDetailHTML(ch, project, chassisLabels, language, accessorie
 }
 
 
-function ProjectDetail({ project, onBack }) {
+function ProjectDetail({ project, onBack, currentUser }) {
   const { deleteChassis, updateChassis, updateUnit, updateComponent, refreshProject } = useProjects();
   const { t, currentLanguage } = useLanguage();
 
@@ -1437,6 +1438,8 @@ function ProjectDetail({ project, onBack }) {
           { key: 'chassis', label: t('tabChassis'), count: totalDisplayRows },
           { key: 'bars', label: t('cons'), count: project.usedBars?.length || 0 },
           { key: 'bl', label: t('tabBL'), count: null },
+          { key: 'barres_laquer', label: '🎨 Barres à Laquer', count: null },
+          { key: 'accessoires_laquer', label: '🔩 Accessoires à Laquer', count: null },
         ].map(tab => (
           <button key={tab.key}
             className={`project-detail__tab ${activeTab === tab.key ? 'project-detail__tab--active' : ''}`}
@@ -1658,6 +1661,16 @@ function ProjectDetail({ project, onBack }) {
 
       {activeTab === 'bars' && <UsedBarsPanel project={project} />}
       {activeTab === 'bl' && <div className="project-detail__panel"><BLPanel project={project} t={t} language={language} /></div>}
+      {activeTab === 'barres_laquer' && (
+        <div className="project-detail__panel">
+          <BarresLaquerPanel project={project} currentUser={currentUser} />
+        </div>
+      )}
+      {activeTab === 'accessoires_laquer' && (
+        <div className="project-detail__panel">
+          <AccessoiresLaquerPanel project={project} currentUser={currentUser} />
+        </div>
+      )}
 
       {showChassisForm && <ChassisForm chassis={editingChassis} projectId={project.id} onClose={() => { setShowChassisForm(false); setEditingChassis(null); }} onSave={() => { setShowChassisForm(false); setEditingChassis(null); }} />}
       {showTypeManager && <ChassisTypeManager onClose={() => setShowTypeManager(false)} />}

@@ -1182,3 +1182,561 @@
   .ct-acc-mode-row,
   .proj-acc-mode-row { flex-direction: column; }
 }
+/* ════════════════════════════════════════════════════════════
+   LAQUAGE PANELS — Barres à Laquer & Accessoires à Laquer
+   ════════════════════════════════════════════════════════════ */
+
+.laq-loading {
+  padding: 40px;
+  text-align: center;
+  color: #888;
+  font-size: 14px;
+}
+
+/* ── Panel wrapper ── */
+.laq-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── Panel header ── */
+.laq-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.laq-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.laq-panel-title h3 {
+  font-size: 16px;
+  font-weight: 800;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+.laq-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Status badge ── */
+.laq-status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Error ── */
+.laq-error {
+  background: #fff5f5;
+  border: 1px solid #fca5a5;
+  color: #dc2626;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+/* ── Section block ── */
+.laq-section {
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  padding: 16px 20px 20px;
+}
+
+.laq-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #555;
+  margin-bottom: 14px;
+}
+
+/* ── Table ── */
+.laq-table-wrapper {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  margin-bottom: 12px;
+}
+
+.laq-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: #fff;
+}
+
+.laq-table th {
+  background: #1a1a1a;
+  color: #fff;
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
+}
+
+.laq-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  vertical-align: middle;
+}
+
+.laq-table tr:last-child td { border-bottom: none; }
+.laq-table tr:hover td { background: #fafafa; }
+.laq-sub-row td { background: #f8f8f8 !important; }
+
+.laq-empty-row {
+  text-align: center;
+  color: #aaa;
+  font-style: italic;
+  font-size: 12px;
+  padding: 18px 0 !important;
+}
+
+/* ── Form inputs inside table ── */
+.laq-text-input {
+  width: 100%;
+  padding: 6px 9px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+  color: #1a1a1a;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+  min-width: 130px;
+}
+.laq-text-input:focus { border-color: #1a1a1a; }
+.laq-text-input:disabled { background: #f5f5f5; color: #888; }
+.laq-text-input::placeholder { color: #bbb; }
+
+.laq-ral-input { min-width: 90px; }
+
+.laq-num-input {
+  width: 90px;
+  padding: 6px 9px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+  color: #1a1a1a;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+  text-align: right;
+  box-sizing: border-box;
+}
+.laq-num-input:focus { border-color: #1a1a1a; }
+.laq-num-input:disabled { background: #f5f5f5; color: #888; }
+
+/* ── Autocomplete dropdown ── */
+.laq-autocomplete-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.10);
+  z-index: 9999;
+  overflow: hidden;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.laq-autocomplete-item {
+  padding: 9px 13px;
+  font-size: 13px;
+  color: #1a1a1a;
+  cursor: pointer;
+  border-bottom: 1px solid #f5f5f5;
+  transition: background 0.1s;
+}
+.laq-autocomplete-item:last-child { border-bottom: none; }
+.laq-autocomplete-item:hover { background: #f5f5f5; }
+
+/* ── Add row button ── */
+.laq-add-row-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  background: #fff;
+  border: 1.5px dashed #d0d0d0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 4px;
+}
+.laq-add-row-btn:hover { border-color: #1a1a1a; color: #1a1a1a; background: #f9f9f9; }
+
+/* ── Add sub-line button ── */
+.laq-add-line-btn {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8f5e9;
+  border: 1.5px solid #86efac;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #16a34a;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.laq-add-line-btn:hover { background: #16a34a; color: #fff; border-color: #16a34a; }
+
+/* ── Per-line action buttons ── */
+.laq-line-btn {
+  padding: 5px 11px;
+  background: #fff;
+  border: 1.5px solid #3b82f6;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #3b82f6;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.laq-line-btn:hover { background: #3b82f6; color: #fff; }
+.laq-line-btn--done {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #16a34a;
+  cursor: default;
+}
+
+/* ── Header buttons ── */
+.laq-save-btn {
+  padding: 8px 16px;
+  background: #1a1a1a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.laq-save-btn:hover { background: #333; }
+.laq-save-btn:disabled { opacity: 0.55; cursor: wait; }
+
+.laq-print-btn {
+  padding: 8px 16px;
+  background: #fff;
+  color: #1a1a1a;
+  border: 1.5px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.laq-print-btn:hover { background: #f5f5f5; border-color: #999; }
+
+/* ── Workflow block ── */
+.laq-workflow {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  padding: 20px 24px;
+}
+
+.laq-workflow-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #888;
+  margin-bottom: 14px;
+}
+
+.laq-workflow-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+/* Workflow action buttons */
+.laq-wf-btn {
+  padding: 10px 20px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.laq-wf-btn--send {
+  background: #f59e0b;
+  color: #fff;
+}
+.laq-wf-btn--send:hover { background: #d97706; }
+
+.laq-wf-btn--receive {
+  background: #3b82f6;
+  color: #fff;
+}
+.laq-wf-btn--receive:hover { background: #2563eb; }
+.laq-wf-btn--receive.laq-wf-btn--done { background: #16a34a; cursor: default; }
+
+.laq-wf-btn--return {
+  background: #8b5cf6;
+  color: #fff;
+}
+.laq-wf-btn--return:hover { background: #7c3aed; }
+
+.laq-wf-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.laq-wf-complete {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 18px;
+  background: #f0fdf4;
+  border: 1.5px solid #86efac;
+  border-radius: 7px;
+  color: #16a34a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* ── Flow timeline ── */
+.laq-flow-timeline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 8px 0 4px;
+}
+
+.laq-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 90px;
+  text-align: center;
+}
+
+.laq-step-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #d0d0d0;
+  border: 2.5px solid #d0d0d0;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.laq-step--done .laq-step-dot {
+  background: #16a34a;
+  border-color: #16a34a;
+}
+
+.laq-step-line {
+  flex: 1;
+  height: 2px;
+  background: #d0d0d0;
+  margin-top: 6px;
+  min-width: 24px;
+  transition: background 0.2s;
+}
+.laq-step-line--done { background: #16a34a; }
+
+.laq-step-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #555;
+  line-height: 1.3;
+}
+.laq-step--done .laq-step-label { color: #16a34a; }
+
+.laq-step-role {
+  font-size: 9px;
+  color: #aaa;
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .laq-panel-header { flex-direction: column; align-items: flex-start; }
+  .laq-flow-timeline { flex-wrap: wrap; gap: 8px; }
+  .laq-step-line { display: none; }
+}
+
+/* ── Laquage add-form (outside table, no clipping issues) ── */
+.laq-add-form {
+  background: #f0f4ff;
+  border: 1.5px dashed #c7d2fe;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.laq-add-form__row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.laq-add-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 90px;
+}
+
+.laq-add-form__field label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6366f1;
+}
+
+.laq-add-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1.5px solid #c7d2fe;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1a1a1a;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.laq-add-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.10); }
+.laq-add-input::placeholder { color: #a5b4fc; }
+
+.laq-add-input--sm { max-width: 110px; }
+
+.laq-add-btn {
+  padding: 8px 16px;
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+  align-self: flex-end;
+}
+.laq-add-btn:hover { background: #4f46e5; }
+
+/* Dropdown — outside table so no clipping */
+.laq-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1.5px solid #c7d2fe;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(99,102,241,0.12);
+  z-index: 9999;
+  overflow: hidden;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.laq-dropdown__header {
+  padding: 6px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #a5b4fc;
+  background: #f5f3ff;
+  border-bottom: 1px solid #e0e7ff;
+}
+.laq-dropdown__item {
+  padding: 9px 13px;
+  font-size: 13px;
+  color: #1a1a1a;
+  cursor: pointer;
+  border-bottom: 1px solid #f5f5f5;
+  transition: background 0.1s;
+}
+.laq-dropdown__item:last-child { border-bottom: none; }
+.laq-dropdown__item:hover { background: #eef2ff; }
+
+/* Morceaux laqués multi-ligne builder */
+.laq-ml-lignes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 3;
+}
+.laq-ml-ligne-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.laq-add-ligne-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  background: #fff;
+  border: 1.5px dashed #a5b4fc;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6366f1;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 4px;
+  width: fit-content;
+}
+.laq-add-ligne-btn:hover { background: #eef2ff; border-color: #6366f1; }
+
+/* RAL chip */
+.laq-ral-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #92400e;
+}

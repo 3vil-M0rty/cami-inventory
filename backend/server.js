@@ -2193,6 +2193,178 @@ app.get('/api/atelier-tables/:tableId/workload', async (req, res) => {
 });
 
 
+// ==================== LAQUAGE SCHEMAS & ROUTES ====================
+
+// ── Schemas ──
+const laquageBarresBrutesSchema = new mongoose.Schema({
+  reference: { type: String, default: '' },
+  quantiteBrute: { type: Number, default: 0 },
+}, { _id: false });
+
+const laquageBarresLaqueeSchema = new mongoose.Schema({
+  reference: { type: String, default: '' },
+  ral: { type: String, default: '' },
+  quantiteLaquee: { type: Number, default: 0 },
+}, { _id: false });
+
+const laquageMorceauBrutSchema = new mongoose.Schema({
+  reference: { type: String, default: '' },
+  mesure: { type: String, default: '' },
+  quantite: { type: Number, default: 0 },
+}, { _id: false });
+
+const laquageMorceauLaqueLigneSchema = new mongoose.Schema({
+  ral: { type: String, default: '' },
+  mesure: { type: String, default: '' },
+  quantite: { type: Number, default: 0 },
+}, { _id: false });
+
+const laquageMorceauLaqueSchema = new mongoose.Schema({
+  reference: { type: String, default: '' },
+  lignes: [laquageMorceauLaqueLigneSchema],
+}, { _id: false });
+
+const LAQUAGE_STATUSES = ['draft', 'sent_to_laquage', 'received_laquage', 'returned_to_coord', 'received_coord'];
+
+const laquageBarresSchema = new mongoose.Schema({
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, unique: true },
+  barresBrutes: [laquageBarresBrutesSchema],
+  barresLaquees: [laquageBarresLaqueeSchema],
+  morceauxBruts: [laquageMorceauBrutSchema],
+  morceauxLaques: [laquageMorceauLaqueSchema],
+  status: { type: String, enum: LAQUAGE_STATUSES, default: 'draft' },
+  lineStatuses: { type: mongoose.Schema.Types.Mixed, default: {} },
+  history: [{ action: String, by: String, at: Date }],
+}, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
+const LaquageBarres = mongoose.model('LaquageBarres', laquageBarresSchema);
+
+const laquageAccSchema = new mongoose.Schema({
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, unique: true },
+  accessoires: [{
+    designation: { type: String, default: '' },
+    quantite: { type: Number, default: 0 },
+    notes: { type: String, default: '' },
+  }],
+  status: { type: String, enum: LAQUAGE_STATUSES, default: 'draft' },
+  lineStatuses: { type: mongoose.Schema.Types.Mixed, default: {} },
+  history: [{ action: String, by: String, at: Date }],
+}, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
+const LaquageAccessoires = mongoose.model('LaquageAccessoires', laquageAccSchema);
+
+// ── Helpers ──
+function applyLaquageAction(record, action, lineKey, by) {
+  const now = new Date();
+  record.history = record.history || [];
+
+  if (action === 'send_to_laquage') {
+    record.status = 'sent_to_laquage';
+    record.history.push({ action, by, at: now });
+    return;
+  }
+  if (action === 'receive_line_laquage') {
+    record.lineStatuses = record.lineStatuses || {};
+    record.lineStatuses[lineKey] = { ...(record.lineStatuses[lineKey] || {}), receivedLaquage: true, receivedLaquageAt: now, receivedLaquageBy: by };
+    record.markModified('lineStatuses');
+    record.history.push({ action: `receive_line_laquage:${lineKey}`, by, at: now });
+    return;
+  }
+  if (action === 'receive_all_laquage') {
+    record.status = 'received_laquage';
+    record.history.push({ action, by, at: now });
+    return;
+  }
+  if (action === 'return_to_coord') {
+    record.status = 'returned_to_coord';
+    record.history.push({ action, by, at: now });
+    return;
+  }
+  if (action === 'receive_line_coord') {
+    record.lineStatuses = record.lineStatuses || {};
+    record.lineStatuses[lineKey] = { ...(record.lineStatuses[lineKey] || {}), receivedCoord: true, receivedCoordAt: now, receivedCoordBy: by };
+    record.markModified('lineStatuses');
+    record.history.push({ action: `receive_line_coord:${lineKey}`, by, at: now });
+    return;
+  }
+  if (action === 'receive_all_coord') {
+    record.status = 'received_coord';
+    record.history.push({ action, by, at: now });
+    return;
+  }
+}
+
+// ── BARRES routes ──
+app.get('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res) => {
+  try {
+    let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
+    if (!record) {
+      record = new LaquageBarres({ projectId: req.params.projectId, barresBrutes: [], barresLaquees: [], morceauxBruts: [], morceauxLaques: [], status: 'draft', lineStatuses: {} });
+      await record.save();
+    }
+    res.json(record.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res) => {
+  try {
+    const { barresBrutes, barresLaquees, morceauxBruts, morceauxLaques } = req.body;
+    let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
+    if (!record) record = new LaquageBarres({ projectId: req.params.projectId });
+    if (record.status !== 'draft') return res.status(400).json({ error: 'Cannot edit after draft stage.' });
+    if (barresBrutes !== undefined) record.barresBrutes = barresBrutes;
+    if (barresLaquees !== undefined) record.barresLaquees = barresLaquees;
+    if (morceauxBruts !== undefined) record.morceauxBruts = morceauxBruts;
+    if (morceauxLaques !== undefined) record.morceauxLaques = morceauxLaques;
+    await record.save();
+    res.json(record.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/projects/:projectId/laquage/barres/action', requireAuth, async (req, res) => {
+  try {
+    const { action, lineKey, by } = req.body;
+    let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
+    if (!record) return res.status(404).json({ error: 'Record not found' });
+    applyLaquageAction(record, action, lineKey, by);
+    await record.save();
+    res.json(record.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ACCESSOIRES routes ──
+app.get('/api/projects/:projectId/laquage/accessoires', requireAuth, async (req, res) => {
+  try {
+    let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
+    if (!record) {
+      record = new LaquageAccessoires({ projectId: req.params.projectId, accessoires: [], status: 'draft', lineStatuses: {} });
+      await record.save();
+    }
+    res.json(record.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/projects/:projectId/laquage/accessoires', requireAuth, async (req, res) => {
+  try {
+    const { accessoires } = req.body;
+    let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
+    if (!record) record = new LaquageAccessoires({ projectId: req.params.projectId });
+    if (record.status !== 'draft') return res.status(400).json({ error: 'Cannot edit after draft stage.' });
+    if (accessoires !== undefined) record.accessoires = accessoires;
+    await record.save();
+    res.json(record.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/projects/:projectId/laquage/accessoires/action', requireAuth, async (req, res) => {
+  try {
+    const { action, lineKey, by } = req.body;
+    let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
+    if (!record) return res.status(404).json({ error: 'Record not found' });
+    applyLaquageAction(record, action, lineKey, by);
+    await record.save();
+    res.json(record.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ==================== ERROR HANDLERS ====================
 app.use((req, res) => res.status(404).json({ error: 'Not Found', path: req.path }));
 app.use((err, req, res, next) => { console.error('Unhandled:', err); res.status(500).json({ error: 'Internal Server Error', message: err.message }); });
