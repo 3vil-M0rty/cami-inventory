@@ -1,21 +1,27 @@
 import React, { useState, useRef } from 'react';
+import {
+  Package, ShoppingCart, HardHat, Users, FileText,
+  BarChart2, TrendingUp, Settings, Factory,
+  Lock, LogOut, ChevronDown, Menu, X, Building2
+} from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import { useAuth } from '../../context/AuthContext';
+import NotifBell from '../../features/laquage/LaquageNotifBell';
 import ChangePasswordModal from '../../features/admin/ChangePasswordModal';
 
 import './Header.css';
 
 const NAV_ICONS = {
-  inventory:    '📦',
-  orders:       '🛒',
-  projects:     '🏗',
-  clients:      '👥',
-  devis:        '📄',
-  movements:    '📊',
-  analytics:    '📈',
-  admin:        '⚙️',
-  ateliertables:'🏭',
+  inventory:     <Package     size={14} strokeWidth={2} />,
+  orders:        <ShoppingCart size={14} strokeWidth={2} />,
+  projects:      <HardHat     size={14} strokeWidth={2} />,
+  clients:       <Users       size={14} strokeWidth={2} />,
+  devis:         <FileText    size={14} strokeWidth={2} />,
+  movements:     <BarChart2   size={14} strokeWidth={2} />,
+  analytics:     <TrendingUp  size={14} strokeWidth={2} />,
+  admin:         <Settings    size={14} strokeWidth={2} />,
+  ateliertables: <Factory     size={14} strokeWidth={2} />,
 };
 
 const Header = ({ activePage, onNavigate }) => {
@@ -43,40 +49,25 @@ const Header = ({ activePage, onNavigate }) => {
 
   const navigate = key => { onNavigate(key); setMobileOpen(false); };
 
-  // Prevents the outside-click handler from firing before onClick
-  const handleLogout = () => {
-    setShowUserMenu(false);
-    logout();
-  };
+  const handleLogout = () => { setShowUserMenu(false); logout(); };
+  const handleChangePwd = () => { setShowChangePwd(true); setShowUserMenu(false); };
 
-  const handleChangePwd = () => {
-    setShowChangePwd(true);
-    setShowUserMenu(false);
-  };
-
-  // Dropdown — self-contained with its own backdrop to close on outside click
   const userDropdown = showUserMenu && (
     <>
-      {/* Invisible full-screen backdrop — clicking outside closes menu */}
-      <div
-        style={{ position: 'fixed', inset: 0, zIndex: 399 }}
-        onClick={() => setShowUserMenu(false)}
-      />
+      <div style={{ position: 'fixed', inset: 0, zIndex: 399 }} onClick={() => setShowUserMenu(false)} />
       <div className="hdr__dropdown" style={{ zIndex: 400 }}>
         <div className="hdr__dropdown-info">
           <strong>{user?.displayName}</strong>
           <span>@{user?.username}</span>
           <span className="hdr__dropdown-role">{user?.role}</span>
         </div>
-        <button
-          className="hdr__dropdown-item"
-          onClick={handleChangePwd}>
-          🔒 {t('changePassword')}
+        <button className="hdr__dropdown-item" onClick={handleChangePwd}>
+          <Lock size={14} strokeWidth={2} />
+          {t('changePassword')}
         </button>
-        <button
-          className="hdr__dropdown-item hdr__dropdown-logout"
-          onClick={handleLogout}>
-          🚪 {t('logout')}
+        <button className="hdr__dropdown-item hdr__dropdown-logout" onClick={handleLogout}>
+          <LogOut size={14} strokeWidth={2} />
+          {t('logout')}
         </button>
       </div>
     </>
@@ -99,6 +90,7 @@ const Header = ({ activePage, onNavigate }) => {
       <button
         className={`hdr__company-pill ${!selectedCompany ? 'active' : ''}`}
         onClick={() => setSelectedCompany(null)}>
+        <Building2 size={11} strokeWidth={2} />
         {t('allCompanies')}
       </button>
       {companies.map(c => (
@@ -140,26 +132,29 @@ const Header = ({ activePage, onNavigate }) => {
           <div className="hdr__controls desktop-only">
             <div className="hdr__companies">{companyPills}</div>
             {langPicker}
+            <NotifBell />
             <div className="hdr__user" ref={userMenuRef}>
+              
               <button className="hdr__user-btn" onClick={() => setShowUserMenu(v => !v)}>
                 <span className="hdr__avatar">{user?.displayName?.charAt(0).toUpperCase()}</span>
                 <span className="hdr__username">{user?.displayName}</span>
                 <span className="hdr__role">{user?.role}</span>
-                <span className="hdr__chevron">▾</span>
+                <ChevronDown size={12} strokeWidth={2} className="hdr__chevron" />
               </button>
               {userDropdown}
             </div>
           </div>
 
-          {/* Tablet / mobile top-bar controls */}
+          {/* Mobile top-bar controls */}
           <div className="hdr__controls mobile-only" style={{ gap: 8 }}>
             {langPicker}
+            <NotifBell />
             <div className="hdr__user" ref={userMenuRef}>
               <button className="hdr__user-btn" onClick={() => setShowUserMenu(v => !v)}>
                 <span className="hdr__avatar">{user?.displayName?.charAt(0).toUpperCase()}</span>
                 <span className="hdr__username">{user?.displayName}</span>
                 <span className="hdr__role">{user?.role}</span>
-                <span className="hdr__chevron">▾</span>
+                <ChevronDown size={12} strokeWidth={2} className="hdr__chevron" />
               </button>
               {userDropdown}
             </div>
@@ -188,14 +183,16 @@ const Header = ({ activePage, onNavigate }) => {
 
       </header>
 
-      {/* Mobile / tablet drawer */}
+      {/* Mobile drawer */}
       {mobileOpen && (
         <div className="hdr__mobile-overlay" onClick={() => setMobileOpen(false)}>
           <aside className="hdr__mobile-drawer" onClick={e => e.stopPropagation()}>
 
             <div className="hdr__mobile-top">
               <span className="hdr__title" style={{ fontSize: 16 }}>{t('appTitle')}</span>
-              <button className="hdr__mobile-close" onClick={() => setMobileOpen(false)}>✕</button>
+              <button className="hdr__mobile-close" onClick={() => setMobileOpen(false)}>
+                <X size={16} strokeWidth={2} />
+              </button>
             </div>
 
             <div style={{ padding: '10px 12px 4px', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
@@ -208,7 +205,7 @@ const Header = ({ activePage, onNavigate }) => {
                 <button key={item.key}
                   className={`hdr__mobile-nav-btn ${activePage === item.key ? 'active' : ''}`}
                   onClick={() => navigate(item.key)}>
-                  <span style={{ fontSize: 16 }}>{NAV_ICONS[item.key]}</span>
+                  <span className="hdr__nav-icon">{NAV_ICONS[item.key]}</span>
                   {item.label}
                 </button>
               ))}
@@ -231,10 +228,10 @@ const Header = ({ activePage, onNavigate }) => {
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
                   <button className="hdr__mobile-action-btn"
                     onClick={() => { setShowChangePwd(true); setMobileOpen(false); }}>
-                    🔒
+                    <Lock size={15} strokeWidth={2} />
                   </button>
                   <button className="hdr__mobile-action-btn danger" onClick={handleLogout}>
-                    🚪
+                    <LogOut size={15} strokeWidth={2} />
                   </button>
                 </div>
               </div>

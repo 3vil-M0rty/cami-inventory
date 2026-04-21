@@ -3,14 +3,21 @@ import axios from 'axios';
 import { useProjects } from '../../../context/ProjectContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import './UsedBarsPanel.css';
-
+import {
+  Layers, GlassWater, Wrench, FlaskConical, Settings, Paintbrush, MirrorRectangular,
+  Search, AlertTriangle, Plus, Minus, Pencil, Trash2,
+  FileDown, PackagePlus, Package, ChevronRight, Tag,
+  CheckCircle2, XCircle, Clock, Lock, ShoppingCart
+} from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
+
 const SUPER_CATS = [
-  { key: 'aluminium',   icon: '🔩', labelKey: 'superCatAluminium',   label: 'Aluminium'  },
-  { key: 'verre',       icon: '💎', labelKey: 'superCatVerre',        label: 'Verre'      },
-  { key: 'accessoires', icon: '🔧', labelKey: 'superCatAccessoires',  label: 'Accessoires'},
-  { key: 'poudre',      icon: '🎨', labelKey: 'superCatPoudre',       label: 'Poudre'     },
+  { key: 'aluminium', icon: <Layers size={13} strokeWidth={2.5} />, labelKey: 'superCatAluminium', label: 'Aluminium' },
+  { key: 'verre', icon: <MirrorRectangular size={13} strokeWidth={2.5} />, labelKey: 'superCatVerre', label: 'Verre' },
+  { key: 'accessoires', icon:  <Wrench size={13} strokeWidth={2.5} />, labelKey: 'superCatAccessoires', label: 'Accessoires' },
+  { key: 'poudre', icon: <Paintbrush size={13} strokeWidth={2.5} />, labelKey: 'superCatPoudre', label: 'Poudre' },
 ];
 
 /**
@@ -31,11 +38,11 @@ function UsedBarsPanel({ project }) {
   const { t, currentLanguage: language } = useLanguage();
 
   const [activeSuperCat, setActiveSuperCat] = useState('aluminium');
-  const [searchTerm,     setSearchTerm]     = useState('');
-  const [searchResults,  setSearchResults]  = useState([]);
-  const [quantities,     setQuantities]     = useState({});
-  const [searching,      setSearching]      = useState(false);
-  const [error,          setError]          = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [quantities, setQuantities] = useState({});
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState('');
 
   // Decimals allowed only for poudre
   const isPoudre = activeSuperCat === 'poudre';
@@ -106,11 +113,33 @@ function UsedBarsPanel({ project }) {
     return acc;
   }, {});
 
+  const { user } = useAuth();
+  const userRole = user?.role;
+  const adminThing = userRole === 'Admin';
+  const laquageThing = userRole === 'Admin' || userRole === 'Laquage';
+  const barreThing = userRole === 'Admin' || userRole === 'BARREMAN';
+  const coordinateurThing = userRole === 'Admin' || userRole === 'Coordinateur';
+  const magThing = userRole === 'Admin' || userRole === 'Magasinier';
+  const logistiqueThing = userRole === 'LOGISTIQUE';
+  const ROLE_SUPER_CAT_ACCESS = {
+    Laquage: ['poudre'],
+    BARREMAN: ['aluminium'],
+    Coordinateur: [],
+    Magasinier: ['accessoires'],
+    LOGISTIQUE: [],
+    // add other roles here as needed
+  };
+  const visibleSuperCats = adminThing
+  ? SUPER_CATS                                           // Admin sees all
+  : SUPER_CATS.filter(sc =>
+      (ROLE_SUPER_CAT_ACCESS[userRole] || []).includes(sc.key)
+    );
+
   return (
     <div className="ubp">
       {/* ── Super-category tabs ── */}
       <div className="ubp__super-tabs">
-        {SUPER_CATS.map(sc => {
+        {visibleSuperCats.map(sc => {
           const count = (usedBySuper[sc.key] || []).length;
           return (
             <button
@@ -126,24 +155,27 @@ function UsedBarsPanel({ project }) {
       </div>
 
       {/* ── Search ── */}
-      <div className="ubp__search-wrap">
-        <span className="ubp__search-icon">
-          <svg width="15" height="15" viewBox="0 0 18 18" fill="none">
-            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </span>
-        <input
-          type="text"
-          className="ubp__search-input"
-          placeholder={t('searchInventory')}
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-        />
-        {searchTerm && (
-          <button className="ubp__search-clear" onClick={() => { setSearchTerm(''); setSearchResults([]); }}>✕</button>
-        )}
-      </div>
+      {adminThing && (
+        <div className="ubp__search-wrap">
+          <span className="ubp__search-icon">
+            <svg width="15" height="15" viewBox="0 0 18 18" fill="none">
+              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </span>
+          <input
+            type="text"
+            className="ubp__search-input"
+            placeholder={t('searchInventory')}
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
+          {searchTerm && (
+            <button className="ubp__search-clear" onClick={() => { setSearchTerm(''); setSearchResults([]); }}>✕</button>
+          )}
+        </div>
+
+      )}
 
       {/* {isPoudre && (
         <p style={{ fontSize: 12, color: '#f59e0b', margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -246,9 +278,12 @@ function UsedBarsPanel({ project }) {
                       </span>
                     </td>
                     <td>
-                      <button className="ubp__remove-btn" onClick={() => handleRemove(item.id || item._id)}>
-                        {t('delete')}
-                      </button>
+                      {adminThing && (
+                        <button className="ubp__remove-btn" onClick={() => handleRemove(item.id || item._id)}>
+                          {t('delete')}
+                        </button>
+                      )}
+
                     </td>
                   </tr>
                 );

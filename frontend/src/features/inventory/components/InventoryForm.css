@@ -1,11 +1,119 @@
-/* InventoryForm.css */
-.inventory-form { width:100%; }
-.inventory-form__grid { display:grid;grid-template-columns:repeat(2,1fr);gap:var(--sp-5);margin-bottom:var(--sp-7); }
-.inventory-form__section { display:flex;flex-direction:column; }
-.inventory-form__section--full { grid-column:1/-1; }
-.inventory-form__subtitle { font-family:var(--font);font-size:12px;font-weight:700;color:var(--text);margin:0 0 var(--sp-4);text-transform:uppercase;letter-spacing:.06em;padding-bottom:var(--sp-2);border-bottom:2px solid var(--900); }
-.inventory-form__preview { margin-top:var(--sp-3);border:2px dashed var(--200);border-radius:var(--r-md);padding:var(--sp-4);background:var(--50);display:flex;justify-content:center;align-items:center;min-height:200px;transition:all var(--t); }
-.inventory-form__preview:hover { border-color:var(--400);background:var(--100); }
-.inventory-form__preview-image { max-width:100%;max-height:300px;object-fit:contain;border-radius:var(--r);box-shadow:var(--sh-sm);animation:fadeUp .25s ease-out; }
-.inventory-form__actions { display:flex;gap:var(--sp-3);justify-content:flex-end;padding-top:var(--sp-5);border-top:1px solid var(--border); }
-@media (max-width:768px) { .inventory-form__grid { grid-template-columns:1fr;gap:var(--sp-4); } .inventory-form__actions { flex-direction:column-reverse; } .inventory-form__actions button { width:100%; } }
+/* ── InventoryForm ── */
+
+.inv-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+}
+
+/* Section block */
+.inv-form__section {
+  padding: 16px 0;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.inv-form__section:last-of-type { border-bottom: none; }
+
+.inv-form__section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: 2px;
+}
+
+/* Image preview */
+.inv-form__preview {
+  border: 2px dashed #e0e0e0;
+  border-radius: 10px;
+  padding: 12px;
+  background: #f9f9f9;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 140px;
+  transition: border-color .18s;
+}
+.inv-form__preview:hover { border-color: #aaa; }
+.inv-form__preview-img {
+  max-width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.08);
+  animation: previewIn .2s ease-out;
+}
+@keyframes previewIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+
+/* Language rows */
+.inv-form__lang-grid { display: flex; flex-direction: column; gap: 8px; }
+.inv-form__lang-row  { display: flex; align-items: flex-start; gap: 10px; }
+.inv-form__lang-tag {
+  flex-shrink: 0;
+  margin-top: 10px;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  background: #111; color: #fff;
+  font-size: 9px; font-weight: 800;
+  border-radius: 6px; letter-spacing: .06em;
+}
+.inv-form__lang-row > :last-child { flex: 1; }
+
+/* Number fields */
+.inv-form__numbers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.inv-form__number-field { display: flex; flex-direction: column; gap: 5px; }
+.inv-form__number-field label {
+  font-size: 10px; font-weight: 700; color: #888;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+
+/* Action buttons */
+.inv-form__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 16px;
+}
+.inv-form__btn-cancel,
+.inv-form__btn-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .15s;
+}
+.inv-form__btn-cancel {
+  background: #f5f5f5;
+  border: 1.5px solid #e0e0e0;
+  color: #555;
+}
+.inv-form__btn-cancel:hover { background: #eee; }
+.inv-form__btn-save {
+  background: #111;
+  border: 1.5px solid #111;
+  color: #fff;
+}
+.inv-form__btn-save:hover { background: #333; border-color: #333; }
+
+@media (max-width: 480px) {
+  .inv-form__numbers { grid-template-columns: 1fr; }
+  .inv-form__actions { flex-direction: column-reverse; }
+  .inv-form__btn-cancel,
+  .inv-form__btn-save { width: 100%; justify-content: center; }
+}

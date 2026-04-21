@@ -4,14 +4,16 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import './OrdersPage.css';
 import { exportOrdersExcel, exportOrderPDF } from '../../utils/orderExport';
+import { Search, FileText,FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const STATUS_COLORS = {
-  en_attente: { bg: '#fef3c7', text: '#92400e', label: { fr: 'En attente', en: 'Pending',   it: 'In attesa' } },
-  partielle:  { bg: '#dbeafe', text: '#1e40af', label: { fr: 'Partielle',  en: 'Partial',   it: 'Parziale'  } },
-  recue:      { bg: '#dcfce7', text: '#166534', label: { fr: 'Reçue',      en: 'Received',  it: 'Ricevuta'  } },
-  annulee:    { bg: '#fee2e2', text: '#991b1b', label: { fr: 'Annulée',    en: 'Cancelled', it: 'Annullata' } },
+  en_attente: { bg: '#fef3c7', text: '#92400e', label: { fr: 'En attente', en: 'Pending', it: 'In attesa' } },
+  partielle: { bg: '#dbeafe', text: '#1e40af', label: { fr: 'Partielle', en: 'Partial', it: 'Parziale' } },
+  recue: { bg: '#dcfce7', text: '#166534', label: { fr: 'Reçue', en: 'Received', it: 'Ricevuta' } },
+  annulee: { bg: '#fee2e2', text: '#991b1b', label: { fr: 'Annulée', en: 'Cancelled', it: 'Annullata' } },
 };
 
 export default function OrdersPage() {
@@ -29,22 +31,47 @@ export default function OrdersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [exportingPdf, setExportingPdf] = useState(null);
 
+  // ── Purchase requests (admin → ACHAT) ─────────────────────────────
+  const { can } = useAuth();
+  const isAdmin = can('admin.view');
+  const isAchat = can('orders.receive') || can('orders.edit') || isAdmin;
+  const [purchaseRequests, setPurchaseRequests] = useState([]);
+  const [prLoading, setPrLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'requests'
+  const [markingId, setMarkingId] = useState(null);
+
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
       const res = await axios.get(`${API_URL}/orders`);
       setOrders(res.data);
-    } catch(e) { console.error(e); } finally { setLoading(false); }
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   }, []);
 
   const fetchItems = useCallback(async () => {
     try {
       const res = await axios.get(`${API_URL}/inventory`);
       setItems(res.data);
-    } catch(e) { console.error(e); }
+    } catch (e) { console.error(e); }
   }, []);
 
-  useEffect(() => { fetchOrders(); fetchItems(); }, [fetchOrders, fetchItems]);
+  const fetchPurchaseRequests = useCallback(async () => {
+    setPrLoading(true);
+    try {
+      const res = await axios.get(`${API_URL}/purchase-requests`);
+      setPurchaseRequests(res.data || []);
+    } catch (e) { console.error(e); } finally { setPrLoading(false); }
+  }, []);
+
+  const markOrdered = async (id) => {
+    setMarkingId(id);
+    try {
+      await axios.patch(`${API_URL}/purchase-requests/${id}/mark-ordered`);
+      await fetchPurchaseRequests();
+    } catch (e) { console.error(e); } finally { setMarkingId(null); }
+  };
+
+  useEffect(() => { fetchOrders(); fetchItems(); fetchPurchaseRequests(); }, [fetchOrders, fetchItems, fetchPurchaseRequests]);
 
   // Keep selectedOrder in sync after a re-fetch
   useEffect(() => {
@@ -70,7 +97,7 @@ export default function OrdersPage() {
       });
       fetchOrders();
       setReceiveModal(null);
-    } catch(e) { alert(e.response?.data?.error || 'Erreur'); }
+    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
   };
 
   const openReceive = (order, line) => {
@@ -111,7 +138,7 @@ export default function OrdersPage() {
     try {
       const company = companies.find(c => c.id === (order.companyId?.id || order.companyId?._id)) || null;
       await exportOrderPDF(order, lang, company);
-    } catch(e) { console.error(e); alert('Erreur export PDF'); }
+    } catch (e) { console.error(e); alert('Erreur export PDF'); }
     finally { setExportingPdf(null); }
   };
 
@@ -119,29 +146,32 @@ export default function OrdersPage() {
   if (selectedOrder) {
     const order = selectedOrder;
     const st = STATUS_COLORS[order.status] || STATUS_COLORS.en_attente;
-    const totalOrdered  = (order.lines || []).reduce((s, l) => s + l.quantityOrdered, 0);
+    const totalOrdered = (order.lines || []).reduce((s, l) => s + l.quantityOrdered, 0);
     const totalReceived = (order.lines || []).reduce((s, l) => s + (l.quantityReceived || 0), 0);
     const progress = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
 
     return (
       <div className="orders-page">
         <div className="order-detail-back">
-          <button className="btn-back" onClick={() => setSelectedOrder(null)}>
-            ← Retour aux commandes
-          </button>
           <div className="order-detail-actions">
+            <button className="btn-back" onClick={() => setSelectedOrder(null)}>
+              <StepBack size={15} />
+              {t('backCommandes')}
+            </button>
+
             <button
               className="btn-pdf"
+              title='PDF'
               onClick={() => handleExportPDF(order)}
               disabled={exportingPdf === order.id}
             >
-              {exportingPdf === order.id ? '⏳' : '📄'} PDF
+              {exportingPdf === order.id ? <LoaderCircle size={15} /> : <FileText size={15} />}
             </button>
-            <button className="btn-edit" onClick={() => { setEditOrder(order); setShowForm(true); }}>
-              ✏️ Modifier
+            <button className="btn-edit" title={t('edit')} onClick={() => { setEditOrder(order); setShowForm(true); }}>
+              <Pencil size={15} />
             </button>
-            <button className="btn-delete" onClick={() => handleDelete(order.id)}>
-              🗑 Supprimer
+            <button className="btn-delete" title={t('delete')} onClick={() => handleDelete(order.id)}>
+              <Trash2 size={15} />
             </button>
           </div>
         </div>
@@ -151,13 +181,13 @@ export default function OrdersPage() {
             <h1 className="order-detail-ref">{order.reference}</h1>
             <div className="order-detail-meta">
               {order.companyId && <span className="order-company-badge">{order.companyId.name}</span>}
-              {order.supplier  && <span className="order-supplier">— {order.supplier}</span>}
+              {order.supplier && <span className="order-supplier">— {order.supplier}</span>}
               <span className="order-date" style={{ marginLeft: 8 }}>
-                📅 {new Date(order.orderDate).toLocaleDateString('fr-FR')}
+                <Calendar size={15} /> {new Date(order.orderDate).toLocaleDateString('fr-FR')}
               </span>
               {order.expectedDate && (
                 <span className="order-date">
-                  🚚 {new Date(order.expectedDate).toLocaleDateString('fr-FR')}
+                  <CalendarClock size={15} /> {new Date(order.expectedDate).toLocaleDateString('fr-FR')}
                 </span>
               )}
             </div>
@@ -172,7 +202,7 @@ export default function OrdersPage() {
             <div className="order-progress-fill" style={{ width: `${progress}%` }} />
           </div>
           <div className="order-progress-label">
-            {totalReceived} / {totalOrdered} articles reçus ({progress}%)
+            {totalReceived} / {totalOrdered}{t('articlesRecues')}({progress}%)
           </div>
         </div>
 
@@ -194,7 +224,7 @@ export default function OrdersPage() {
                 <div className="detail-line-image">
                   {item?.image
                     ? <img src={item.image} alt={item.designation?.[lang] || ''} />
-                    : <div className="detail-line-no-image">📦</div>
+                    : <div className="detail-line-no-image"><Package size={15}/></div>
                   }
                 </div>
                 <div className="detail-line-body">
@@ -230,7 +260,6 @@ export default function OrdersPage() {
           })}
         </div>
 
-        {/* Receive modal */}
         {receiveModal && (
           <ReceiveModal
             receiveModal={receiveModal}
@@ -242,7 +271,6 @@ export default function OrdersPage() {
           />
         )}
 
-        {/* Edit form */}
         {showForm && (
           <OrderForm
             order={editOrder}
@@ -261,125 +289,163 @@ export default function OrdersPage() {
   return (
     <div className="orders-page">
       <header className="orders-header">
-        <div>
-          <h1>📦 {t('navOrders')}</h1>
-          <p className="orders-subtitle">Gestion des commandes fournisseurs</p>
+        <div className="orders-tab-switcher">
+          <button
+            className={`orders-tab-btn ${activeTab === 'orders' ? 'active' : ''}`}
+            onClick={() => setActiveTab('orders')}
+          >
+            <ShoppingCart size={15} /> {t('navOrders')}
+            {purchaseRequests.filter(r => r.status === 'pending').length > 0 && activeTab !== 'requests' && (
+              <span className="orders-tab-badge">
+                {purchaseRequests.filter(r => r.status === 'pending').length}
+              </span>
+            )}
+          </button>
+          <button
+            className={`orders-tab-btn ${activeTab === 'requests' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('requests'); fetchPurchaseRequests(); }}
+          >
+            <ShoppingCart size={13} />
+            {t('Demandesadmin')}
+            {purchaseRequests.filter(r => r.status === 'pending').length > 0 && (
+              <span className="orders-tab-badge orders-tab-badge--orange">
+                {purchaseRequests.filter(r => r.status === 'pending').length}
+              </span>
+            )}
+          </button>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-excel" onClick={() => exportOrdersExcel(filteredOrders, lang)}>
-            📊 Export Excel
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="super-cat-settings-btn" title='Excel' onClick={() => exportOrdersExcel(filteredOrders, lang)}>
+            <Sheet size={15} color='GREEN' />
           </button>
           <button className="btn-primary" onClick={() => { setEditOrder(null); setShowForm(true); }}>
-            + Nouvelle commande
+            <FilePlus size={15}/>{t('orderNew')}
           </button>
         </div>
       </header>
 
-      <div className="orders-stats">
-        {[
-          { label: 'Total',      value: stats.total,      color: '#6b7280' },
-          { label: 'En attente', value: stats.enAttente,  color: '#d97706' },
-          { label: 'Partielles', value: stats.partielle,  color: '#2563eb' },
-          { label: 'Reçues',     value: stats.recue,      color: '#16a34a' },
-        ].map(s => (
-          <div key={s.label} className="orders-stat-card" style={{ borderLeftColor: s.color }}>
-            <span className="stat-value" style={{ color: s.color }}>{s.value}</span>
-            <span className="stat-label">{s.label}</span>
-          </div>
-        ))}
-      </div>
+      {/* ── Tab switcher ─────────────────────────────────────────── */}
 
-      <div className="orders-controls">
-        <input
-          className="search-input"
-          placeholder="Rechercher (référence, fournisseur, article, notes…)"
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
+
+      {/* ── Tab content ──────────────────────────────────────────── */}
+      {activeTab === 'requests' ? (
+        <PurchaseRequestsPanel
+          requests={purchaseRequests}
+          loading={prLoading}
+          markingId={markingId}
+          onMarkOrdered={markOrdered}
+          onRefresh={fetchPurchaseRequests}
+          isAdmin={isAdmin}
+          lang={lang}
         />
-        <div className="filter-tabs">
-          {['all', 'en_attente', 'partielle', 'recue', 'annulee'].map(s => (
-            <button
-              key={s}
-              className={`filter-tab ${filterStatus === s ? 'active' : ''}`}
-              onClick={() => setFilterStatus(s)}
-            >
-              {s === 'all' ? 'Toutes' : STATUS_COLORS[s]?.label?.fr}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="loading-msg">Chargement…</div>
-      ) : filteredOrders.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">📋</div>
-          <p>Aucune commande trouvée</p>
-          <button className="btn-primary" onClick={() => setShowForm(true)}>Créer la première commande</button>
-        </div>
       ) : (
-        <div className="orders-list">
-          {filteredOrders.map(order => {
-            const st = STATUS_COLORS[order.status] || STATUS_COLORS.en_attente;
-            const totalOrdered  = (order.lines || []).reduce((s, l) => s + l.quantityOrdered, 0);
-            const totalReceived = (order.lines || []).reduce((s, l) => s + (l.quantityReceived || 0), 0);
-            const progress = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
-            return (
-              <div
-                key={order.id}
-                className="order-card order-card--clickable"
-                onClick={() => setSelectedOrder(order)}
-              >
-                <div className="order-card-header">
-                  <div className="order-card-title">
-                    <h3>{order.reference}</h3>
-                    {order.companyId && <span className="order-company-badge">{order.companyId.name}</span>}
-                    {order.supplier  && <span className="order-supplier">— {order.supplier}</span>}
-                  </div>
-                  <div className="order-card-meta">
-                    <span className="status-badge" style={{ background: st.bg, color: st.text }}>
-                      {st.label[lang] || st.label.fr}
-                    </span>
-                    <span className="order-date">{new Date(order.orderDate).toLocaleDateString('fr-FR')}</span>
-                  </div>
-                </div>
-
-                <div className="order-progress-bar">
-                  <div className="order-progress-fill" style={{ width: `${progress}%` }} />
-                </div>
-                <div className="order-progress-label">
-                  {totalReceived} / {totalOrdered} articles reçus ({progress}%)
-                </div>
-
-                {/* Article thumbnails preview */}
-                <div className="order-card-thumbs">
-                  {(order.lines || []).slice(0, 5).map((line, idx) => (
-                    <div key={idx} className="order-card-thumb" title={line.itemId?.designation?.[lang] || ''}>
-                      {line.itemId?.image
-                        ? <img src={line.itemId.image} alt="" />
-                        : <span>📦</span>
-                      }
-                    </div>
-                  ))}
-                  {(order.lines || []).length > 5 && (
-                    <div className="order-card-thumb order-card-thumb--more">
-                      +{order.lines.length - 5}
-                    </div>
-                  )}
-                </div>
-
-                <div className="order-card-footer">
-                  <span className="order-card-lines-count">
-                    {(order.lines || []).length} article{(order.lines || []).length !== 1 ? 's' : ''}
-                  </span>
-                  <span className="order-card-open-hint">Voir détails →</span>
-                </div>
+        <>
+          <div className="orders-stats">
+            {[
+              { label: 'Total', value: stats.total, color: '#6b7280' },
+              { label: 'En attente', value: stats.enAttente, color: '#d97706' },
+              { label: 'Partielles', value: stats.partielle, color: '#2563eb' },
+              { label: 'Reçues', value: stats.recue, color: '#16a34a' },
+            ].map(s => (
+              <div key={s.label} className="orders-stat-card" style={{ borderLeftColor: s.color }}>
+                <span className="stat-value" style={{ color: s.color }}>{s.value}</span>
+                <span className="stat-label">{s.label}</span>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+
+          <div className="orders-controls">
+            <input
+              className="search-input"
+              placeholder="Rechercher (référence, fournisseur, article, notes…)"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+            <div className="filter-tabs">
+              {['all', 'en_attente', 'partielle', 'recue', 'annulee'].map(s => (
+                <button
+                  key={s}
+                  className={`filter-tab ${filterStatus === s ? 'active' : ''}`}
+                  onClick={() => setFilterStatus(s)}
+                >
+                  {s === 'all' ? 'Toutes' : STATUS_COLORS[s]?.label?.fr}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="loading-msg">{t('loading')}</div>
+          ) : filteredOrders.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon"><ShoppingCart size={15}/></div>
+              <p>{t("noData")}</p>
+            </div>
+          ) : (
+            <div className="orders-list">
+              {filteredOrders.map(order => {
+                const st = STATUS_COLORS[order.status] || STATUS_COLORS.en_attente;
+                const totalOrdered = (order.lines || []).reduce((s, l) => s + l.quantityOrdered, 0);
+                const totalReceived = (order.lines || []).reduce((s, l) => s + (l.quantityReceived || 0), 0);
+                const progress = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
+                return (
+                  <div
+                    key={order.id}
+                    className="order-card order-card--clickable"
+                    onClick={() => setSelectedOrder(order)}
+                  >
+                    <div className="order-card-header">
+                      <div className="order-card-title">
+                        <h3>{order.reference}</h3>
+                        {order.companyId && <span className="order-company-badge">{order.companyId.name}</span>}
+                        {order.supplier && <span className="order-supplier">— {order.supplier}</span>}
+                      </div>
+                      <div className="order-card-meta">
+                        <span className="status-badge" style={{ background: st.bg, color: st.text }}>
+                          {st.label[lang] || st.label.fr}
+                        </span>
+                        <span className="order-date">{new Date(order.orderDate).toLocaleDateString('fr-FR')}</span>
+                      </div>
+                    </div>
+
+                    <div className="order-progress-bar">
+                      <div className="order-progress-fill" style={{ width: `${progress}%` }} />
+                    </div>
+                    <div className="order-progress-label">
+                      {totalReceived} / {totalOrdered} articles reçus ({progress}%)
+                    </div>
+
+                    <div className="order-card-thumbs">
+                      {(order.lines || []).slice(0, 5).map((line, idx) => (
+                        <div key={idx} className="order-card-thumb" title={line.itemId?.designation?.[lang] || ''}>
+                          {line.itemId?.image
+                            ? <img src={line.itemId.image} alt="" />
+                            : <span>📦</span>
+                          }
+                        </div>
+                      ))}
+                      {(order.lines || []).length > 5 && (
+                        <div className="order-card-thumb order-card-thumb--more">
+                          +{order.lines.length - 5}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="order-card-footer">
+                      <span className="order-card-lines-count">
+                        {(order.lines || []).length} article{(order.lines || []).length !== 1 ? 's' : ''}
+                      </span>
+                      <span className="order-card-open-hint">Voir détails →</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
+      {/* Modals — always rendered outside tab conditional */}
       {showForm && (
         <OrderForm
           order={editOrder}
@@ -536,13 +602,13 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
         await axios.post(`${API_URL}/orders`, form);
       }
       onSave();
-    } catch(e) { alert(e.response?.data?.error || 'Erreur'); }
+    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
   };
-
+  const {t} = useLanguage();
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal xlarge" onClick={e => e.stopPropagation()}>
-        <h2>{order ? 'Modifier la commande' : 'Nouvelle commande'}</h2>
+        <h2>{order ? 'Modifier la commande' : t('orderNew')}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-grid-2">
             <div className="form-group">
@@ -714,6 +780,157 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+/* ── Purchase Requests Panel ──────────────────────────────────────────────
+   Shown on the "Demandes admin" tab.
+   ACHAT role sees all pending requests, can mark them as "commandé".
+   Admin sees full history (pending + done).
+────────────────────────────────────────────────────────────────────────── */
+function PurchaseRequestsPanel({ requests, loading, markingId, onMarkOrdered, onRefresh, isAdmin, lang }) {
+  const [filter, setFilter] = useState('pending'); // 'pending' | 'all'
+
+  const visible = filter === 'pending'
+    ? requests.filter(r => r.status === 'pending')
+    : requests;
+
+  const pendingCount = requests.filter(r => r.status === 'pending').length;
+
+  function fmtDate(d) {
+    if (!d) return '—';
+    return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  if (loading) {
+    return (
+      <div style={{ padding: '60px 20px', textAlign: 'center', color: '#888' }}>
+        <LoaderCircle size={24} style={{ animation: 'spin .7s linear infinite' }} />
+        <p style={{ marginTop: 8 }}>Chargement des demandes…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pr-panel">
+      {/* Header bar */}
+      <div className="pr-panel__header">
+        <div className="pr-panel__title">
+          <ShoppingCart size={16} />
+          <span>Demandes de commande</span>
+          {pendingCount > 0 && (
+            <span className="pr-badge">{pendingCount} en attente</span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="pr-filter-tabs">
+            <button
+              className={`pr-filter-tab ${filter === 'pending' ? 'active' : ''}`}
+              onClick={() => setFilter('pending')}
+            >
+              <Clock size={11} /> En attente
+            </button>
+            <button
+              className={`pr-filter-tab ${filter === 'all' ? 'active' : ''}`}
+              onClick={() => setFilter('all')}
+            >
+              Tout voir
+            </button>
+          </div>
+          <button className="pr-refresh-btn" onClick={onRefresh} title="Rafraîchir">
+            🔄
+          </button>
+        </div>
+      </div>
+
+      {/* Empty state */}
+      {visible.length === 0 ? (
+        <div className="pr-empty">
+          <ShoppingCart size={36} strokeWidth={1} style={{ color: '#ccc' }} />
+          <p>{filter === 'pending' ? 'Aucune demande en attente.' : 'Aucune demande trouvée.'}</p>
+        </div>
+      ) : (
+        <div className="pr-table-wrap">
+          <table className="pr-table">
+            <thead>
+              <tr>
+                <th style={{ width: 52 }}>Image</th>
+                <th>Article</th>
+                <th>Qté demandée</th>
+                <th>Note</th>
+                <th>Demandé par</th>
+                <th>Date</th>
+                <th>Statut</th>
+                <th style={{ width: 140 }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map(req => (
+                <tr key={req.id || req._id} className={`pr-row pr-row--${req.status}`}>
+                  {/* Image */}
+                  <td>
+                    {req.itemImage
+                      ? <img src={req.itemImage} alt={req.itemName} style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 6, border: '1px solid #e8e8e8', background: '#fff' }} />
+                      : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>
+                    }
+                  </td>
+                  {/* Item name */}
+                  <td>
+                    <strong style={{ fontSize: 13 }}>{req.itemName || '—'}</strong>
+                  </td>
+                  {/* Quantity */}
+                  <td>
+                    <span style={{ fontWeight: 700, fontSize: 15 }}>{req.quantity}</span>
+                  </td>
+                  {/* Note */}
+                  <td>
+                    <span style={{ fontSize: 12, color: '#555' }}>{req.note || <span style={{ color: '#ccc' }}>—</span>}</span>
+                  </td>
+                  {/* Requested by */}
+                  <td>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>{req.requestedBy || 'Admin'}</span>
+                  </td>
+                  {/* Date */}
+                  <td>
+                    <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>{fmtDate(req.createdAt)}</span>
+                  </td>
+                  {/* Status badge */}
+                  <td>
+                    {req.status === 'pending' ? (
+                      <span className="pr-status pr-status--pending">
+                        <Clock size={10} /> En attente
+                      </span>
+                    ) : (
+                      <span className="pr-status pr-status--done">
+                        <CheckCheck size={10} /> Commandé
+                        {req.orderedAt && <><br /><span style={{ fontSize: 10, color: '#666' }}>{fmtDate(req.orderedAt)}</span></>}
+                      </span>
+                    )}
+                  </td>
+                  {/* Action */}
+                  <td>
+                    {req.status === 'pending' ? (
+                      <button
+                        className="pr-mark-btn"
+                        disabled={markingId === (req.id || req._id)}
+                        onClick={() => onMarkOrdered(req.id || req._id)}
+                      >
+                        {markingId === (req.id || req._id)
+                          ? <LoaderCircle size={12} style={{ animation: 'spin .7s linear infinite' }} />
+                          : <CheckCheck size={13} />
+                        }
+                        Marquer commandé
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: 11, color: '#aaa' }}>Traité</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

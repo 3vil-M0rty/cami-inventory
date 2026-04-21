@@ -1,87 +1,66 @@
 import { useState } from 'react';
+import { Search, X, AlertTriangle, List } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 import './InventoryFilters.css';
 
-/**
- * InventoryFilters Component
- * 
- * Provides filtering and search capabilities
- */
-
 export const FILTER_TYPES = {
   ALL: 'all',
-  LOW_STOCK: 'low_stock'
+  LOW_STOCK: 'low_stock',
 };
 
 const InventoryFilters = ({ onFilterChange, onSearchChange }) => {
   const { t } = useLanguage();
   const [activeFilter, setActiveFilter] = useState(FILTER_TYPES.ALL);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm,   setSearchTerm]   = useState('');
 
-  const handleFilterClick = (filterType) => {
-    setActiveFilter(filterType);
-    onFilterChange(filterType);
+  const handleFilterClick = (type) => {
+    setActiveFilter(type);
+    onFilterChange(type);
   };
 
   const handleSearchChange = (e) => {
-    const value = e.target.value;
-    setSearchTerm(value);
-    onSearchChange(value);
+    setSearchTerm(e.target.value);
+    onSearchChange(e.target.value);
   };
 
-  const handleSearchClear = () => {
+  const clearSearch = () => {
     setSearchTerm('');
     onSearchChange('');
   };
 
   return (
-    <div className="inventory-filters">
-      {/* Filter Buttons */}
-      <div className="inventory-filters__buttons">
+    <div className="inv-filters">
+      <div className="inv-filters__pills">
         <button
-          className={`filter-btn ${activeFilter === FILTER_TYPES.ALL ? 'filter-btn--active' : ''}`}
+          className={`inv-filter-btn ${activeFilter === FILTER_TYPES.ALL ? 'active' : ''}`}
           onClick={() => handleFilterClick(FILTER_TYPES.ALL)}
         >
+          <List size={12} strokeWidth={2.5} />
           {t('showAll')}
         </button>
         <button
-          className={`filter-btn ${activeFilter === FILTER_TYPES.LOW_STOCK ? 'filter-btn--active' : ''}`}
+          className={`inv-filter-btn inv-filter-btn--alert ${activeFilter === FILTER_TYPES.LOW_STOCK ? 'active' : ''}`}
           onClick={() => handleFilterClick(FILTER_TYPES.LOW_STOCK)}
         >
+          <AlertTriangle size={12} strokeWidth={2.5} />
           {t('showLowStock')}
         </button>
       </div>
 
-      {/* Search Input */}
-      <div className="inventory-filters__search">
-        <div className="search-input">
-          <svg 
-            className="search-input__icon" 
-            width="18" 
-            height="18" 
-            viewBox="0 0 18 18" 
-            fill="none"
-          >
-            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-          <input
-            type="text"
-            className="search-input__field"
-            placeholder={t('searchPlaceholder')}
-            value={searchTerm}
-            onChange={handleSearchChange}
-          />
-          {searchTerm && (
-            <button
-              className="search-input__clear"
-              onClick={handleSearchClear}
-              aria-label="Clear search"
-            >
-              ×
-            </button>
-          )}
-        </div>
+      <div className="inv-filters__search">
+        <Search size={14} className="inv-search-icon" />
+        <input
+          type="text"
+          className="inv-search-field"
+          placeholder={t('searchPlaceholder')}
+          value={searchTerm}
+          onChange={handleSearchChange}
+        />
+        {searchTerm && (
+          <button className="inv-search-clear" onClick={clearSearch} aria-label="Clear search">
+            <X size={14} strokeWidth={2.5} />
+          </button>
+        )}
       </div>
     </div>
   );

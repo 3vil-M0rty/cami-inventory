@@ -1,6 +1,5 @@
 /**
  * CAMI / GIMAV — Backend Server
- * Full-featured: Inventory, Projects, Orders, Clients, Devis, BL, Companies
  */
 
 const bcrypt = require('bcryptjs');
@@ -12,14 +11,10 @@ const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
 
-
-
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Serve static files from the "public" folder
 app.use(express.static(path.join(__dirname, 'public')));
-
 app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
 app.use(express.json());
@@ -37,7 +32,6 @@ mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true 
 
 // ==================== SCHEMAS ====================
 
-// --- Company ---
 const companySchema = new mongoose.Schema({
   name: { type: String, required: true },
   address: { type: String, default: '' },
@@ -50,18 +44,6 @@ const companySchema = new mongoose.Schema({
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const Company = mongoose.model('Company', companySchema);
 
-
-
-
-
-
-
-
-
-
-
-
-// --- SuperCategory ---
 const superCategorySchema = new mongoose.Schema({
   key: { type: String, required: true, unique: true },
   label: { fr: String, it: String, en: String },
@@ -70,11 +52,8 @@ const superCategorySchema = new mongoose.Schema({
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const SuperCategory = mongoose.model('SuperCategory', superCategorySchema);
 
-
-// --- Role & User (Auth) ---
 const ALL_PERMISSIONS = [
   'inventory.view', 'inventory.edit', 'inventory.delete',
-  // Per-supercategory inventory permissions
   'inventory.aluminium.view', 'inventory.aluminium.edit', 'inventory.aluminium.delete',
   'inventory.verre.view', 'inventory.verre.edit', 'inventory.verre.delete',
   'inventory.accessoires.view', 'inventory.accessoires.edit', 'inventory.accessoires.delete',
@@ -114,7 +93,6 @@ const sessionSchema = new mongoose.Schema({
 }, { timestamps: true });
 const Session = mongoose.model('Session', sessionSchema);
 
-// --- Category ---
 const categorySchema = new mongoose.Schema({
   name: { it: { type: String, required: true }, fr: { type: String, required: true }, en: { type: String, required: true } },
   color: { type: String, default: '#3b82f6' },
@@ -123,7 +101,6 @@ const categorySchema = new mongoose.Schema({
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const Category = mongoose.model('Category', categorySchema);
 
-// --- Item ---
 const itemSchema = new mongoose.Schema({
   image: { type: String, default: '' },
   designation: { it: { type: String, required: true }, fr: { type: String, required: true }, en: { type: String, required: true } },
@@ -135,7 +112,6 @@ const itemSchema = new mongoose.Schema({
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const Item = mongoose.model('Item', itemSchema);
 
-// --- Stock Movement ---
 const stockMovementSchema = new mongoose.Schema({
   itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
   type: { type: String, enum: ['entree', 'sortie', 'project_use', 'project_return', 'order_reception'], required: true },
@@ -148,7 +124,6 @@ const stockMovementSchema = new mongoose.Schema({
 }, { timestamps: true });
 const StockMovement = mongoose.model('StockMovement', stockMovementSchema);
 
-// --- Order ---
 const orderLineSchema = new mongoose.Schema({
   itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
   quantityOrdered: { type: Number, required: true, min: 1 },
@@ -169,7 +144,6 @@ const orderSchema = new mongoose.Schema({
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const Order = mongoose.model('Order', orderSchema);
 
-// --- Client ---
 const clientSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   company: { type: String, default: '' },
@@ -182,7 +156,6 @@ const clientSchema = new mongoose.Schema({
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const Client = mongoose.model('Client', clientSchema);
 
-// --- Devis ---
 const devisLineSchema = new mongoose.Schema({
   chassisType: { type: String, default: '' },
   description: { type: String, default: '' },
@@ -208,7 +181,6 @@ const devisSchema = new mongoose.Schema({
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const Devis = mongoose.model('Devis', devisSchema);
 
-// --- ChassisType ---
 const chassisTypeSchema = new mongoose.Schema({
   value: { type: String, required: true, unique: true },
   fr: { type: String, required: true },
@@ -220,19 +192,17 @@ const chassisTypeSchema = new mongoose.Schema({
 }, { timestamps: true });
 const ChassisType = mongoose.model('ChassisType', chassisTypeSchema);
 
-// --- ChassisTypeAccessory ---
 const chassisTypeAccessorySchema = new mongoose.Schema({
   chassisTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'ChassisType', required: true },
-  itemId: { type: String, default: '' },  // inventory item id (string, optional)
+  itemId: { type: String, default: '' },
   label: { type: String, required: true },
   unit: { type: String, default: '' },
   quantity: { type: Number, default: 0, min: 0 },
-  formula: { type: String, default: '' },  // JS-safe expression using L and H, e.g. "2*(L+H)/1000"
+  formula: { type: String, default: '' },
 }, { timestamps: true });
 chassisTypeAccessorySchema.index({ chassisTypeId: 1 });
 const ChassisTypeAccessory = mongoose.model('ChassisTypeAccessory', chassisTypeAccessorySchema);
 
-// --- Component schemas ---
 const componentSchema = new mongoose.Schema({
   role: { type: String, enum: ['dormant', 'vantail'], required: true },
   repere: { type: String, default: '' },
@@ -257,11 +227,11 @@ const unitSchema = new mongoose.Schema({
 }, { _id: true });
 
 const chassisAccessorySchema = new mongoose.Schema({
-  itemId: { type: String, default: '' },  // inventory item id (optional, for reference)
+  itemId: { type: String, default: '' },
   label: { type: String, required: true },
   unit: { type: String, default: '' },
-  quantity: { type: Number, default: 0 },   // fixed quantity (used when formula is empty)
-  formula: { type: String, default: '' },  // JS-safe expression using L and H, e.g. "2*(L+H)/1000"
+  quantity: { type: Number, default: 0 },
+  formula: { type: String, default: '' },
 }, { _id: true });
 
 const chassisSchema = new mongoose.Schema({
@@ -276,7 +246,6 @@ const chassisSchema = new mongoose.Schema({
   accessories: [chassisAccessorySchema],
 }, { _id: true });
 
-// --- Project ---
 const projectSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   reference: { type: String, required: true, trim: true },
@@ -368,65 +337,29 @@ function syncUnits(chassis) {
 // ==================== SEED DATA ====================
 
 async function createDefaultAdminUser() {
-  // 1. Ensure the Admin role exists
   let adminRole = await Role.findOne({ name: 'Admin' });
   if (!adminRole) {
-    adminRole = await Role.create({
-      name: 'Admin',
-      permissions: ALL_PERMISSIONS,
-      color: '#1a1a1a',
-      isSystem: true,
-    });
+    adminRole = await Role.create({ name: 'Admin', permissions: ALL_PERMISSIONS, color: '#1a1a1a', isSystem: true });
     console.log('✅ Admin role created');
   }
-
-  // 2. Ensure default user exists in the User collection (NOT a separate Admin model)
   const existing = await User.findOne({ username: 'admin' });
   if (!existing) {
     const passwordHash = await bcrypt.hash('admin123', 10);
-    await User.create({
-      username: 'admin',
-      displayName: 'Administrateur',
-      passwordHash,
-      roleId: adminRole._id,
-      active: true,
-    });
+    await User.create({ username: 'admin', displayName: 'Administrateur', passwordHash, roleId: adminRole._id, active: true });
     console.log('✅ Default user created: admin / admin123');
-  } else {
-    console.log('ℹ️  Default admin user already exists');
   }
 }
 
 async function initSampleData() {
-  // Companies
   const compCount = await Company.countDocuments();
   if (compCount === 0) {
     await Company.insertMany([
-      {
-        name: 'CAMI',
-        address: 'Zone Industrielle, Marrakech, Maroc',
-        phone: '+212 5XX-XXXXXX',
-        email: 'contact@cami.ma',
-        color: '#f10000',
-        logo: '/cami.png',
-        rc: '',
-        ice: '',
-      },
-      {
-        name: 'GIMAV',
-        address: 'Zone Industrielle, Marrakech, Maroc',
-        phone: '+212 5XX-XXXXXX',
-        email: 'contact@gimav.ma',
-        color: '#032699',
-        logo: '/gimav.png',
-        rc: '',
-        ice: '',
-      },
+      { name: 'CAMI', address: 'Zone Industrielle, Marrakech, Maroc', phone: '+212 5XX-XXXXXX', email: 'contact@cami.ma', color: '#f10000', logo: '/cami.png', rc: '', ice: '' },
+      { name: 'GIMAV', address: 'Zone Industrielle, Marrakech, Maroc', phone: '+212 5XX-XXXXXX', email: 'contact@gimav.ma', color: '#032699', logo: '/gimav.png', rc: '', ice: '' },
     ]);
     console.log('✅ Companies seeded');
   }
 
-  // Chassis types
   const ctCount = await ChassisType.countDocuments();
   if (ctCount === 0) {
     await ChassisType.insertMany([
@@ -471,7 +404,6 @@ async function initSampleData() {
   }
 }
 
-// Run seed after connection is open
 mongoose.connection.once('open', async () => {
   console.log('Connected to MongoDB');
   await createDefaultAdminUser();
@@ -503,9 +435,7 @@ async function migrateExistingData() {
     if (itemResult.modifiedCount > 0 || catResult.modifiedCount > 0) {
       console.log(`✅ Migration: ${itemResult.modifiedCount} items + ${catResult.modifiedCount} categories → superCategory='aluminium'`);
     }
-  } catch (e) {
-    console.error('Migration error:', e.message);
-  }
+  } catch (e) { console.error('Migration error:', e.message); }
 }
 
 app.post('/api/migrate/super-categories', async (req, res) => {
@@ -518,15 +448,8 @@ app.post('/api/migrate/super-categories', async (req, res) => {
       { $or: [{ superCategory: { $exists: false } }, { superCategory: null }, { superCategory: '' }] },
       { $set: { superCategory: 'aluminium' } }
     );
-    res.json({
-      success: true,
-      itemsMigrated: itemResult.modifiedCount,
-      categoriesMigrated: catResult.modifiedCount,
-      message: `${itemResult.modifiedCount} articles et ${catResult.modifiedCount} catégories migrés vers aluminium`
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    res.json({ success: true, itemsMigrated: itemResult.modifiedCount, categoriesMigrated: catResult.modifiedCount });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ==================== COMPANY ROUTES ====================
@@ -535,11 +458,8 @@ app.get('/api/companies', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/companies', async (req, res) => {
-  try {
-    const c = new Company(req.body);
-    await c.save();
-    res.status(201).json(c);
-  } catch (e) { res.status(400).json({ error: e.message }); }
+  try { const c = new Company(req.body); await c.save(); res.status(201).json(c); }
+  catch (e) { res.status(400).json({ error: e.message }); }
 });
 app.put('/api/companies/:id', async (req, res) => {
   try {
@@ -548,7 +468,6 @@ app.put('/api/companies/:id', async (req, res) => {
     res.json(c);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.delete('/api/companies/:id', async (req, res) => {
   try {
     const c = await Company.findByIdAndDelete(req.params.id);
@@ -575,87 +494,35 @@ async function requireAuth(req, res, next) {
 
 function requirePermission(perm) {
   return (req, res, next) => {
-    if (!req.permissions.includes(perm)) {
-      return res.status(403).json({ error: `Accès refusé — permission requise: ${perm}` });
-    }
+    if (!req.permissions.includes(perm)) return res.status(403).json({ error: `Accès refusé — permission requise: ${perm}` });
     next();
   };
 }
 
-/**
- * Resolves which supercategory keys a user can VIEW.
- *
- * Priority rules (subcategory perms always win over global):
- *
- *   CASE 1 — subcategory perms present (with or without global):
- *     → return only the explicitly allowed subcategories
- *     → global inventory.view is treated as a fallback, not an override
- *
- *   CASE 2 — ONLY global inventory.view, no subcategory perms:
- *     → return null (no DB filter = all supercategories visible)
- *     → backward-compatible for admin/full-access roles
- *
- *   CASE 3 — neither:
- *     → return [] (no access)
- *
- * This means: if you grant inventory.view + accessoires.view,
- * the user sees ONLY accessoires (subcategory wins).
- */
 async function resolveAllowedSCs(permissions) {
   if (!permissions || permissions.length === 0) return [];
-
-  // Collect all known SC keys (built-in + dynamic from DB)
   const BUILTIN = ["aluminium", "verre", "accessoires", "poudre"];
   let ALL_SC = [...BUILTIN];
   try {
     const dbSCs = await SuperCategory.find().lean();
-    const dbKeys = dbSCs.map(s => s.key);
-    ALL_SC = [...new Set([...BUILTIN, ...dbKeys])];
-  } catch { /* use built-ins */ }
-
-  // Admin shortcut
+    ALL_SC = [...new Set([...BUILTIN, ...dbSCs.map(s => s.key)])];
+  } catch { }
   if (permissions.includes("admin.view")) return null;
-
-  // Collect explicitly granted subcategory view perms
   const scPerms = ALL_SC.filter(sc => permissions.includes(`inventory.${sc}.view`));
-
-  if (scPerms.length > 0) {
-    // Subcategory perms are set → they WIN, restrict to exactly those
-    return scPerms;
-  }
-
-  if (permissions.includes("inventory.view")) {
-    // Global view only, no subcategory restrictions → show all
-    return null;
-  }
-
-  return []; // no inventory access
+  if (scPerms.length > 0) return scPerms;
+  if (permissions.includes("inventory.view")) return null;
+  return [];
 }
 
-/**
- * Can the user edit items in a given supercategory?
- *
- * Same priority logic as resolveAllowedSCs:
- *   - If ANY subcategory edit perm exists → only those subcategories are editable
- *   - If ONLY global inventory.edit → all editable
- *   - inventory.edit + sc.edit → only the sc (subcategory wins)
- */
 function canEditSC(permissions, sc) {
   if (!permissions || permissions.length === 0) return false;
-  // Check explicit SC edit perm first
   if (permissions.includes(`inventory.${sc}.edit`)) return true;
-  // Check if any OTHER sc edit perm exists — if so, global doesn't help for THIS sc
   const BUILTIN = ["aluminium", "verre", "accessoires", "poudre"];
   const hasAnySCEdit = BUILTIN.some(s => permissions.includes(`inventory.${s}.edit`));
-  if (hasAnySCEdit) return false; // other SCs are explicitly controlled, this one isn't granted
-  // No SC-specific edit perms at all → fall back to global
+  if (hasAnySCEdit) return false;
   return permissions.includes("inventory.edit");
 }
 
-/**
- * Can the user delete items in a given supercategory?
- * Same priority logic as canEditSC.
- */
 function canDeleteSC(permissions, sc) {
   if (!permissions || permissions.length === 0) return false;
   if (permissions.includes(`inventory.${sc}.delete`)) return true;
@@ -665,10 +532,6 @@ function canDeleteSC(permissions, sc) {
   return permissions.includes("inventory.delete");
 }
 
-/**
- * Middleware: inject allowedSuperCategories into req (optional auth).
- * Public routes still work if no token sent (allowed = all).
- */
 async function optionalAuth(req, res, next) {
   const token = req.headers["x-auth-token"] || req.headers["authorization"]?.replace("Bearer ", "");
   if (!token) { req.permissions = []; req.allowedSuperCategories = null; return next(); }
@@ -695,10 +558,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!ok) return res.status(401).json({ error: 'Identifiants incorrects' });
     const token = crypto.randomBytes(48).toString('hex');
     await Session.create({ token, userId: user._id, expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) });
-    res.json({
-      token,
-      user: { id: user.id, username: user.username, displayName: user.displayName, role: user.roleId?.name, permissions: user.roleId?.permissions || [], companyId: user.companyId }
-    });
+    res.json({ token, user: { id: user.id, username: user.username, displayName: user.displayName, role: user.roleId?.name, permissions: user.roleId?.permissions || [], companyId: user.companyId } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -709,10 +569,7 @@ app.post('/api/auth/logout', async (req, res) => {
 });
 
 app.get('/api/auth/me', requireAuth, (req, res) => {
-  res.json({
-    id: req.user.id, username: req.user.username, displayName: req.user.displayName,
-    role: req.user.roleId?.name, permissions: req.permissions, companyId: req.user.companyId
-  });
+  res.json({ id: req.user.id, username: req.user.username, displayName: req.user.displayName, role: req.user.roleId?.name, permissions: req.permissions, companyId: req.user.companyId });
 });
 
 app.post('/api/auth/change-password', requireAuth, async (req, res) => {
@@ -734,14 +591,12 @@ app.get('/api/roles', requireAuth, requirePermission('admin.view'), async (req, 
   try { res.json(await Role.find().sort({ createdAt: 1 })); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.post('/api/roles', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     const r = await Role.create({ name: req.body.name, permissions: req.body.permissions || [], color: req.body.color || '#3b82f6' });
     res.status(201).json(r);
   } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ error: e.message }); }
 });
-
 app.put('/api/roles/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     const r = await Role.findById(req.params.id);
@@ -749,20 +604,17 @@ app.put('/api/roles/:id', requireAuth, requirePermission('admin.view'), async (r
     r.name = req.body.name || r.name;
     r.permissions = req.body.permissions ?? r.permissions;
     r.color = req.body.color || r.color;
-    await r.save();
-    res.json(r);
+    await r.save(); res.json(r);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.delete('/api/roles/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     const r = await Role.findById(req.params.id);
     if (!r) return res.status(404).json({ error: 'Not found' });
     if (r.isSystem) return res.status(400).json({ error: 'Impossible de supprimer le rôle Admin système' });
     const usersWithRole = await User.countDocuments({ roleId: req.params.id });
-    if (usersWithRole > 0) return res.status(400).json({ error: `${usersWithRole} utilisateur(s) ont ce rôle. Changez leur rôle d'abord.` });
-    await Role.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
+    if (usersWithRole > 0) return res.status(400).json({ error: `${usersWithRole} utilisateur(s) ont ce rôle.` });
+    await Role.findByIdAndDelete(req.params.id); res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -772,19 +624,17 @@ app.get('/api/users', requireAuth, requirePermission('admin.view'), async (req, 
   try { res.json(await User.find().populate('roleId').populate('companyId').sort({ createdAt: -1 })); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.post('/api/users', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     const { username, displayName, password, roleId, companyId, active } = req.body;
     if (!username || !password || !roleId) return res.status(400).json({ error: 'username, password et roleId requis' });
-    if (password.length < 4) return res.status(400).json({ error: 'Mot de passe trop court (min 4 caractères)' });
+    if (password.length < 4) return res.status(400).json({ error: 'Mot de passe trop court' });
     const hash = await bcrypt.hash(password, 10);
     const u = await User.create({ username: username.toLowerCase().trim(), displayName, passwordHash: hash, roleId, companyId: companyId || null, active: active !== false });
     await u.populate('roleId'); await u.populate('companyId');
     res.status(201).json(u);
   } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ error: e.message }); }
 });
-
 app.put('/api/users/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     const u = await User.findById(req.params.id);
@@ -793,14 +643,11 @@ app.put('/api/users/:id', requireAuth, requirePermission('admin.view'), async (r
     if (req.body.roleId) u.roleId = req.body.roleId;
     if (req.body.companyId !== undefined) u.companyId = req.body.companyId || null;
     if (req.body.active !== undefined) u.active = req.body.active;
-    if (req.body.password && req.body.password.length >= 4) {
-      u.passwordHash = await bcrypt.hash(req.body.password, 10);
-    }
+    if (req.body.password && req.body.password.length >= 4) u.passwordHash = await bcrypt.hash(req.body.password, 10);
     await u.save(); await u.populate('roleId'); await u.populate('companyId');
     res.json(u);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.delete('/api/users/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     if (req.user.id === req.params.id) return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
@@ -811,13 +658,10 @@ app.delete('/api/users/:id', requireAuth, requirePermission('admin.view'), async
 });
 
 app.get('/api/permissions', requireAuth, requirePermission('admin.view'), async (req, res) => {
-  // Build dynamic per-supercategory permissions
   const superCats = await SuperCategory.find().sort({ order: 1 }).lean();
   const allSuperCats = superCats.length ? superCats : [
-    { key: 'aluminium', label: { fr: 'Aluminium', it: 'Alluminio', en: 'Aluminium' } },
-    { key: 'verre', label: { fr: 'Verre', it: 'Vetro', en: 'Glass' } },
-    { key: 'accessoires', label: { fr: 'Accessoires', it: 'Accessori', en: 'Accessories' } },
-    { key: 'poudre', label: { fr: 'Poudre', it: 'Polvere', en: 'Powder' } },
+    { key: 'aluminium', label: { fr: 'Aluminium' } }, { key: 'verre', label: { fr: 'Verre' } },
+    { key: 'accessoires', label: { fr: 'Accessoires' } }, { key: 'poudre', label: { fr: 'Poudre' } },
   ];
   const scPerms = [];
   for (const sc of allSuperCats) {
@@ -864,8 +708,7 @@ app.get('/api/categories', async (req, res) => {
 app.post('/api/categories', async (req, res) => {
   try {
     const c = new Category({ name: req.body.name, color: req.body.color || '#3b82f6', order: req.body.order || 0, superCategory: req.body.superCategory || 'aluminium' });
-    await c.save();
-    res.status(201).json(c);
+    await c.save(); res.status(201).json(c);
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
 app.put('/api/categories/:id', async (req, res) => {
@@ -885,51 +728,22 @@ app.delete('/api/categories/:id', async (req, res) => {
 
 // ==================== INVENTORY ROUTES ====================
 
-/**
- * Helper: apply supercategory permission filter to a Mongoose filter object.
- *
- * allowedSC:
- *   null   => user has global inventory.view  => no restriction at all
- *   []     => user has NO view access         => return false (empty result)
- *   [...]  => restrict items to these keys
- *
- * When the frontend sends ?superCategory=X:
- *   - If X is in allowedSC => keep the filter as-is (show only X)
- *   - If X is NOT in allowedSC => clamp to allowedSC (security, tabs should
- *     have already hidden X but this is a safe fallback)
- *
- * Returns false if the caller should immediately return an empty array.
- */
 function applyScFilter(filter, allowedSC) {
-  if (allowedSC === null) return true;      // global view, no SC restriction
-  if (allowedSC.length === 0) return false; // no access at all
-
+  if (allowedSC === null) return true;
+  if (allowedSC.length === 0) return false;
   const requested = filter.superCategory;
-
   if (requested && typeof requested === 'string') {
-    if (allowedSC.includes(requested)) {
-      // Requested SC is allowed — keep filter as-is
-      return true;
-    } else {
-      // Requested SC is not in allowed list — override with allowed list
-      // (frontend tabs should have prevented this, but safe fallback)
-      filter.superCategory = { $in: allowedSC };
-      return true;
-    }
+    if (allowedSC.includes(requested)) return true;
+    filter.superCategory = { $in: allowedSC };
+    return true;
   }
-
-  // No specific SC requested — restrict to allowed list
   filter.superCategory = { $in: allowedSC };
   return true;
 }
 
-// Also expose allowed supercategories as a dedicated endpoint so the frontend
-// can show/hide tabs without needing to enumerate inventory items.
 app.get('/api/inventory/allowed-supercategories', optionalAuth, (req, res) => {
-  // null => all allowed (admin), array => subset
   res.json({ allowedSuperCategories: req.allowedSuperCategories });
 });
-
 app.get('/api/inventory', optionalAuth, async (req, res) => {
   try {
     const filter = {};
@@ -965,12 +779,9 @@ app.get('/api/inventory/:id', optionalAuth, async (req, res) => {
   try {
     const item = await Item.findById(req.params.id).populate('categoryId');
     if (!item) return res.status(404).json({ error: 'Not found' });
-    // Check per-item supercategory access
     const sc = item.superCategory || 'aluminium';
     const allowed = req.allowedSuperCategories;
-    if (allowed !== null && !allowed.includes(sc)) {
-      return res.status(403).json({ error: 'Accès refusé à cette catégorie' });
-    }
+    if (allowed !== null && !allowed.includes(sc)) return res.status(403).json({ error: 'Accès refusé à cette catégorie' });
     res.json(item);
   } catch (e) { res.status(e.kind === 'ObjectId' ? 400 : 500).json({ error: e.message }); }
 });
@@ -978,14 +789,8 @@ app.post('/api/inventory', optionalAuth, async (req, res) => {
   try {
     const sc = req.body.superCategory || 'aluminium';
     if (!canEditSC(req.permissions, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
-    const item = new Item({
-      image: req.body.image || '', designation: req.body.designation,
-      quantity: Number(req.body.quantity) || 0, orderedQuantity: Number(req.body.orderedQuantity) || 0,
-      threshold: Number(req.body.threshold) || 0, categoryId: req.body.categoryId || null,
-      superCategory: sc
-    });
-    await item.save();
-    await item.populate('categoryId');
+    const item = new Item({ image: req.body.image || '', designation: req.body.designation, quantity: Number(req.body.quantity) || 0, orderedQuantity: Number(req.body.orderedQuantity) || 0, threshold: Number(req.body.threshold) || 0, categoryId: req.body.categoryId || null, superCategory: sc });
+    await item.save(); await item.populate('categoryId');
     res.status(201).json(item);
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
@@ -993,12 +798,7 @@ app.put('/api/inventory/:id', optionalAuth, async (req, res) => {
   try {
     const sc = req.body.superCategory || 'aluminium';
     if (!canEditSC(req.permissions, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
-    const item = await Item.findByIdAndUpdate(req.params.id, {
-      image: req.body.image, designation: req.body.designation,
-      quantity: Number(req.body.quantity) || 0, orderedQuantity: Number(req.body.orderedQuantity) || 0,
-      threshold: Number(req.body.threshold) || 0, categoryId: req.body.categoryId || null,
-      superCategory: sc
-    }, { new: true, runValidators: true }).populate('categoryId');
+    const item = await Item.findByIdAndUpdate(req.params.id, { image: req.body.image, designation: req.body.designation, quantity: Number(req.body.quantity) || 0, orderedQuantity: Number(req.body.orderedQuantity) || 0, threshold: Number(req.body.threshold) || 0, categoryId: req.body.categoryId || null, superCategory: sc }, { new: true, runValidators: true }).populate('categoryId');
     if (!item) return res.status(404).json({ error: 'Not found' });
     res.json(item);
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
@@ -1013,10 +813,7 @@ app.patch('/api/inventory/:id/quantity', optionalAuth, async (req, res) => {
     if (!canEditSC(req.permissions, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
     item.quantity = Math.max(0, item.quantity + amount);
     await item.save();
-    await StockMovement.create({
-      itemId: item._id, type: amount >= 0 ? 'entree' : 'sortie',
-      quantity: Math.abs(amount), balanceAfter: item.quantity, note: note || '',
-    });
+    await StockMovement.create({ itemId: item._id, type: amount >= 0 ? 'entree' : 'sortie', quantity: Math.abs(amount), balanceAfter: item.quantity, note: note || '' });
     await item.populate('categoryId');
     res.json(item);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1034,10 +831,8 @@ app.delete('/api/inventory/:id', optionalAuth, async (req, res) => {
 
 // ==================== ORDER ROUTES ====================
 app.get('/api/orders', async (req, res) => {
-  try {
-    const orders = await Order.find().populate('lines.itemId').populate('companyId').sort({ createdAt: -1 });
-    res.json(orders);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  try { res.json(await Order.find().populate('lines.itemId').populate('companyId').sort({ createdAt: -1 })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/orders/:id', async (req, res) => {
   try {
@@ -1048,21 +843,9 @@ app.get('/api/orders/:id', async (req, res) => {
 });
 app.post('/api/orders', async (req, res) => {
   try {
-    const o = new Order({
-      reference: req.body.reference, companyId: req.body.companyId || null,
-      supplier: req.body.supplier || '', orderDate: req.body.orderDate,
-      expectedDate: req.body.expectedDate || null, notes: req.body.notes || '',
-      lines: (req.body.lines || []).map(l => ({
-        itemId: l.itemId, quantityOrdered: Number(l.quantityOrdered) || 1,
-        quantityReceived: 0, unitPrice: Number(l.unitPrice) || 0, note: l.note || ''
-      }))
-    });
-    for (const line of o.lines) {
-      await Item.findByIdAndUpdate(line.itemId, { $inc: { orderedQuantity: line.quantityOrdered } });
-    }
-    await o.save();
-    await o.populate('lines.itemId');
-    await o.populate('companyId');
+    const o = new Order({ reference: req.body.reference, companyId: req.body.companyId || null, supplier: req.body.supplier || '', orderDate: req.body.orderDate, expectedDate: req.body.expectedDate || null, notes: req.body.notes || '', lines: (req.body.lines || []).map(l => ({ itemId: l.itemId, quantityOrdered: Number(l.quantityOrdered) || 1, quantityReceived: 0, unitPrice: Number(l.unitPrice) || 0, note: l.note || '' })) });
+    for (const line of o.lines) await Item.findByIdAndUpdate(line.itemId, { $inc: { orderedQuantity: line.quantityOrdered } });
+    await o.save(); await o.populate('lines.itemId'); await o.populate('companyId');
     res.status(201).json(o);
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
@@ -1070,60 +853,19 @@ app.put('/api/orders/:id', async (req, res) => {
   try {
     const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Not found' });
-
-    // Scalar fields
-    o.reference = req.body.reference;
-    o.companyId = req.body.companyId || null;
-    o.supplier = req.body.supplier || '';
-    o.orderDate = req.body.orderDate;
-    o.expectedDate = req.body.expectedDate || null;
-    o.notes = req.body.notes || '';
-    o.status = req.body.status;
-
-    // Lines — update in place to preserve quantityReceived on existing lines,
-    // adjust orderedQuantity on inventory items for added/removed/changed lines
+    o.reference = req.body.reference; o.companyId = req.body.companyId || null; o.supplier = req.body.supplier || ''; o.orderDate = req.body.orderDate; o.expectedDate = req.body.expectedDate || null; o.notes = req.body.notes || ''; o.status = req.body.status;
     if (Array.isArray(req.body.lines)) {
       const oldLines = o.lines;
-
-      // Reverse old orderedQuantity contributions for lines that are changing qty or being removed
       for (const oldLine of oldLines) {
         const incoming = req.body.lines.find(l => l._id && l._id.toString() === oldLine._id.toString());
         const oldPending = oldLine.quantityOrdered - (oldLine.quantityReceived || 0);
-        if (!incoming) {
-          // Line removed — reverse its pending orderedQuantity
-          if (oldPending > 0) await Item.findByIdAndUpdate(oldLine.itemId, { $inc: { orderedQuantity: -oldPending } });
-        } else if (Number(incoming.quantityOrdered) !== oldLine.quantityOrdered) {
-          // Quantity changed — adjust the delta
-          const newPending = Number(incoming.quantityOrdered) - (oldLine.quantityReceived || 0);
-          const delta = newPending - oldPending;
-          if (delta !== 0) await Item.findByIdAndUpdate(oldLine.itemId, { $inc: { orderedQuantity: delta } });
-        }
+        if (!incoming) { if (oldPending > 0) await Item.findByIdAndUpdate(oldLine.itemId, { $inc: { orderedQuantity: -oldPending } }); }
+        else if (Number(incoming.quantityOrdered) !== oldLine.quantityOrdered) { const newPending = Number(incoming.quantityOrdered) - (oldLine.quantityReceived || 0); const delta = newPending - oldPending; if (delta !== 0) await Item.findByIdAndUpdate(oldLine.itemId, { $inc: { orderedQuantity: delta } }); }
       }
-
-      // Apply orderedQuantity for brand-new lines (no _id)
-      for (const incoming of req.body.lines) {
-        if (!incoming._id) {
-          await Item.findByIdAndUpdate(incoming.itemId, { $inc: { orderedQuantity: Number(incoming.quantityOrdered) || 1 } });
-        }
-      }
-
-      // Build new lines array, preserving quantityReceived for existing lines
-      o.lines = req.body.lines.map(l => {
-        const existing = l._id ? oldLines.find(ol => ol._id.toString() === l._id.toString()) : null;
-        return {
-          _id: existing?._id,
-          itemId: l.itemId,
-          quantityOrdered: Number(l.quantityOrdered) || 1,
-          quantityReceived: existing?.quantityReceived || 0,
-          unitPrice: Number(l.unitPrice) || 0,
-          note: l.note || '',
-        };
-      });
+      for (const incoming of req.body.lines) { if (!incoming._id) await Item.findByIdAndUpdate(incoming.itemId, { $inc: { orderedQuantity: Number(incoming.quantityOrdered) || 1 } }); }
+      o.lines = req.body.lines.map(l => { const existing = l._id ? oldLines.find(ol => ol._id.toString() === l._id.toString()) : null; return { _id: existing?._id, itemId: l.itemId, quantityOrdered: Number(l.quantityOrdered) || 1, quantityReceived: existing?.quantityReceived || 0, unitPrice: Number(l.unitPrice) || 0, note: l.note || '' }; });
     }
-
-    await o.save();
-    await o.populate('lines.itemId');
-    await o.populate('companyId');
+    await o.save(); await o.populate('lines.itemId'); await o.populate('companyId');
     res.json(o);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1139,22 +881,11 @@ app.patch('/api/orders/:id/receive', async (req, res) => {
     if (newlyReceived <= 0) return res.status(400).json({ error: 'New reception quantity must be greater than already received' });
     line.quantityReceived = Number(quantityReceived);
     const item = await Item.findById(line.itemId);
-    if (item) {
-      item.quantity += newlyReceived;
-      item.orderedQuantity = Math.max(0, (item.orderedQuantity || 0) - newlyReceived);
-      await item.save();
-      await StockMovement.create({
-        itemId: item._id, type: 'order_reception', quantity: newlyReceived,
-        balanceAfter: item.quantity, orderId: o._id, note: `Réception commande ${o.reference}`
-      });
-    }
+    if (item) { item.quantity += newlyReceived; item.orderedQuantity = Math.max(0, (item.orderedQuantity || 0) - newlyReceived); await item.save(); await StockMovement.create({ itemId: item._id, type: 'order_reception', quantity: newlyReceived, balanceAfter: item.quantity, orderId: o._id, note: `Réception commande ${o.reference}` }); }
     const allReceived = o.lines.every(l => l.quantityReceived >= l.quantityOrdered);
     const someReceived = o.lines.some(l => (l.quantityReceived || 0) > 0);
-    if (allReceived) o.status = 'recue';
-    else if (someReceived) o.status = 'partielle';
-    await o.save();
-    await o.populate('lines.itemId');
-    await o.populate('companyId');
+    if (allReceived) o.status = 'recue'; else if (someReceived) o.status = 'partielle';
+    await o.save(); await o.populate('lines.itemId'); await o.populate('companyId');
     res.json(o);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1162,14 +893,8 @@ app.delete('/api/orders/:id', async (req, res) => {
   try {
     const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Not found' });
-    for (const line of o.lines) {
-      const notReceived = line.quantityOrdered - (line.quantityReceived || 0);
-      if (notReceived > 0) {
-        await Item.findByIdAndUpdate(line.itemId, { $inc: { orderedQuantity: -notReceived } });
-      }
-    }
-    await Order.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
+    for (const line of o.lines) { const notReceived = line.quantityOrdered - (line.quantityReceived || 0); if (notReceived > 0) await Item.findByIdAndUpdate(line.itemId, { $inc: { orderedQuantity: -notReceived } }); }
+    await Order.findByIdAndDelete(req.params.id); res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1186,12 +911,8 @@ app.get('/api/clients/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/clients', async (req, res) => {
-  try {
-    const c = new Client(req.body);
-    await c.save();
-    await c.populate('companyId');
-    res.status(201).json(c);
-  } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
+  try { const c = new Client(req.body); await c.save(); await c.populate('companyId'); res.status(201).json(c); }
+  catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
 app.put('/api/clients/:id', async (req, res) => {
   try {
@@ -1215,8 +936,7 @@ app.get('/api/devis', async (req, res) => {
     if (req.query.clientId) filter.clientId = req.query.clientId;
     if (req.query.companyId) filter.companyId = req.query.companyId;
     if (req.query.status) filter.status = req.query.status;
-    const list = await Devis.find(filter).populate('clientId').populate('companyId').sort({ createdAt: -1 });
-    res.json(list);
+    res.json(await Devis.find(filter).populate('clientId').populate('companyId').sort({ createdAt: -1 }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/devis/:id', async (req, res) => {
@@ -1227,13 +947,8 @@ app.get('/api/devis/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/devis', async (req, res) => {
-  try {
-    const d = new Devis(req.body);
-    await d.save();
-    await d.populate('clientId');
-    await d.populate('companyId');
-    res.status(201).json(d);
-  } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
+  try { const d = new Devis(req.body); await d.save(); await d.populate('clientId'); await d.populate('companyId'); res.status(201).json(d); }
+  catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
 app.put('/api/devis/:id', async (req, res) => {
   try {
@@ -1268,22 +983,13 @@ app.get('/api/projects/:id', async (req, res) => {
 });
 app.post('/api/projects', async (req, res) => {
   try {
-    const p = new Project({
-      name: req.body.name, reference: req.body.reference,
-      ralCode: req.body.ralCode, ralColor: req.body.ralColor || '#ffffff',
-      date: req.body.date, companyId: req.body.companyId || null,
-      clientId: req.body.clientId || null
-    });
-    await p.save();
-    res.status(201).json(p.toJSON());
+    const p = new Project({ name: req.body.name, reference: req.body.reference, ralCode: req.body.ralCode, ralColor: req.body.ralColor || '#ffffff', date: req.body.date, companyId: req.body.companyId || null, clientId: req.body.clientId || null });
+    await p.save(); res.status(201).json(p.toJSON());
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
 app.put('/api/projects/:id', async (req, res) => {
   try {
-    const p = await Project.findByIdAndUpdate(req.params.id,
-      { name: req.body.name, reference: req.body.reference, ralCode: req.body.ralCode, ralColor: req.body.ralColor, date: req.body.date, companyId: req.body.companyId || null, clientId: req.body.clientId || null },
-      { new: true, runValidators: true }
-    ).populate('usedBars.itemId').populate('companyId').populate('clientId');
+    const p = await Project.findByIdAndUpdate(req.params.id, { name: req.body.name, reference: req.body.reference, ralCode: req.body.ralCode, ralColor: req.body.ralColor, date: req.body.date, companyId: req.body.companyId || null, clientId: req.body.clientId || null }, { new: true, runValidators: true }).populate('usedBars.itemId').populate('companyId').populate('clientId');
     if (!p) return res.status(404).json({ error: 'Not found' });
     res.json(p.toJSON());
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
@@ -1309,8 +1015,7 @@ app.post('/api/projects/:id/chassis', async (req, res) => {
     const qty = Number(req.body.quantity) || 1;
     const units = Array.from({ length: qty }, (_, i) => ({ unitIndex: i, etat: req.body.etat || 'non_entame', deliveryDate: null, notes: '' }));
     project.chassis.push({ type: req.body.type, repere: req.body.repere, quantity: qty, largeur: Number(req.body.largeur) || 0, hauteur: Number(req.body.hauteur) || 0, dimension: req.body.dimension || `${req.body.largeur}×${req.body.hauteur}`, components: req.body.components || [], units });
-    await project.save();
-    res.status(201).json(await populateAndReturn(project));
+    await project.save(); res.status(201).json(await populateAndReturn(project));
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
 app.put('/api/projects/:id/chassis/:cid', async (req, res) => {
@@ -1326,14 +1031,11 @@ app.put('/api/projects/:id/chassis/:cid', async (req, res) => {
     if (req.body.dimension !== undefined) chassis.dimension = req.body.dimension;
     if (req.body.components !== undefined) chassis.components = req.body.components;
     if (req.body.quantity !== undefined) {
-      const newQty = Number(req.body.quantity);
-      const oldQty = chassis.quantity;
-      chassis.quantity = newQty;
+      const newQty = Number(req.body.quantity); const oldQty = chassis.quantity; chassis.quantity = newQty;
       if (newQty > oldQty) { for (let i = oldQty; i < newQty; i++) chassis.units.push({ unitIndex: i, etat: 'non_entame', deliveryDate: null, notes: '' }); }
       else if (newQty < oldQty) { chassis.units = chassis.units.filter(u => u.unitIndex < newQty); }
     }
-    await project.save();
-    res.json(await populateAndReturn(project));
+    await project.save(); res.json(await populateAndReturn(project));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.patch('/api/projects/:id/chassis/:cid/units/:unitIndex', async (req, res) => {
@@ -1347,11 +1049,10 @@ app.patch('/api/projects/:id/chassis/:cid/units/:unitIndex', async (req, res) =>
     const isComposite = (chassis.components || []).length > 0;
     if (!unit) { chassis.units.push({ unitIndex: idx, etat: 'non_entame', deliveryDate: null, notes: '', componentStates: [] }); unit = chassis.units.find(u => u.unitIndex === idx); }
     if (req.body.etat !== undefined && !isComposite) { unit.etat = req.body.etat; unit.deliveryDate = req.body.etat === 'livre' ? (req.body.deliveryDate ? new Date(req.body.deliveryDate) : new Date()) : null; }
-    if (req.body.deliveryDate !== undefined && req.body.etat === undefined) { unit.deliveryDate = req.body.deliveryDate ? new Date(req.body.deliveryDate) : null; }
+    if (req.body.deliveryDate !== undefined && req.body.etat === undefined) unit.deliveryDate = req.body.deliveryDate ? new Date(req.body.deliveryDate) : null;
     if (req.body.notes !== undefined) unit.notes = req.body.notes;
     if (req.body.atelierTable !== undefined) unit.atelierTable = req.body.atelierTable;
-    await project.save();
-    res.json(await populateAndReturn(project));
+    await project.save(); res.json(await populateAndReturn(project));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.patch('/api/projects/:id/chassis/:cid/units/:unitIndex/components/:compIndex', async (req, res) => {
@@ -1362,8 +1063,7 @@ app.patch('/api/projects/:id/chassis/:cid/units/:unitIndex/components/:compIndex
     if (!chassis) return res.status(404).json({ error: 'Chassis not found' });
     const numComps = (chassis.components || []).length;
     if (!numComps) return res.status(400).json({ error: 'Chassis is not composite' });
-    const unitIdx = parseInt(req.params.unitIndex, 10);
-    const compIdx = parseInt(req.params.compIndex, 10);
+    const unitIdx = parseInt(req.params.unitIndex, 10); const compIdx = parseInt(req.params.compIndex, 10);
     if (compIdx < 0 || compIdx >= numComps) return res.status(400).json({ error: 'Invalid component index' });
     let unit = chassis.units.find(u => u.unitIndex === unitIdx);
     if (!unit) { chassis.units.push({ unitIndex: unitIdx, etat: 'non_entame', deliveryDate: null, notes: '', componentStates: Array.from({ length: numComps }, (_, ci) => ({ compIndex: ci, etat: 'non_entame' })) }); unit = chassis.units.find(u => u.unitIndex === unitIdx); }
@@ -1374,8 +1074,7 @@ app.patch('/api/projects/:id/chassis/:cid/units/:unitIndex/components/:compIndex
     unit.etat = deriveCompositeUnitEtat(unit, numComps);
     if (unit.etat === 'livre') { const dates = (unit.componentStates || []).map(c => c.deliveryDate).filter(Boolean); unit.deliveryDate = dates.length ? new Date(Math.max(...dates.map(d => new Date(d)))) : new Date(); }
     else { unit.deliveryDate = null; }
-    await project.save();
-    res.json(await populateAndReturn(project));
+    await project.save(); res.json(await populateAndReturn(project));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/projects/:id/chassis/:cid', async (req, res) => {
@@ -1384,14 +1083,12 @@ app.delete('/api/projects/:id/chassis/:cid', async (req, res) => {
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const chassis = project.chassis.id(req.params.cid);
     if (!chassis) return res.status(404).json({ error: 'Chassis not found' });
-    project.chassis.pull(req.params.cid);
-    await project.save();
+    project.chassis.pull(req.params.cid); await project.save();
     res.json(await populateAndReturn(project));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ==================== CHASSIS LINE ACCESSORIES ROUTES ====================
-// Per-chassis-line accessory configuration (stored on the chassis subdocument)
+// ==================== CHASSIS ACCESSORIES ====================
 app.get('/api/projects/:id/chassis/:cid/accessories', async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
@@ -1401,7 +1098,6 @@ app.get('/api/projects/:id/chassis/:cid/accessories', async (req, res) => {
     res.json(chassis.accessories || []);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.put('/api/projects/:id/chassis/:cid/accessories', async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
@@ -1410,23 +1106,13 @@ app.put('/api/projects/:id/chassis/:cid/accessories', async (req, res) => {
     if (!chassis) return res.status(404).json({ error: 'Chassis not found' });
     chassis.accessories = (req.body.accessories || []).map(a => {
       const hasFormula = a.formula && a.formula.trim() !== '';
-
-      return {
-        itemId: a.itemId || '',
-        label: a.label || '',
-        unit: a.unit || '',
-
-        // 🔥 KEY FIX
-        quantity: hasFormula ? 0 : (Number(a.quantity) || 0),
-        formula: hasFormula ? a.formula.trim() : '',
-      };
+      return { itemId: a.itemId || '', label: a.label || '', unit: a.unit || '', quantity: hasFormula ? 0 : (Number(a.quantity) || 0), formula: hasFormula ? a.formula.trim() : '' };
     });
-    await project.save();
-    res.json(chassis.accessories);
+    await project.save(); res.json(chassis.accessories);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-
+// ==================== BONS DE LIVRAISON ====================
 app.get('/api/projects/:id/bons-livraison', async (req, res) => {
   try {
     const project = await Project.findById(req.params.id).populate('usedBars.itemId').populate('companyId').populate('clientId');
@@ -1435,9 +1121,7 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
     const typeLabel = (v) => { const ct = chassisTypes.find(t => t.value === v); return ct ? (ct.fr || ct.value) : v; };
     const blMap = {};
     const ensureBL = (dateKey) => {
-      if (!blMap[dateKey]) {
-        blMap[dateKey] = { blId: `BL-${project._id.toString().slice(-6).toUpperCase()}-${dateKey.replace(/-/g, '')}`, projectId: project._id, projectName: project.name, reference: project.reference, ralCode: project.ralCode, ralColor: project.ralColor, company: project.companyId || null, client: project.clientId || null, deliveryDate: dateKey, units: [] };
-      }
+      if (!blMap[dateKey]) blMap[dateKey] = { blId: `BL-${project._id.toString().slice(-6).toUpperCase()}-${dateKey.replace(/-/g, '')}`, projectId: project._id, projectName: project.name, reference: project.reference, ralCode: project.ralCode, ralColor: project.ralColor, company: project.companyId || null, client: project.clientId || null, deliveryDate: dateKey, units: [] };
       return blMap[dateKey];
     };
     for (const chassis of project.chassis) {
@@ -1468,7 +1152,7 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ==================== USED BARS ROUTES ====================
+// ==================== USED BARS ====================
 app.post('/api/projects/:id/bars', async (req, res) => {
   try {
     const { itemId, quantity } = req.body;
@@ -1482,9 +1166,7 @@ app.post('/api/projects/:id/bars', async (req, res) => {
     item.quantity = Math.max(0, item.quantity - Number(quantity));
     await Promise.all([item.save(), project.save()]);
     await StockMovement.create({ itemId: item._id, type: 'project_use', quantity: Number(quantity), balanceAfter: item.quantity, projectId: project._id, projectName: project.name });
-    await project.populate('usedBars.itemId');
-    await project.populate('companyId');
-    await project.populate('clientId');
+    await project.populate('usedBars.itemId'); await project.populate('companyId'); await project.populate('clientId');
     res.status(201).json(project.toJSON());
   } catch (e) { res.status(e.kind === 'ObjectId' ? 400 : 500).json({ error: e.message }); }
 });
@@ -1497,10 +1179,7 @@ app.delete('/api/projects/:id/bars/:itemId', async (req, res) => {
     const restoredItem = await Item.findByIdAndUpdate(req.params.itemId, { $inc: { quantity: barEntry.quantity } }, { new: true });
     await StockMovement.create({ itemId: req.params.itemId, type: 'project_return', quantity: barEntry.quantity, balanceAfter: restoredItem ? restoredItem.quantity : 0, projectId: project._id, projectName: project.name });
     project.usedBars = project.usedBars.filter(b => b.itemId.toString() !== req.params.itemId);
-    await project.save();
-    await project.populate('usedBars.itemId');
-    await project.populate('companyId');
-    await project.populate('clientId');
+    await project.save(); await project.populate('usedBars.itemId'); await project.populate('companyId'); await project.populate('clientId');
     res.json(project.toJSON());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1510,10 +1189,7 @@ app.get('/api/chassis-types', async (req, res) => {
   try {
     const types = await ChassisType.find().sort({ order: 1, createdAt: 1 });
     const ids = types.map(t => t._id);
-    const counts = await ChassisTypeAccessory.aggregate([
-      { $match: { chassisTypeId: { $in: ids } } },
-      { $group: { _id: '$chassisTypeId', count: { $sum: 1 } } },
-    ]);
+    const counts = await ChassisTypeAccessory.aggregate([{ $match: { chassisTypeId: { $in: ids } } }, { $group: { _id: '$chassisTypeId', count: { $sum: 1 } } }]);
     const countMap = Object.fromEntries(counts.map(c => [c._id.toString(), c.count]));
     res.json(types.map(t => ({ ...t.toObject(), accessoryCount: countMap[t._id.toString()] || 0 })));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1524,12 +1200,8 @@ app.post('/api/chassis-types', async (req, res) => {
     if (!value || !fr) return res.status(400).json({ error: 'value and fr are required' });
     const count = await ChassisType.countDocuments();
     const ct = new ChassisType({ value, fr, it: it || fr, en: en || fr, composite: !!composite, vantaux: composite ? (Number(vantaux) || 2) : 0, order: count });
-    await ct.save();
-    res.status(201).json(ct);
-  } catch (e) {
-    if (e.code === 11000) return res.status(409).json({ error: 'Type value already exists' });
-    res.status(500).json({ error: e.message });
-  }
+    await ct.save(); res.status(201).json(ct);
+  } catch (e) { if (e.code === 11000) return res.status(409).json({ error: 'Type value already exists' }); res.status(500).json({ error: e.message }); }
 });
 app.put('/api/chassis-types/:id', async (req, res) => {
   try {
@@ -1543,48 +1215,26 @@ app.delete('/api/chassis-types/:id', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ==================== CHASSIS TYPE ACCESSORIES ROUTES ====================
-
-// Fetch default accessories for a chassis type by its `value` string (e.g. "porte_2_vantaux")
-// Used by ProjectDetail to pre-load defaults into a chassis line's accessory editor.
+// ==================== CHASSIS TYPE ACCESSORIES ====================
 app.get('/api/chassis-type-defaults/:typeValue', async (req, res) => {
   try {
     const ct = await ChassisType.findOne({ value: req.params.typeValue });
-    if (!ct) return res.json([]); // type not found → no defaults
+    if (!ct) return res.json([]);
     const accs = await ChassisTypeAccessory.find({ chassisTypeId: ct._id });
-    res.json(accs.map(a => ({
-      itemId: a.itemId ? a.itemId.toString() : '',
-      label: a.label,
-      unit: a.unit,
-      quantity: a.quantity || 0,
-      formula: a.formula || '',
-    })));
+    res.json(accs.map(a => ({ itemId: a.itemId ? a.itemId.toString() : '', label: a.label, unit: a.unit, quantity: a.quantity || 0, formula: a.formula || '' })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.get('/api/chassis-type-accessories/:chassisTypeId', async (req, res) => {
   try {
     const accs = await ChassisTypeAccessory.find({ chassisTypeId: req.params.chassisTypeId });
-    res.json(accs.map(a => ({
-      itemId: a.itemId ? a.itemId.toString() : '',
-      label: a.label,
-      unit: a.unit,
-      quantity: a.quantity || 0,
-      formula: a.formula || '',
-    })));
+    res.json(accs.map(a => ({ itemId: a.itemId ? a.itemId.toString() : '', label: a.label, unit: a.unit, quantity: a.quantity || 0, formula: a.formula || '' })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.put('/api/chassis-type-accessories/:chassisTypeId', async (req, res) => {
   try {
-    const { chassisTypeId } = req.params;
-    const { accessories = [] } = req.body;
+    const { chassisTypeId } = req.params; const { accessories = [] } = req.body;
     await ChassisTypeAccessory.deleteMany({ chassisTypeId });
-    if (accessories.length > 0) {
-      await ChassisTypeAccessory.insertMany(
-        accessories.map(a => ({ chassisTypeId, ...a }))
-      );
-    }
+    if (accessories.length > 0) await ChassisTypeAccessory.insertMany(accessories.map(a => ({ chassisTypeId, ...a })));
     res.json({ ok: true, count: accessories.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1606,7 +1256,7 @@ app.get('/api/movements/item/:itemId', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ==================== ANALYTICS ROUTES ====================
+// ==================== ANALYTICS ====================
 app.get('/api/analytics/dashboard', async (req, res) => {
   try {
     const [projects, items, movements] = await Promise.all([
@@ -1615,8 +1265,7 @@ app.get('/api/analytics/dashboard', async (req, res) => {
       StockMovement.find().populate('itemId', 'designation').sort({ createdAt: 1 }).lean(),
     ]);
     const criticalItems = items.filter(i => (i.quantity + (i.orderedQuantity || 0)) < i.threshold);
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const now = new Date(); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const projectsInProgress = projects.filter(p => computeProjectStatus(p.chassis || []) === 'en_cours').length;
     let deliveriesThisMonth = 0;
     for (const p of projects) { for (const ch of p.chassis || []) { for (const u of ch.units || []) { if (u.etat === 'livre' && u.deliveryDate && new Date(u.deliveryDate) >= monthStart) deliveriesThisMonth++; for (const cs of u.componentStates || []) { if (cs.etat === 'livre' && cs.deliveryDate && new Date(cs.deliveryDate) >= monthStart) deliveriesThisMonth++; } } } }
@@ -1628,12 +1277,12 @@ app.get('/api/analytics/dashboard', async (req, res) => {
     const topItems = Object.values(itemConsMap).sort((a, b) => b.total - a.total).slice(0, 5);
     const period = req.query.period || 'monthly';
     const movMap = {};
-    const fmt = (d) => { if (period === 'annual') return `${d.getFullYear()}`; if (period === 'daily') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+    const fmtPeriod = (d) => { if (period === 'annual') return `${d.getFullYear()}`; if (period === 'daily') return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
     const skeleton_start = new Date(2026, 0, 1);
     if (period === 'annual') { for (let y = skeleton_start.getFullYear(); y <= now.getFullYear(); y++) { const key = `${y}`; movMap[key] = { period: key, entrees: 0, sorties: 0, project_use: 0, project_return: 0, order_reception: 0 }; } }
-    else if (period === 'monthly') { for (let d = new Date(skeleton_start); d <= now; d.setMonth(d.getMonth() + 1)) { const key = fmt(d); movMap[key] = { period: key, entrees: 0, sorties: 0, project_use: 0, project_return: 0, order_reception: 0 }; } }
-    else { for (let i = 59; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i); const key = fmt(d); movMap[key] = { period: key, entrees: 0, sorties: 0, project_use: 0, project_return: 0, order_reception: 0 }; } }
-    for (const m of movements) { const d = new Date(m.createdAt); const key = fmt(d); if (movMap[key]) { const typeKey = m.type === 'entree' ? 'entrees' : m.type === 'sortie' ? 'sorties' : m.type; movMap[key][typeKey] = (movMap[key][typeKey] || 0) + m.quantity; } }
+    else if (period === 'monthly') { for (let d = new Date(skeleton_start); d <= now; d.setMonth(d.getMonth()+1)) { const key = fmtPeriod(d); movMap[key] = { period: key, entrees: 0, sorties: 0, project_use: 0, project_return: 0, order_reception: 0 }; } }
+    else { for (let i = 59; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate()-i); const key = fmtPeriod(d); movMap[key] = { period: key, entrees: 0, sorties: 0, project_use: 0, project_return: 0, order_reception: 0 }; } }
+    for (const m of movements) { const d = new Date(m.createdAt); const key = fmtPeriod(d); if (movMap[key]) { const typeKey = m.type === 'entree' ? 'entrees' : m.type === 'sortie' ? 'sorties' : m.type; movMap[key][typeKey] = (movMap[key][typeKey] || 0) + m.quantity; } }
     const catMap = {};
     for (const item of items) { const catId = item.categoryId?._id?.toString() || 'none'; const catName = item.categoryId?.name || { fr: 'Sans catégorie', it: 'Senza categoria', en: 'No category' }; const catColor = item.categoryId?.color || '#9ca3af'; if (!catMap[catId]) catMap[catId] = { catId, catName, catColor, total: 0, ok: 0, low: 0, critical: 0 }; catMap[catId].total++; const total = item.quantity + (item.orderedQuantity || 0); if (total < item.threshold) catMap[catId].critical++; else if (item.quantity < item.threshold) catMap[catId].low++; else catMap[catId].ok++; }
     res.json({ kpis: { totalProjects: projects.length, projectsInProgress, totalItems: items.length, criticalItems: criticalItems.length, deliveriesThisMonth, totalMovements: movements.length }, chassisStatusCounts, projectConsumption, topItems, monthlyMovements: Object.values(movMap), stockByCategory: Object.values(catMap) });
@@ -1645,20 +1294,17 @@ app.get('/api/super-categories', optionalAuth, async (req, res) => {
   try {
     const cats = await SuperCategory.find().sort({ order: 1 });
     const defaults = [
-      { key: 'aluminium', label: { fr: '🔩 Aluminium', it: '🔩 Alluminio', en: '🔩 Aluminium' }, color: '#3b82f6' },
-      { key: 'verre', label: { fr: '💎 Verre', it: '💎 Vetro', en: '💎 Glass' }, color: '#06b6d4' },
-      { key: 'accessoires', label: { fr: '🔧 Accessoires', it: '🔧 Accessori', en: '🔧 Accessories' }, color: '#f59e0b' },
-      { key: 'poudre', label: { fr: '🎨 Poudre', it: '🎨 Polvere', en: '🎨 Powder' }, color: '#ff1100' },
+      { key: 'aluminium', label: { fr: 'Aluminium', it: 'Alluminio', en: 'Aluminium' }, color: '#3b82f6' },
+      { key: 'verre', label: { fr: 'Verre', it: 'Vetro', en: 'Glass' }, color: '#06b6d4' },
+      { key: 'accessoires', label: { fr: 'Accessoires', it: 'Accessori', en: 'Accessories' }, color: '#f59e0b' },
+      { key: 'poudre', label: { fr: 'Poudre', it: 'Polvere', en: 'Powder' }, color: '#ff1100' },
     ];
     const all = cats.length === 0 ? defaults : cats;
-    // allowedSuperCategories already resolved by optionalAuth using resolveAllowedSCs
-    // null = all, [] = none, [...] = subset
     const allowed = req.allowedSuperCategories;
     const filtered = allowed === null ? all : all.filter(sc => allowed.includes(sc.key));
     res.json(filtered);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.post('/api/super-categories', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     const { key, label, color } = req.body;
@@ -1666,11 +1312,9 @@ app.post('/api/super-categories', requireAuth, requirePermission('admin.view'), 
     if (!/^[a-z0-9_]+$/.test(key)) return res.status(400).json({ error: 'key must be lowercase alphanumeric + underscore' });
     const count = await SuperCategory.countDocuments();
     const sc = await SuperCategory.create({ key, label, color: color || '#3b82f6', order: count });
-    // Extend ALL_PERMISSIONS dynamically on the role schema (runtime only)
     res.status(201).json(sc);
   } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ error: e.message }); }
 });
-
 app.put('/api/super-categories/:key', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     const sc = await SuperCategory.findOneAndUpdate({ key: req.params.key }, { label: req.body.label, color: req.body.color }, { new: true });
@@ -1678,31 +1322,20 @@ app.put('/api/super-categories/:key', requireAuth, requirePermission('admin.view
     res.json(sc);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.delete('/api/super-categories/:key', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
-    const key = req.params.key;
-    if (['aluminium', 'verre', 'accessoires', 'poudre'].includes(key)) {
-      return res.status(400).json({ error: 'Cannot delete built-in super-categories' });
-    }
-    await SuperCategory.deleteOne({ key });
+    if (['aluminium', 'verre', 'accessoires', 'poudre'].includes(req.params.key)) return res.status(400).json({ error: 'Cannot delete built-in super-categories' });
+    await SuperCategory.deleteOne({ key: req.params.key });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ==================== POUDRES / RAL PICKER ====================
-// Returns all items from the 'poudres' super-category for use in the RAL picker
 app.get('/api/inventory/poudres', async (req, res) => {
-  try {
-    const items = await Item.find({ superCategory: 'poudres' }).populate('categoryId').sort({ createdAt: -1 });
-    res.json(items);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  try { res.json(await Item.find({ superCategory: 'poudres' }).populate('categoryId').sort({ createdAt: -1 })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-
-
 // ==================== ATELIER TABLES ====================
-// Add this Schema near the other schemas in server.js
 
 const atelierTableLayoutSchema = new mongoose.Schema({
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
@@ -1716,87 +1349,38 @@ const atelierTableLayoutSchema = new mongoose.Schema({
     h:      { type: Number, default: 90 },
   }],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
-
 const AtelierTableLayout = mongoose.model('AtelierTableLayout', atelierTableLayoutSchema);
 
-// ─── GET /api/atelier-tables ──────────────────────────────────────────────────
-// Returns the saved table layout (or empty array if none)
 app.get('/api/atelier-tables', async (req, res) => {
-  try {
-    const layout = await AtelierTableLayout.findOne({}).sort({ updatedAt: -1 });
-    res.json(layout ? layout.tables : []);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  try { const layout = await AtelierTableLayout.findOne({}).sort({ updatedAt: -1 }); res.json(layout ? layout.tables : []); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// ─── PUT /api/atelier-tables ──────────────────────────────────────────────────
-// Upserts the entire table layout
 app.put('/api/atelier-tables', async (req, res) => {
   try {
     const { tables } = req.body;
     if (!Array.isArray(tables)) return res.status(400).json({ error: 'tables must be an array' });
-
-    // Validate each table entry
-    for (const t of tables) {
-      if (!t.id || !t.name || t.number == null) {
-        return res.status(400).json({ error: 'Each table must have id, name, and number' });
-      }
-    }
-
+    for (const t of tables) { if (!t.id || !t.name || t.number == null) return res.status(400).json({ error: 'Each table must have id, name, and number' }); }
     let layout = await AtelierTableLayout.findOne({});
-    if (layout) {
-      layout.tables = tables;
-      await layout.save();
-    } else {
-      layout = await AtelierTableLayout.create({ tables });
-    }
-
+    if (layout) { layout.tables = tables; await layout.save(); } else { layout = await AtelierTableLayout.create({ tables }); }
     res.json(layout.tables);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// ─── GET /api/atelier-tables/names ───────────────────────────────────────────
-// Returns just the names array for use in ProjectDetail dropdown
-// e.g. ["Table 1", "Table découpe", "Table assemblage", ...]
 app.get('/api/atelier-tables/names', async (req, res) => {
   try {
     const layout = await AtelierTableLayout.findOne({}).sort({ updatedAt: -1 });
-    if (!layout || !layout.tables.length) {
-      // Fallback to defaults
-      return res.json(['Table 1','Table 2','Table 3','Table 4','Table 5','Table 6','Table 7','Table 8']);
-    }
-    // Sort by table number, return names
-    const names = [...layout.tables]
-      .sort((a, b) => a.number - b.number)
-      .map(t => t.name);
-    res.json(names);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    if (!layout || !layout.tables.length) return res.json(['Table 1','Table 2','Table 3','Table 4','Table 5','Table 6','Table 7','Table 8']);
+    res.json([...layout.tables].sort((a, b) => a.number - b.number).map(t => t.name));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ==================== TABLE STOCK ====================
 
-// ============================================================
-// PASTE THIS BLOCK INTO server.js
-// Place it AFTER the existing AtelierTableLayout schema/routes
-// and BEFORE the ERROR HANDLERS section at the bottom.
-// ============================================================
-
-// ==================== TABLE STOCK SCHEMAS ====================
-
-/**
- * Per-table accessory stock.
- * Each document = one table's stock snapshot.
- */
 const tableStockSchema = new mongoose.Schema({
-  tableId:   { type: String, required: true, unique: true }, // matches AtelierTableLayout table.id
+  tableId:   { type: String, required: true, unique: true },
   tableName: { type: String, default: '' },
-  workers:   [{ type: String }],  // array of worker names assigned to this table
+  workers:   [{ type: String }],
   stock: [{
-    itemId:  { type: String, required: true },   // inventory Item _id (string)
+    itemId:  { type: String, required: true },
     label:   { type: String, required: true },
     unit:    { type: String, default: '' },
     quantity:{ type: Number, default: 0, min: 0 },
@@ -1804,318 +1388,137 @@ const tableStockSchema = new mongoose.Schema({
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const TableStock = mongoose.model('TableStock', tableStockSchema);
 
-/**
- * Accessory consumption log per table.
- * Created whenever a chassis is assigned to a table (deduction)
- * or stock is manually adjusted.
- */
 const tableConsumptionSchema = new mongoose.Schema({
   tableId:     { type: String, required: true },
   tableName:   { type: String, default: '' },
   itemId:      { type: String, required: true },
   label:       { type: String, required: true },
   unit:        { type: String, default: '' },
-  quantity:    { type: Number, required: true },         // always positive
+  quantity:    { type: Number, required: true },
   type:        { type: String, enum: ['chassis_assignment', 'manual_in', 'manual_out'], required: true },
   projectId:   { type: String, default: '' },
   projectName: { type: String, default: '' },
-  chassisRef:  { type: String, default: '' },            // chassis repere for traceability
+  chassisRef:  { type: String, default: '' },
   date:        { type: Date, default: Date.now },
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 tableConsumptionSchema.index({ tableId: 1, date: -1 });
 tableConsumptionSchema.index({ date: -1 });
 const TableConsumption = mongoose.model('TableConsumption', tableConsumptionSchema);
 
-
-// ==================== TABLE STOCK ROUTES ====================
-
-// ── GET /api/table-stock  →  all tables' stock ──────────────
 app.get('/api/table-stock', async (req, res) => {
-  try {
-    const stocks = await TableStock.find().sort({ tableName: 1 });
-    res.json(stocks);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  try { res.json(await TableStock.find().sort({ tableName: 1 })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// ── GET /api/table-stock/:tableId  →  one table's stock ─────
 app.get('/api/table-stock/:tableId', async (req, res) => {
   try {
     const s = await TableStock.findOne({ tableId: req.params.tableId });
     res.json(s || { tableId: req.params.tableId, stock: [], workers: [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// ── PUT /api/table-stock/:tableId  →  set full stock doc ────
-// Body: { tableName, workers, stock: [{itemId,label,unit,quantity}] }
 app.put('/api/table-stock/:tableId', async (req, res) => {
   try {
-    const { tableId } = req.params;
-    const { tableName, workers, stock } = req.body;
+    const { tableId } = req.params; const { tableName, workers, stock } = req.body;
     if (!Array.isArray(stock)) return res.status(400).json({ error: 'stock must be an array' });
-    const s = await TableStock.findOneAndUpdate(
-      { tableId },
-      { tableId, tableName: tableName || '', workers: workers || [], stock },
-      { upsert: true, new: true }
-    );
+    const s = await TableStock.findOneAndUpdate({ tableId }, { tableId, tableName: tableName || '', workers: workers || [], stock }, { upsert: true, new: true });
     res.json(s);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// ── PATCH /api/table-stock/:tableId/adjust  →  adjust a single item ──
-// Body: { itemId, label, unit, delta }  (delta can be + or -)
 app.patch('/api/table-stock/:tableId/adjust', async (req, res) => {
   try {
-    const { tableId } = req.params;
-    const { itemId, label, unit, delta, type } = req.body; // type: 'manual_in'|'manual_out'
+    const { tableId } = req.params; const { itemId, label, unit, delta, type } = req.body;
     if (!itemId || typeof delta !== 'number') return res.status(400).json({ error: 'itemId and numeric delta required' });
-
     let s = await TableStock.findOne({ tableId });
     if (!s) s = new TableStock({ tableId, stock: [] });
-
     const idx = s.stock.findIndex(x => x.itemId === itemId);
-    if (idx === -1) {
-      s.stock.push({ itemId, label: label || itemId, unit: unit || '', quantity: Math.max(0, delta) });
-    } else {
-      s.stock[idx].quantity = Math.max(0, s.stock[idx].quantity + delta);
-    }
+    if (idx === -1) s.stock.push({ itemId, label: label || itemId, unit: unit || '', quantity: Math.max(0, delta) });
+    else s.stock[idx].quantity = Math.max(0, s.stock[idx].quantity + delta);
     await s.save();
-
-    // Log the adjustment
     const movType = type || (delta > 0 ? 'manual_in' : 'manual_out');
-    if (delta !== 0) {
-      await TableConsumption.create({
-        tableId,
-        tableName: s.tableName || '',
-        itemId,
-        label: label || itemId,
-        unit: unit || '',
-        quantity: Math.abs(delta),
-        type: movType,
-        date: new Date(),
-      });
-    }
-
-    // ── manual_in: deduct from global inventory ──
+    if (delta !== 0) await TableConsumption.create({ tableId, tableName: s.tableName || '', itemId, label: label || itemId, unit: unit || '', quantity: Math.abs(delta), type: movType, date: new Date() });
     if (delta !== 0 && movType === 'manual_in' && itemId && !itemId.startsWith('manual_')) {
-      try {
-        const item = await Item.findById(itemId);
-        if (item) {
-          item.quantity = Math.max(0, item.quantity - Math.abs(delta));
-          await item.save();
-          await StockMovement.create({
-            itemId: item._id,
-            type: 'sortie',
-            quantity: Math.abs(delta),
-            balanceAfter: item.quantity,
-            note: `Approvisionnement table: ${s.tableName || tableId}`,
-          });
-        }
-      } catch { /* skip if item not found */ }
+      try { const item = await Item.findById(itemId); if (item) { item.quantity = Math.max(0, item.quantity - Math.abs(delta)); await item.save(); await StockMovement.create({ itemId: item._id, type: 'sortie', quantity: Math.abs(delta), balanceAfter: item.quantity, note: `Approvisionnement table: ${s.tableName || tableId}` }); } } catch { }
     }
-
-    // ── manual_out: return stock to global inventory ──
     if (delta !== 0 && movType === 'manual_out' && itemId && !itemId.startsWith('manual_')) {
-      try {
-        const item = await Item.findById(itemId);
-        if (item) {
-          item.quantity = item.quantity + Math.abs(delta);
-          await item.save();
-          await StockMovement.create({
-            itemId: item._id,
-            type: 'entree',
-            quantity: Math.abs(delta),
-            balanceAfter: item.quantity,
-            note: `Retour depuis table: ${s.tableName || tableId}`,
-          });
-        }
-      } catch { /* skip if item not found */ }
+      try { const item = await Item.findById(itemId); if (item) { item.quantity = item.quantity + Math.abs(delta); await item.save(); await StockMovement.create({ itemId: item._id, type: 'entree', quantity: Math.abs(delta), balanceAfter: item.quantity, note: `Retour depuis table: ${s.tableName || tableId}` }); } } catch { }
     }
-
     res.json(s);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-
-// ── DELETE /api/table-stock/:tableId/item/:itemId  →  remove item from table stock ──
-// Removes the item row entirely and returns its quantity back to global inventory.
 app.delete('/api/table-stock/:tableId/item/:itemId', async (req, res) => {
   try {
     const { tableId, itemId } = req.params;
     const s = await TableStock.findOne({ tableId });
     if (!s) return res.status(404).json({ error: 'Table stock not found' });
-
     const idx = s.stock.findIndex(x => x.itemId === itemId);
     if (idx === -1) return res.status(404).json({ error: 'Item not found in table stock' });
-
-    const removed = s.stock[idx];
-    s.stock.splice(idx, 1);
-    await s.save();
-
-    // Return the remaining quantity back to global inventory
+    const removed = s.stock[idx]; s.stock.splice(idx, 1); await s.save();
     if (removed.quantity > 0 && !itemId.startsWith('manual_')) {
-      try {
-        const item = await Item.findById(itemId);
-        if (item) {
-          item.quantity = item.quantity + removed.quantity;
-          await item.save();
-          await StockMovement.create({
-            itemId: item._id,
-            type: 'entree',
-            quantity: removed.quantity,
-            balanceAfter: item.quantity,
-            note: `Retrait accessoire de table: ${s.tableName || tableId}`,
-          });
-        }
-      } catch { /* skip if item not in inventory */ }
+      try { const item = await Item.findById(itemId); if (item) { item.quantity = item.quantity + removed.quantity; await item.save(); await StockMovement.create({ itemId: item._id, type: 'entree', quantity: removed.quantity, balanceAfter: item.quantity, note: `Retrait accessoire de table: ${s.tableName || tableId}` }); } } catch { }
     }
-
-    // Log the removal in TableConsumption
-    await TableConsumption.create({
-      tableId,
-      tableName: s.tableName || '',
-      itemId,
-      label: removed.label,
-      unit: removed.unit || '',
-      quantity: removed.quantity,
-      type: 'manual_out',
-      date: new Date(),
-    });
-
+    await TableConsumption.create({ tableId, tableName: s.tableName || '', itemId, label: removed.label, unit: removed.unit || '', quantity: removed.quantity, type: 'manual_out', date: new Date() });
     res.json({ success: true, stock: s.stock });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-
-// ── POST /api/table-stock/deduct-chassis ────────────────────
-// Called by frontend when a chassis unit is assigned to a table.
-// Body: { tableId, tableName, projectId, projectName, chassisRef, accessories: [{itemId,label,unit,quantity}] }
 app.post('/api/table-stock/deduct-chassis', async (req, res) => {
   try {
     const { tableId, tableName, projectId, projectName, chassisRef, accessories } = req.body;
-    if (!tableId || !Array.isArray(accessories)) {
-      return res.status(400).json({ error: 'tableId and accessories[] required' });
-    }
-
+    if (!tableId || !Array.isArray(accessories)) return res.status(400).json({ error: 'tableId and accessories[] required' });
     let s = await TableStock.findOne({ tableId });
     if (!s) s = new TableStock({ tableId, tableName: tableName || '', stock: [] });
-
     const consumptions = [];
     for (const acc of accessories) {
       if (!acc.quantity || acc.quantity <= 0) continue;
       const idx = s.stock.findIndex(x => x.itemId === acc.itemId);
-      if (idx === -1) {
-        // Item not in table stock yet — create entry at 0 (or negative as debt)
-        s.stock.push({ itemId: acc.itemId, label: acc.label || acc.itemId, unit: acc.unit || '', quantity: 0 });
-      }
+      if (idx === -1) s.stock.push({ itemId: acc.itemId, label: acc.label || acc.itemId, unit: acc.unit || '', quantity: 0 });
       const si = s.stock.findIndex(x => x.itemId === acc.itemId);
       s.stock[si].quantity = Math.max(0, s.stock[si].quantity - acc.quantity);
-      consumptions.push({
-        tableId,
-        tableName: tableName || s.tableName || '',
-        itemId: acc.itemId,
-        label: acc.label || acc.itemId,
-        unit: acc.unit || '',
-        quantity: acc.quantity,
-        type: 'chassis_assignment',
-        projectId: projectId || '',
-        projectName: projectName || '',
-        chassisRef: chassisRef || '',
-        date: new Date(),
-      });
+      consumptions.push({ tableId, tableName: tableName || s.tableName || '', itemId: acc.itemId, label: acc.label || acc.itemId, unit: acc.unit || '', quantity: acc.quantity, type: 'chassis_assignment', projectId: projectId || '', projectName: projectName || '', chassisRef: chassisRef || '', date: new Date() });
     }
-
     await s.save();
     if (consumptions.length) await TableConsumption.insertMany(consumptions);
-
     res.json({ stock: s, consumed: consumptions.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-
-// ==================== TABLE CONSUMPTION RECAP ROUTES ====================
-
-// ── GET /api/table-consumption  →  raw log (with filters) ───
-// ?tableId=&period=daily|weekly|monthly&from=&to=
 app.get('/api/table-consumption', async (req, res) => {
   try {
     const filter = {};
     if (req.query.tableId) filter.tableId = req.query.tableId;
-    if (req.query.from || req.query.to) {
-      filter.date = {};
-      if (req.query.from) filter.date.$gte = new Date(req.query.from);
-      if (req.query.to)   filter.date.$lte = new Date(req.query.to);
-    }
-    const logs = await TableConsumption.find(filter).sort({ date: -1 }).limit(500);
-    res.json(logs);
+    if (req.query.from || req.query.to) { filter.date = {}; if (req.query.from) filter.date.$gte = new Date(req.query.from); if (req.query.to) filter.date.$lte = new Date(req.query.to); }
+    res.json(await TableConsumption.find(filter).sort({ date: -1 }).limit(500));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// ── GET /api/table-consumption/recap  →  aggregated recap ───
-// ?tableId=&period=daily|weekly|monthly
 app.get('/api/table-consumption/recap', async (req, res) => {
   try {
     const { period = 'monthly', tableId } = req.query;
-
-    // Date boundaries
-    const now = new Date();
-    let from;
-    if (period === 'daily')   from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
-    if (period === 'weekly')  from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 83); // ~12 weeks
-    if (period === 'monthly') from = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-
-    const match = { date: { $gte: from } };
-    if (tableId) match.tableId = tableId;
-
-    // Aggregate: group by tableId + period-bucket + itemId
-    const groupId = {
-      tableId:   '$tableId',
-      tableName: '$tableName',
-      itemId:    '$itemId',
-      label:     '$label',
-      unit:      '$unit',
-    };
-    if (period === 'daily') {
-      groupId.y = { $year: '$date' };
-      groupId.m = { $month: '$date' };
-      groupId.d = { $dayOfMonth: '$date' };
-    } else if (period === 'weekly') {
-      groupId.y = { $isoWeekYear: '$date' };
-      groupId.w = { $isoWeek: '$date' };
-    } else {
-      groupId.y = { $year: '$date' };
-      groupId.m = { $month: '$date' };
-    }
-
+    const now = new Date(); let from;
+    if (period === 'daily')   from = new Date(now.getFullYear(), now.getMonth(), now.getDate()-29);
+    if (period === 'weekly')  from = new Date(now.getFullYear(), now.getMonth(), now.getDate()-83);
+    if (period === 'monthly') from = new Date(now.getFullYear(), now.getMonth()-11, 1);
+    const match = { date: { $gte: from } }; if (tableId) match.tableId = tableId;
+    const groupId = { tableId: '$tableId', tableName: '$tableName', itemId: '$itemId', label: '$label', unit: '$unit' };
+    if (period === 'daily') { groupId.y = { $year: '$date' }; groupId.m = { $month: '$date' }; groupId.d = { $dayOfMonth: '$date' }; }
+    else if (period === 'weekly') { groupId.y = { $isoWeekYear: '$date' }; groupId.w = { $isoWeek: '$date' }; }
+    else { groupId.y = { $year: '$date' }; groupId.m = { $month: '$date' }; }
     const agg = await TableConsumption.aggregate([
       { $match: match },
-      { $group: {
-        _id: groupId,
-        consumed: { $sum: { $cond: [{ $ne: ['$type', 'manual_in'] }, '$quantity', 0] } },
-        restocked: { $sum: { $cond: [{ $eq: ['$type', 'manual_in'] }, '$quantity', 0] } },
-      }},
+      { $group: { _id: groupId, consumed: { $sum: { $cond: [{ $ne: ['$type', 'manual_in'] }, '$quantity', 0] } }, restocked: { $sum: { $cond: [{ $eq: ['$type', 'manual_in'] }, '$quantity', 0] } } } },
       { $sort: { '_id.tableId': 1, '_id.y': 1, '_id.m': 1, '_id.d': 1, '_id.w': 1 } }
     ]);
-
-    // Reshape into { tableId → { periodKey → [ { itemId, label, unit, consumed, restocked } ] } }
     const result = {};
     for (const row of agg) {
       const { tableId: tid, tableName, itemId, label, unit, y, m, d, w } = row._id;
       let periodKey;
-      if (period === 'daily')   periodKey = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      else if (period === 'weekly') periodKey = `${y}-W${String(w).padStart(2,'0')}`;
-      else                      periodKey = `${y}-${String(m).padStart(2,'0')}`;
-
+      if (period === 'daily')        periodKey = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      else if (period === 'weekly')  periodKey = `${y}-W${String(w).padStart(2,'0')}`;
+      else                           periodKey = `${y}-${String(m).padStart(2,'0')}`;
       if (!result[tid]) result[tid] = { tableId: tid, tableName, periods: {} };
       if (!result[tid].periods[periodKey]) result[tid].periods[periodKey] = [];
       result[tid].periods[periodKey].push({ itemId, label, unit, consumed: row.consumed, restocked: row.restocked });
     }
-
     res.json(Object.values(result));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-
-// ── DELETE /api/table-consumption/:id  →  delete a single consumption log entry ──
 app.delete('/api/table-consumption/:id', async (req, res) => {
   try {
     const doc = await TableConsumption.findByIdAndDelete(req.params.id);
@@ -2124,135 +1527,82 @@ app.delete('/api/table-consumption/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-
-// ==================== TABLE PROJECTS (what each table is working on) ====
-// Returns all chassis units currently assigned to a given table across all projects.
 app.get('/api/atelier-tables/:tableId/workload', async (req, res) => {
   try {
     const { tableId } = req.params;
-
-    // We need the table NAME (since units store name, not id)
     const layout = await AtelierTableLayout.findOne({});
     const tableObj = layout?.tables?.find(t => t.id === tableId);
     if (!tableObj) return res.status(404).json({ error: 'Table not found' });
-
     const tableName = tableObj.name;
-
-    // Query all projects and filter chassis units by atelierTable === tableName
-    const projects = await Project.find({
-      'chassis.units.atelierTable': tableName
-    }).populate('clientId').lean();
-
+    const projects = await Project.find({ 'chassis.units.atelierTable': tableName }).populate('clientId').lean();
     const workload = [];
     for (const proj of projects) {
       for (const ch of proj.chassis || []) {
         for (const unit of ch.units || []) {
           if ((unit.atelierTable || '') === tableName) {
-            // compute accessory quantities using formula if present
             const accs = (ch.accessories || []).map(acc => {
               let qty = acc.quantity || 0;
-              if (acc.formula && acc.formula.trim()) {
-                try {
-                  const L = ch.largeur; const H = ch.hauteur;
-                  // eslint-disable-next-line no-new-func
-                  qty = Function('L', 'H', `return (${acc.formula})`)(L, H);
-                } catch { qty = 0; }
-              }
+              if (acc.formula && acc.formula.trim()) { try { const L = ch.largeur; const H = ch.hauteur; qty = Function('L','H',`return (${acc.formula})`)(L,H); } catch { qty = 0; } }
               return { itemId: acc.itemId, label: acc.label, unit: acc.unit, quantity: Math.round(qty * 100) / 100 };
             });
-            workload.push({
-              projectId:   proj._id.toString(),
-              projectName: proj.name,
-              projectRef:  proj.reference,
-              clientName:  proj.clientId?.name || '',
-              chassisId:   ch._id.toString(),
-              chassisRef:  ch.repere,
-              chassisType: ch.type,
-              dimension:   ch.dimension || `${ch.largeur}×${ch.hauteur}`,
-              unitIndex:   unit.unitIndex,
-              etat:        unit.etat,
-              deliveryDate:unit.deliveryDate,
-              accessories: accs,
-              assignedAt:  unit.deliveryDate || proj.updatedAt,
-            });
+            workload.push({ projectId: proj._id.toString(), projectName: proj.name, projectRef: proj.reference, clientName: proj.clientId?.name || '', chassisId: ch._id.toString(), chassisRef: ch.repere, chassisType: ch.type, dimension: ch.dimension || `${ch.largeur}×${ch.hauteur}`, unitIndex: unit.unitIndex, etat: unit.etat, deliveryDate: unit.deliveryDate, accessories: accs, assignedAt: unit.deliveryDate || proj.updatedAt });
           }
         }
       }
     }
-
-    // Also load stock & workers
     const stock = await TableStock.findOne({ tableId });
-
-    res.json({
-      table: tableObj,
-      workload,
-      stock: stock?.stock || [],
-      workers: stock?.workers || [],
-    });
+    res.json({ table: tableObj, workload, stock: stock?.stock || [], workers: stock?.workers || [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ==================== LAQUAGE SCHEMAS ====================
 
-// ==================== LAQUAGE SCHEMAS & ROUTES ====================
-
-// ── Schemas ──
-const laquageBarresBrutesSchema = new mongoose.Schema({
-  reference: { type: String, default: '' },
-  quantiteBrute: { type: Number, default: 0 },
-}, { _id: false });
-
-const laquageBarresLaqueeSchema = new mongoose.Schema({
-  reference: { type: String, default: '' },
-  ral: { type: String, default: '' },
-  quantiteLaquee: { type: Number, default: 0 },
-}, { _id: false });
-
-const laquageMorceauBrutSchema = new mongoose.Schema({
-  reference: { type: String, default: '' },
-  mesure: { type: String, default: '' },
-  quantite: { type: Number, default: 0 },
-}, { _id: false });
-
-const laquageMorceauLaqueLigneSchema = new mongoose.Schema({
-  ral: { type: String, default: '' },
-  mesure: { type: String, default: '' },
-  quantite: { type: Number, default: 0 },
-}, { _id: false });
-
-const laquageMorceauLaqueSchema = new mongoose.Schema({
-  reference: { type: String, default: '' },
-  lignes: [laquageMorceauLaqueLigneSchema],
-}, { _id: false });
+const laquageBarresBrutesSchema = new mongoose.Schema({ reference: { type: String, default: '' }, quantiteBrute: { type: Number, default: 0 } }, { _id: false });
+const laquageBarresLaqueeSchema = new mongoose.Schema({ reference: { type: String, default: '' }, ral: { type: String, default: '' }, quantiteLaquee: { type: Number, default: 0 } }, { _id: false });
+const laquageMorceauBrutSchema  = new mongoose.Schema({ reference: { type: String, default: '' }, mesure: { type: String, default: '' }, quantite: { type: Number, default: 0 } }, { _id: false });
+const laquageMorceauLaqueLigneSchema = new mongoose.Schema({ ral: { type: String, default: '' }, mesure: { type: String, default: '' }, quantite: { type: Number, default: 0 } }, { _id: false });
+const laquageMorceauLaqueSchema = new mongoose.Schema({ reference: { type: String, default: '' }, lignes: [laquageMorceauLaqueLigneSchema] }, { _id: false });
 
 const LAQUAGE_STATUSES = ['draft', 'sent_to_laquage', 'received_laquage', 'returned_to_coord', 'received_coord'];
 
+// History entry schema — stores action, actor, timestamp, optional note and partialQty
+const laquageHistoryEntrySchema = new mongoose.Schema({
+  action:     { type: String, required: true },
+  by:         { type: String, default: '' },
+  at:         { type: Date, default: Date.now },
+  note:       { type: String, default: '' },
+  partialQty: { type: Number, default: null },
+}, { _id: false });
+
 const laquageBarresSchema = new mongoose.Schema({
-  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, unique: true },
-  barresBrutes: [laquageBarresBrutesSchema],
-  barresLaquees: [laquageBarresLaqueeSchema],
-  morceauxBruts: [laquageMorceauBrutSchema],
+  projectId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, unique: true },
+  barresBrutes:   [laquageBarresBrutesSchema],
+  barresLaquees:  [laquageBarresLaqueeSchema],
+  morceauxBruts:  [laquageMorceauBrutSchema],
   morceauxLaques: [laquageMorceauLaqueSchema],
-  status: { type: String, enum: LAQUAGE_STATUSES, default: 'draft' },
-  lineStatuses: { type: mongoose.Schema.Types.Mixed, default: {} },
-  history: [{ action: String, by: String, at: Date }],
+  status:         { type: String, enum: LAQUAGE_STATUSES, default: 'draft' },
+  lineStatuses:   { type: mongoose.Schema.Types.Mixed, default: {} },
+  history:        [laquageHistoryEntrySchema],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const LaquageBarres = mongoose.model('LaquageBarres', laquageBarresSchema);
 
 const laquageAccSchema = new mongoose.Schema({
-  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, unique: true },
-  accessoires: [{
-    designation: { type: String, default: '' },
-    quantite: { type: Number, default: 0 },
-    notes: { type: String, default: '' },
-  }],
-  status: { type: String, enum: LAQUAGE_STATUSES, default: 'draft' },
-  lineStatuses: { type: mongoose.Schema.Types.Mixed, default: {} },
-  history: [{ action: String, by: String, at: Date }],
+  projectId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, unique: true },
+  accessoires: [{ designation: { type: String, default: '' }, quantite: { type: Number, default: 0 }, notes: { type: String, default: '' } }],
+  status:      { type: String, enum: LAQUAGE_STATUSES, default: 'draft' },
+  lineStatuses:{ type: mongoose.Schema.Types.Mixed, default: {} },
+  history:     [laquageHistoryEntrySchema],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const LaquageAccessoires = mongoose.model('LaquageAccessoires', laquageAccSchema);
 
-// ── Helpers ──
-function applyLaquageAction(record, action, lineKey, by) {
+// ==================== LAQUAGE HELPER ====================
+
+/**
+ * Applies a workflow action to a laquage record.
+ * All actions store full timestamps and actor name.
+ * The 'incomplete_line' action also stores note + partialQty on lineStatuses.
+ */
+function applyLaquageAction(record, action, lineKey, by, extra = {}) {
   const now = new Date();
   record.history = record.history || [];
 
@@ -2263,7 +1613,12 @@ function applyLaquageAction(record, action, lineKey, by) {
   }
   if (action === 'receive_line_laquage') {
     record.lineStatuses = record.lineStatuses || {};
-    record.lineStatuses[lineKey] = { ...(record.lineStatuses[lineKey] || {}), receivedLaquage: true, receivedLaquageAt: now, receivedLaquageBy: by };
+    record.lineStatuses[lineKey] = {
+      ...(record.lineStatuses[lineKey] || {}),
+      receivedLaquage: true,
+      receivedLaquageAt: now,
+      receivedLaquageBy: by,
+    };
     record.markModified('lineStatuses');
     record.history.push({ action: `receive_line_laquage:${lineKey}`, by, at: now });
     return;
@@ -2280,7 +1635,12 @@ function applyLaquageAction(record, action, lineKey, by) {
   }
   if (action === 'receive_line_coord') {
     record.lineStatuses = record.lineStatuses || {};
-    record.lineStatuses[lineKey] = { ...(record.lineStatuses[lineKey] || {}), receivedCoord: true, receivedCoordAt: now, receivedCoordBy: by };
+    record.lineStatuses[lineKey] = {
+      ...(record.lineStatuses[lineKey] || {}),
+      receivedCoord: true,
+      receivedCoordAt: now,
+      receivedCoordBy: by,
+    };
     record.markModified('lineStatuses');
     record.history.push({ action: `receive_line_coord:${lineKey}`, by, at: now });
     return;
@@ -2290,14 +1650,36 @@ function applyLaquageAction(record, action, lineKey, by) {
     record.history.push({ action, by, at: now });
     return;
   }
+  // Mark a specific line as incomplete with optional note + partial quantity received
+  if (action === 'incomplete_line') {
+    record.lineStatuses = record.lineStatuses || {};
+    record.lineStatuses[lineKey] = {
+      ...(record.lineStatuses[lineKey] || {}),
+      incomplete: true,
+      incompleteAt: now,
+      incompleteBy: by,
+      incompleteNote: extra.note || '',
+      partialQty: extra.partialQty ?? null,
+    };
+    record.markModified('lineStatuses');
+    record.history.push({
+      action: 'incomplete_line',
+      by,
+      at: now,
+      note: extra.note || '',
+      partialQty: extra.partialQty ?? null,
+    });
+    return;
+  }
 }
 
-// ── BARRES routes ──
+// ==================== LAQUAGE BARRES ROUTES ====================
+
 app.get('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res) => {
   try {
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) {
-      record = new LaquageBarres({ projectId: req.params.projectId, barresBrutes: [], barresLaquees: [], morceauxBruts: [], morceauxLaques: [], status: 'draft', lineStatuses: {} });
+      record = new LaquageBarres({ projectId: req.params.projectId, barresBrutes: [], barresLaquees: [], morceauxBruts: [], morceauxLaques: [], status: 'draft', lineStatuses: {}, history: [] });
       await record.save();
     }
     res.json(record.toJSON());
@@ -2310,32 +1692,32 @@ app.put('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res)
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) record = new LaquageBarres({ projectId: req.params.projectId });
     if (record.status !== 'draft') return res.status(400).json({ error: 'Cannot edit after draft stage.' });
-    if (barresBrutes !== undefined) record.barresBrutes = barresBrutes;
+    if (barresBrutes  !== undefined) record.barresBrutes  = barresBrutes;
     if (barresLaquees !== undefined) record.barresLaquees = barresLaquees;
     if (morceauxBruts !== undefined) record.morceauxBruts = morceauxBruts;
-    if (morceauxLaques !== undefined) record.morceauxLaques = morceauxLaques;
-    await record.save();
-    res.json(record.toJSON());
+    if (morceauxLaques!== undefined) record.morceauxLaques= morceauxLaques;
+    await record.save(); res.json(record.toJSON());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/projects/:projectId/laquage/barres/action', requireAuth, async (req, res) => {
   try {
-    const { action, lineKey, by } = req.body;
+    // Destructure extra fields for incomplete_line support
+    const { action, lineKey, by, note, partialQty } = req.body;
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) return res.status(404).json({ error: 'Record not found' });
-    applyLaquageAction(record, action, lineKey, by);
-    await record.save();
-    res.json(record.toJSON());
+    applyLaquageAction(record, action, lineKey, by, { note, partialQty });
+    await record.save(); res.json(record.toJSON());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── ACCESSOIRES routes ──
+// ==================== LAQUAGE ACCESSOIRES ROUTES ====================
+
 app.get('/api/projects/:projectId/laquage/accessoires', requireAuth, async (req, res) => {
   try {
     let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
     if (!record) {
-      record = new LaquageAccessoires({ projectId: req.params.projectId, accessoires: [], status: 'draft', lineStatuses: {} });
+      record = new LaquageAccessoires({ projectId: req.params.projectId, accessoires: [], status: 'draft', lineStatuses: {}, history: [] });
       await record.save();
     }
     res.json(record.toJSON());
@@ -2349,19 +1731,219 @@ app.put('/api/projects/:projectId/laquage/accessoires', requireAuth, async (req,
     if (!record) record = new LaquageAccessoires({ projectId: req.params.projectId });
     if (record.status !== 'draft') return res.status(400).json({ error: 'Cannot edit after draft stage.' });
     if (accessoires !== undefined) record.accessoires = accessoires;
-    await record.save();
-    res.json(record.toJSON());
+    await record.save(); res.json(record.toJSON());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/projects/:projectId/laquage/accessoires/action', requireAuth, async (req, res) => {
   try {
-    const { action, lineKey, by } = req.body;
+    const { action, lineKey, by, note, partialQty } = req.body;
     let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
     if (!record) return res.status(404).json({ error: 'Record not found' });
-    applyLaquageAction(record, action, lineKey, by);
-    await record.save();
-    res.json(record.toJSON());
+    applyLaquageAction(record, action, lineKey, by, { note, partialQty });
+    await record.save(); res.json(record.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==================== LAQUAGE NOTIFICATION BELL ENDPOINT ====================
+
+/**
+ * GET /api/laquage/recent-actions
+ * Returns the last N workflow history entries across ALL projects (barres + accessoires),
+ * enriched with project name and reference. Used by LaquageNotifBell.
+ */
+app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+
+    // Top-level workflow actions only — per-line actions are too granular for the bell
+    const TOP_LEVEL_ACTIONS = new Set([
+      'send_to_laquage', 'receive_all_laquage', 'return_to_coord',
+      'receive_all_coord', 'incomplete_line',
+    ]);
+
+    const [barresRecords, accRecords, projects] = await Promise.all([
+      LaquageBarres.find({}).select('projectId history').lean(),
+      LaquageAccessoires.find({}).select('projectId history').lean(),
+      Project.find({}).select('name reference').lean(),
+    ]);
+
+    const projMap = Object.fromEntries(projects.map(p => [p._id.toString(), p]));
+
+    const events = [];
+    for (const rec of [...barresRecords, ...accRecords]) {
+      const proj = projMap[rec.projectId?.toString()];
+
+      // Skip records with no linked project
+      if (!proj || !proj.name) continue;
+
+      for (const h of (rec.history || [])) {
+        // Only show top-level actions in the bell
+        if (!TOP_LEVEL_ACTIONS.has(h.action)) continue;
+
+        events.push({
+          action:      h.action,
+          by:          h.by || '—',
+          at:          h.at,
+          note:        h.note || null,
+          partialQty:  h.partialQty ?? null,
+          projectId:   rec.projectId,
+          projectName: proj.name,
+          projectRef:  proj.reference || '',
+        });
+      }
+    }
+
+    // Sort newest first
+    events.sort((a, b) => new Date(b.at) - new Date(a.at));
+
+    // Deduplicate: barres and accessoires both log the same action for the same
+    // project at virtually the same time — keep only the first occurrence within
+    // a 5-second window per (action, projectId) pair.
+    const seen = new Map();
+    const deduped = [];
+    for (const ev of events) {
+      const key = `${ev.action}::${ev.projectId?.toString()}`;
+      const prevTime = seen.get(key);
+      const evTime = new Date(ev.at).getTime();
+      if (prevTime && Math.abs(evTime - prevTime) < 5000) continue;
+      seen.set(key, evTime);
+      deduped.push(ev);
+      if (deduped.length >= limit) break;
+    }
+
+    res.json(deduped);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==================== PURCHASE REQUEST SCHEMA ====================
+
+const purchaseRequestSchema = new mongoose.Schema({
+  itemId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
+  itemName:    { type: String, default: '' },
+  itemImage:   { type: String, default: '' },
+  quantity:    { type: Number, required: true, min: 0.01 },
+  note:        { type: String, default: '' },
+  requestedBy: { type: String, default: 'Admin' },
+  requestedAt: { type: Date, default: Date.now },
+  status:      { type: String, enum: ['pending', 'ordered'], default: 'pending' },
+  orderedBy:   { type: String, default: '' },
+  orderedAt:   { type: Date, default: null },
+}, {
+  timestamps: true,
+  toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } }
+});
+const PurchaseRequest = mongoose.model('PurchaseRequest', purchaseRequestSchema);
+
+// ==================== PURCHASE REQUEST ROUTES ====================
+
+/**
+ * POST /api/purchase-requests
+ * Admin creates a purchase request. Does NOT touch inventory stock.
+ */
+app.post('/api/purchase-requests', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const { itemId, itemName, itemImage, quantity, note } = req.body;
+    if (!itemId || !quantity || quantity <= 0)
+      return res.status(400).json({ error: 'itemId and quantity (>0) required' });
+
+    const pr = await PurchaseRequest.create({
+      itemId,
+      itemName:    itemName || '',
+      itemImage:   itemImage || '',
+      quantity:    parseFloat(quantity),
+      note:        note || '',
+      requestedBy: req.user?.displayName || 'Admin',
+      requestedAt: new Date(),
+    });
+    res.status(201).json(pr);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
+ * GET /api/purchase-requests
+ * Returns purchase requests. ACHAT / admin sees all.
+ * ?status=pending|ordered filters by status.
+ * ?notifyAdmin=1 returns only 'ordered' items (for the bell).
+ */
+app.get('/api/purchase-requests', requireAuth, async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.status) filter.status = req.query.status;
+    const prs = await PurchaseRequest.find(filter).sort({ createdAt: -1 }).limit(200);
+    res.json(prs);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
+ * PATCH /api/purchase-requests/:id/mark-ordered
+ * ACHAT marks a request as "commandé".
+ * Triggers a notification back to admin via the bell.
+ */
+app.patch('/api/purchase-requests/:id/mark-ordered', requireAuth, async (req, res) => {
+  try {
+    const pr = await PurchaseRequest.findById(req.params.id);
+    if (!pr) return res.status(404).json({ error: 'Not found' });
+    if (pr.status === 'ordered') return res.status(400).json({ error: 'Already ordered' });
+
+    pr.status    = 'ordered';
+    pr.orderedBy = req.user?.displayName || req.user?.username || 'ACHAT';
+    pr.orderedAt = new Date();
+    await pr.save();
+    res.json(pr);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ==================== LAQUAGE HISTORY DELETE ROUTES ====================
+// Admin-only: delete a single history entry or clear all history across all records.
+// History is stored as embedded arrays on LaquageBarres / LaquageAccessoires documents.
+
+/**
+ * DELETE /api/laquage/history-entry
+ * Body: { projectId, action, at }
+ * Removes the matching history entry from both barres and accessoires records for that project.
+ */
+app.delete('/api/laquage/history-entry', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const { projectId, action, at } = req.body;
+    if (!projectId || !action || !at) return res.status(400).json({ error: 'projectId, action and at required' });
+
+    const targetTime = new Date(at).getTime();
+
+    // Pull matching entry from barres record
+    const barres = await LaquageBarres.findOne({ projectId });
+    if (barres) {
+      barres.history = (barres.history || []).filter(h =>
+        !(h.action === action && Math.abs(new Date(h.at).getTime() - targetTime) < 1000)
+      );
+      await barres.save();
+    }
+
+    // Pull matching entry from accessoires record
+    const acc = await LaquageAccessoires.findOne({ projectId });
+    if (acc) {
+      acc.history = (acc.history || []).filter(h =>
+        !(h.action === action && Math.abs(new Date(h.at).getTime() - targetTime) < 1000)
+      );
+      await acc.save();
+    }
+
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
+ * DELETE /api/laquage/history-all
+ * Clears all history entries from every LaquageBarres and LaquageAccessoires record.
+ */
+app.delete('/api/laquage/history-all', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    await Promise.all([
+      LaquageBarres.updateMany({}, { $set: { history: [] } }),
+      LaquageAccessoires.updateMany({}, { $set: { history: [] } }),
+    ]);
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

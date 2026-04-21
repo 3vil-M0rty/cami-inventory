@@ -144,6 +144,7 @@ function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
   const userRole = user?.role;
 
   const adminThing = userRole === 'Admin';
+  
 
   return (
     <div className="project-card" onClick={onOpen} style={{ borderTopColor: project.ralColor || '#ccc' }}>
@@ -168,10 +169,6 @@ function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
         {project.clientId && (
           <div className="project-client-tag">👤 {project.clientId.name}</div>
         )}
-        <div className="project-card__stats">
-          <span>{project.chassis?.length || 0} {t('chassisWord')}</span>
-          <span>{project.usedBars?.length || 0} {t('barsWord')}</span>
-        </div>
       </div>
       <div className="project-card__actions" onClick={e => e.stopPropagation()}>
         {adminThing && (
