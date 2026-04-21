@@ -1127,14 +1127,15 @@ function ProjectDetail({ project, onBack, currentUser }) {
               <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}>⚙️ {t('chassisTypeConfig')}</button>
             )}
             {rows.length > 0 && (
-              <div className="selection-toolbar">
+              (adminThing && <div className="selection-toolbar">
                 <button className="select-btn" onClick={toggleAll}>{selectedKeys.size === allSelectableKeys.length ? t('deselectAll') : t('selectAll')}</button>
                 {selectedKeys.size > 0 && (
                   <button className="print-selected-btn" onClick={startBatchPrint}>
                     🖨 {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})
                   </button>
                 )}
-              </div>
+              </div>)
+              
             )}
           </div>
 

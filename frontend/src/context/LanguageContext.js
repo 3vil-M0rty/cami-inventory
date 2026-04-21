@@ -131,6 +131,7 @@ const translations = {
     receptionner: 'Réceptionner', articlesRecues: 'Articles reçus', articlesCommandes: 'Articles commandés',
     addNewOrder: 'Ajouter une commande', cons: 'Consommation',
     status_en_cours: 'En cours', status_fabrique: 'Fabriqué', status_cloture: 'Clôturé',
+    selectAll: "Tout sélectionner", deselectAll: 'Tout desélectionner',
   },
   it: {
     appTitle: 'CAMI ALUMINIUM', appSubtitle: 'DA HB',
