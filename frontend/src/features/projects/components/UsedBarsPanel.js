@@ -14,10 +14,34 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 
 const SUPER_CATS = [
-  { key: 'aluminium', icon: <Layers size={13} strokeWidth={2.5} />, labelKey: 'superCatAluminium', label: 'Aluminium' },
-  { key: 'verre', icon: <MirrorRectangular size={13} strokeWidth={2.5} />, labelKey: 'superCatVerre', label: 'Verre' },
-  { key: 'accessoires', icon:  <Wrench size={13} strokeWidth={2.5} />, labelKey: 'superCatAccessoires', label: 'Accessoires' },
-  { key: 'poudre', icon: <Paintbrush size={13} strokeWidth={2.5} />, labelKey: 'superCatPoudre', label: 'Poudre' },
+  {
+    key: 'aluminium',
+    color: '#dfdfdf',
+    icon: <Layers size={13} color='#000' strokeWidth={2.5} />,
+    labelKey: 'superCatAluminium',
+    label: 'Aluminium'
+  },
+  {
+    key: 'verre',
+    color: 'lightblue',
+    icon: <MirrorRectangular size={13} color='black' strokeWidth={2.5} />,
+    labelKey: 'superCatVerre',
+    label: 'Verre'
+  },
+  {
+    key: 'accessoires',
+    color: 'red',
+    icon: <Wrench size={13} color='black' strokeWidth={2.5} />,
+    labelKey: 'superCatAccessoires',
+    label: 'Accessoires'
+  },
+  {
+    key: 'poudre',
+    color: 'orange',
+    icon: <Paintbrush size={13} color='black' strokeWidth={2.5} />,
+    labelKey: 'superCatPoudre',
+    label: 'Poudre'
+  }
 ];
 
 /**
@@ -36,8 +60,28 @@ function fmt(val) {
 function UsedBarsPanel({ project }) {
   const { addUsedBar, removeUsedBar } = useProjects();
   const { t, currentLanguage: language } = useLanguage();
+  const { user } = useAuth();
 
-  const [activeSuperCat, setActiveSuperCat] = useState('aluminium');
+  const userRole = user?.role;
+  const adminThing = userRole === 'Admin';
+
+  const ROLE_SUPER_CAT_ACCESS = {
+    Laquage: ['poudre'],
+    BARREMAN: ['aluminium'],
+    Coordinateur: [],
+    Magasinier: ['accessoires'],
+    LOGISTIQUE: [],
+  };
+
+  const visibleSuperCats = adminThing
+    ? SUPER_CATS
+    : SUPER_CATS.filter(sc =>
+      (ROLE_SUPER_CAT_ACCESS[userRole] || []).includes(sc.key)
+    );
+
+  const [activeSuperCat, setActiveSuperCat] = useState(
+    () => visibleSuperCats[0]?.key || 'aluminium'
+  );
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [quantities, setQuantities] = useState({});
@@ -100,7 +144,6 @@ function UsedBarsPanel({ project }) {
   // Resolve supercategory label: try translation key first, fall back to static label
   const getSuperCatLabel = (sc) => {
     const translated = t(sc.labelKey);
-    // If the translation function returns the key itself (untranslated), use the fallback label
     if (!translated || translated === sc.labelKey) return sc.label;
     return translated;
   };
@@ -113,28 +156,6 @@ function UsedBarsPanel({ project }) {
     return acc;
   }, {});
 
-  const { user } = useAuth();
-  const userRole = user?.role;
-  const adminThing = userRole === 'Admin';
-  const laquageThing = userRole === 'Admin' || userRole === 'Laquage';
-  const barreThing = userRole === 'Admin' || userRole === 'BARREMAN';
-  const coordinateurThing = userRole === 'Admin' || userRole === 'Coordinateur';
-  const magThing = userRole === 'Admin' || userRole === 'Magasinier';
-  const logistiqueThing = userRole === 'LOGISTIQUE';
-  const ROLE_SUPER_CAT_ACCESS = {
-    Laquage: ['poudre'],
-    BARREMAN: ['aluminium'],
-    Coordinateur: [],
-    Magasinier: ['accessoires'],
-    LOGISTIQUE: [],
-    // add other roles here as needed
-  };
-  const visibleSuperCats = adminThing
-  ? SUPER_CATS                                           // Admin sees all
-  : SUPER_CATS.filter(sc =>
-      (ROLE_SUPER_CAT_ACCESS[userRole] || []).includes(sc.key)
-    );
-
   return (
     <div className="ubp">
       {/* ── Super-category tabs ── */}
@@ -146,6 +167,10 @@ function UsedBarsPanel({ project }) {
               key={sc.key}
               className={`ubp__super-tab ${activeSuperCat === sc.key ? 'active' : ''}`}
               onClick={() => handleSuperCatChange(sc.key)}
+              style={{
+                backgroundColor: activeSuperCat === sc.key ? sc.color : undefined,
+                color: activeSuperCat === sc.key ? '#fff' : undefined
+              }}
             >
               {sc.icon} {getSuperCatLabel(sc)}
               {count > 0 && <span className="ubp__super-count">{count}</span>}
@@ -155,33 +180,25 @@ function UsedBarsPanel({ project }) {
       </div>
 
       {/* ── Search ── */}
-      {adminThing && (
-        <div className="ubp__search-wrap">
-          <span className="ubp__search-icon">
-            <svg width="15" height="15" viewBox="0 0 18 18" fill="none">
-              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </span>
-          <input
-            type="text"
-            className="ubp__search-input"
-            placeholder={t('searchInventory')}
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-          />
-          {searchTerm && (
-            <button className="ubp__search-clear" onClick={() => { setSearchTerm(''); setSearchResults([]); }}>✕</button>
-          )}
-        </div>
 
-      )}
-
-      {/* {isPoudre && (
-        <p style={{ fontSize: 12, color: '#f59e0b', margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
-          🎨 {t('poudreDecimalHint') || 'Les quantités en poudre acceptent les décimales (ex: 145.23)'}
-        </p>
-      )} */}
+      <div className="ubp__search-wrap">
+        <span className="ubp__search-icon">
+          <svg width="15" height="15" viewBox="0 0 18 18" fill="none">
+            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </span>
+        <input
+          type="text"
+          className="ubp__search-input"
+          placeholder={t('searchInventory')}
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+        />
+        {searchTerm && (
+          <button className="ubp__search-clear" onClick={() => { setSearchTerm(''); setSearchResults([]); }}>✕</button>
+        )}
+      </div>
 
       {error && <p className="ubp__error">{error}</p>}
 
@@ -248,9 +265,12 @@ function UsedBarsPanel({ project }) {
           <table className="ubp__table">
             <thead>
               <tr>
-                <th>{t('barDesignation')}</th>
-                <th style={{ textAlign: 'center' }}>{t('barQtyUsed')}</th>
-                <th style={{ textAlign: 'center' }}>{t('barStockRemaining')}</th>
+                <th>{t('designation')}</th>
+                <th style={{ textAlign: 'center' }}>{t('quantity')}</th>
+                {adminThing &&
+                  (<th style={{ textAlign: 'center' }}>{t('barStockRemaining')}</th>)
+                }
+
                 <th></th>
               </tr>
             </thead>
@@ -279,11 +299,10 @@ function UsedBarsPanel({ project }) {
                     </td>
                     <td>
                       {adminThing && (
-                        <button className="ubp__remove-btn" onClick={() => handleRemove(item.id || item._id)}>
-                          {t('delete')}
+                        <button className="ubp__remove-btn" title={t('delete')} onClick={() => handleRemove(item.id || item._id)}>
+                          <Trash2 size={15} />
                         </button>
                       )}
-
                     </td>
                   </tr>
                 );
@@ -296,7 +315,7 @@ function UsedBarsPanel({ project }) {
       {/* ── Summary of all supercategories ── */}
       {(project.usedBars || []).length > 0 && (
         <div className="ubp__summary">
-          {SUPER_CATS.map(sc => {
+          {visibleSuperCats.map(sc => {
             const items = usedBySuper[sc.key] || [];
             if (!items.length) return null;
             const total = items.reduce((s, b) => s + b.quantity, 0);

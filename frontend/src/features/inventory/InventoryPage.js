@@ -5,7 +5,7 @@ import {
   Layers, GlassWater, Wrench, FlaskConical, Settings, Paintbrush, MirrorRectangular,
   Search, AlertTriangle, Plus, Minus, Pencil, Trash2,
   FileDown, PackagePlus, Package, ChevronRight, Tag,
-  CheckCircle2, XCircle, Clock, Lock, ShoppingCart
+  CheckCircle2, XCircle, Clock, Lock, ShoppingCart,Sheet,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
@@ -284,7 +284,7 @@ function InventoryPage() {
         <div className="action-buttons">
           {magThing && (
             <button className="btn-outline" onClick={exportToExcel} disabled={exporting || items.length === 0}>
-              <FileDown size={14} strokeWidth={2} />
+              <Sheet size={15} strokeWidth={2} />
               {exporting ? t('exporting') : t('exportExcel')}
             </button>
           )}

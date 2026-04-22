@@ -90,7 +90,8 @@
   gap: 0;
   margin-bottom: 0;
   border-bottom: 2px solid #e0e0e0;
-  background-color: var(--900);
+  background-color: white;
+  
 }
 
 .project-detail__tab {
@@ -101,15 +102,15 @@
   margin-bottom: -2px;
   font-size: 13px;
   font-weight: 600;
-  color: #888;
+  color: #000;
   cursor: pointer;
   transition: all 0.15s;
   display: flex;
   align-items: center;
   gap: 7px;
 }
-.project-detail__tab:hover { color: white; }
-.project-detail__tab--active { color: white; border-bottom-color: #ffd900; }
+.project-detail__tab:hover { color: #479400; }
+.project-detail__tab--active { color: #479400; border-bottom-color: #479400; }
 
 .tab-count {
   background: #e0e0e0;

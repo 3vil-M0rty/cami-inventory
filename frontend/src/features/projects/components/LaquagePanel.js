@@ -481,10 +481,10 @@ export function BarresLaquerPanel({ project, currentUser }) {
           <StatusBadge status={status} />
         </div>
         <div className="laq-panel-actions">
-          {canEdit && isDraft && <button className="laq-save-btn" disabled={saving} onClick={save}><Save size={14} /> {saving ? '…' : 'Enregistrer'}</button>}
+          {canEdit && isDraft && <button className="laq-save-btn" disabled={saving} onClick={save}><Save size={14} /> {saving ? '…' : ''}</button>}
           {canEdit &&
             <button className="laq-print-btn" onClick={() => printPDF(record, project, 'barres', selected, imageMap)}>
-              <Printer size={14} /> {selected.size > 0 ? `Imprimer (${selected.size})` : 'Imprimer PDF'}
+              <Printer size={14} /> {selected.size > 0 ? `Imprimer (${selected.size})` : ''}
             </button>
           }
 
@@ -788,10 +788,13 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
       <div className="laq-panel-header">
         <div className="laq-panel-title"><span>🔩</span><h3>Accessoires à Laquer</h3><StatusBadge status={status} /></div>
         <div className="laq-panel-actions">
-          {canEdit && isDraft && <button className="laq-save-btn" disabled={saving} onClick={save}><Save size={14} /> {saving ? '…' : 'Enregistrer'}</button>}
-          <button className="laq-print-btn" onClick={() => printPDF(record, project, 'accessoires', selected, imageMap)}>
-            <Printer size={14} /> {selected.size > 0 ? `Imprimer (${selected.size})` : 'Imprimer PDF'}
-          </button>
+          {canEdit && isDraft && <button className="laq-save-btn" disabled={saving} onClick={save}><Save size={14} /> {saving ? '…' : ''}</button>}
+          {canEdit &&
+            <button className="laq-print-btn" onClick={() => printPDF(record, project, 'accessoires', selected, imageMap)}>
+              <Printer size={14} /> {selected.size > 0 ? `Imprimer (${selected.size})` : ''}
+            </button>
+          }
+
         </div>
       </div>
 

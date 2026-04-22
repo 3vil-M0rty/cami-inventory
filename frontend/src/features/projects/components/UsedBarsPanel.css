@@ -10,7 +10,7 @@
   cursor: pointer; transition: all 0.15s; font-family: inherit;
 }
 .ubp__super-tab:hover { border-color: #1a1a1a; color: #1a1a1a; }
-.ubp__super-tab.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.ubp__super-tab.active {color: #000 !important; border-color: #1a1a1a; }
 .ubp__super-count {
   background: rgba(255,255,255,0.25); color: inherit;
   min-width: 18px; height: 18px; border-radius: 9px;

@@ -93,7 +93,7 @@ function ProjectsPage() {
             ))}
           </div>
           <input type="text" className="search-input"
-            placeholder={t('projectSearchPlaceholder')}
+            placeholder={t('searchPlaceholder')}
             value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           <button className="add-item-btn" onClick={() => { setEditingProject(null); setShowForm(true); }}>
             + {t('addProject')}

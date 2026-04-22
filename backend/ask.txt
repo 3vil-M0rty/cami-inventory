@@ -1,7 +1,0 @@
-permissions are not working as expected, for inventory the permissions for each super category are not separated and for reading/editing /deleting as well 
-
-
-
-
-
-also I dont have the poudre sup category for now
