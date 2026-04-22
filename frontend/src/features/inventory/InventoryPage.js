@@ -5,7 +5,7 @@ import {
   Layers, GlassWater, Wrench, FlaskConical, Settings, Paintbrush, MirrorRectangular,
   Search, AlertTriangle, Plus, Minus, Pencil, Trash2,
   FileDown, PackagePlus, Package, ChevronRight, Tag,
-  CheckCircle2, XCircle, Clock, Lock, ShoppingCart,Sheet,
+  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
@@ -530,34 +530,34 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
           {status.icon}
           {status.text}
         </div>
-        {adminThing && (
-          <div className="quantity-controls">
+
+        <div className="quantity-controls">
+          <button
+            className="qty-btn qty-btn--minus"
+            onClick={() => onMinusClick(item)}
+            disabled={item.quantity === 0}
+            title={t('takeOutTitle')}
+          >
+            <Minus size={14} strokeWidth={2.5} />
+          </button>
+          <button
+            className="qty-btn qty-btn--plus"
+            onClick={() => onPlusClick(item)}
+            title={t('addInTitle') || 'Ajouter'}
+          >
+            <Plus size={14} strokeWidth={2.5} />
+          </button>
+          {onOrderRequest && (
             <button
-              className="qty-btn qty-btn--minus"
-              onClick={() => onMinusClick(item)}
-              disabled={item.quantity === 0}
-              title={t('takeOutTitle')}
+              className="qty-btn qty-btn--order"
+              onClick={() => onOrderRequest(item)}
+              title="Demander une commande"
             >
-              <Minus size={14} strokeWidth={2.5} />
+              <ShoppingCart size={14} strokeWidth={2.5} />
             </button>
-            <button
-              className="qty-btn qty-btn--plus"
-              onClick={() => onPlusClick(item)}
-              title={t('addInTitle') || 'Ajouter'}
-            >
-              <Plus size={14} strokeWidth={2.5} />
-            </button>
-            {onOrderRequest && (
-              <button
-                className="qty-btn qty-btn--order"
-                onClick={() => onOrderRequest(item)}
-                title="Demander une commande"
-              >
-                <ShoppingCart size={14} strokeWidth={2.5} />
-              </button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
+
 
 
 
