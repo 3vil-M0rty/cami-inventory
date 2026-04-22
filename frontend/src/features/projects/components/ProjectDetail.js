@@ -14,15 +14,16 @@ import { StepBack, CircleDashed } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import './ProjectDetail.css';
 
-const ETAT_OPTIONS = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'livre'];
+const ETAT_OPTIONS = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
 const ETAT_COLORS = {
   non_entame: '#9ca3af',
   en_cours: '#f59e0b',
   non_vitre: '#a855f7',
   fabrique: '#3b82f6',
   livre: '#16a34a',
+  pret_a_livrer: 'rgb(255, 0, 0)',
 };
-const STATUS_COLORS = { en_cours: '#f59e0b', fabrique: '#3b82f6', cloture: '#16a34a' };
+const STATUS_COLORS = { en_cours: '#f59e0b', fabrique: '#3b82f6', cloture: '#16a34a', pret_a_livrer:'rgb(255, 0, 0)'};
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -106,13 +107,13 @@ function computeChassisAccessories(chassis) {
 function getAllowedEtats(userRole, currentEtat) {
   if (userRole === 'Coordinateur') {
     // Coordinateur sees: non_entame, en_cours, non_vitre, fabrique — never livre
-    return ['non_entame', 'en_cours', 'non_vitre', 'fabrique'];
+    return ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'pret_a_livrer'];
   }
   if (userRole === 'LOGISTIQUE') {
     // Logistique can only toggle fabrique ↔ livre
     // If current state is neither, the select is disabled (see isEtatSelectDisabled)
-    if (currentEtat === 'fabrique' || currentEtat === 'livre') {
-      return ['fabrique', 'livre'];
+    if (currentEtat === 'pret_a_livrer' || currentEtat === 'livre') {
+      return ['pret_a_livrer', 'livre'];
     }
     return [currentEtat]; // locked to current, select disabled below
   }
@@ -122,7 +123,7 @@ function getAllowedEtats(userRole, currentEtat) {
 function isEtatSelectDisabled(userRole, currentEtat, isSaving) {
   if (isSaving) return true;
   if (userRole === 'LOGISTIQUE') {   // ← fixed: was 'Logistique' (wrong case)
-    return currentEtat !== 'fabrique' && currentEtat !== 'livre';
+    return currentEtat !== 'livre' && currentEtat !== 'pret_a_livrer';
   }
   return false;
 }
@@ -334,7 +335,7 @@ function AccessoriesExportModal({ project, chassisLabels, language, t, onClose }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const etatLabel = { all: 'Tous', non_entame: t('etat_non_entame'), en_cours: t('etat_en_cours'), non_vitre: t('etat_non_vitre'), fabrique: t('etat_fabrique'), livre: t('etat_livre') };
+  const etatLabel = { all: 'Tous', non_entame: t('etat_non_entame'), en_cours: t('etat_en_cours'), non_vitre: t('etat_non_vitre'), fabrique: t('etat_fabrique'), livre: t('etat_livre'), pret_a_livrer: t('etat_pret_a_livrer') };
 
   const computeAccessories = async () => {
     setLoading(true);

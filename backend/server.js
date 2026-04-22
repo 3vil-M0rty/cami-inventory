@@ -208,18 +208,18 @@ const componentSchema = new mongoose.Schema({
   repere: { type: String, default: '' },
   largeur: { type: Number, default: 0 },
   hauteur: { type: Number, default: 0 },
-  etat: { type: String, enum: ['non_entame', 'en_cours', 'fabrique', 'livre', 'non_vitre'], default: 'non_entame' }
+  etat: { type: String, enum: ['non_entame', 'en_cours', 'fabrique', 'livre', 'non_vitre', 'pret_a_livrer'], default: 'non_entame' }
 }, { _id: true });
 
 const unitComponentSchema = new mongoose.Schema({
   compIndex: { type: Number, required: true },
-  etat: { type: String, enum: ['non_entame', 'en_cours', 'fabrique', 'livre', 'non_vitre'], default: 'non_entame' },
+  etat: { type: String, enum: ['non_entame', 'en_cours', 'fabrique', 'livre', 'non_vitre', 'pret_a_livrer'], default: 'non_entame' },
   deliveryDate: { type: Date, default: null }
 }, { _id: false });
 
 const unitSchema = new mongoose.Schema({
   unitIndex: { type: Number, required: true },
-  etat: { type: String, enum: ['non_entame', 'en_cours', 'fabrique', 'livre', 'non_vitre'], default: 'non_entame' },
+  etat: { type: String, enum: ['non_entame', 'en_cours', 'fabrique', 'livre', 'non_vitre', 'pret_a_livrer'], default: 'non_entame' },
   deliveryDate: { type: Date, default: null },
   notes: { type: String, default: '' },
   atelierTable: { type: String, default: '' },

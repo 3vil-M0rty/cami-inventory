@@ -21,10 +21,11 @@ const ETAT_COLORS = {
   en_cours:   '#f59e0b',
   non_vitre:  '#a855f7',
   fabrique:   '#3b82f6',
+  pret_a_livrer: 'rgb(255, 0, 0)',
   livre:      '#16a34a',
 };
 
-const ETAT_ORDER = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'livre'];
+const ETAT_ORDER = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
 
 // ── Etat helpers (mirrors ProjectDetail logic) ────────────────────────────────
 function getUnit(ch, idx) {
@@ -40,11 +41,13 @@ function deriveCompositeEtat(unit, components) {
   if (states.every(e => e === 'livre')) return 'livre';
   if (states.every(e => e === 'fabrique' || e === 'livre')) return 'fabrique';
   if (states.some(e => e !== 'non_entame')) return 'en_cours';
+  if (states.every(e => e === 'non_vitre')) return 'non_vitre';
+  if (states.every(e => e === 'pret_a_livre')) return 'pret_a_livrer';
   return 'non_entame';
 }
 
 function computeEtatCounts(chassis) {
-  const counts = { non_entame: 0, en_cours: 0, non_vitre: 0, fabrique: 0, livre: 0 };
+  const counts = { non_entame: 0, en_cours: 0, non_vitre: 0, fabrique: 0, livre: 0, pret_a_livrer: 0 };
   for (const ch of chassis || []) {
     const isComp = (ch.components || []).length > 0;
     for (let i = 0; i < (ch.quantity || 1); i++) {
