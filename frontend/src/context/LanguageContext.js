@@ -137,7 +137,7 @@ const translations = {
     searchInventory: "Chercher dans l'inventaire",
     status_pret_a_livrer: 'Prêt à livrer',
     status_non_vitre: 'Prêt sans verre',
-    status_non_entame: 'Prêt sans verre',
+    status_non_entame: 'Non entamé',
   },
   it: {
     appTitle: 'CAMI ALUMINIUM', appSubtitle: 'DA HB',
@@ -248,7 +248,7 @@ const translations = {
     chassis: 'Telaio', repere: 'Repere', type: 'Tipo', largeur: 'Larghezza', hauteur: 'Altezza',
     noChassis: 'Nessun telaio aggiunto', deleteChassisConfirm: 'Eliminare questo telaio?',
     etat_non_entame: 'Non iniziato', etat_en_cours: 'In corso', etat_fabrique: 'Fabbricato', etat_livre: 'Consegnato',
-    statut_non_entame: 'Non iniziato',
+    status_non_entame: 'Non iniziato',
     dormant: 'Dormiente', vantail: 'Anta',
     usedBarsTitle: 'Materiali utilizzati', noUsedBars: 'Nessun materiale aggiunto',
     tabBL: 'Bolle di consegna', noBL: 'Nessuna consegna registrata',
