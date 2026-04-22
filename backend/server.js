@@ -288,7 +288,10 @@ function computeProjectStatus(chassis) {
     }
   }
   if (allEtats.length === 0) return 'en_cours';
+  if (allEtats.every(e => e === 'non_entame')) return 'non_entame';
+  if (allEtats.every(e => e === 'non_vitre')) return 'non_vitre';
   if (allEtats.every(e => e === 'livre')) return 'cloture';
+  if (allEtats.every(e => e === 'pret_a_livrer')) return 'pret_a_livrer';
   if (allEtats.every(e => e === 'fabrique' || e === 'livre')) return 'fabrique';
   return 'en_cours';
 }
@@ -301,11 +304,12 @@ function deriveCompositeUnitEtat(unit, numComponents) {
     states.push(cs ? cs.etat : 'non_entame');
   }
   if (states.every(e => e === 'livre')) return 'livre';
-  if (states.every(e => e === 'fabrique' || e === 'livre')) return 'fabrique';
+  if (states.every(e => e === 'pret_a_livrer' || e === 'livre')) return 'pret_a_livrer';
+  if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre')) return 'fabrique';
+  if (states.every(e => e === 'non_vitre')) return 'non_vitre';
   if (states.some(e => e !== 'non_entame')) return 'en_cours';
   return 'non_entame';
 }
-
 function syncUnits(chassis) {
   const qty = chassis.quantity || 1;
   const numComps = (chassis.components || []).length;

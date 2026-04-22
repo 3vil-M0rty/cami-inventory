@@ -47,8 +47,10 @@ function deriveCompositeEtat(unit, components) {
   if (!n) return unit.etat || 'non_entame';
   const states = components.map((comp, i) => getComponentEtat(unit, i, comp));
   if (states.every(e => e === 'livre')) return 'livre';
-  if (states.every(e => e === 'fabrique' || e === 'livre')) return 'fabrique';
+  if (states.every(e => e === 'pret_a_livrer')) return 'pret_a_livrer';
+  if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre')) return 'fabrique';
   if (states.some(e => e !== 'non_entame')) return 'en_cours';
+  
   return 'non_entame';
 }
 function fmtDate(d) { if (!d) return ''; return new Date(d).toLocaleDateString('fr-FR'); }

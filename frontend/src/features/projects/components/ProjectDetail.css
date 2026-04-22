@@ -531,6 +531,8 @@
 .etat-select--en_cours  { border-left-color: #f59e0b; }
 .etat-select--fabrique  { border-left-color: #3b82f6; }
 .etat-select--livre     { border-left-color: #16a34a; }
+.etat-select--non_vitre     { border-left-color: #a855f7; }
+.etat-select--pret_a_livrer     { border-left-color: red; }
 
 /* ============================================================
    ACCESSORY CONFIGURATION FORMS
@@ -1876,3 +1878,4 @@
 .laq-row--locked.laq-table-row td {
   background: rgba(22,163,74,.04) !important;
 }
+

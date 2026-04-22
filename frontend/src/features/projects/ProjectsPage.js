@@ -13,7 +13,9 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 const STATUS_COLORS = {
   en_cours: '#f59e0b',
   fabrique: '#3b82f6',
-  cloture: '#16a34a'
+  cloture: '#16a34a',
+  non_vitre: '#a855f7',
+  pret_a_livrer: 'red',
 };
 
 const ETAT_COLORS = {
@@ -39,10 +41,10 @@ function deriveCompositeEtat(unit, components) {
     return cs ? cs.etat : (comp.etat || 'non_entame');
   });
   if (states.every(e => e === 'livre')) return 'livre';
-  if (states.every(e => e === 'fabrique' || e === 'livre')) return 'fabrique';
-  if (states.some(e => e !== 'non_entame')) return 'en_cours';
+  if (states.every(e => e === 'pret_a_livrer' || e === 'livre')) return 'pret_a_livrer';
+  if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre')) return 'fabrique';
   if (states.every(e => e === 'non_vitre')) return 'non_vitre';
-  if (states.every(e => e === 'pret_a_livre')) return 'pret_a_livrer';
+  if (states.some(e => e !== 'non_entame')) return 'en_cours';
   return 'non_entame';
 }
 
