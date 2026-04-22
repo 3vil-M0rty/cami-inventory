@@ -16,7 +16,47 @@ const STATUS_COLORS = {
   cloture: '#16a34a'
 };
 
+const ETAT_COLORS = {
+  non_entame: '#9ca3af',
+  en_cours:   '#f59e0b',
+  non_vitre:  '#a855f7',
+  fabrique:   '#3b82f6',
+  livre:      '#16a34a',
+};
 
+const ETAT_ORDER = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'livre'];
+
+// ── Etat helpers (mirrors ProjectDetail logic) ────────────────────────────────
+function getUnit(ch, idx) {
+  return (ch.units || []).find(u => u.unitIndex === idx) || { unitIndex: idx, etat: 'non_entame', componentStates: [] };
+}
+
+function deriveCompositeEtat(unit, components) {
+  if (!components.length) return unit.etat || 'non_entame';
+  const states = components.map((comp, i) => {
+    const cs = (unit.componentStates || []).find(c => c.compIndex === i);
+    return cs ? cs.etat : (comp.etat || 'non_entame');
+  });
+  if (states.every(e => e === 'livre')) return 'livre';
+  if (states.every(e => e === 'fabrique' || e === 'livre')) return 'fabrique';
+  if (states.some(e => e !== 'non_entame')) return 'en_cours';
+  return 'non_entame';
+}
+
+function computeEtatCounts(chassis) {
+  const counts = { non_entame: 0, en_cours: 0, non_vitre: 0, fabrique: 0, livre: 0 };
+  for (const ch of chassis || []) {
+    const isComp = (ch.components || []).length > 0;
+    for (let i = 0; i < (ch.quantity || 1); i++) {
+      const unit = getUnit(ch, i);
+      const etat = isComp ? deriveCompositeEtat(unit, ch.components) : (unit.etat || 'non_entame');
+      counts[etat] = (counts[etat] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function ProjectsPage() {
   const { projects, loading, addProject, updateProject, deleteProject, loadProjects } = useProjects();
@@ -27,8 +67,6 @@ function ProjectsPage() {
   const [editingProject, setEditingProject] = useState(null);
   const [openProjectId, setOpenProjectId] = useState(null);
   const [filterCompany, setFilterCompany] = useState('all');
-
-  
 
   useEffect(() => {
     setFilterCompany(selectedCompany || 'all');
@@ -141,10 +179,11 @@ function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
   const statusLabel = t(`status_${project.status}`) || project.status || '';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
   const { user } = useAuth();
-  const userRole = user?.role;
+  const adminThing = user?.role === 'Admin';
 
-  const adminThing = userRole === 'Admin';
-  
+  const etatCounts = computeEtatCounts(project.chassis);
+  const total = Object.values(etatCounts).reduce((a, b) => a + b, 0);
+  const activeEtats = ETAT_ORDER.filter(e => etatCounts[e] > 0);
 
   return (
     <div className="project-card" onClick={onOpen} style={{ borderTopColor: project.ralColor || '#ccc' }}>
@@ -169,16 +208,31 @@ function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
         {project.clientId && (
           <div className="project-client-tag">👤 {project.clientId.name}</div>
         )}
+
+        {/* ── Etat dots ── */}
+        {total > 0 && (
+          <div className="project-card__etat-row">
+            {activeEtats.map(e => (
+              <span
+                key={e}
+                className="project-card__etat-dot"
+                title={`${t('etat_' + e) || e}: ${etatCounts[e]}`}
+              >
+                <span className="project-card__etat-pip" style={{ backgroundColor: ETAT_COLORS[e] }} />
+                <span className="project-card__etat-count">{etatCounts[e]}</span>
+              </span>
+            ))}
+            <span className="project-card__etat-total">{total}</span>
+          </div>
+        )}
       </div>
       <div className="project-card__actions" onClick={e => e.stopPropagation()}>
         {adminThing && (
-          <button className="edit-btn"   onClick={onEdit}>{t('edit')}</button>
+          <button className="edit-btn" onClick={onEdit}>{t('edit')}</button>
         )}
         {adminThing && (
           <button className="delete-btn" onClick={onDelete}>{t('delete')}</button>
         )}
-        
-
       </div>
     </div>
   );
@@ -198,8 +252,6 @@ function RalPicker({ language, value, colorValue, onChange, t }) {
     axios.get(`${API_URL}/inventory/poudres`)
       .then(r => {
         setPoudres(r.data);
-        // If currently saved value matches a poudre, stay in picker mode
-        // If no poudres at all, auto-switch to manual
         if (r.data.length === 0) setManualMode(true);
       })
       .catch(() => setManualMode(true))
@@ -251,12 +303,11 @@ function RalPicker({ language, value, colorValue, onChange, t }) {
 
   return (
     <div className="ral-picker">
-      {/* Selected display */}
       {selectedPoudre ? (
         <div className="ral-picker__selected">
           <span
             className="ral-picker__swatch"
-            style={{ background: selectedPoudre.designation[language] ? colorValue : colorValue }}
+            style={{ background: colorValue }}
           />
           <span className="ral-picker__selected-name">
             {selectedPoudre.designation[language] || selectedPoudre.designation.fr}
@@ -271,7 +322,6 @@ function RalPicker({ language, value, colorValue, onChange, t }) {
         </div>
       )}
 
-      {/* Search */}
       <div className="ral-picker__search-wrap">
         <input
           type="text"
@@ -282,7 +332,6 @@ function RalPicker({ language, value, colorValue, onChange, t }) {
         />
       </div>
 
-      {/* List */}
       <div className="ral-picker__list">
         {filtered.length === 0 ? (
           <div className="ral-picker__empty">{t('noItems') || 'Aucun résultat'}</div>
@@ -290,9 +339,6 @@ function RalPicker({ language, value, colorValue, onChange, t }) {
           filtered.map(p => {
             const name = p.designation[language] || p.designation.fr;
             const isActive = value === name;
-            // Extract color from the item's ralColor field or use a swatch color
-            // Items in poudres should have image or designation referencing the color
-            // We'll use the category color as a fallback swatch
             const swatchColor = p.categoryId?.color || '#e5e7eb';
             return (
               <button
@@ -319,7 +365,6 @@ function RalPicker({ language, value, colorValue, onChange, t }) {
         )}
       </div>
 
-      {/* Manual fallback */}
       <button type="button" className="ral-picker__switch-btn" onClick={() => setManualMode(true)}>
         {t('ralPickerManual') || 'Saisir manuellement'}
       </button>
@@ -365,7 +410,6 @@ function ProjectFormModal({ language, project, companies, t, onClose, onSave }) 
       <div className="modal large" onClick={e => e.stopPropagation()}>
         <h2>{project ? t('projectTitleEdit') : t('projectTitleAdd')}</h2>
 
-        {/* Company selector */}
         <div className="project-form-company-selector">
           <label style={{ fontWeight: 700, marginBottom: 8, display: 'block' }}>{t('society')} *</label>
           <div className="company-choice-btns">
@@ -393,7 +437,6 @@ function ProjectFormModal({ language, project, companies, t, onClose, onSave }) 
             </div>
           </div>
 
-          {/* RAL — poudres picker */}
           <div className="form-group">
             <label>{t('ralCode')} / {t('poudre') || 'Poudre'}</label>
             <RalPicker

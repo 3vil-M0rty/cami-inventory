@@ -121,7 +121,7 @@ function getAllowedEtats(userRole, currentEtat) {
 
 function isEtatSelectDisabled(userRole, currentEtat, isSaving) {
   if (isSaving) return true;
-  if (userRole === 'Logistique') {
+  if (userRole === 'LOGISTIQUE') {   // ← fixed: was 'Logistique' (wrong case)
     return currentEtat !== 'fabrique' && currentEtat !== 'livre';
   }
   return false;
@@ -1061,20 +1061,20 @@ function ProjectDetail({ project, onBack, currentUser }) {
     { key: 'bl', label: t('tabBL'), count: null },
     { key: 'barres_laquer', label: 'Barres à Laquer', count: null },
     { key: 'accessoires_laquer', label: 'Accessoires à Laquer', count: null },
-  ]
+  ];
+
   const ROLE_TAB_ACCESS = {
     Laquage: ['barres_laquer', 'accessoires_laquer', 'bars'],
     BARREMAN: ['barres_laquer'],
     Coordinateur: ['chassis', 'barres_laquer', 'accessoires_laquer'],
     Magasinier: ['bars', 'accessoires_laquer'],
     LOGISTIQUE: ['chassis', 'bl'],
-    // add other roles here as needed
   };
+
   const visibleTabs = adminThing
-    ? detailTabs                                           // Admin sees all
-    : detailTabs.filter(sc =>
-      (ROLE_TAB_ACCESS[userRole] || []).includes(sc.key)
-    );
+    ? detailTabs
+    : detailTabs.filter(sc => (ROLE_TAB_ACCESS[userRole] || []).includes(sc.key));
+
   return (
     <div className="project-detail">
       <button className="btn-back" onClick={onBack}><StepBack size={15} />{t('backToProjects')}</button>
@@ -1100,7 +1100,6 @@ function ProjectDetail({ project, onBack, currentUser }) {
             <button className="excel-btn" onClick={() => exportBarsPDF(project, language, t)}>📄 {t('exportPDF')} — Barres</button>
           </div>
         )}
-
       </div>
 
       <ProgressBar chassis={project.chassis} t={t} />
@@ -1116,7 +1115,6 @@ function ProjectDetail({ project, onBack, currentUser }) {
         ))}
       </div>
 
-      
       {activeTab === 'chassis' && (
         <div className="project-detail__panel">
           <div className="panel-toolbar">
@@ -1126,16 +1124,15 @@ function ProjectDetail({ project, onBack, currentUser }) {
             {magThing && (
               <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}>⚙️ {t('chassisTypeConfig')}</button>
             )}
-            {rows.length > 0 && (
-              (adminThing && <div className="selection-toolbar">
+            {rows.length > 0 && adminThing && (
+              <div className="selection-toolbar">
                 <button className="select-btn" onClick={toggleAll}>{selectedKeys.size === allSelectableKeys.length ? t('deselectAll') : t('selectAll')}</button>
                 {selectedKeys.size > 0 && (
                   <button className="print-selected-btn" onClick={startBatchPrint}>
                     🖨 {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})
                   </button>
                 )}
-              </div>)
-              
+              </div>
             )}
           </div>
 
@@ -1152,7 +1149,6 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           checked={allSelectableKeys.length > 0 && selectedKeys.size === allSelectableKeys.length}
                           onChange={toggleAll} />
                       </th>
-
                     )}
                     <th>{t('repere')}</th>
                     <th>{t('type')}</th>
@@ -1174,9 +1170,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                       return (
                         <tr key={rowKey} className="chassis-row chassis-row--group-head">
                           {adminThing && (
-                            <td className="chassis-row__check">
-                              
-                            </td>
+                            <td className="chassis-row__check" />
                           )}
                           <td>
                             <strong>{label}</strong>
@@ -1203,7 +1197,6 @@ function ProjectDetail({ project, onBack, currentUser }) {
                                 {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
                               </select>
                             </td>
-
                           )}
                           {adminThing && (
                             <td>
@@ -1264,7 +1257,6 @@ function ProjectDetail({ project, onBack, currentUser }) {
                                 ))}
                               </select>
                             </td>
-
                           )}
                           <td><span className="date-placeholder">—</span></td>
                           <td className="atelier-table-col">
@@ -1315,7 +1307,6 @@ function ProjectDetail({ project, onBack, currentUser }) {
                               ))}
                             </select>
                           </td>
-
                         )}
                         <td className="delivery-date-cell">
                           {etat === 'livre' ? (
@@ -1336,7 +1327,6 @@ function ProjectDetail({ project, onBack, currentUser }) {
                               {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
                             </select>
                           </td>
-
                         )}
                         <td>
                           {adminThing && (
