@@ -7,10 +7,10 @@ import './ChassisForm.css';
 function buildComponents(typeObj, existing = []) {
   if (!typeObj?.composite) return [];
   const dormantEx = existing.find(c => c.role === 'dormant') || {};
-  const components = [{ role: 'dormant', repere: dormantEx.repere || 'D', largeur: dormantEx.largeur || '', hauteur: dormantEx.hauteur || '', etat: dormantEx.etat || 'non_entame' }];
+  const components = [{ role: 'dormant', repere: dormantEx.repere || 'Dormant', largeur: dormantEx.largeur || '', hauteur: dormantEx.hauteur || '', etat: dormantEx.etat || 'non_entame' }];
   for (let i = 0; i < (typeObj.vantaux || 0); i++) {
     const vEx = existing.filter(c => c.role === 'vantail')[i] || {};
-    components.push({ role: 'vantail', repere: vEx.repere || `V${i+1}`, largeur: vEx.largeur || '', hauteur: vEx.hauteur || '', etat: vEx.etat || 'non_entame' });
+    components.push({ role: 'vantail', repere: vEx.repere || `Vantail${i+1}`, largeur: vEx.largeur || '', hauteur: vEx.hauteur || '', etat: vEx.etat || 'non_entame' });
   }
   return components;
 }

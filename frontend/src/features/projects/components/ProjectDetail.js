@@ -10,7 +10,7 @@ import LabelPrint, { buildLabelHTML } from './LabelPrint';
 import { exportProjectPDF, exportBarsPDF } from '../utils/pdfExport';
 import { fetchChassisTypes, buildChassisLabels, CHASSIS_LABELS as STATIC_LABELS } from './ChassisTypesConfig';
 import { BarresLaquerPanel, AccessoiresLaquerPanel } from './LaquagePanel';
-import { StepBack, CircleDashed } from 'lucide-react';
+import { StepBack, CircleDashed, PlusCircle } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import './ProjectDetail.css';
 
@@ -20,6 +20,8 @@ const ETAT_COLORS = {
   fabrique: '#3b82f6', livre: '#16a34a', pret_a_livrer: 'rgb(255, 0, 0)',
 };
 const STATUS_COLORS = { en_cours: '#f59e0b', fabrique: '#3b82f6', cloture: '#16a34a', pret_a_livrer: 'rgb(255, 0, 0)' };
+
+const REMPLISSAGE_TYPES = ['Verre', 'MDF', 'Tôle', 'Panneau sandwich', 'Autre'];
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 const BACKEND_URL = process.env.REACT_APP_API_URL
@@ -151,12 +153,15 @@ function generateBLHtml(bl, project, logoBase64 = '') {
   const unitNotes = bl.unitNotes || {};
   const rows = bl.units.map((u, i) => {
     const note = unitNotes[u.unitLabel] || u.notes || '';
+    const rowClass = u.isRemplissage ? 'row-sub row-remp' : (u.isComponent ? 'row-sub' : (i % 2 === 0 ? 'row-even' : 'row-odd'));
+    const m2Display = u.m2 != null ? u.m2 + ' m²' : '—';
     return `
-    <tr class="${u.isComponent ? 'row-sub' : (i % 2 === 0 ? 'row-even' : 'row-odd')}">
+    <tr class="${rowClass}">
       <td class="td-c">${i + 1}</td>
       <td><strong>${u.unitLabel}</strong></td>
       <td>${u.chassisType || '—'}</td>
       <td class="td-c">${u.dimension}</td>
+      <td class="td-c" style="font-size:11px;color:#6b7280">${m2Display}</td>
       <td class="td-c">${fmtDate(u.deliveryDate)}</td>
       <td>${note || '—'}</td>
     </tr>`;
@@ -169,7 +174,7 @@ function generateBLHtml(bl, project, logoBase64 = '') {
   <title>${bl.blId}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:32px 40px}
+    body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:16px 20px}
     .header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:20px;margin-bottom:24px;border-bottom:3px solid ${companyColor}}
     .header-left{display:flex;align-items:flex-start;gap:14px}
     .company-name{font-size:18px;font-weight:800;color:${companyColor};margin-bottom:3px}
@@ -195,14 +200,25 @@ function generateBLHtml(bl, project, logoBase64 = '') {
     .row-even{background:#fff}
     .row-odd{background:#f9fafb}
     .row-sub{background:#f3f4f6;color:#555;font-size:12px}
+    .row-remp{background:#eff6ff;color:#1e40af;font-size:11.5px}
     .sig-row{display:flex;justify-content:space-between;margin-top:48px;gap:24px}
     .sig-box{flex:1;border-top:1.5px solid #1a1a1a;padding-top:8px;font-size:11px;color:#555;text-align:center}
     .footer{margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#aaa;text-align:center;line-height:1.7}
     @media print{
       *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-      body{padding:14mm 16mm}
-      @page{margin:0;size:A4}
+      body{padding:6mm 8mm}
+      @page{
+        size:A4;
+        margin:6mm 8mm 14mm 8mm;
+        @bottom-center{
+          content:"Page " counter(page) " / " counter(pages);
+          font-family:'Segoe UI',Arial,sans-serif;
+          font-size:9px;
+          color:#aaa;
+        }
+      }
     }
+    .bl-page-footer{margin-top:10px;padding-top:8px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center}
   </style>
 </head>
 <body>
@@ -237,6 +253,7 @@ ${clientBlock}
       <th>Repère</th>
       <th>Désignation</th>
       <th class="th-c">Dimension</th>
+      <th class="th-c">m²</th>
       <th class="th-c">Date livraison</th>
       <th>Notes</th>
     </tr>
@@ -247,8 +264,8 @@ ${clientBlock}
   <div class="sig-box">Signature livreur</div>
   <div class="sig-box">Signature réceptionnaire</div>
 </div>
-<div class="footer">
-  ${[companyName, companyAddr, companyPhone ? 'Tél : ' + companyPhone : '', companyRC ? 'RC : ' + companyRC : '', companyICE ? 'ICE : ' + companyICE : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')}<br>
+<div class="bl-page-footer">
+  <div class="footer" style="border:none;padding:0;margin:0;text-align:center;width:100%">${[companyName, companyAddr, companyPhone ? 'Tél : ' + companyPhone : '', companyRC ? 'RC : ' + companyRC : '', companyICE ? 'ICE : ' + companyICE : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')}</div>
 </div>
 <script>
   window.onload = () => {
@@ -314,15 +331,15 @@ function exportBLExcel(bl, project) {
   // ── HEADER SECTION ──
   // Row 1: company name | BL label
   setCell(0, row, co.name || '', S.companyName);
-  merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 3 } });
+  merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
   setCell(4, row, 'Bon de Livraison', S.blLabel);
   setCell(5, row, bl.blId || '', S.blId);
-  merges.push({ s: { r: row-1, c: 4 }, e: { r: row-1, c: 5 } });
+  merges.push({ s: { r: row - 1, c: 4 }, e: { r: row - 1, c: 6 } });
   row++;
 
   // Row 2: address | date label
   setCell(0, row, co.address || '', S.subtext);
-  merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 3 } });
+  merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
   setCell(4, row, 'Date de livraison', S.dateLabel);
   const delivDate = bl.deliveryDate ? new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR') : '';
   setCell(5, row, delivDate, S.dateVal);
@@ -331,7 +348,7 @@ function exportBLExcel(bl, project) {
   // Row 3: phone/email
   const phoneEmail = [co.phone ? 'Tél : ' + co.phone : '', co.email || ''].filter(Boolean).join('   ·   ');
   setCell(0, row, phoneEmail, S.subtext);
-  merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 5 } });
+  merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
   row++;
 
   // Blank separator
@@ -366,15 +383,15 @@ function exportBLExcel(bl, project) {
   if (clientName) {
     row++;
     setCell(0, row, 'DESTINATAIRE', S.clientLabel);
-    merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 5 } });
+    merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
     row++;
     setCell(0, row, clientName, S.clientName);
-    merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 5 } });
+    merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
     row++;
     const addr = [project.clientId?.address, project.clientId?.city].filter(Boolean).join(', ');
     if (addr) {
       setCell(0, row, addr, S.clientSub);
-      merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 5 } });
+      merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
       row++;
     }
   }
@@ -383,8 +400,8 @@ function exportBLExcel(bl, project) {
   row++;
 
   // ── TABLE HEADER ──
-  ['#', 'Repère', 'Désignation', 'Dimension', 'Date livraison', 'Notes'].forEach((h, i) => {
-    setCell(i, row, h, i === 0 || i === 3 || i === 4 ? S.th : S.thLeft);
+  ['#', 'Repère', 'Désignation', 'Dimension', 'm²', 'Date livraison', 'Notes'].forEach((h, i) => {
+    setCell(i, row, h, i === 0 || i === 3 || i === 4 || i === 5 ? S.th : S.thLeft);
   });
   row++;
 
@@ -397,28 +414,28 @@ function exportBLExcel(bl, project) {
     setCell(1, row, u.unitLabel, S.tdBold(base));
     setCell(2, row, u.chassisType || '', base);
     setCell(3, row, u.dimension, S.tdCenter(base));
-    setCell(4, row, u.deliveryDate ? fmtDate(u.deliveryDate) : '', S.tdCenter(base));
-    setCell(5, row, note || '', base);
+    setCell(4, row, u.m2 != null ? u.m2 : '', S.tdCenter(base));
+    setCell(5, row, u.deliveryDate ? fmtDate(u.deliveryDate) : '', S.tdCenter(base));
+    setCell(6, row, note || '', base);
     row++;
   });
 
-  // ── SIGNATURE ROW ──
   row += 2;
   setCell(0, row, 'Signature livreur', S.sigBox);
-  merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 2 } });
+  merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 2 } });
   setCell(3, row, 'Signature réceptionnaire', S.sigBox);
-  merges.push({ s: { r: row-1, c: 3 }, e: { r: row-1, c: 5 } });
+  merges.push({ s: { r: row - 1, c: 3 }, e: { r: row - 1, c: 6 } });
   row++;
 
   // ── FOOTER ──
   row++;
   const footerParts = [co.name, co.address, co.phone ? 'Tél : ' + co.phone : '', co.rc ? 'RC : ' + co.rc : '', co.ice ? 'ICE : ' + co.ice : ''].filter(Boolean);
   setCell(0, row, footerParts.join('  ·  '), S.footer);
-  merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 5 } });
+  merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
 
-  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row, c: 5 } });
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row, c: 6 } });
   ws['!merges'] = merges;
-  ws['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 26 }, { wch: 16 }, { wch: 16 }, { wch: 30 }];
+  ws['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 26 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 30 }];
   ws['!rows'] = [{ hpt: 28 }, { hpt: 18 }, { hpt: 16 }];
 
   XLSX.utils.book_append_sheet(wb, ws, 'BL');
@@ -730,6 +747,197 @@ function BLExportModal({ bl, project, t, onClose }) {
 }
 
 // ─── BL Panel ─────────────────────────────────────────────────────────────────
+
+// ─── Remplissage Manager ──────────────────────────────────────────────────────
+const EMPTY_REMP = { type: 'Verre', sousType: '', largeur: '', hauteur: '', etat: 'non_entame' };
+
+function RemplissageModal({ chassis, unitIndex = 0, project, onClose, onSaved }) {
+  const chId = chassis._id || chassis.id;
+  const [remplissages, setRemplissages] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(null);
+  const [newRemp, setNewRemp] = React.useState(EMPTY_REMP);
+  const [error, setError] = React.useState('');
+  const { t, currentLanguage: language } = useLanguage();
+  const [delivDateModal, setDelivDateModal] = React.useState(null);
+
+  React.useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages?unitIndex=${unitIndex}`);
+        setRemplissages(res.data || []);
+      } catch { setRemplissages([]); }
+      finally { setLoading(false); }
+    })();
+  }, [chId, project.id, unitIndex]);
+
+  const addRemp = async () => {
+    if (!newRemp.largeur || !newRemp.hauteur) return setError('Largeur et hauteur sont requises');
+    setError('');
+    try {
+      const res = await axios.post(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages`, { ...newRemp, unitIndex });
+      setRemplissages(prev => [...prev, res.data]);
+      setNewRemp(EMPTY_REMP);
+    } catch (e) { setError(e.response?.data?.error || 'Erreur ajout'); }
+  };
+
+  const deleteRemp = async (id) => {
+    if (!window.confirm('Supprimer ce remplissage ?')) return;
+    try {
+      await axios.delete(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${id}`);
+      setRemplissages(prev => prev.filter(r => (r._id || r.id) !== id));
+    } catch (e) { setError(e.response?.data?.error || 'Erreur suppression'); }
+  };
+
+  const patchRemp = async (id, patch) => {
+    setSaving(id);
+    try {
+      const res = await axios.patch(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${id}`, patch);
+      setRemplissages(prev => prev.map(r => (r._id || r.id) === id ? res.data : r));
+    } catch (e) { setError(e.response?.data?.error || 'Erreur mise à jour'); }
+    finally { setSaving(null); }
+  };
+
+  const handleEtatChange = (r, newEtat) => {
+    const id = r._id || r.id;
+    if (newEtat === 'livre' && !r.deliveryDate) { setDelivDateModal({ id, etat: newEtat }); return; }
+    patchRemp(id, { etat: newEtat });
+  };
+
+  const handleDeliveryConfirm = (date) => {
+    const { id, etat } = delivDateModal;
+    setDelivDateModal(null);
+    patchRemp(id, { etat, deliveryDate: date });
+  };
+
+  const calcM2 = (l, h) => {
+    const lv = parseFloat(l), hv = parseFloat(h);
+    if (!lv || !hv) return '—';
+    return ((lv * hv) / 1e6).toFixed(2) + ' m²';
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 720, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div className="ct-manager__header">
+          <h2>
+            {t('remplissage')} — {t('repere')} : {chassis.repere}
+            {chassis.quantity > 1 ? ` #${unitIndex + 1}` : ''}
+            <span style={{ fontWeight: 400, fontSize: 13, color: '#6b7280', marginLeft: 8 }}>
+              ({chassis.largeur}×{chassis.hauteur} mm)
+            </span>
+          </h2>
+          <button className="chassis-form__close" onClick={onClose}>×</button>
+        </div>
+        {error && <div className="ct-manager__error">{error}</div>}
+        {loading ? <div className="ct-manager__loading">{t('loading')}</div> : (
+          <>
+            {remplissages.length > 0 ? (
+              <table className="proj-acc-table" style={{ marginBottom: 20 }}>
+                <thead>
+                  <tr>
+                    <th>{t('type')}</th><th>{t('subtype')}</th>
+                    <th style={{ width: 80 }}>L (mm)</th><th style={{ width: 80 }}>H (mm)</th>
+                    <th style={{ width: 90 }}>m²</th><th style={{ width: 120 }}>{t('status')}</th>
+                    <th style={{ width: 120 }}>{t('blDate')}</th><th style={{ width: 40 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {remplissages.map(r => {
+                    const id = r._id || r.id;
+                    const isSaving = saving === id;
+                    return (
+                      <tr key={id} style={{ opacity: isSaving ? 0.6 : 1 }}>
+                        <td><strong>{r.type}</strong></td>
+                        <td>{r.sousType || <span style={{ color: '#9ca3af' }}>—</span>}</td>
+                        <td style={{ textAlign: 'center' }}>{r.largeur}</td>
+                        <td style={{ textAlign: 'center' }}>{r.hauteur}</td>
+                        <td style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>{calcM2(r.largeur, r.hauteur)}</td>
+                        <td>
+                          <select
+                            value={r.etat}
+                            disabled={isSaving}
+                            onChange={e => handleEtatChange(r, e.target.value)}
+                            style={{ borderLeft: `3px solid ${ETAT_COLORS[r.etat]}`, borderRadius: 4, padding: '3px 6px', fontSize: 12, width: '100%' }}
+                          >
+                            {ETAT_OPTIONS.map(opt => (
+                              <option key={opt} value={opt}>{t('etat_' + opt)}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ textAlign: 'center', fontSize: 12 }}>
+                          {r.etat === 'livre' && r.deliveryDate
+                            ? <button className="date-btn" style={{ fontSize: 11 }} onClick={() => setDelivDateModal({ id, etat: 'livre', current: toDateInput(r.deliveryDate) })}>
+                              📅 {fmtDate(r.deliveryDate)}
+                            </button>
+                            : <span style={{ color: '#9ca3af' }}>—</span>}
+                        </td>
+                        <td><button className="delete-btn" onClick={() => deleteRemp(id)} disabled={isSaving}>✕</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div className="proj-acc-empty" style={{ marginBottom: 20 }}>{t('noData')}</div>
+            )}
+            <div className="proj-acc-add-form">
+              <div className="proj-acc-add-form__title">➕ {t('add_infill')}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 80px auto', gap: 10, alignItems: 'flex-end' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>{t('type')}</label>
+                  <select value={newRemp.type} onChange={e => setNewRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>
+                    {REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}
+                  </select>
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>{t('subtype')}</label>
+                  <input type="text" value={newRemp.sousType} onChange={e => setNewRemp(p => ({ ...p, sousType: e.target.value }))} placeholder={t('subtype_placeholder')} style={{ width: '100%' }} />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>{t('width_mm')}</label>
+                  <input type="number" min="1" value={newRemp.largeur} onChange={e => setNewRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>{t('height_mm')}</label>
+                  <input type="number" min="1" value={newRemp.hauteur} onChange={e => setNewRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" />
+                </div>
+                <div>
+                  <button type="button" className="ct-config-btn" style={{ marginTop: 22 }} onClick={addRemp}>{t('add')}</button>
+                </div>
+              </div>
+              {newRemp.largeur && newRemp.hauteur && (
+                <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+                  {t('surface')} <strong>{calcM2(newRemp.largeur, newRemp.hauteur)}</strong>
+                </div>
+              )}
+            </div>
+            <div className="modal-actions" style={{ marginTop: 16 }}>
+              <button onClick={() => { onSaved && onSaved(); onClose(); }}>Fermer</button>
+            </div>
+          </>
+        )}
+        {delivDateModal && (
+          <div className="modal-overlay" onClick={() => setDelivDateModal(null)}>
+            <div className="modal" style={{ maxWidth: 320 }} onClick={e => e.stopPropagation()}>
+              <h3 style={{ marginBottom: 16 }}>📅 Date de livraison</h3>
+              <div className="form-group">
+                <label>Date</label>
+                <input type="date" defaultValue={delivDateModal.current || new Date().toISOString().split('T')[0]} id="remp-date-input" />
+              </div>
+              <div className="modal-actions">
+                <button onClick={() => setDelivDateModal(null)}>Annuler</button>
+                <button className="primary" onClick={() => handleDeliveryConfirm(document.getElementById('remp-date-input').value)}>Confirmer</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function BLPanel({ project, t, language }) {
   const { getBonsLivraison } = useProjects();
   const [bls, setBls] = useState([]);
@@ -791,15 +999,16 @@ function BLPanel({ project, t, language }) {
                   <thead>
                     <tr>
                       <th>{t('repere')}</th><th>{t('type')}</th>
-                      <th>{t('dimension')}</th><th>{t('blDate')}</th><th>{t('unitNotes')}</th>
+                      <th>{t('dimension')}</th><th style={{ textAlign: 'center' }}>m²</th><th>{t('blDate')}</th><th>{t('unitNotes')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {bl.units.map((u, i) => (
-                      <tr key={i} className={u.isComponent ? 'bl-row--component' : ''}>
+                      <tr key={i} className={u.isComponent ? 'bl-row--component' : (u.isRemplissage ? 'bl-row--remplissage' : '')}>
                         <td><strong>{u.unitLabel}</strong></td>
                         <td>{u.chassisType || '—'}</td>
                         <td className="dim-cell">{u.dimension}</td>
+                        <td style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>{u.m2 ? u.m2 + ' m²' : '—'}</td>
                         <td>{fmtDate(u.deliveryDate)}</td>
                         <td>{u.notes || '—'}</td>
                       </tr>
@@ -1043,7 +1252,7 @@ function buildChassisDetailHTML(ch, project, chassisLabels, language, accessorie
   for (const acc of accessories) {
     let qty; if (acc.formula) { const val = evalFormula(acc.formula, L, H); qty = val !== null ? val : null; } else { qty = typeof acc.quantity === 'number' ? acc.quantity : parseFloat(acc.quantity) || 0; }
     const key = `${acc.label}|||${acc.unit || ''}`;
-    if (mergedMap[key]) { mergedMap[key].totalQty = (mergedMap[key].totalQty !== null && qty !== null) ? parseFloat((mergedMap[key].totalQty + qty).toFixed(4)) : null; if (acc.formula) mergedMap[key].formulaStr += ` + ${acc.formula}`; }
+    if (mergedMap[key]) { mergedMap[key].totalQty = (mergedMap[key].totalQty !== null && qty !== null) ? parseFloat((mergedMap[key].totalQty + qty).toFixed(2)) : null; if (acc.formula) mergedMap[key].formulaStr += ` + ${acc.formula}`; }
     else { mergedMap[key] = { label: acc.label, unit: acc.unit || '', totalQty: qty, formulaStr: acc.formula || '' }; }
   }
   const mergedAccessories = Object.values(mergedMap);
@@ -1063,6 +1272,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
   const [showTypeManager, setShowTypeManager] = useState(false);
   const [showAccExport, setShowAccExport] = useState(false);
   const [accLineEditor, setAccLineEditor] = useState(null);
+  const [remplissageEditor, setRemplissageEditor] = useState(null);
   const [editingChassis, setEditingChassis] = useState(null);
   const [printingChassis, setPrintingChassis] = useState(null);
   const [chassisLabels, setChassisLabels] = useState(STATIC_LABELS);
@@ -1076,7 +1286,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
   const statusColor = STATUS_COLORS[project.status] || '#9ca3af';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
-  useEffect(() => { fetchChassisTypes().then(types => setChassisLabels(buildChassisLabels(types))).catch(() => {}); }, [showTypeManager]);
+  useEffect(() => { fetchChassisTypes().then(types => setChassisLabels(buildChassisLabels(types))).catch(() => { }); }, [showTypeManager]);
   useEffect(() => {
     const init = {};
     for (const ch of project.chassis || []) {
@@ -1098,7 +1308,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
           const tblRes = await axios.get(`${API_URL}/atelier-tables`);
           const found = (tblRes.data || []).find(t => t.name === newTable);
           if (found) { const accessories = computeChassisAccessories(ch); if (accessories.length > 0) await axios.post(`${API_URL}/table-stock/deduct-chassis`, { tableId: found.id, tableName: newTable, projectId: project.id, projectName: project.name, chassisRef: ch.repere, accessories }); }
-        } catch {}
+        } catch { }
       }
     } catch (e) { console.error('Atelier table save failed', e); }
     finally { setSavingTableKey(null); }
@@ -1168,8 +1378,8 @@ function ProjectDetail({ project, onBack, currentUser }) {
     { key: 'chassis', label: t('tabChassis'), count: totalDisplayRows },
     { key: 'bars', label: t('cons'), count: project.usedBars?.length || 0 },
     { key: 'bl', label: t('tabBL'), count: null },
-    { key: 'barres_laquer', label: 'Barres à Laquer', count: null },
-    { key: 'accessoires_laquer', label: 'Accessoires à Laquer', count: null },
+    { key: 'barres_laquer', label: t('BarresaLaquer'), count: null },
+    { key: 'accessoires_laquer', label: t('AccessoiresaLaquer'), count: null },
   ];
   const ROLE_TAB_ACCESS = { Laquage: ['barres_laquer', 'accessoires_laquer', 'bars'], BARREMAN: ['barres_laquer'], Coordinateur: ['chassis', 'barres_laquer', 'accessoires_laquer'], Magasinier: ['bars', 'accessoires_laquer'], LOGISTIQUE: ['chassis', 'bl'] };
   const visibleTabs = adminThing ? detailTabs : detailTabs.filter(sc => (ROLE_TAB_ACCESS[userRole] || []).includes(sc.key));
@@ -1226,7 +1436,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                 <thead>
                   <tr>
                     {adminThing && <th style={{ width: 40 }}><input type="checkbox" checked={allSelectableKeys.length > 0 && selectedKeys.size === allSelectableKeys.length} onChange={toggleAll} /></th>}
-                    <th>{t('repere')}</th><th>{t('type')}</th><th>{t('largeur')} (mm)</th><th>{t('hauteur')} (mm)</th><th>{t('dimension')}</th>
+                    <th>{t('repere')}</th><th>{t('type')}</th><th>{t('largeur')} (mm)</th><th>{t('hauteur')} (mm)</th><th>{t('dimension')}</th><th>m²</th><th>{t('remplissage')}</th>
                     <th>{t('etat')}</th><th>{t('deliveryDate')}</th><th className="atelier-table-col">Table atelier</th><th>{t('actions')}</th>
                   </tr>
                 </thead>
@@ -1234,6 +1444,9 @@ function ProjectDetail({ project, onBack, currentUser }) {
                   {rows.map(row => {
                     if (row.kind === 'groupHead') {
                       const { ch, chId, unitIndex, label, derivedEtat } = row; const rowKey = row.rowKey;
+                      const rempCount = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex).length;
+                      const rempReady = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.etat === 'livre').length;
+                      const chM2 = ch.largeur && ch.hauteur ? ((ch.largeur * ch.hauteur) / 1e6).toFixed(2) : '—';
                       return (
                         <tr key={rowKey} className="chassis-row chassis-row--group-head">
                           {adminThing && <td className="chassis-row__check" />}
@@ -1241,6 +1454,14 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           <td>{chassisLabels[ch.type]?.[language] || ch.type}</td>
                           <td>{ch.largeur}</td><td>{ch.hauteur}</td>
                           <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
+                          <td style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{chM2} m²</td>
+                          <td>
+                            {rempCount > 0
+                              ? <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: rempReady === rempCount ? '#dcfce7' : '#fef9c3', color: rempReady === rempCount ? '#16a34a' : '#92400e', fontWeight: 600 }}>
+                                {rempReady}/{rempCount} prêt{rempCount > 1 ? 's' : ''}
+                              </span>
+                              : <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>}
+                          </td>
                           <td><span className="etat-badge" style={{ background: ETAT_COLORS[derivedEtat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap' }}>{t(`etat_${derivedEtat}`)}</span></td>
                           <td><span className="date-placeholder">—</span></td>
                           {coordinateurThing && <td className="atelier-table-col">
@@ -1252,7 +1473,8 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           {adminThing && <td><div className="chassis-row__actions">
                             <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, _originalId: chId }); setShowChassisForm(true); }}>✏️</button>
                             <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>
-                            <button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch {} const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>
+                            <button className="print-btn" title={t('gereR')} onClick={() => setRemplissageEditor({ ch, unitIndex })}><PlusCircle size={15} /></button>
+                            <button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>
                             <button className="print-btn" onClick={() => { const toPrint = ch.components.map((comp, ci) => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; return { ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }; }); const html = buildLabelHTML(toPrint, project, chassisLabels, language); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🏷</button>
                             <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}>🗑</button>
                           </div></td>}
@@ -1262,6 +1484,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                     if (row.kind === 'component') {
                       const { ch, unitIndex, comp, ci, rowKey, label, etat } = row;
                       const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey);
+                      const compM2 = comp.largeur && comp.hauteur ? ((comp.largeur * comp.hauteur) / 1e6).toFixed(2) : '—';
                       return (
                         <tr key={rowKey} className={`component-row${isSelected ? ' component-row--selected' : ''}${isSaving ? ' component-row--saving' : ''}`}>
                           {adminThing && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}
@@ -1269,6 +1492,8 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           <td className="component-role">{comp.role === 'dormant' ? t('dormant') : t('vantail')}</td>
                           <td>{comp.largeur || '—'}</td><td>{comp.hauteur || '—'}</td>
                           <td className="dim-cell">{comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}</td>
+                          <td style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{compM2 !== '—' ? compM2 + ' m²' : '—'}</td>
+                          <td></td>
                           {stateThing && <td><select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleComponentEtatChange(ch, unitIndex, ci, e.target.value, rowKey)}>
                             {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
                           </select></td>}
@@ -1280,6 +1505,9 @@ function ProjectDetail({ project, onBack, currentUser }) {
                     }
                     const { ch, chId, unitIndex, unit, rowKey, label, etat } = row;
                     const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey);
+                    const unitRempCount = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex).length;
+                    const unitRempReady = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.etat === 'livre').length;
+                    const unitM2 = ch.largeur && ch.hauteur ? ((ch.largeur * ch.hauteur) / 1e6).toFixed(2) : '—';
                     return (
                       <tr key={rowKey} className={`chassis-row${isSelected ? ' chassis-row--selected' : ''}${isSaving ? ' chassis-row--saving' : ''}`}>
                         {adminThing && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}
@@ -1287,6 +1515,16 @@ function ProjectDetail({ project, onBack, currentUser }) {
                         <td>{chassisLabels[ch.type]?.[language] || ch.type}</td>
                         <td>{ch.largeur}</td><td>{ch.hauteur}</td>
                         <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
+                        <td style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{unitM2} m²</td>
+                        <td>
+                          <button
+                            title={t('gereR')}
+                            onClick={() => setRemplissageEditor({ ch, unitIndex })}
+                            style={{ fontSize: 13, background: unitRempCount === 0 ? '#f3f4f6' : (unitRempReady === unitRempCount ? '#dcfce7' : '#fef9c3'), border: '1px solid #e5e7eb', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', color: unitRempCount === 0 ? '#6b7280' : (unitRempReady === unitRempCount ? '#16a34a' : '#92400e'), fontWeight: 600 }}
+                          >
+                            <PlusCircle size={15} /> {unitRempCount === 0 ? '' : `${unitRempReady}/${unitRempCount}`}
+                          </button>
+                        </td>
                         {stateThing && <td><select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)} style={{ borderLeftColor: ETAT_COLORS[etat] }}>
                           {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
                         </select></td>}
@@ -1295,14 +1533,14 @@ function ProjectDetail({ project, onBack, currentUser }) {
                         </td>
                         {stateThing && <td className="atelier-table-col">
                           <select className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={savingTableKey === rowKey} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}>
-                            <option value="">— non assigné —</option>
+                            <option value="">——</option>
                             {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
                           </select>
                         </td>}
                         <td>{adminThing && <div className="chassis-row__actions">
                           <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, quantity: 1, etat, _originalId: chId, _unitIndex: unitIndex, _totalQty: ch.quantity ?? 1 }); setShowChassisForm(true); }}>✏️</button>
                           <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>
-                          <button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch {} const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>
+                          <button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>
                           <button className="print-btn" onClick={() => setPrintingChassis({ ...ch, _printRowIndex: unitIndex })}>🏷</button>
                           <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}>🗑</button>
                         </div>}</td>
@@ -1326,6 +1564,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
       {printingChassis && <LabelPrint chassis={printingChassis} project={project} chassisLabels={chassisLabels} onClose={() => setPrintingChassis(null)} />}
       {deliveryModal && <DeliveryDateModal defaultDate={deliveryModal.currentDate} onConfirm={handleDeliveryConfirm} onCancel={() => setDeliveryModal(null)} t={t} />}
       {accLineEditor && <ChassisLineAccessoryEditor chassis={accLineEditor} project={project} onClose={() => setAccLineEditor(null)} onSaved={() => { if (refreshProject) refreshProject(project.id); }} />}
+      {remplissageEditor && <RemplissageModal chassis={remplissageEditor.ch} unitIndex={remplissageEditor.unitIndex} project={project} onClose={() => setRemplissageEditor(null)} onSaved={() => { if (refreshProject) refreshProject(project.id); }} />}
       {showAccExport && <AccessoriesExportModal project={project} chassisLabels={chassisLabels} language={language} t={t} onClose={() => setShowAccExport(false)} />}
     </div>
   );

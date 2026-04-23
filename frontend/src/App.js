@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { LanguageProvider } from './context/LanguageContext';
 import { InventoryProvider } from './context/InventoryContext';
 import { ProjectProvider } from './context/ProjectContext';
@@ -17,11 +17,28 @@ import AdminPage from './features/admin/AdminPage';
 import './App.css';
 import AtelierTablesPage from './features/AtelierTables';
 
+const PROJECTS_DEFAULT_ROLES = new Set(['LOGISTIQUE', 'Coordinateur', 'BARREMAN']);
+
+function getDefaultPage(role) {
+  return PROJECTS_DEFAULT_ROLES.has(role) ? 'projects' : 'inventory';
+}
+
 function AppInner() {
   const { user, loading, can } = useAuth();
   const [activePage, setActivePage] = useState('inventory');
+  const [pageInitialized, setPageInitialized] = useState(false);
 
-  // While verifying saved token
+  // Once auth resolves (loading done + user known), set the correct default page.
+  // Only do this once — after that the user navigates freely.
+  useEffect(() => {
+    if (!loading && !pageInitialized) {
+      if (user) {
+        setActivePage(getDefaultPage(user.role));
+      }
+      setPageInitialized(true);
+    }
+  }, [loading, user, pageInitialized]);
+
   if (loading) {
     return (
       <div style={{
@@ -35,9 +52,11 @@ function AppInner() {
     );
   }
 
-  // Not authenticated — show login
   if (!user) {
-    return <LoginPage />;
+    return <LoginPage onLogin={(loggedInUser) => {
+      setPageInitialized(false); // allow re-init on next render
+      setActivePage(getDefaultPage(loggedInUser?.role));
+    }} />;
   }
 
   const pagePerms = {
@@ -62,15 +81,15 @@ function AppInner() {
                 </div>
               ) : (
                 <>
-                  {activePage === 'inventory'  && can('inventory.view')  && <InventoryPage />}
-                  {activePage === 'orders'     && can('orders.view')     && <OrdersPage />}
-                  {activePage === 'projects'   && can('projects.view')   && <ProjectsPage />}
-                  {activePage === 'clients'    && can('clients.view')    && <ClientsPage />}
-                  {activePage === 'devis'      && can('devis.view')      && <DevisPage />}
-                  {activePage === 'analytics'  && can('analytics.view')  && <AnalyticsPage />}
-                  {activePage === 'movements'  && can('movements.view')  && <MovementsPage />}
-                  {activePage === 'admin'      && can('admin.view')      && <AdminPage />}
-                  {activePage === 'ateliertables'      && can('ateliertables.view')      && <AtelierTablesPage />}
+                  {activePage === 'inventory'     && can('inventory.view')      && <InventoryPage />}
+                  {activePage === 'orders'        && can('orders.view')         && <OrdersPage />}
+                  {activePage === 'projects'      && can('projects.view')       && <ProjectsPage />}
+                  {activePage === 'clients'       && can('clients.view')        && <ClientsPage />}
+                  {activePage === 'devis'         && can('devis.view')          && <DevisPage />}
+                  {activePage === 'analytics'     && can('analytics.view')      && <AnalyticsPage />}
+                  {activePage === 'movements'     && can('movements.view')      && <MovementsPage />}
+                  {activePage === 'admin'         && can('admin.view')          && <AdminPage />}
+                  {activePage === 'ateliertables' && can('ateliertables.view')  && <AtelierTablesPage />}
                 </>
               )}
             </main>

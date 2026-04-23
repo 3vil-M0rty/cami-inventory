@@ -234,6 +234,17 @@ const chassisAccessorySchema = new mongoose.Schema({
   formula: { type: String, default: '' },
 }, { _id: true });
 
+// ── Remplissage (vitrage / panneau) ──────────────────────────────────────────
+const remplissageSchema = new mongoose.Schema({
+  type: { type: String, required: true },
+  sousType: { type: String, default: '' },
+  largeur: { type: Number, required: true },
+  hauteur: { type: Number, required: true },
+  etat: { type: String, enum: ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'livre', 'pret_a_livrer'], default: 'non_entame' },
+  deliveryDate: { type: Date, default: null },
+  unitIndex: { type: Number, default: 0 },  // ← NEW
+}, { _id: true });
+
 const chassisSchema = new mongoose.Schema({
   type: { type: String, required: true },
   repere: { type: String, required: true },
@@ -244,6 +255,7 @@ const chassisSchema = new mongoose.Schema({
   components: [componentSchema],
   units: [unitSchema],
   accessories: [chassisAccessorySchema],
+  remplissages: [remplissageSchema],
 }, { _id: true });
 
 const projectSchema = new mongoose.Schema({
@@ -1219,17 +1231,88 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
       if (!blMap[dateKey]) blMap[dateKey] = { blId: `BL-${project._id.toString().slice(-6).toUpperCase()}-${dateKey.replace(/-/g, '')}`, projectId: project._id, projectName: project.name, reference: project.reference, ralCode: project.ralCode, ralColor: project.ralColor, company: project.companyId || null, client: project.clientId || null, deliveryDate: dateKey, units: [] };
       return blMap[dateKey];
     };
+
+    const m2 = (l, h) => l && h ? parseFloat(((l * h) / 1e6).toFixed(4)) : null;
+
     for (const chassis of project.chassis) {
       const isComposite = (chassis.components || []).length > 0;
       const unitSuffix = (idx) => chassis.quantity > 1 ? ` #${idx + 1}` : '';
       const designation = typeLabel(chassis.type);
+      const remplissages = chassis.remplissages || [];
+
       for (const unit of chassis.units || []) {
         if (!isComposite) {
+          // Only remplissages belonging to THIS specific unit
+          const unitRemplissages = remplissages.filter(r => (r.unitIndex ?? 0) === unit.unitIndex);
+
           if (unit.etat === 'livre' && unit.deliveryDate) {
             const dateKey = new Date(unit.deliveryDate).toISOString().split('T')[0];
-            ensureBL(dateKey).units.push({ chassisId: chassis._id, chassisRepere: chassis.repere, chassisType: designation, dimension: chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`, unitIndex: unit.unitIndex, unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)}`, deliveryDate: unit.deliveryDate, notes: unit.notes || '', isComponent: false });
+
+            const undeliveredRempLabels = unitRemplissages
+              .filter(r => {
+                if (r.etat !== 'livre' || !r.deliveryDate) return true;
+                const rDateKey = new Date(r.deliveryDate).toISOString().split('T')[0];
+                return rDateKey !== dateKey;
+              })
+              .map(r => r.sousType ? `${r.type} (${r.sousType})` : r.type);
+
+            const autoNote = undeliveredRempLabels.length > 0
+              ? `sans remplissage (${undeliveredRempLabels.join(', ')})`
+              : '';
+
+            const chassisDim = chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`;
+            const chassisM2 = m2(chassis.largeur, chassis.hauteur);
+
+            ensureBL(dateKey).units.push({
+              chassisId: chassis._id, chassisRepere: chassis.repere, chassisType: designation,
+              dimension: chassisDim, m2: chassisM2,
+              unitIndex: unit.unitIndex, unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)}`,
+              deliveryDate: unit.deliveryDate, notes: unit.notes || autoNote, isComponent: false,
+            });
+
+            // Same-date remplissages for this unit
+            for (const r of unitRemplissages) {
+              if (!r.deliveryDate) continue;
+              const rDateKey = new Date(r.deliveryDate).toISOString().split('T')[0];
+              if (r.etat === 'livre' && rDateKey === dateKey) {
+                const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+                ensureBL(dateKey).units.push({
+                  chassisId: chassis._id, chassisRepere: chassis.repere,
+                  chassisType: `↳ Remplissage ${rLabel}`,
+                  dimension: `${r.largeur}×${r.hauteur}`, m2: m2(r.largeur, r.hauteur),
+                  unitIndex: unit.unitIndex,
+                  unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${rLabel}`,
+                  deliveryDate: r.deliveryDate, notes: '', isComponent: false, isRemplissage: true,
+                  remplissageId: r._id,
+                });
+              }
+            }
           }
+
+          // Different-date remplissages for this unit
+          for (const r of unitRemplissages) {
+            if (!r.deliveryDate || r.etat !== 'livre') continue;
+            const rDateKey = new Date(r.deliveryDate).toISOString().split('T')[0];
+            const parentDelivered = unit.etat === 'livre' && unit.deliveryDate
+              ? new Date(unit.deliveryDate).toISOString().split('T')[0]
+              : null;
+            if (parentDelivered === rDateKey) continue;
+            const already = blMap[rDateKey]?.units.some(u => u.remplissageId?.toString() === r._id.toString());
+            if (already) continue;
+            const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+            ensureBL(rDateKey).units.push({
+              chassisId: chassis._id, chassisRepere: chassis.repere,
+              chassisType: `↳ Remplissage ${rLabel} (${designation})`,
+              dimension: `${r.largeur}×${r.hauteur}`, m2: m2(r.largeur, r.hauteur),
+              unitIndex: unit.unitIndex,
+              unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${rLabel}`,
+              deliveryDate: r.deliveryDate, notes: '', isComponent: false, isRemplissage: true,
+              remplissageId: r._id,
+            });
+          }
+
         } else {
+          // Composite chassis — components
           for (const cs of (unit.componentStates || [])) {
             if (cs.etat === 'livre' && cs.deliveryDate) {
               const comp = chassis.components[cs.compIndex];
@@ -1237,13 +1320,102 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
               const dateKey = new Date(cs.deliveryDate).toISOString().split('T')[0];
               const roleLabel = comp.role === 'dormant' ? 'Dormant' : `Vantail ${cs.compIndex}`;
               const compRepere = comp.repere || roleLabel;
-              ensureBL(dateKey).units.push({ chassisId: chassis._id, chassisRepere: chassis.repere, chassisType: designation, dimension: comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : (chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`), unitIndex: unit.unitIndex, compIndex: cs.compIndex, unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${compRepere}`, deliveryDate: cs.deliveryDate, notes: unit.notes || '', isComponent: true, role: roleLabel });
+              const compDim = comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : (chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`);
+              const compM2 = comp.largeur && comp.hauteur ? m2(comp.largeur, comp.hauteur) : m2(chassis.largeur, chassis.hauteur);
+              ensureBL(dateKey).units.push({
+                chassisId: chassis._id, chassisRepere: chassis.repere, chassisType: designation,
+                dimension: compDim, m2: compM2,
+                unitIndex: unit.unitIndex, compIndex: cs.compIndex,
+                unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${compRepere}`,
+                deliveryDate: cs.deliveryDate, notes: unit.notes || '', isComponent: true, role: roleLabel,
+              });
             }
           }
         }
       }
     }
+
+    // Sort units within each BL: non-remplissage first, then remplissages under their parent
+    for (const bl of Object.values(blMap)) {
+      bl.units.sort((a, b) => {
+        const aKey = `${a.chassisRepere}-${a.unitIndex}-${a.isRemplissage ? 1 : 0}`;
+        const bKey = `${b.chassisRepere}-${b.unitIndex}-${b.isRemplissage ? 1 : 0}`;
+        return aKey.localeCompare(bKey, 'fr', { numeric: true });
+      });
+    }
+
     res.json(Object.values(blMap).sort((a, b) => b.deliveryDate.localeCompare(a.deliveryDate)));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Remplissage CRUD ──────────────────────────────────────────────────────────
+
+/** GET all remplissages for a chassis */
+app.get('/api/projects/:projectId/chassis/:chassisId/remplissages', async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const chassis = project.chassis.id(req.params.chassisId);
+    if (!chassis) return res.status(404).json({ error: 'Chassis not found' });
+    let remplissages = chassis.remplissages || [];
+    if (req.query.unitIndex !== undefined) {
+      const ui = parseInt(req.query.unitIndex, 10);
+      remplissages = remplissages.filter(r => (r.unitIndex ?? 0) === ui);
+    }
+    res.json(remplissages);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/** POST — add a remplissage */
+app.post('/api/projects/:projectId/chassis/:chassisId/remplissages', async (req, res) => {
+  try {
+    const { type, sousType, largeur, hauteur, etat, unitIndex } = req.body;
+    if (!type || !largeur || !hauteur) return res.status(400).json({ error: 'type, largeur and hauteur are required' });
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const chassis = project.chassis.id(req.params.chassisId);
+    if (!chassis) return res.status(404).json({ error: 'Chassis not found' });
+    chassis.remplissages.push({
+      type,
+      sousType: sousType || '',
+      largeur: Number(largeur),
+      hauteur: Number(hauteur),
+      etat: etat || 'non_entame',
+      deliveryDate: null,
+      unitIndex: unitIndex !== undefined ? Number(unitIndex) : 0,  // ← NEW
+    });
+    await project.save();
+    res.status(201).json(chassis.remplissages[chassis.remplissages.length - 1]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
+/** PATCH — update etat / deliveryDate of one remplissage */
+app.patch('/api/projects/:projectId/chassis/:chassisId/remplissages/:remplissageId', async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const chassis = project.chassis.id(req.params.chassisId);
+    if (!chassis) return res.status(404).json({ error: 'Chassis not found' });
+    const remp = chassis.remplissages.id(req.params.remplissageId);
+    if (!remp) return res.status(404).json({ error: 'Remplissage not found' });
+    const allowed = ['type', 'sousType', 'largeur', 'hauteur', 'etat', 'deliveryDate'];
+    for (const k of allowed) { if (req.body[k] !== undefined) remp[k] = req.body[k]; }
+    await project.save();
+    res.json(remp);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/** DELETE one remplissage */
+app.delete('/api/projects/:projectId/chassis/:chassisId/remplissages/:remplissageId', async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const chassis = project.chassis.id(req.params.chassisId);
+    if (!chassis) return res.status(404).json({ error: 'Chassis not found' });
+    chassis.remplissages.pull(req.params.remplissageId);
+    await project.save();
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

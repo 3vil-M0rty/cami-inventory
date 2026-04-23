@@ -103,6 +103,8 @@ const translations = {
     deleteOrderConfirm: 'Supprimer cette commande ?',
     orderItemDeleted: 'Article supprimé',
     orderAtLeastOneLine: 'Ajoutez au moins une ligne',
+    AccessoiresaLaquer: 'Accessoires à laquer',
+    BarresaLaquer: 'Barres à laquer',
     orderPdfError: 'Erreur export PDF',
     // Projects / rest
     projectsTitle: 'Projets', addProject: 'Nouveau Projet', noProjects: 'Aucun projet trouvé',
@@ -189,8 +191,28 @@ const translations = {
     table: 'Table',
     unitNotes: 'Notes',
     dimension: 'Dimensions',
+    remplissage: 'Remplissage',
+    gereR: 'Gérer remplissage',
+
+    add_infill: "Ajouter un remplissage",
+    type: "Type *",
+    subtype: "Sous-type",
+    subtype_placeholder: "ex: feuilleté 8mm…",
+    width_mm: "L (mm) *",
+    height_mm: "H (mm) *",
+    add: "+ Ajouter",
+    surface: "Surface :",
   },
   it: {
+
+    add_infill: "Aggiungi tamponamento",
+    type: "Tipo *",
+    subtype: "Sotto-tipo",
+    subtype_placeholder: "es: stratificato 8mm…",
+    width_mm: "L (mm) *",
+    height_mm: "H (mm) *",
+    add: "+ Aggiungi",
+    surface: "Superficie:",
 
     etat_non_entame: 'Non iniziato',
     etat_en_cours: 'In corso',
@@ -198,7 +220,9 @@ const translations = {
     etat_fabrique: 'Fabbricato',
     etat_pret_a_livrer: 'Pronto per consegna',
     etat_livre: 'Consegnato',
-    table:'Tavolo',
+    table: 'Tavolo',
+    AccessoiresaLaquer: 'Accessori per laccatura',
+    BarresaLaquer: 'Barre per laccatura',
 
     // Analytics — KPI
     kpiProjects: 'Progetti',
@@ -372,6 +396,8 @@ const translations = {
     status_en_cours: 'In corso', status_fabrique: 'Fabbricato', status_cloture: 'Chiuso',
     deliveryDate: 'Data di consegna',
     etat: 'stato',
+    remplissage: 'Tamponamento',
+    gereR: 'Gestire il tamponamento',
 
 
 
@@ -404,6 +430,18 @@ const translations = {
     close: 'Close', create: 'Create', update: 'Update',
     loading: 'Loading...', noData: 'No data', refresh: 'Refresh',
     addNewItem: 'Add item', editItem: 'Edit item',
+    AccessoiresaLaquer: 'Coating accessories',
+    remplissage: 'Infill',
+    gereR: 'Infill management',
+    add_infill: "Add infill",
+    type: "Type *",
+    subtype: "Subtype",
+    subtype_placeholder: "e.g. laminated 8mm…",
+    width_mm: "L (mm) *",
+    height_mm: "H (mm) *",
+    add: "+ Add",
+    surface: "Area:",
+    BarresaLaquer: 'Coating rods',
     imageUrl: 'Image URL', quantityLabel: 'Quantity', orderedQuantityLabel: 'Ordered Qty',
     thresholdLabel: 'Minimum Threshold', categoryLabel: 'Category',
     noCategory: 'No Category', showAll: 'Show All',
