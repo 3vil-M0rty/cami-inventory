@@ -1466,7 +1466,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           <td><span className="date-placeholder">—</span></td>
                           {coordinateurThing && <td className="atelier-table-col">
                             <select className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={savingTableKey === rowKey} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}>
-                              <option value="">— non assigné —</option>
+                              <option value="">——</option>
                               {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
                             </select>
                           </td>}
