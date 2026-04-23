@@ -240,7 +240,7 @@ function UsedBarsPanel({ project }) {
                   onClick={() => handleAdd(item)}
                   disabled={item.quantity === 0}
                 >
-                  + {t('add')}
+                  {t('add')}
                 </button>
               </div>
             </div>
