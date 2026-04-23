@@ -16,23 +16,17 @@ import './ProjectDetail.css';
 
 const ETAT_OPTIONS = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
 const ETAT_COLORS = {
-  non_entame: '#9ca3af',
-  en_cours: '#f59e0b',
-  non_vitre: '#a855f7',
-  fabrique: '#3b82f6',
-  livre: '#16a34a',
-  pret_a_livrer: 'rgb(255, 0, 0)',
+  non_entame: '#9ca3af', en_cours: '#f59e0b', non_vitre: '#a855f7',
+  fabrique: '#3b82f6', livre: '#16a34a', pret_a_livrer: 'rgb(255, 0, 0)',
 };
-const STATUS_COLORS = { en_cours: '#f59e0b', fabrique: '#3b82f6', cloture: '#16a34a', pret_a_livrer:'rgb(255, 0, 0)'};
+const STATUS_COLORS = { en_cours: '#f59e0b', fabrique: '#3b82f6', cloture: '#16a34a', pret_a_livrer: 'rgb(255, 0, 0)' };
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
-
 const BACKEND_URL = process.env.REACT_APP_API_URL
   ? process.env.REACT_APP_API_URL.replace('/api', '')
   : 'http://localhost:3001';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function getUnit(ch, idx) {
   return (ch.units || []).find(u => u.unitIndex === idx) || {
     unitIndex: idx, etat: 'non_entame', deliveryDate: null, notes: '', componentStates: [], atelierTable: ''
@@ -50,24 +44,20 @@ function deriveCompositeEtat(unit, components) {
   if (states.every(e => e === 'pret_a_livrer')) return 'pret_a_livrer';
   if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre')) return 'fabrique';
   if (states.some(e => e !== 'non_entame')) return 'en_cours';
-  
   return 'non_entame';
 }
 function fmtDate(d) { if (!d) return ''; return new Date(d).toLocaleDateString('fr-FR'); }
 function toDateInput(d) { if (!d) return ''; return new Date(d).toISOString().split('T')[0]; }
-
 function resolveCompany(project) {
   const co = project.companyId;
   if (co && typeof co === 'object' && co.name) return co;
   return { name: '', logo: '', address: '', phone: '', email: '', rc: '', ice: '', color: '' };
 }
-
 function resolveLogoUrl(logo) {
   if (!logo) return '';
   if (logo.startsWith('http')) return logo;
   return `${BACKEND_URL}${logo}`;
 }
-
 async function fetchLogoBase64(logoUrl) {
   if (!logoUrl) return '';
   try {
@@ -80,21 +70,8 @@ async function fetchLogoBase64(logoUrl) {
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
-  } catch (e) {
-    console.warn('Logo fetch failed, will fall back to initials:', e);
-    return '';
-  }
+  } catch (e) { console.warn('Logo fetch failed:', e); return ''; }
 }
-
-async function fetchTableId(tableName) {
-  try {
-    const res = await axios.get(`${API_URL}/atelier-tables`);
-    const tables = res.data || [];
-    const found = tables.find(t => t.name === tableName);
-    return found ? found.id : null;
-  } catch { return null; }
-}
-
 function computeChassisAccessories(chassis) {
   return (chassis.accessories || []).map(acc => {
     const qty = acc.formula && acc.formula.trim()
@@ -103,31 +80,41 @@ function computeChassisAccessories(chassis) {
     return { itemId: acc.itemId || acc._id?.toString() || '', label: acc.label, unit: acc.unit || '', quantity: qty };
   }).filter(a => a.quantity > 0);
 }
-
-// ─── Role-based etat filtering ────────────────────────────────────────────────
-
 function getAllowedEtats(userRole, currentEtat) {
-  if (userRole === 'Coordinateur') {
-    // Coordinateur sees: non_entame, en_cours, non_vitre, fabrique — never livre
-    return ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'pret_a_livrer'];
-  }
+  if (userRole === 'Coordinateur') return ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'pret_a_livrer'];
   if (userRole === 'LOGISTIQUE') {
-    // Logistique can only toggle fabrique ↔ livre
-    // If current state is neither, the select is disabled (see isEtatSelectDisabled)
-    if (currentEtat === 'pret_a_livrer' || currentEtat === 'livre') {
-      return ['pret_a_livrer', 'livre'];
-    }
-    return [currentEtat]; // locked to current, select disabled below
+    if (currentEtat === 'pret_a_livrer' || currentEtat === 'livre') return ['pret_a_livrer', 'livre'];
+    return [currentEtat];
   }
   return ETAT_OPTIONS;
 }
-
 function isEtatSelectDisabled(userRole, currentEtat, isSaving) {
   if (isSaving) return true;
-  if (userRole === 'LOGISTIQUE') {   // ← fixed: was 'Logistique' (wrong case)
-    return currentEtat !== 'livre' && currentEtat !== 'pret_a_livrer';
-  }
+  if (userRole === 'LOGISTIQUE') return currentEtat !== 'livre' && currentEtat !== 'pret_a_livrer';
   return false;
+}
+function evalFormula(formula, L, H) {
+  if (!formula || !formula.trim()) return null;
+  try {
+    const safe = formula.replace(/[^0-9LH+\-*/().\s]/g, '');
+    // eslint-disable-next-line no-new-func
+    const result = new Function('L', 'H', `"use strict"; return (${safe});`)(L, H);
+    return typeof result === 'number' && isFinite(result) ? parseFloat(result.toFixed(4)) : null;
+  } catch { return null; }
+}
+
+// ─── BL Metadata API helpers ──────────────────────────────────────────────────
+async function loadBLMetadata(projectId, deliveryDate) {
+  try {
+    const res = await axios.get(`${API_URL}/projects/${projectId}/bl-metadata/${deliveryDate}`);
+    return res.data || { blId: '', localisation: '', transport: '', unitNotes: {} };
+  } catch { return { blId: '', localisation: '', transport: '', unitNotes: {} }; }
+}
+async function saveBLMetadata(projectId, deliveryDate, payload) {
+  try {
+    const res = await axios.put(`${API_URL}/projects/${projectId}/bl-metadata/${deliveryDate}`, payload);
+    return res.data;
+  } catch (e) { console.error('BL metadata save failed', e); return null; }
 }
 
 // ─── BL HTML generator ───────────────────────────────────────────────────────
@@ -161,15 +148,19 @@ function generateBLHtml(bl, project, logoBase64 = '') {
       ${clientAddr ? `<div class="client-detail">${clientAddr}</div>` : ''}
       ${clientCity ? `<div class="client-detail">${clientCity}</div>` : ''}
     </div>` : '';
-  const rows = bl.units.map((u, i) => `
+  const unitNotes = bl.unitNotes || {};
+  const rows = bl.units.map((u, i) => {
+    const note = unitNotes[u.unitLabel] || u.notes || '';
+    return `
     <tr class="${u.isComponent ? 'row-sub' : (i % 2 === 0 ? 'row-even' : 'row-odd')}">
       <td class="td-c">${i + 1}</td>
       <td><strong>${u.unitLabel}</strong></td>
       <td>${u.chassisType || '—'}</td>
       <td class="td-c">${u.dimension}</td>
       <td class="td-c">${fmtDate(u.deliveryDate)}</td>
-      <td>${u.notes || '—'}</td>
-    </tr>`).join('');
+      <td>${note || '—'}</td>
+    </tr>`;
+  }).join('');
   const closeScript = '<' + '/script>';
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -235,6 +226,8 @@ function generateBLHtml(bl, project, logoBase64 = '') {
   <div class="info-card"><div class="info-card__label">Référence</div><div class="info-card__val">${project.reference}</div></div>
   <div class="info-card"><div class="info-card__label">RAL</div><div class="info-card__val"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${project.ralColor || '#eee'};border:1px solid #ddd;flex-shrink:0"></span>${project.ralCode}</div></div>
   <div class="info-card"><div class="info-card__label">Pièces livrées</div><div class="info-card__val">${bl.units.length}</div></div>
+  <div class="info-card"><div class="info-card__label">Localisation</div><div class="info-card__val">${bl.localisation || '—'}</div></div>
+  <div class="info-card"><div class="info-card__label">Transport</div><div class="info-card__val">${bl.transport || '—'}</div></div>
 </div>
 ${clientBlock}
 <table>
@@ -271,6 +264,165 @@ ${clientBlock}
 ${closeScript}
 </body>
 </html>`;
+}
+
+// ─── Styled Excel Export ──────────────────────────────────────────────────────
+function exportBLExcel(bl, project) {
+  const co = resolveCompany(project);
+  const companyColor = co.color || '#1a1a1a';
+  const hexToArgb = (hex) => {
+    const h = hex.replace('#', '');
+    return 'FF' + (h.length === 3 ? h.split('').map(c => c + c).join('') : h).toUpperCase();
+  };
+  const headerArgb = hexToArgb(companyColor);
+  const lightBg = 'FFF9FAFB';
+  const borderColor = 'FFE5E7EB';
+
+  const wb = XLSX.utils.book_new();
+  const ws = {};
+  const merges = [];
+  let row = 1;
+
+  const setCell = (col, r, value, s) => {
+    const addr = XLSX.utils.encode_cell({ c: col, r: r - 1 });
+    ws[addr] = { v: value, t: typeof value === 'number' ? 'n' : 's' };
+    if (s) ws[addr].s = s;
+  };
+
+  const S = {
+    companyName: { font: { bold: true, sz: 16, color: { rgb: headerArgb } }, alignment: { horizontal: 'left', vertical: 'center' } },
+    blLabel: { font: { sz: 9, color: { rgb: 'FF9CA3AF' }, italic: true }, alignment: { horizontal: 'right', vertical: 'center' } },
+    blId: { font: { bold: true, sz: 18, color: { rgb: headerArgb } }, alignment: { horizontal: 'right', vertical: 'center' } },
+    subtext: { font: { sz: 10, color: { rgb: 'FF555555' } }, alignment: { horizontal: 'left' } },
+    dateLabel: { font: { sz: 9, color: { rgb: 'FF9CA3AF' }, italic: true }, alignment: { horizontal: 'right' } },
+    dateVal: { font: { bold: true, sz: 13, color: { rgb: headerArgb } }, alignment: { horizontal: 'right' } },
+    cardLabel: { font: { bold: true, sz: 8, color: { rgb: 'FF9CA3AF' } }, fill: { fgColor: { rgb: lightBg }, patternType: 'solid' }, alignment: { horizontal: 'left' }, border: { top: { style: 'thin', color: { rgb: borderColor } }, left: { style: 'thin', color: { rgb: borderColor } } } },
+    cardValue: { font: { bold: true, sz: 12, color: { rgb: 'FF1A1A1A' } }, fill: { fgColor: { rgb: lightBg }, patternType: 'solid' }, alignment: { horizontal: 'left' }, border: { bottom: { style: 'thin', color: { rgb: borderColor } }, left: { style: 'thin', color: { rgb: borderColor } } } },
+    clientLabel: { font: { bold: true, sz: 8, color: { rgb: 'FF9CA3AF' } }, border: { left: { style: 'medium', color: { rgb: headerArgb } } } },
+    clientName: { font: { bold: true, sz: 13, color: { rgb: 'FF1A1A1A' } }, border: { left: { style: 'medium', color: { rgb: headerArgb } } } },
+    clientSub: { font: { sz: 10, color: { rgb: 'FF555555' } }, border: { left: { style: 'medium', color: { rgb: headerArgb } }, bottom: { style: 'thin', color: { rgb: borderColor } } } },
+    th: { font: { bold: true, sz: 10, color: { rgb: 'FFFFFFFF' } }, fill: { fgColor: { rgb: headerArgb }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { bottom: { style: 'medium', color: { rgb: 'FFFFFFFF' } } } },
+    thLeft: { font: { bold: true, sz: 10, color: { rgb: 'FFFFFFFF' } }, fill: { fgColor: { rgb: headerArgb }, patternType: 'solid' }, alignment: { horizontal: 'left', vertical: 'center' } },
+    tdEven: { font: { sz: 11 }, fill: { fgColor: { rgb: 'FFFFFFFF' }, patternType: 'solid' }, alignment: { vertical: 'center', wrapText: true }, border: { bottom: { style: 'thin', color: { rgb: borderColor } } } },
+    tdOdd: { font: { sz: 11 }, fill: { fgColor: { rgb: lightBg }, patternType: 'solid' }, alignment: { vertical: 'center', wrapText: true }, border: { bottom: { style: 'thin', color: { rgb: borderColor } } } },
+    tdBold: (base) => ({ ...base, font: { ...base.font, bold: true } }),
+    tdCenter: (base) => ({ ...base, alignment: { ...base.alignment, horizontal: 'center' } }),
+    sigBox: { font: { sz: 11, color: { rgb: 'FF555555' } }, border: { top: { style: 'medium', color: { rgb: 'FF1A1A1A' } } }, alignment: { horizontal: 'center' } },
+    footer: { font: { sz: 9, color: { rgb: 'FFAAAAAA' } }, alignment: { horizontal: 'center' } },
+  };
+
+  // ── HEADER SECTION ──
+  // Row 1: company name | BL label
+  setCell(0, row, co.name || '', S.companyName);
+  merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 3 } });
+  setCell(4, row, 'Bon de Livraison', S.blLabel);
+  setCell(5, row, bl.blId || '', S.blId);
+  merges.push({ s: { r: row-1, c: 4 }, e: { r: row-1, c: 5 } });
+  row++;
+
+  // Row 2: address | date label
+  setCell(0, row, co.address || '', S.subtext);
+  merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 3 } });
+  setCell(4, row, 'Date de livraison', S.dateLabel);
+  const delivDate = bl.deliveryDate ? new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR') : '';
+  setCell(5, row, delivDate, S.dateVal);
+  row++;
+
+  // Row 3: phone/email
+  const phoneEmail = [co.phone ? 'Tél : ' + co.phone : '', co.email || ''].filter(Boolean).join('   ·   ');
+  setCell(0, row, phoneEmail, S.subtext);
+  merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 5 } });
+  row++;
+
+  // Blank separator
+  row++;
+
+  // ── INFO CARDS (3 per row, 2 rows) ──
+  const cards = [
+    ['PROJET', project.name],
+    ['RÉFÉRENCE', project.reference],
+    ['RAL', project.ralCode],
+    ['PIÈCES LIVRÉES', bl.units.length],
+    ['LOCALISATION', bl.localisation || '—'],
+    ['TRANSPORT', bl.transport || '—'],
+  ];
+  [[0, 1, 2], [3, 4, 5]].forEach(idxs => {
+    // Label row
+    idxs.forEach((ci, pos) => {
+      setCell(pos * 2, row, cards[ci][0], S.cardLabel);
+      setCell(pos * 2 + 1, row, '', S.cardLabel);
+    });
+    row++;
+    // Value row
+    idxs.forEach((ci, pos) => {
+      setCell(pos * 2, row, cards[ci][1], S.cardValue);
+      setCell(pos * 2 + 1, row, '', S.cardValue);
+    });
+    row++;
+  });
+
+  // ── CLIENT BLOCK ──
+  const clientName = project.clientId?.name || '';
+  if (clientName) {
+    row++;
+    setCell(0, row, 'DESTINATAIRE', S.clientLabel);
+    merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 5 } });
+    row++;
+    setCell(0, row, clientName, S.clientName);
+    merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 5 } });
+    row++;
+    const addr = [project.clientId?.address, project.clientId?.city].filter(Boolean).join(', ');
+    if (addr) {
+      setCell(0, row, addr, S.clientSub);
+      merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 5 } });
+      row++;
+    }
+  }
+
+  // Gap
+  row++;
+
+  // ── TABLE HEADER ──
+  ['#', 'Repère', 'Désignation', 'Dimension', 'Date livraison', 'Notes'].forEach((h, i) => {
+    setCell(i, row, h, i === 0 || i === 3 || i === 4 ? S.th : S.thLeft);
+  });
+  row++;
+
+  // ── TABLE ROWS ──
+  const unitNotes = bl.unitNotes || {};
+  bl.units.forEach((u, idx) => {
+    const base = idx % 2 === 0 ? S.tdEven : S.tdOdd;
+    const note = unitNotes[u.unitLabel] || u.notes || '';
+    setCell(0, row, idx + 1, S.tdCenter(base));
+    setCell(1, row, u.unitLabel, S.tdBold(base));
+    setCell(2, row, u.chassisType || '', base);
+    setCell(3, row, u.dimension, S.tdCenter(base));
+    setCell(4, row, u.deliveryDate ? fmtDate(u.deliveryDate) : '', S.tdCenter(base));
+    setCell(5, row, note || '', base);
+    row++;
+  });
+
+  // ── SIGNATURE ROW ──
+  row += 2;
+  setCell(0, row, 'Signature livreur', S.sigBox);
+  merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 2 } });
+  setCell(3, row, 'Signature réceptionnaire', S.sigBox);
+  merges.push({ s: { r: row-1, c: 3 }, e: { r: row-1, c: 5 } });
+  row++;
+
+  // ── FOOTER ──
+  row++;
+  const footerParts = [co.name, co.address, co.phone ? 'Tél : ' + co.phone : '', co.rc ? 'RC : ' + co.rc : '', co.ice ? 'ICE : ' + co.ice : ''].filter(Boolean);
+  setCell(0, row, footerParts.join('  ·  '), S.footer);
+  merges.push({ s: { r: row-1, c: 0 }, e: { r: row-1, c: 5 } });
+
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row, c: 5 } });
+  ws['!merges'] = merges;
+  ws['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 26 }, { wch: 16 }, { wch: 16 }, { wch: 30 }];
+  ws['!rows'] = [{ hpt: 28 }, { hpt: 18 }, { hpt: 16 }];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'BL');
+  XLSX.writeFile(wb, `${bl.blId || 'BL'}.xlsx`);
 }
 
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
@@ -336,17 +488,13 @@ function AccessoriesExportModal({ project, chassisLabels, language, t, onClose }
   const [etatFilter, setEtatFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   const etatLabel = { all: 'Tous', non_entame: t('etat_non_entame'), en_cours: t('etat_en_cours'), non_vitre: t('etat_non_vitre'), fabrique: t('etat_fabrique'), livre: t('etat_livre'), pret_a_livrer: t('etat_pret_a_livrer') };
-
   const computeAccessories = async () => {
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       const typeTotals = {};
       for (const ch of project.chassis || []) {
-        const qty = ch.quantity || 1;
-        const isComposite = (ch.components || []).length > 0;
+        const qty = ch.quantity || 1; const isComposite = (ch.components || []).length > 0;
         for (let i = 0; i < qty; i++) {
           const unit = getUnit(ch, i);
           const etat = isComposite ? deriveCompositeEtat(unit, ch.components) : (unit.etat || 'non_entame');
@@ -356,71 +504,40 @@ function AccessoriesExportModal({ project, chassisLabels, language, t, onClose }
         }
       }
       const typeIds = Object.keys(typeTotals);
-      if (typeIds.length === 0) {
-        setError('Aucun châssis ne correspond au filtre sélectionné.');
-        setLoading(false);
-        return;
-      }
+      if (typeIds.length === 0) { setError('Aucun châssis ne correspond au filtre sélectionné.'); setLoading(false); return; }
       const accMap = {};
       await Promise.all(typeIds.map(async (typeId) => {
         try {
           const res = await axios.get(`${API_URL}/chassis-type-accessories/${typeId}`);
-          const accs = res.data || [];
-          const count = typeTotals[typeId];
+          const accs = res.data || []; const count = typeTotals[typeId];
           for (const acc of accs) {
-            if (!accMap[acc.itemId]) {
-              accMap[acc.itemId] = { label: acc.label, unit: acc.unit || '', total: 0 };
-            }
-            if (acc.formula && acc.formula.trim()) {
-              accMap[acc.itemId].hasFormula = true;
-              accMap[acc.itemId].formula = acc.formula;
-            } else {
-              accMap[acc.itemId].total += (acc.quantity || 0) * count;
-            }
+            if (!accMap[acc.itemId]) accMap[acc.itemId] = { label: acc.label, unit: acc.unit || '', total: 0 };
+            if (acc.formula && acc.formula.trim()) { accMap[acc.itemId].hasFormula = true; accMap[acc.itemId].formula = acc.formula; }
+            else { accMap[acc.itemId].total += (acc.quantity || 0) * count; }
           }
         } catch { }
       }));
-      const rows = Object.entries(accMap).map(([id, v]) => ({
-        'Désignation accessoire': v.label,
-        'Unité': v.unit,
-        'Quantité totale': v.hasFormula ? `Formule: ${v.formula}` : parseFloat(v.total.toFixed(4)),
-      }));
-      if (rows.length === 0) {
-        setError('Aucun accessoire configuré pour les types de châssis de ce projet. Configurez-les dans le gestionnaire de types.');
-        setLoading(false);
-        return;
-      }
-      const ws = XLSX.utils.json_to_sheet(rows);
-      ws['!cols'] = [{ wch: 40 }, { wch: 14 }, { wch: 18 }];
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Accessoires');
-      const filterSuffix = etatFilter === 'all' ? 'tous' : etatFilter;
-      XLSX.writeFile(wb, `${project.name || 'projet'}_accessoires_${filterSuffix}.xlsx`);
+      const rows = Object.entries(accMap).map(([, v]) => ({ 'Désignation accessoire': v.label, 'Unité': v.unit, 'Quantité totale': v.hasFormula ? `Formule: ${v.formula}` : parseFloat(v.total.toFixed(4)) }));
+      if (rows.length === 0) { setError('Aucun accessoire configuré pour les types de châssis de ce projet.'); setLoading(false); return; }
+      const ws = XLSX.utils.json_to_sheet(rows); ws['!cols'] = [{ wch: 40 }, { wch: 14 }, { wch: 18 }];
+      const wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, ws, 'Accessoires');
+      XLSX.writeFile(wb2, `${project.name || 'projet'}_accessoires_${etatFilter === 'all' ? 'tous' : etatFilter}.xlsx`);
       onClose();
-    } catch (e) {
-      setError('Erreur lors du calcul des accessoires : ' + (e.message || ''));
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { setError('Erreur lors du calcul : ' + (e.message || '')); }
+    finally { setLoading(false); }
   };
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
         <h3 style={{ marginBottom: 8 }}>🔧 Export des accessoires nécessaires</h3>
-        <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>
-          Calcule la somme des accessoires pour tous les châssis du projet, avec possibilité de filtrer par état.
-        </p>
+        <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Calcule la somme des accessoires pour tous les châssis du projet.</p>
         <div className="form-group">
           <label style={{ fontWeight: 600 }}>Filtrer par état des châssis</label>
           <div className="acc-export-filters">
             {['all', ...ETAT_OPTIONS].map(opt => (
-              <button
-                key={opt}
-                className={`acc-filter-btn${etatFilter === opt ? ' acc-filter-btn--active' : ''}`}
+              <button key={opt} className={`acc-filter-btn${etatFilter === opt ? ' acc-filter-btn--active' : ''}`}
                 style={etatFilter === opt && opt !== 'all' ? { borderColor: ETAT_COLORS[opt], background: ETAT_COLORS[opt] + '22', color: ETAT_COLORS[opt] } : {}}
-                onClick={() => setEtatFilter(opt)}
-              >
+                onClick={() => setEtatFilter(opt)}>
                 {opt !== 'all' && <span className="acc-filter-dot" style={{ background: ETAT_COLORS[opt] }} />}
                 {etatLabel[opt]}
               </button>
@@ -430,8 +547,181 @@ function AccessoriesExportModal({ project, chassisLabels, language, t, onClose }
         {error && <div className="ct-manager__error" style={{ marginTop: 12 }}>{error}</div>}
         <div className="modal-actions" style={{ marginTop: 24 }}>
           <button onClick={onClose}>{t('cancel')}</button>
-          <button className="primary" onClick={computeAccessories} disabled={loading}>
-            {loading ? '⏳ Calcul…' : '📥 Télécharger Excel'}
+          <button className="primary" onClick={computeAccessories} disabled={loading}>{loading ? '⏳ Calcul…' : '📥 Télécharger Excel'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── BL Export Modal (with saved metadata + per-unit notes) ──────────────────
+function BLExportModal({ bl, project, t, onClose }) {
+  const [blId, setBlId] = useState('');
+  const [localisation, setLocalisation] = useState('');
+  const [transport, setTransport] = useState('');
+  const [unitNotes, setUnitNotes] = useState({});
+  const [loadingMeta, setLoadingMeta] = useState(true);
+  const [savingMeta, setSavingMeta] = useState(false);
+  const [loadingPdf, setLoadingPdf] = useState(false);
+
+  const co = resolveCompany(project);
+  const deliveryDate = bl.deliveryDate;
+
+  // Load saved metadata when modal opens
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoadingMeta(true);
+      const meta = await loadBLMetadata(project.id, deliveryDate);
+      if (!cancelled) {
+        setBlId(meta.blId || '');
+        setLocalisation(meta.localisation || '');
+        setTransport(meta.transport || '');
+        // Initialise per-unit notes from saved meta; default empty for any new unit
+        const merged = {};
+        bl.units.forEach(u => { merged[u.unitLabel] = (meta.unitNotes || {})[u.unitLabel] || ''; });
+        setUnitNotes(merged);
+      }
+      setLoadingMeta(false);
+    })();
+    return () => { cancelled = true; };
+  }, [bl, deliveryDate, project.id]);
+
+  const buildEnrichedBL = () => ({
+    ...bl,
+    blId: blId.trim() || bl.blId,
+    localisation,
+    transport,
+    unitNotes,
+  });
+
+  const handleSaveMeta = async () => {
+    setSavingMeta(true);
+    await saveBLMetadata(project.id, deliveryDate, { blId: blId.trim(), localisation, transport, unitNotes });
+    setSavingMeta(false);
+  };
+
+  const handlePdf = async () => {
+    await handleSaveMeta();
+    setLoadingPdf(true);
+    try {
+      const logoUrl = resolveLogoUrl(co.logo || '');
+      const logoBase64 = await fetchLogoBase64(logoUrl);
+      const html = generateBLHtml(buildEnrichedBL(), project, logoBase64);
+      const w = window.open('', '_blank');
+      if (w) { w.document.write(html); w.document.close(); }
+    } finally { setLoadingPdf(false); }
+    onClose();
+  };
+
+  const handleExcel = async () => {
+    await handleSaveMeta();
+    exportBLExcel(buildEnrichedBL(), project);
+    onClose();
+  };
+
+  const updateUnitNote = (label, val) => setUnitNotes(prev => ({ ...prev, [label]: val }));
+
+  if (loadingMeta) {
+    return (
+      <div className="modal-overlay">
+        <div className="modal" style={{ maxWidth: 420, textAlign: 'center', padding: 32 }}>
+          <div style={{ fontSize: 28, marginBottom: 12 }}>⏳</div>
+          <p style={{ color: '#6b7280' }}>Chargement des données sauvegardées…</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 540, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ marginBottom: 18 }}>📤 Exporter le bon de livraison</h3>
+
+        {/* ── BL header fields ── */}
+        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '14px 16px', marginBottom: 14 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 10 }}>En-tête du BL</p>
+          <div className="form-group" style={{ marginBottom: 12 }}>
+            <label style={{ fontWeight: 600 }}>
+              Numéro BL
+              <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6, fontSize: 11 }}>(actuel : {bl.blId})</span>
+            </label>
+            <input
+              type="text"
+              value={blId}
+              onChange={e => setBlId(e.target.value)}
+              placeholder="ex: BL26-107"
+              style={{ fontWeight: 700, letterSpacing: '0.03em' }}
+            />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label style={{ fontWeight: 600 }}>Localisation</label>
+              <input type="text" value={localisation} onChange={e => setLocalisation(e.target.value)} placeholder="ex: Casablanca, Site A…" />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label style={{ fontWeight: 600 }}>Transport</label>
+              <input type="text" value={transport} onChange={e => setTransport(e.target.value)} placeholder="ex: Camion, Messagerie…" />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Per-unit notes ── */}
+        {bl.units.length > 0 && (
+          <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '14px 16px', marginBottom: 14 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 10 }}>
+              Notes par pièce
+              <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>— apparaissent dans la colonne Notes du PDF et Excel</span>
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {bl.units.map(u => (
+                <div key={u.unitLabel} style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8, alignItems: 'center' }}>
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, color: '#374151',
+                    background: '#fff', border: '1px solid #e5e7eb',
+                    borderRadius: 5, padding: '5px 9px',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {u.unitLabel}
+                  </span>
+                  <input
+                    type="text"
+                    value={unitNotes[u.unitLabel] || ''}
+                    onChange={e => updateUnitNote(u.unitLabel, e.target.value)}
+                    placeholder="Note pour cette pièce…"
+                    style={{ fontSize: 12, padding: '5px 10px' }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="modal-actions" style={{ marginTop: 8, gap: 8 }}>
+          <button onClick={onClose}>{t('cancel')}</button>
+          <button
+            onClick={handleSaveMeta}
+            disabled={savingMeta}
+            title="Sauvegarder sans exporter"
+            style={{ background: '#6b7280', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
+          >
+            {savingMeta ? '⏳' : '💾'}
+          </button>
+          <button
+            onClick={handleExcel}
+            title="Exporter Excel"
+            style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            📊 Excel
+          </button>
+          <button
+            className="primary"
+            onClick={handlePdf}
+            disabled={loadingPdf}
+            title="Imprimer PDF"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            {loadingPdf ? '⏳' : '🖨'} PDF
           </button>
         </div>
       </div>
@@ -445,6 +735,7 @@ function BLPanel({ project, t, language }) {
   const [bls, setBls] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openBL, setOpenBL] = useState(null);
+  const [blExportModal, setBlExportModal] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -456,7 +747,6 @@ function BLPanel({ project, t, language }) {
   useEffect(() => { load(); }, [load]);
 
   if (loading) return <div className="bl-loading">{t('loading')}</div>;
-
   if (bls.length === 0) return (
     <div className="bl-empty">
       <div className="bl-empty__icon"><CircleDashed size={25} /></div>
@@ -465,15 +755,6 @@ function BLPanel({ project, t, language }) {
   );
 
   const co = resolveCompany(project);
-
-  const handlePrintBL = async (e, bl) => {
-    e.stopPropagation();
-    const logoUrl = resolveLogoUrl(co.logo || '');
-    const logoBase64 = await fetchLogoBase64(logoUrl);
-    const html = generateBLHtml(bl, project, logoBase64);
-    const w = window.open('', '_blank');
-    if (w) { w.document.write(html); w.document.close(); }
-  };
 
   return (
     <div className="bl-panel">
@@ -495,7 +776,12 @@ function BLPanel({ project, t, language }) {
                 </span>
               </div>
               <div className="bl-card__actions">
-                <button className="bl-print-btn" onClick={e => handlePrintBL(e, bl)}>🖨 {t('blPrint')}</button>
+                <button className="bl-print-btn" title="Exporter Excel"
+                  style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }}
+                  onClick={e => { e.stopPropagation(); setBlExportModal({ bl }); }}>📊</button>
+                <button className="bl-print-btn" title="Imprimer PDF"
+                  style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }}
+                  onClick={e => { e.stopPropagation(); setBlExportModal({ bl }); }}>🖨</button>
                 <span className="bl-card__toggle">{openBL === bl.deliveryDate ? '▲' : '▼'}</span>
               </div>
             </div>
@@ -504,11 +790,8 @@ function BLPanel({ project, t, language }) {
                 <table className="bl-table">
                   <thead>
                     <tr>
-                      <th>{t('blUnitLabel')}</th>
-                      <th>{t('type')}</th>
-                      <th>{t('dimension')}</th>
-                      <th>{t('blDate')}</th>
-                      <th>{t('unitNotes')}</th>
+                      <th>{t('repere')}</th><th>{t('type')}</th>
+                      <th>{t('dimension')}</th><th>{t('blDate')}</th><th>{t('unitNotes')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -528,25 +811,16 @@ function BLPanel({ project, t, language }) {
           </div>
         ))}
       </div>
+      {blExportModal && (
+        <BLExportModal bl={blExportModal.bl} project={project} t={t} onClose={() => setBlExportModal(null)} />
+      )}
     </div>
   );
 }
 
-// ─── Chassis Line Accessory Editor ───────────────────────────────────────────
+// ─── Chassis Line Accessory Editor ────────────────────────────────────────────
 const UNIT_OPTIONS = ['UN', 'ML', 'M²', 'M³', 'KG', 'L', 'PAIRE', 'JEU', 'ROULEAU'];
 const EMPTY_ACC = { label: '', unit: 'UN', quantity: 1, formula: '', itemId: '', mode: 'fixed' };
-
-function evalFormula(formula, L, H) {
-  if (!formula || !formula.trim()) return null;
-  try {
-    const safe = formula.replace(/[^0-9LH+\-*/().\s]/g, '');
-    // eslint-disable-next-line no-new-func
-    const result = new Function('L', 'H', `"use strict"; return (${safe});`)(L, H);
-    return typeof result === 'number' && isFinite(result) ? parseFloat(result.toFixed(4)) : null;
-  } catch {
-    return null;
-  }
-}
 
 function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
   const [suggestions, setSuggestions] = React.useState([]);
@@ -554,13 +828,11 @@ function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
   const [busy, setBusy] = React.useState(false);
   const debounceRef = React.useRef(null);
   const wrapRef = React.useRef(null);
-
   React.useEffect(() => {
-    const handleOutside = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
+    const h = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, []);
-
   const search = (q) => {
     clearTimeout(debounceRef.current);
     if (!q || q.length < 2) { setSuggestions([]); setOpen(false); return; }
@@ -568,41 +840,27 @@ function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
       setBusy(true);
       try {
         const res = await axios.get(`${API_URL}/inventory/search?q=${encodeURIComponent(q)}&superCategory=accessoires`);
-        const items = res.data || [];
-        setSuggestions(items.slice(0, 10));
-        setOpen(items.length > 0);
+        const items = res.data || []; setSuggestions(items.slice(0, 10)); setOpen(items.length > 0);
       } catch { setSuggestions([]); } finally { setBusy(false); }
     }, 250);
   };
-
   const handleChange = (e) => { onChange(e.target.value); search(e.target.value); };
-
   const handleSelect = (item) => {
     const label = item.designation?.fr || item.designation || '';
-    const unit = item.unit || '';
-    const id = item.id || item._id;
-    onSelect({ label, unit, itemId: id });
-    setSuggestions([]);
-    setOpen(false);
+    onSelect({ label, unit: item.unit || '', itemId: item.id || item._id });
+    setSuggestions([]); setOpen(false);
   };
-
   return (
     <div ref={wrapRef} style={{ position: 'relative', width: '100%' }}>
       <div style={{ position: 'relative' }}>
-        <span style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#9ca3af', pointerEvents: 'none', lineHeight: 1 }}>🔍</span>
-        <input
-          className="ct-acc-search-input"
+        <span style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#9ca3af', pointerEvents: 'none' }}>🔍</span>
+        <input className="ct-acc-search-input"
           onFocus={e => { e.target.style.borderColor = '#1a1a1a'; e.target.style.boxShadow = '0 0 0 3px rgba(26,26,26,0.08)'; if (value.length >= 2 && suggestions.length > 0) setOpen(true); }}
           onBlur={e => { e.target.style.borderColor = '#d1d5db'; e.target.style.boxShadow = 'none'; }}
-          value={value}
-          onChange={handleChange}
-          placeholder={placeholder || 'Nom ou recherche inventaire…'}
-          autoComplete="off"
-        />
-        {busy
-          ? <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#555' }}>⏳</span>
-          : value && <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#9ca3af', cursor: 'pointer' }} onMouseDown={() => { onChange(''); setSuggestions([]); setOpen(false); }}>✕</span>
-        }
+          value={value} onChange={handleChange}
+          placeholder={placeholder || 'Nom ou recherche inventaire…'} autoComplete="off" />
+        {busy ? <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#555' }}>⏳</span>
+          : value && <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#9ca3af', cursor: 'pointer' }} onMouseDown={() => { onChange(''); setSuggestions([]); setOpen(false); }}>✕</span>}
       </div>
       {open && suggestions.length > 0 && (
         <div className="ct-acc-dropdown">
@@ -610,16 +868,12 @@ function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
           {suggestions.map(item => {
             const id = item.id || item._id;
             const label = item.designation?.fr || item.designation || id;
-            const unit = item.unit || '';
             return (
               <div key={id} onMouseDown={() => handleSelect(item)} className="ct-acc-dropdown__item"
                 onMouseEnter={e => { e.currentTarget.style.background = '#f5f5f5'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 13 }}>📦</span>
-                  <span>{label}</span>
-                </span>
-                {unit && <span className="ct-acc-dropdown__unit">{unit}</span>}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>📦</span><span>{label}</span></span>
+                {item.unit && <span className="ct-acc-dropdown__unit">{item.unit}</span>}
               </div>
             );
           })}
@@ -631,16 +885,13 @@ function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
 
 function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
   const chId = chassis._id || chassis.id;
-  const L = chassis.largeur || 0;
-  const H = chassis.hauteur || 0;
-
+  const L = chassis.largeur || 0; const H = chassis.hauteur || 0;
   const [accessories, setAccessories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [newAcc, setNewAcc] = useState(EMPTY_ACC);
   const [loadingDefaults, setLoadingDefaults] = useState(false);
-  const [defaultsInfo, setDefaultsInfo] = useState(null);
 
   useEffect(() => {
     const load = async () => {
@@ -648,10 +899,7 @@ function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
       try {
         const res = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`);
         const saved = res.data || [];
-        setAccessories(saved.map(a => {
-          const hasFormula = a.formula && a.formula.trim() !== '';
-          return { ...a, quantity: hasFormula ? 0 : (a.quantity || 1), formula: hasFormula ? a.formula.trim() : '', mode: hasFormula ? 'formula' : 'fixed' };
-        }));
+        setAccessories(saved.map(a => { const hf = a.formula && a.formula.trim() !== ''; return { ...a, quantity: hf ? 0 : (a.quantity || 1), formula: hf ? a.formula.trim() : '', mode: hf ? 'formula' : 'fixed' }; }));
         if (saved.length === 0 && chassis.type) await loadDefaults(true);
       } catch { setAccessories([]); }
       finally { setLoading(false); }
@@ -666,87 +914,52 @@ function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
     try {
       const res = await axios.get(`${API_URL}/chassis-type-defaults/${encodeURIComponent(chassis.type)}`);
       const defaults = res.data || [];
-      setDefaultsInfo(defaults.length);
-      if (defaults.length > 0) {
-        setAccessories(defaults.map(d => {
-          const hasFormula = d.formula && d.formula.trim() !== '';
-          return { itemId: d.itemId || '', label: d.label, unit: d.unit || 'UN', quantity: hasFormula ? 0 : (d.quantity || 1), formula: hasFormula ? d.formula.trim() : '', mode: hasFormula ? 'formula' : 'fixed' };
-        }));
-      } else if (!silent) {
-        setError('Aucun accessoire par défaut configuré pour ce type de châssis.');
-      }
-    } catch {
-      if (!silent) setError('Erreur lors du chargement des défauts.');
-    } finally { setLoadingDefaults(false); }
+      if (defaults.length > 0) setAccessories(defaults.map(d => { const hf = d.formula && d.formula.trim() !== ''; return { itemId: d.itemId || '', label: d.label, unit: d.unit || 'UN', quantity: hf ? 0 : (d.quantity || 1), formula: hf ? d.formula.trim() : '', mode: hf ? 'formula' : 'fixed' }; }));
+      else if (!silent) setError('Aucun accessoire par défaut configuré pour ce type de châssis.');
+    } catch { if (!silent) setError('Erreur lors du chargement des défauts.'); }
+    finally { setLoadingDefaults(false); }
   };
 
   const update = (idx, key, val) => setAccessories(prev => prev.map((a, i) => i === idx ? { ...a, [key]: val } : a));
   const setMode = (idx, mode) => setAccessories(prev => prev.map((a, i) => i === idx ? { ...a, mode, formula: mode === 'fixed' ? '' : a.formula } : a));
-
   const addAcc = () => {
     if (!newAcc.label.trim()) return setError("Le nom de l'accessoire est requis");
     setError('');
-    const acc = { itemId: newAcc.itemId || `manual_${Date.now()}`, label: newAcc.label.trim(), unit: newAcc.unit || 'UN', quantity: newAcc.mode === 'fixed' ? (parseFloat(newAcc.quantity) || 1) : 0, formula: newAcc.mode === 'formula' ? newAcc.formula.trim() : '', mode: newAcc.mode };
-    setAccessories(prev => [...prev, acc]);
+    setAccessories(prev => [...prev, { itemId: newAcc.itemId || `manual_${Date.now()}`, label: newAcc.label.trim(), unit: newAcc.unit || 'UN', quantity: newAcc.mode === 'fixed' ? (parseFloat(newAcc.quantity) || 1) : 0, formula: newAcc.mode === 'formula' ? newAcc.formula.trim() : '', mode: newAcc.mode }]);
     setNewAcc(EMPTY_ACC);
   };
-
   const removeAcc = (idx) => setAccessories(prev => prev.filter((_, i) => i !== idx));
-
   const handleSave = async () => {
-    setSaving(true);
-    setError('');
+    setSaving(true); setError('');
     try {
       const payload = accessories.map(({ mode, ...rest }) => rest);
       await axios.put(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`, { accessories: payload });
-      const resolvedChassis = { ...chassis, accessories: payload };
-      const computedAccs = computeChassisAccessories(resolvedChassis);
+      const computedAccs = computeChassisAccessories({ ...chassis, accessories: payload });
       if (computedAccs.length > 0) {
-        const qty = chassis.quantity || 1;
-        const tableGroups = {};
-        for (let i = 0; i < qty; i++) {
-          const unit = (chassis.units || []).find(u => u.unitIndex === i);
-          const tbl = unit?.atelierTable || '';
-          if (tbl) tableGroups[tbl] = (tableGroups[tbl] || 0) + 1;
-        }
+        const qty = chassis.quantity || 1; const tableGroups = {};
+        for (let i = 0; i < qty; i++) { const unit = (chassis.units || []).find(u => u.unitIndex === i); const tbl = unit?.atelierTable || ''; if (tbl) tableGroups[tbl] = (tableGroups[tbl] || 0) + 1; }
         await Promise.allSettled(Object.entries(tableGroups).map(async ([tableName, unitCount]) => {
           try {
             const tblRes = await axios.get(`${API_URL}/atelier-tables`);
             const found = (tblRes.data || []).find(t => t.name === tableName);
             if (!found) return;
-            const scaledAccs = computedAccs.map(a => ({ ...a, quantity: a.quantity * unitCount }));
-            await axios.post(`${API_URL}/table-stock/deduct-chassis`, { tableId: found.id, tableName, projectId: project.id, projectName: project.name, chassisRef: chassis.repere, accessories: scaledAccs });
+            await axios.post(`${API_URL}/table-stock/deduct-chassis`, { tableId: found.id, tableName, projectId: project.id, projectName: project.name, chassisRef: chassis.repere, accessories: computedAccs.map(a => ({ ...a, quantity: a.quantity * unitCount })) });
           } catch { }
         }));
       }
-      onSaved && onSaved();
-      onClose();
-    } catch (e) {
-      setError(e.response?.data?.error || 'Erreur lors de la sauvegarde');
-    } finally { setSaving(false); }
+      onSaved && onSaved(); onClose();
+    } catch (e) { setError(e.response?.data?.error || 'Erreur lors de la sauvegarde'); }
+    finally { setSaving(false); }
   };
-
   const preview = (acc) => {
-    if (acc.mode === 'formula' && acc.formula) {
-      const val = evalFormula(acc.formula, L, H);
-      return val !== null
-        ? <span className="proj-acc-preview-cell">{val} {acc.unit}</span>
-        : <span className="proj-acc-preview-cell proj-acc-preview-cell--invalid">⚠ invalide</span>;
-    }
+    if (acc.mode === 'formula' && acc.formula) { const val = evalFormula(acc.formula, L, H); return val !== null ? <span className="proj-acc-preview-cell">{val} {acc.unit}</span> : <span className="proj-acc-preview-cell proj-acc-preview-cell--invalid">⚠ invalide</span>; }
     return <span className="proj-acc-preview-cell">{acc.quantity} {acc.unit}</span>;
   };
-
   const setN = (key, val) => setNewAcc(prev => ({ ...prev, [key]: val }));
-
   const newPreview = () => {
-    if (newAcc.mode === 'formula' && newAcc.formula) {
-      const val = evalFormula(newAcc.formula, L, H);
-      if (val !== null) return <span className="proj-acc-formula-preview">= {val} {newAcc.unit}</span>;
-      return <span className="proj-acc-formula-preview proj-acc-formula-preview--invalid">⚠ formule invalide</span>;
-    }
+    if (newAcc.mode === 'formula' && newAcc.formula) { const val = evalFormula(newAcc.formula, L, H); if (val !== null) return <span className="proj-acc-formula-preview">= {val} {newAcc.unit}</span>; return <span className="proj-acc-formula-preview proj-acc-formula-preview--invalid">⚠ formule invalide</span>; }
     return null;
   };
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal proj-acc-modal" onClick={e => e.stopPropagation()}>
@@ -755,35 +968,19 @@ function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
           <button className="chassis-form__close" onClick={onClose}>×</button>
         </div>
         {error && <div className="ct-manager__error">{error}</div>}
-        {loading ? (
-          <div className="ct-manager__loading">Chargement…</div>
-        ) : (
+        {loading ? <div className="ct-manager__loading">Chargement…</div> : (
           <>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-              <p className="ct-acc-hint" style={{ margin: 0, flex: 1 }}>
-                Accessoires pour ce châssis. La quantité peut être <strong>fixe</strong> ou calculée via une <strong>formule</strong> utilisant <strong>L</strong> (largeur) et <strong>H</strong> (hauteur) en mm. Ces données <strong>n'affectent pas l'inventaire</strong>.
-              </p>
-              <button className="proj-acc-load-defaults-btn" onClick={() => loadDefaults(false)} disabled={loadingDefaults} title="Remplacer les accessoires actuels par les défauts du type de châssis">
-                {loadingDefaults ? '…' : '↩ Charger les défauts'}
-              </button>
+              <p className="ct-acc-hint" style={{ margin: 0, flex: 1 }}>Accessoires pour ce châssis. Quantité <strong>fixe</strong> ou <strong>formule</strong> avec <strong>L</strong> et <strong>H</strong> en mm.</p>
+              <button className="proj-acc-load-defaults-btn" onClick={() => loadDefaults(false)} disabled={loadingDefaults}>{loadingDefaults ? '…' : '↩ Charger les défauts'}</button>
             </div>
             {accessories.length > 0 ? (
               <table className="proj-acc-table">
-                <thead>
-                  <tr>
-                    <th>Accessoire</th>
-                    <th style={{ width: 90 }}>Unité</th>
-                    <th style={{ width: 80 }}>Mode</th>
-                    <th style={{ width: 110 }}>Qté fixe</th>
-                    <th style={{ width: 180 }}>Formule (L,H)</th>
-                    <th style={{ width: 110 }}>Aperçu</th>
-                    <th style={{ width: 40 }}></th>
-                  </tr>
-                </thead>
+                <thead><tr><th>Accessoire</th><th style={{ width: 90 }}>Unité</th><th style={{ width: 80 }}>Mode</th><th style={{ width: 110 }}>Qté fixe</th><th style={{ width: 180 }}>Formule (L,H)</th><th style={{ width: 110 }}>Aperçu</th><th style={{ width: 40 }}></th></tr></thead>
                 <tbody>
                   {accessories.map((acc, idx) => (
                     <tr key={idx}>
-                      <td><input className="ct-acc-qty-input" style={{ width: '100%' }} value={acc.label} onChange={e => update(idx, 'label', e.target.value)} placeholder="Nom accessoire" /></td>
+                      <td><input className="ct-acc-qty-input" style={{ width: '100%' }} value={acc.label} onChange={e => update(idx, 'label', e.target.value)} /></td>
                       <td><select className="ct-acc-unit-select" value={acc.unit || 'UN'} onChange={e => update(idx, 'unit', e.target.value)}>{UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
                       <td><select className="ct-acc-unit-select" value={acc.mode || 'fixed'} onChange={e => setMode(idx, e.target.value)}><option value="fixed">Fixe</option><option value="formula">Formule</option></select></td>
                       <td><input className="ct-acc-qty-input" type="number" min="0" step="0.01" value={acc.quantity} disabled={acc.mode === 'formula'} onChange={e => update(idx, 'quantity', parseFloat(e.target.value) || 0)} /></td>
@@ -794,15 +991,13 @@ function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
                   ))}
                 </tbody>
               </table>
-            ) : (
-              <div className="proj-acc-empty">Aucun accessoire configuré. Ajoutez-en ci-dessous ou chargez les défauts du type.</div>
-            )}
+            ) : <div className="proj-acc-empty">Aucun accessoire configuré.</div>}
             <div className="proj-acc-add-form">
               <div className="proj-acc-add-form__title">➕ Ajouter un accessoire</div>
               <div className="proj-acc-add-form__grid">
                 <div className="form-group proj-acc-add-form__search" style={{ marginBottom: 0 }}>
-                  <label>Désignation *<span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6, fontSize: 11 }}>(tapez pour chercher dans l'inventaire)</span></label>
-                  <AccLabelAutocomplete value={newAcc.label} onChange={v => setN('label', v)} onSelect={({ label, unit, itemId }) => setNewAcc(p => ({ ...p, label, unit: UNIT_OPTIONS.includes(unit) ? unit : (unit || 'UN'), itemId }))} placeholder="ex: Joint, Vis inox, Poignée…" />
+                  <label>Désignation *</label>
+                  <AccLabelAutocomplete value={newAcc.label} onChange={v => setN('label', v)} onSelect={({ label, unit, itemId }) => setNewAcc(p => ({ ...p, label, unit: UNIT_OPTIONS.includes(unit) ? unit : (unit || 'UN'), itemId }))} />
                 </div>
                 <div className="proj-acc-mode-row">
                   <div className={`proj-acc-mode-card${newAcc.mode === 'fixed' ? ' proj-acc-mode-card--active' : ''}`} onClick={() => setN('mode', 'fixed')}>
@@ -817,7 +1012,7 @@ function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
                     <input className="proj-acc-formula-input" value={newAcc.formula} disabled={newAcc.mode !== 'formula'} onChange={e => setN('formula', e.target.value)} onClick={e => { e.stopPropagation(); setN('mode', 'formula'); }} placeholder="ex: 2*(L+H)/1000" />
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
                       <select className="proj-acc-unit-select" value={newAcc.unit} onChange={e => setN('unit', e.target.value)} onClick={e => e.stopPropagation()}>{UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}</select>
-                      <p className="proj-acc-formula-hint" style={{ margin: 0 }}><strong>L</strong> = {L} mm &nbsp;·&nbsp; <strong>H</strong> = {H} mm</p>
+                      <p className="proj-acc-formula-hint" style={{ margin: 0 }}><strong>L</strong>={L} · <strong>H</strong>={H} mm</p>
                     </div>
                     {newAcc.mode === 'formula' && newAcc.formula && newPreview()}
                   </div>
@@ -841,34 +1036,20 @@ function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
 
 // ─── Chassis Detail Print ─────────────────────────────────────────────────────
 function buildChassisDetailHTML(ch, project, chassisLabels, language, accessories, atelierTable) {
-  const L = ch.largeur || 0;
-  const H = ch.hauteur || 0;
+  const L = ch.largeur || 0; const H = ch.hauteur || 0;
   const typeLabel = chassisLabels[ch.type]?.[language] || chassisLabels[ch.type]?.fr || ch.type;
-  const co = resolveCompany(project);
-  const companyColor = co.color || '#1a1a1a';
+  const co = resolveCompany(project); const companyColor = co.color || '#1a1a1a';
   const mergedMap = {};
   for (const acc of accessories) {
-    let qty;
-    if (acc.formula) { const val = evalFormula(acc.formula, L, H); qty = val !== null ? val : null; }
-    else { qty = typeof acc.quantity === 'number' ? acc.quantity : parseFloat(acc.quantity) || 0; }
+    let qty; if (acc.formula) { const val = evalFormula(acc.formula, L, H); qty = val !== null ? val : null; } else { qty = typeof acc.quantity === 'number' ? acc.quantity : parseFloat(acc.quantity) || 0; }
     const key = `${acc.label}|||${acc.unit || ''}`;
-    if (mergedMap[key]) {
-      mergedMap[key].totalQty = (mergedMap[key].totalQty !== null && qty !== null) ? parseFloat((mergedMap[key].totalQty + qty).toFixed(4)) : null;
-      if (acc.formula) mergedMap[key].formulaStr += ` + ${acc.formula}`;
-    } else {
-      mergedMap[key] = { label: acc.label, unit: acc.unit || '', totalQty: qty, formulaStr: acc.formula || '' };
-    }
+    if (mergedMap[key]) { mergedMap[key].totalQty = (mergedMap[key].totalQty !== null && qty !== null) ? parseFloat((mergedMap[key].totalQty + qty).toFixed(4)) : null; if (acc.formula) mergedMap[key].formulaStr += ` + ${acc.formula}`; }
+    else { mergedMap[key] = { label: acc.label, unit: acc.unit || '', totalQty: qty, formulaStr: acc.formula || '' }; }
   }
   const mergedAccessories = Object.values(mergedMap);
-  const accRows = mergedAccessories.map((acc, i) => {
-    const qtyDisplay = acc.totalQty !== null ? `${acc.totalQty} ${acc.unit}` : `⚠ formule invalide`;
-    const formulaDisplay = acc.formulaStr ? `<code style="font-size:11px;color:#6b7280">${acc.formulaStr}</code>` : '—';
-    return `<tr class="${i % 2 === 0 ? 'row-even' : 'row-odd'}"><td>${i + 1}</td><td>${acc.label}</td><td>${formulaDisplay}</td><td style="font-weight:700;color:${companyColor}">${qtyDisplay}</td></tr>`;
-  }).join('');
+  const accRows = mergedAccessories.map((acc, i) => { const qtyDisplay = acc.totalQty !== null ? `${acc.totalQty} ${acc.unit}` : `⚠ formule invalide`; const formulaDisplay = acc.formulaStr ? `<code style="font-size:11px;color:#6b7280">${acc.formulaStr}</code>` : '—'; return `<tr class="${i % 2 === 0 ? 'row-even' : 'row-odd'}"><td>${i + 1}</td><td>${acc.label}</td><td>${formulaDisplay}</td><td style="font-weight:700;color:${companyColor}">${qtyDisplay}</td></tr>`; }).join('');
   const componentRows = (ch.components || []).map((comp, i) => `<tr><td>${comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${i}`)}</td><td>${comp.role === 'dormant' ? 'Dormant' : 'Vantail'}</td><td>${comp.largeur}×${comp.hauteur} mm</td></tr>`).join('');
-  const atelierChip = atelierTable
-    ? `<div class="chip" style="background:#fef9c3;border-color:#fde68a">🏭 Table atelier : <strong style="color:#92400e">${atelierTable}</strong></div>`
-    : `<div class="chip" style="color:#9ca3af">🏭 Table atelier : <strong>non assignée</strong></div>`;
+  const atelierChip = atelierTable ? `<div class="chip" style="background:#fef9c3;border-color:#fde68a">🏭 Table atelier : <strong style="color:#92400e">${atelierTable}</strong></div>` : `<div class="chip" style="color:#9ca3af">🏭 Table atelier : <strong>non assignée</strong></div>`;
   const closeScript = '<' + '/script>';
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Détail — ${ch.repere}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:28px 36px}h1{font-size:18px;font-weight:800;color:${companyColor};margin-bottom:4px}h2{font-size:13px;font-weight:700;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.06em;color:#374151}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}.chip{padding:5px 12px;border-radius:6px;border:1px solid #e5e7eb;background:#f9fafb;font-size:12px}.chip strong{color:${companyColor}}table{width:100%;border-collapse:collapse;margin-bottom:12px}thead tr{background:${companyColor};color:#fff}th{padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;text-align:left}td{padding:8px 10px;border-bottom:1px solid #f0f0f0}.row-even{background:#fff}.row-odd{background:#f9fafb}.no-acc{color:#9ca3af;font-style:italic;padding:12px 0}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm 16mm}@page{size:A4;margin:0}}</style></head><body><h1>🪟 ${ch.repere}</h1><div class="meta"><div class="chip">Type : <strong>${typeLabel}</strong></div><div class="chip">Dimensions : <strong>${L}×${H} mm</strong></div><div class="chip">Projet : <strong>${project.name}</strong></div><div class="chip">Réf. : <strong>${project.reference}</strong></div><div class="chip">RAL : <strong>${project.ralCode}</strong></div>${atelierChip}</div>${componentRows ? `<h2>Composants</h2><table><thead><tr><th>Repère</th><th>Rôle</th><th>Dimension</th></tr></thead><tbody>${componentRows}</tbody></table>` : ''}<h2>Accessoires nécessaires</h2>${mergedAccessories.length === 0 ? '<p class="no-acc">Aucun accessoire configuré pour ce châssis.</p>' : `<table><thead><tr><th>#</th><th>Désignation</th><th>Formule</th><th>Quantité</th></tr></thead><tbody>${accRows}</tbody></table>`}<script>window.onload = () => window.print();${closeScript}</body></html>`;
 }
@@ -877,7 +1058,6 @@ function buildChassisDetailHTML(ch, project, chassisLabels, language, accessorie
 function ProjectDetail({ project, onBack, currentUser }) {
   const { deleteChassis, updateChassis, updateUnit, updateComponent, refreshProject } = useProjects();
   const { t, currentLanguage } = useLanguage();
-
   const [activeTab, setActiveTab] = useState('chassis');
   const [showChassisForm, setShowChassisForm] = useState(false);
   const [showTypeManager, setShowTypeManager] = useState(false);
@@ -896,28 +1076,19 @@ function ProjectDetail({ project, onBack, currentUser }) {
   const statusColor = STATUS_COLORS[project.status] || '#9ca3af';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
-  useEffect(() => {
-    fetchChassisTypes().then(types => setChassisLabels(buildChassisLabels(types))).catch(() => { });
-  }, [showTypeManager]);
-
+  useEffect(() => { fetchChassisTypes().then(types => setChassisLabels(buildChassisLabels(types))).catch(() => {}); }, [showTypeManager]);
   useEffect(() => {
     const init = {};
     for (const ch of project.chassis || []) {
-      const qty = ch.quantity || 1;
-      const chId = ch._id || ch.id;
-      for (let i = 0; i < qty; i++) {
-        const unit = getUnit(ch, i);
-        const key = `${chId}-${i}`;
-        if (unit.atelierTable) init[key] = unit.atelierTable;
-      }
+      const qty = ch.quantity || 1; const chId = ch._id || ch.id;
+      for (let i = 0; i < qty; i++) { const unit = getUnit(ch, i); const key = `${chId}-${i}`; if (unit.atelierTable) init[key] = unit.atelierTable; }
     }
     setAtelierTables(init);
   }, [project]);
 
   const handleAtelierTableChange = useCallback(async (ch, unitIndex, newTable, rowKey) => {
     setSavingTableKey(rowKey);
-    const chId = ch._id || ch.id;
-    const prevTable = atelierTables[rowKey] || '';
+    const chId = ch._id || ch.id; const prevTable = atelierTables[rowKey] || '';
     try {
       await axios.patch(`${API_URL}/projects/${project.id}/chassis/${chId}/units/${unitIndex}`, { atelierTable: newTable });
       setAtelierTables(prev => ({ ...prev, [rowKey]: newTable }));
@@ -926,39 +1097,20 @@ function ProjectDetail({ project, onBack, currentUser }) {
         try {
           const tblRes = await axios.get(`${API_URL}/atelier-tables`);
           const found = (tblRes.data || []).find(t => t.name === newTable);
-          if (found) {
-            const accessories = computeChassisAccessories(ch);
-            if (accessories.length > 0) {
-              await axios.post(`${API_URL}/table-stock/deduct-chassis`, { tableId: found.id, tableName: newTable, projectId: project.id, projectName: project.name, chassisRef: ch.repere, accessories });
-            }
-          }
-        } catch { }
+          if (found) { const accessories = computeChassisAccessories(ch); if (accessories.length > 0) await axios.post(`${API_URL}/table-stock/deduct-chassis`, { tableId: found.id, tableName: newTable, projectId: project.id, projectName: project.name, chassisRef: ch.repere, accessories }); }
+        } catch {}
       }
     } catch (e) { console.error('Atelier table save failed', e); }
     finally { setSavingTableKey(null); }
   }, [project, refreshProject, atelierTables]);
 
   const rows = (project.chassis || []).flatMap(ch => {
-    const qty = ch.quantity || 1;
-    const chId = ch._id || ch.id;
-    const isComposite = (ch.components || []).length > 0;
+    const qty = ch.quantity || 1; const chId = ch._id || ch.id; const isComposite = (ch.components || []).length > 0;
     return Array.from({ length: qty }, (_, unitIndex) => {
-      const unit = getUnit(ch, unitIndex);
-      const groupKey = `${chId}-${unitIndex}`;
-      const baseLabel = qty > 1 ? `${ch.repere} #${unitIndex + 1}` : ch.repere;
-      if (!isComposite) {
-        return [{ kind: 'unit', ch, chId, unitIndex, unit, rowKey: groupKey, label: baseLabel, etat: unit.etat || 'non_entame' }];
-      }
-      const componentRows = ch.components.map((comp, ci) => ({
-        kind: 'component', ch, chId, unitIndex, unit, comp, ci,
-        rowKey: `${groupKey}-c${ci}`, groupKey,
-        label: comp.repere || `${comp.role === 'dormant' ? 'D' : 'V'}${ci + 1}`,
-        etat: getComponentEtat(unit, ci, comp),
-      }));
-      return [
-        { kind: 'groupHead', ch, chId, unitIndex, unit, rowKey: groupKey, label: baseLabel, derivedEtat: deriveCompositeEtat(unit, ch.components), componentRows },
-        ...componentRows,
-      ];
+      const unit = getUnit(ch, unitIndex); const groupKey = `${chId}-${unitIndex}`; const baseLabel = qty > 1 ? `${ch.repere} #${unitIndex + 1}` : ch.repere;
+      if (!isComposite) return [{ kind: 'unit', ch, chId, unitIndex, unit, rowKey: groupKey, label: baseLabel, etat: unit.etat || 'non_entame' }];
+      const componentRows = ch.components.map((comp, ci) => ({ kind: 'component', ch, chId, unitIndex, unit, comp, ci, rowKey: `${groupKey}-c${ci}`, groupKey, label: comp.repere || `${comp.role === 'dormant' ? 'D' : 'V'}${ci + 1}`, etat: getComponentEtat(unit, ci, comp) }));
+      return [{ kind: 'groupHead', ch, chId, unitIndex, unit, rowKey: groupKey, label: baseLabel, derivedEtat: deriveCompositeEtat(unit, ch.components), componentRows }, ...componentRows];
     });
   }).flat();
 
@@ -967,95 +1119,49 @@ function ProjectDetail({ project, onBack, currentUser }) {
   const toggleAll = () => setSelectedKeys(selectedKeys.size === allSelectableKeys.length ? new Set() : new Set(allSelectableKeys));
 
   const handleUnitEtatChange = async (ch, unitIndex, newEtat, rowKey) => {
-    if (newEtat === 'livre') {
-      const unit = getUnit(ch, unitIndex);
-      setDeliveryModal({ kind: 'unit', chId: ch._id || ch.id, unitIndex, rowKey, currentDate: toDateInput(unit.deliveryDate) });
-      return;
-    }
-    setSavingKey(rowKey);
-    await updateUnit(project.id, ch._id || ch.id, unitIndex, { etat: newEtat });
-    if (refreshProject) await refreshProject(project.id);
-    setSavingKey(null);
+    if (newEtat === 'livre') { setDeliveryModal({ kind: 'unit', chId: ch._id || ch.id, unitIndex, rowKey, currentDate: toDateInput(getUnit(ch, unitIndex).deliveryDate) }); return; }
+    setSavingKey(rowKey); await updateUnit(project.id, ch._id || ch.id, unitIndex, { etat: newEtat }); if (refreshProject) await refreshProject(project.id); setSavingKey(null);
   };
-
   const handleComponentEtatChange = async (ch, unitIndex, ci, newEtat, rowKey) => {
-    if (newEtat === 'livre') {
-      setDeliveryModal({ kind: 'component', chId: ch._id || ch.id, unitIndex, ci, rowKey, currentDate: null });
-      return;
-    }
-    setSavingKey(rowKey);
-    await updateComponent(project.id, ch._id || ch.id, unitIndex, ci, { etat: newEtat });
-    if (refreshProject) await refreshProject(project.id);
-    setSavingKey(null);
+    if (newEtat === 'livre') { setDeliveryModal({ kind: 'component', chId: ch._id || ch.id, unitIndex, ci, rowKey, currentDate: null }); return; }
+    setSavingKey(rowKey); await updateComponent(project.id, ch._id || ch.id, unitIndex, ci, { etat: newEtat }); if (refreshProject) await refreshProject(project.id); setSavingKey(null);
   };
-
   const handleDeliveryConfirm = async (deliveryDate) => {
-    const m = deliveryModal;
-    setDeliveryModal(null);
-    setSavingKey(m.rowKey);
-    if (m.kind === 'unit') {
-      await updateUnit(project.id, m.chId, m.unitIndex, { etat: 'livre', deliveryDate });
-    } else {
-      await updateComponent(project.id, m.chId, m.unitIndex, m.ci, { etat: 'livre', deliveryDate });
-    }
-    if (refreshProject) await refreshProject(project.id);
-    setSavingKey(null);
+    const m = deliveryModal; setDeliveryModal(null); setSavingKey(m.rowKey);
+    if (m.kind === 'unit') await updateUnit(project.id, m.chId, m.unitIndex, { etat: 'livre', deliveryDate });
+    else await updateComponent(project.id, m.chId, m.unitIndex, m.ci, { etat: 'livre', deliveryDate });
+    if (refreshProject) await refreshProject(project.id); setSavingKey(null);
   };
-
   const handleDeleteUnit = async (ch, unitIndex) => {
-    const chId = ch._id || ch.id;
-    const qty = ch.quantity ?? 1;
-    if (qty <= 1) {
-      if (!window.confirm(t('deleteChassisConfirm'))) return;
-      await deleteChassis(project.id, chId);
-    } else {
-      if (!window.confirm(`Supprimer l'unité #${unitIndex + 1} ? (${qty - 1} restante${qty - 1 > 1 ? 's' : ''})`)) return;
-      await updateChassis(project.id, chId, { quantity: qty - 1 });
-    }
+    const chId = ch._id || ch.id; const qty = ch.quantity ?? 1;
+    if (qty <= 1) { if (!window.confirm(t('deleteChassisConfirm'))) return; await deleteChassis(project.id, chId); }
+    else { if (!window.confirm(`Supprimer l'unité #${unitIndex + 1} ?`)) return; await updateChassis(project.id, chId, { quantity: qty - 1 }); }
     if (refreshProject) await refreshProject(project.id);
   };
 
   const [ATELIER_TABLES, setAtelierTableOptions] = useState([]);
   useEffect(() => {
-    const loadTableOptions = async () => {
-      try {
-        const res = await axios.get(`${API_URL}/atelier-tables/names`);
-        const sorted = (res.data || []).slice().sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
-        setAtelierTableOptions(sorted);
-      } catch {
-        setAtelierTableOptions(['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 6', 'Table 7', 'Table 8']);
-      }
-    };
-    loadTableOptions();
+    axios.get(`${API_URL}/atelier-tables/names`).then(res => setAtelierTableOptions((res.data || []).slice().sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' })))).catch(() => setAtelierTableOptions(['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 6', 'Table 7', 'Table 8']));
   }, []);
 
   const startBatchPrint = () => {
     const toPrint = [];
     for (const row of rows) {
       if (!selectedKeys.has(row.rowKey)) continue;
-      if (row.kind === 'unit') {
-        toPrint.push({ ...row.ch, _printRowIndex: row.unitIndex, _totalQty: row.ch.quantity || 1 });
-      } else if (row.kind === 'component') {
-        const roleLabel = row.comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${row.ci}`;
-        toPrint.push({ ...row.ch, _printRowIndex: row.unitIndex, _totalQty: row.ch.quantity || 1, _component: { repere: row.comp.repere || roleLabel, roleLabel, largeur: row.comp.largeur, hauteur: row.comp.hauteur } });
-      }
+      if (row.kind === 'unit') toPrint.push({ ...row.ch, _printRowIndex: row.unitIndex, _totalQty: row.ch.quantity || 1 });
+      else if (row.kind === 'component') { const rl = row.comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${row.ci}`; toPrint.push({ ...row.ch, _printRowIndex: row.unitIndex, _totalQty: row.ch.quantity || 1, _component: { repere: row.comp.repere || rl, roleLabel: rl, largeur: row.comp.largeur, hauteur: row.comp.hauteur } }); }
     }
     if (!toPrint.length) return;
     const html = buildLabelHTML(toPrint, project, chassisLabels, language);
-    const w = window.open('', '_blank');
-    if (w) { w.document.write(html); w.document.close(); }
+    const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
   };
 
   const totalDisplayRows = (project.chassis || []).reduce((acc, ch) => acc + (ch.quantity || 1), 0);
-
   const { user } = useAuth();
   const userRole = user?.role;
   const adminThing = userRole === 'Admin';
-  const laquageThing = userRole === 'Admin' || userRole === 'Laquage';
-  const barreThing = userRole === 'Admin' || userRole === 'BARREMAN';
   const coordinateurThing = userRole === 'Admin' || userRole === 'Coordinateur';
   const magThing = userRole === 'Admin' || userRole === 'Magasinier';
-  const logistiqueThing = userRole === 'LOGISTIQUE';
   const stateThing = userRole === 'Admin' || ['LOGISTIQUE', 'Coordinateur'].includes(userRole);
 
   const detailTabs = [
@@ -1065,23 +1171,12 @@ function ProjectDetail({ project, onBack, currentUser }) {
     { key: 'barres_laquer', label: 'Barres à Laquer', count: null },
     { key: 'accessoires_laquer', label: 'Accessoires à Laquer', count: null },
   ];
-
-  const ROLE_TAB_ACCESS = {
-    Laquage: ['barres_laquer', 'accessoires_laquer', 'bars'],
-    BARREMAN: ['barres_laquer'],
-    Coordinateur: ['chassis', 'barres_laquer', 'accessoires_laquer'],
-    Magasinier: ['bars', 'accessoires_laquer'],
-    LOGISTIQUE: ['chassis', 'bl'],
-  };
-
-  const visibleTabs = adminThing
-    ? detailTabs
-    : detailTabs.filter(sc => (ROLE_TAB_ACCESS[userRole] || []).includes(sc.key));
+  const ROLE_TAB_ACCESS = { Laquage: ['barres_laquer', 'accessoires_laquer', 'bars'], BARREMAN: ['barres_laquer'], Coordinateur: ['chassis', 'barres_laquer', 'accessoires_laquer'], Magasinier: ['bars', 'accessoires_laquer'], LOGISTIQUE: ['chassis', 'bl'] };
+  const visibleTabs = adminThing ? detailTabs : detailTabs.filter(sc => (ROLE_TAB_ACCESS[userRole] || []).includes(sc.key));
 
   return (
     <div className="project-detail">
       <button className="btn-back" onClick={onBack}><StepBack size={15} />{t('backToProjects')}</button>
-
       <div className="project-detail__header">
         <div className="project-detail__info">
           <div className="project-detail__ral-swatch" style={{ backgroundColor: project.ralColor || '#eee' }} />
@@ -1091,9 +1186,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
               <span>{t('ref')} <strong>{project.reference}</strong></span>
               <span>{t('ral')} <strong>{project.ralCode}</strong></span>
               <span>{t('date')}: <strong>{dateStr}</strong></span>
-              <span className="project-detail__status" style={{ backgroundColor: statusColor }}>
-                {t(`status_${project.status}`) || project.status}
-              </span>
+              <span className="project-detail__status" style={{ backgroundColor: statusColor }}>{t(`status_${project.status}`) || project.status}</span>
             </div>
           </div>
         </div>
@@ -1109,11 +1202,8 @@ function ProjectDetail({ project, onBack, currentUser }) {
 
       <div className="project-detail__tabs">
         {visibleTabs.map(tab => (
-          <button key={tab.key}
-            className={`project-detail__tab ${activeTab === tab.key ? 'project-detail__tab--active' : ''}`}
-            onClick={() => setActiveTab(tab.key)}>
-            {tab.label}
-            {tab.count !== null && <span className="tab-count">{tab.count}</span>}
+          <button key={tab.key} className={`project-detail__tab ${activeTab === tab.key ? 'project-detail__tab--active' : ''}`} onClick={() => setActiveTab(tab.key)}>
+            {tab.label}{tab.count !== null && <span className="tab-count">{tab.count}</span>}
           </button>
         ))}
       </div>
@@ -1121,234 +1211,101 @@ function ProjectDetail({ project, onBack, currentUser }) {
       {activeTab === 'chassis' && (
         <div className="project-detail__panel">
           <div className="panel-toolbar">
-            {adminThing && (
-              <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>+ {t('addChassis')}</button>
-            )}
-            {magThing && (
-              <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}>⚙️ {t('chassisTypeConfig')}</button>
-            )}
+            {adminThing && <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>+ {t('addChassis')}</button>}
+            {magThing && <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}>⚙️ {t('chassisTypeConfig')}</button>}
             {rows.length > 0 && adminThing && (
               <div className="selection-toolbar">
                 <button className="select-btn" onClick={toggleAll}>{selectedKeys.size === allSelectableKeys.length ? t('deselectAll') : t('selectAll')}</button>
-                {selectedKeys.size > 0 && (
-                  <button className="print-selected-btn" onClick={startBatchPrint}>
-                    🖨 {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})
-                  </button>
-                )}
+                {selectedKeys.size > 0 && <button className="print-selected-btn" onClick={startBatchPrint}>🖨 {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})</button>}
               </div>
             )}
           </div>
-
-          {!project.chassis?.length ? (
-            <div className="no-items">{t('noChassis')}</div>
-          ) : (
+          {!project.chassis?.length ? <div className="no-items">{t('noChassis')}</div> : (
             <div className="chassis-table-wrapper">
               <table className="chassis-table">
                 <thead>
                   <tr>
-                    {adminThing && (
-                      <th style={{ width: 40 }}>
-                        <input type="checkbox"
-                          checked={allSelectableKeys.length > 0 && selectedKeys.size === allSelectableKeys.length}
-                          onChange={toggleAll} />
-                      </th>
-                    )}
-                    <th>{t('repere')}</th>
-                    <th>{t('type')}</th>
-                    <th>{t('largeur')} (mm)</th>
-                    <th>{t('hauteur')} (mm)</th>
-                    <th>{t('dimension')}</th>
-                    <th>{t('etat')}</th>
-                    <th>{t('deliveryDate')}</th>
-                    <th className="atelier-table-col">Table atelier</th>
-                    <th>{t('actions')}</th>
+                    {adminThing && <th style={{ width: 40 }}><input type="checkbox" checked={allSelectableKeys.length > 0 && selectedKeys.size === allSelectableKeys.length} onChange={toggleAll} /></th>}
+                    <th>{t('repere')}</th><th>{t('type')}</th><th>{t('largeur')} (mm)</th><th>{t('hauteur')} (mm)</th><th>{t('dimension')}</th>
+                    <th>{t('etat')}</th><th>{t('deliveryDate')}</th><th className="atelier-table-col">Table atelier</th><th>{t('actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map(row => {
-                    // ── groupHead ──
                     if (row.kind === 'groupHead') {
-                      const { ch, chId, unitIndex, label, derivedEtat } = row;
-                      const rowKey = row.rowKey;
+                      const { ch, chId, unitIndex, label, derivedEtat } = row; const rowKey = row.rowKey;
                       return (
                         <tr key={rowKey} className="chassis-row chassis-row--group-head">
-                          {adminThing && (
-                            <td className="chassis-row__check" />
-                          )}
-                          <td>
-                            <strong>{label}</strong>
-                            <span className="composite-badge" title="Composite">⊞</span>
-                          </td>
+                          {adminThing && <td className="chassis-row__check" />}
+                          <td><strong>{label}</strong><span className="composite-badge" title="Composite">⊞</span></td>
                           <td>{chassisLabels[ch.type]?.[language] || ch.type}</td>
                           <td>{ch.largeur}</td><td>{ch.hauteur}</td>
                           <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
-                          <td>
-                            <span className="etat-badge" style={{ background: ETAT_COLORS[derivedEtat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap' }}>
-                              {t(`etat_${derivedEtat}`)}
-                            </span>
-                          </td>
+                          <td><span className="etat-badge" style={{ background: ETAT_COLORS[derivedEtat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap' }}>{t(`etat_${derivedEtat}`)}</span></td>
                           <td><span className="date-placeholder">—</span></td>
-                          {coordinateurThing && (
-                            <td className="atelier-table-col">
-                              <select
-                                className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`}
-                                value={atelierTables[rowKey] || ''}
-                                disabled={savingTableKey === rowKey}
-                                onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}
-                              >
-                                <option value="">— non assigné —</option>
-                                {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
-                              </select>
-                            </td>
-                          )}
-                          {adminThing && (
-                            <td>
-                              <div className="chassis-row__actions">
-                                <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, _originalId: chId }); setShowChassisForm(true); }}>✏️</button>
-                                <button className="ct-acc-btn" title="Configurer les accessoires" onClick={() => setAccLineEditor(ch)}>🔧</button>
-                                <button className="print-btn" title="Imprimer la fiche détail" onClick={async () => {
-                                  let accs = [];
-                                  try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { }
-                                  const tbl = atelierTables[rowKey] || '';
-                                  const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, tbl);
-                                  const w = window.open('', '_blank');
-                                  if (w) { w.document.write(html); w.document.close(); }
-                                }}>🖨</button>
-                                <button className="print-btn" title={t('printLabel')} onClick={() => {
-                                  const toPrint = ch.components.map((comp, ci) => {
-                                    const roleLabel = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`;
-                                    return { ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || roleLabel, roleLabel, largeur: comp.largeur, hauteur: comp.hauteur } };
-                                  });
-                                  const html = buildLabelHTML(toPrint, project, chassisLabels, language);
-                                  const w = window.open('', '_blank');
-                                  if (w) { w.document.write(html); w.document.close(); }
-                                }}>🏷</button>
-                                <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}>🗑</button>
-                              </div>
-                            </td>
-                          )}
+                          {coordinateurThing && <td className="atelier-table-col">
+                            <select className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={savingTableKey === rowKey} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}>
+                              <option value="">— non assigné —</option>
+                              {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
+                            </select>
+                          </td>}
+                          {adminThing && <td><div className="chassis-row__actions">
+                            <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, _originalId: chId }); setShowChassisForm(true); }}>✏️</button>
+                            <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>
+                            <button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch {} const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>
+                            <button className="print-btn" onClick={() => { const toPrint = ch.components.map((comp, ci) => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; return { ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }; }); const html = buildLabelHTML(toPrint, project, chassisLabels, language); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🏷</button>
+                            <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}>🗑</button>
+                          </div></td>}
                         </tr>
                       );
                     }
-
-                    // ── component ──
                     if (row.kind === 'component') {
                       const { ch, unitIndex, comp, ci, rowKey, label, etat } = row;
-                      const isSaving = savingKey === rowKey;
-                      const isSelected = selectedKeys.has(rowKey);
+                      const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey);
                       return (
                         <tr key={rowKey} className={`component-row${isSelected ? ' component-row--selected' : ''}${isSaving ? ' component-row--saving' : ''}`}>
-                          {adminThing && (
-                            <td className="chassis-row__check">
-                              <input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} />
-                            </td>
-                          )}
+                          {adminThing && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}
                           <td className="component-indent">↳ <strong>{label}</strong></td>
                           <td className="component-role">{comp.role === 'dormant' ? t('dormant') : t('vantail')}</td>
                           <td>{comp.largeur || '—'}</td><td>{comp.hauteur || '—'}</td>
                           <td className="dim-cell">{comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}</td>
-                          {stateThing && (
-                            <td>
-                              <select
-                                className={`etat-select etat-select--${etat}`}
-                                value={etat}
-                                disabled={isEtatSelectDisabled(userRole, etat, isSaving)}
-                                onChange={e => handleComponentEtatChange(ch, unitIndex, ci, e.target.value, rowKey)}
-                              >
-                                {getAllowedEtats(userRole, etat).map(opt => (
-                                  <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>
-                                ))}
-                              </select>
-                            </td>
-                          )}
+                          {stateThing && <td><select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleComponentEtatChange(ch, unitIndex, ci, e.target.value, rowKey)}>
+                            {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
+                          </select></td>}
                           <td><span className="date-placeholder">—</span></td>
-                          <td className="atelier-table-col">
-                            <span className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`}>
-                              {atelierTables[row.groupKey] || <span style={{ color: '#9ca3af' }}>—</span>}
-                            </span>
-                          </td>
-                          <td>
-                            {adminThing && (
-                              <div className="chassis-row__actions">
-                                <button className="print-btn" title={t('printLabel')} onClick={() => {
-                                  const roleLabel = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`;
-                                  setPrintingChassis({ ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || roleLabel, roleLabel, largeur: comp.largeur, hauteur: comp.hauteur } });
-                                }}>🏷</button>
-                              </div>
-                            )}
-                          </td>
+                          <td className="atelier-table-col"><span className="etat-select etat-select--livre atelier-select">{atelierTables[row.groupKey] || <span style={{ color: '#9ca3af' }}>—</span>}</span></td>
+                          <td>{adminThing && <div className="chassis-row__actions"><button className="print-btn" onClick={() => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; setPrintingChassis({ ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }); }}>🏷</button></div>}</td>
                         </tr>
                       );
                     }
-
-                    // ── unit ──
                     const { ch, chId, unitIndex, unit, rowKey, label, etat } = row;
-                    const isSaving = savingKey === rowKey;
-                    const isSelected = selectedKeys.has(rowKey);
+                    const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey);
                     return (
                       <tr key={rowKey} className={`chassis-row${isSelected ? ' chassis-row--selected' : ''}${isSaving ? ' chassis-row--saving' : ''}`}>
-                        {adminThing && (
-                          <td className="chassis-row__check">
-                            <input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} />
-                          </td>
-                        )}
+                        {adminThing && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}
                         <td><strong>{label}</strong></td>
                         <td>{chassisLabels[ch.type]?.[language] || ch.type}</td>
                         <td>{ch.largeur}</td><td>{ch.hauteur}</td>
                         <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
-                        {stateThing && (
-                          <td>
-                            <select
-                              className={`etat-select etat-select--${etat}`}
-                              value={etat}
-                              disabled={isEtatSelectDisabled(userRole, etat, isSaving)}
-                              onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)}
-                              style={{ borderLeftColor: ETAT_COLORS[etat] }}
-                            >
-                              {getAllowedEtats(userRole, etat).map(opt => (
-                                <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>
-                              ))}
-                            </select>
-                          </td>
-                        )}
+                        {stateThing && <td><select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)} style={{ borderLeftColor: ETAT_COLORS[etat] }}>
+                          {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
+                        </select></td>}
                         <td className="delivery-date-cell">
-                          {etat === 'livre' ? (
-                            <button className="date-btn" onClick={() => setDeliveryModal({ kind: 'unit', chId, unitIndex, rowKey, currentDate: toDateInput(unit.deliveryDate) })}>
-                              📅 {unit.deliveryDate ? fmtDate(unit.deliveryDate) : 'Définir'}
-                            </button>
-                          ) : <span className="date-placeholder">—</span>}
+                          {etat === 'livre' ? <button className="date-btn" onClick={() => setDeliveryModal({ kind: 'unit', chId, unitIndex, rowKey, currentDate: toDateInput(unit.deliveryDate) })}>📅 {unit.deliveryDate ? fmtDate(unit.deliveryDate) : 'Définir'}</button> : <span className="date-placeholder">—</span>}
                         </td>
-                        {stateThing && (
-                          <td className="atelier-table-col">
-                            <select
-                              className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`}
-                              value={atelierTables[rowKey] || ''}
-                              disabled={savingTableKey === rowKey}
-                              onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}
-                            >
-                              <option value="">— non assigné —</option>
-                              {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
-                            </select>
-                          </td>
-                        )}
-                        <td>
-                          {adminThing && (
-                            <div className="chassis-row__actions">
-                              <button className="edit-btn" title={t('edit')} onClick={() => { setEditingChassis({ ...ch, quantity: 1, etat, _originalId: chId, _unitIndex: unitIndex, _totalQty: ch.quantity ?? 1 }); setShowChassisForm(true); }}>✏️</button>
-                              <button className="ct-acc-btn" title="Configurer les accessoires" onClick={() => setAccLineEditor(ch)}>🔧</button>
-                              <button className="print-btn" title="Imprimer la fiche détail" onClick={async () => {
-                                let accs = [];
-                                try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { }
-                                const tbl = atelierTables[rowKey] || '';
-                                const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, tbl);
-                                const w = window.open('', '_blank');
-                                if (w) { w.document.write(html); w.document.close(); }
-                              }}>🖨</button>
-                              <button className="print-btn" title={t('printLabel')} onClick={() => setPrintingChassis({ ...ch, _printRowIndex: unitIndex })}>🏷</button>
-                              <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}>🗑</button>
-                            </div>
-                          )}
-                        </td>
+                        {stateThing && <td className="atelier-table-col">
+                          <select className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={savingTableKey === rowKey} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}>
+                            <option value="">— non assigné —</option>
+                            {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
+                          </select>
+                        </td>}
+                        <td>{adminThing && <div className="chassis-row__actions">
+                          <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, quantity: 1, etat, _originalId: chId, _unitIndex: unitIndex, _totalQty: ch.quantity ?? 1 }); setShowChassisForm(true); }}>✏️</button>
+                          <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>
+                          <button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch {} const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>
+                          <button className="print-btn" onClick={() => setPrintingChassis({ ...ch, _printRowIndex: unitIndex })}>🏷</button>
+                          <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}>🗑</button>
+                        </div>}</td>
                       </tr>
                     );
                   })}
@@ -1361,38 +1318,15 @@ function ProjectDetail({ project, onBack, currentUser }) {
 
       {activeTab === 'bars' && <UsedBarsPanel project={project} />}
       {activeTab === 'bl' && <div className="project-detail__panel"><BLPanel project={project} t={t} language={language} /></div>}
-      {activeTab === 'barres_laquer' && (
-        <div className="project-detail__panel">
-          <BarresLaquerPanel project={project} currentUser={currentUser} />
-        </div>
-      )}
-      {activeTab === 'accessoires_laquer' && (
-        <div className="project-detail__panel">
-          <AccessoiresLaquerPanel project={project} currentUser={currentUser} />
-        </div>
-      )}
+      {activeTab === 'barres_laquer' && <div className="project-detail__panel"><BarresLaquerPanel project={project} currentUser={currentUser} /></div>}
+      {activeTab === 'accessoires_laquer' && <div className="project-detail__panel"><AccessoiresLaquerPanel project={project} currentUser={currentUser} /></div>}
 
       {showChassisForm && <ChassisForm chassis={editingChassis} projectId={project.id} onClose={() => { setShowChassisForm(false); setEditingChassis(null); }} onSave={() => { setShowChassisForm(false); setEditingChassis(null); }} />}
       {showTypeManager && <ChassisTypeManager onClose={() => setShowTypeManager(false)} />}
       {printingChassis && <LabelPrint chassis={printingChassis} project={project} chassisLabels={chassisLabels} onClose={() => setPrintingChassis(null)} />}
       {deliveryModal && <DeliveryDateModal defaultDate={deliveryModal.currentDate} onConfirm={handleDeliveryConfirm} onCancel={() => setDeliveryModal(null)} t={t} />}
-      {accLineEditor && (
-        <ChassisLineAccessoryEditor
-          chassis={accLineEditor}
-          project={project}
-          onClose={() => setAccLineEditor(null)}
-          onSaved={() => { if (refreshProject) refreshProject(project.id); }}
-        />
-      )}
-      {showAccExport && (
-        <AccessoriesExportModal
-          project={project}
-          chassisLabels={chassisLabels}
-          language={language}
-          t={t}
-          onClose={() => setShowAccExport(false)}
-        />
-      )}
+      {accLineEditor && <ChassisLineAccessoryEditor chassis={accLineEditor} project={project} onClose={() => setAccLineEditor(null)} onSaved={() => { if (refreshProject) refreshProject(project.id); }} />}
+      {showAccExport && <AccessoriesExportModal project={project} chassisLabels={chassisLabels} language={language} t={t} onClose={() => setShowAccExport(false)} />}
     </div>
   );
 }

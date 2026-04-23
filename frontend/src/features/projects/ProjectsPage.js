@@ -20,11 +20,11 @@ const STATUS_COLORS = {
 
 const ETAT_COLORS = {
   non_entame: '#9ca3af',
-  en_cours:   '#f59e0b',
-  non_vitre:  '#a855f7',
-  fabrique:   '#3b82f6',
+  en_cours: '#f59e0b',
+  non_vitre: '#a855f7',
+  fabrique: '#3b82f6',
   pret_a_livrer: 'rgb(255, 0, 0)',
-  livre:      '#16a34a',
+  livre: '#16a34a',
 };
 
 const ETAT_ORDER = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
@@ -72,6 +72,8 @@ function ProjectsPage() {
   const [editingProject, setEditingProject] = useState(null);
   const [openProjectId, setOpenProjectId] = useState(null);
   const [filterCompany, setFilterCompany] = useState('all');
+  const { user } = useAuth();
+  const adminThing = user?.role === 'Admin';
 
   useEffect(() => {
     setFilterCompany(selectedCompany || 'all');
@@ -114,7 +116,7 @@ function ProjectsPage() {
       );
     }
   }
-
+ 
   return (
     <div className="projects-page">
       <div className="projects-page__header">
@@ -138,9 +140,12 @@ function ProjectsPage() {
           <input type="text" className="search-input"
             placeholder={t('searchPlaceholder')}
             value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-          <button className="add-item-btn" onClick={() => { setEditingProject(null); setShowForm(true); }}>
-            + {t('addProject')}
-          </button>
+          {adminThing && (
+            <button className="add-item-btn" onClick={() => { setEditingProject(null); setShowForm(true); }}>
+              + {t('addProject')}
+            </button>
+          )}
+
         </div>
       </div>
 
@@ -185,6 +190,7 @@ function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
   const { user } = useAuth();
   const adminThing = user?.role === 'Admin';
+  const logistiqueThing = user?.role === 'Admin' || user?.role === 'LOGISTIQUE';
 
   const etatCounts = computeEtatCounts(project.chassis);
   const total = Object.values(etatCounts).reduce((a, b) => a + b, 0);
@@ -232,7 +238,7 @@ function ProjectCard({ project, language, t, onOpen, onEdit, onDelete }) {
         )}
       </div>
       <div className="project-card__actions" onClick={e => e.stopPropagation()}>
-        {adminThing && (
+        {logistiqueThing && (
           <button className="edit-btn" onClick={onEdit}>{t('edit')}</button>
         )}
         {adminThing && (

@@ -268,6 +268,97 @@ const projectSchema = new mongoose.Schema({
 });
 const Project = mongoose.model('Project', projectSchema);
 
+// ==================== BL COMPUTATION ====================
+
+
+// ============================================================
+// BL METADATA — paste this into server.js in TWO places:
+//
+// 1. SCHEMA — paste near the other schemas (e.g. after laquageAccSchema)
+// 2. ROUTES — paste after the bons-livraison GET route
+// ============================================================
+
+
+// ── 1. SCHEMA ────────────────────────────────────────────────
+// Stores the BL export form data (blId, localisation, transport,
+// per-unit notes) keyed by project + deliveryDate.
+
+const blMetadataSchema = new mongoose.Schema({
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
+  deliveryDate: { type: String, required: true }, // YYYY-MM-DD
+  blId: { type: String, default: '' },
+  localisation: { type: String, default: '' },
+  transport: { type: String, default: '' },
+  // unitNotes: { "Repère #1": "note text", "Repère #2": "..." }
+  unitNotes: { type: mongoose.Schema.Types.Mixed, default: {} },
+}, {
+  timestamps: true,
+  toJSON: {
+    transform: (doc, ret) => {
+      ret.id = ret._id;
+      delete ret._id;
+      delete ret.__v;
+      return ret;
+    }
+  }
+});
+// One record per (project, deliveryDate) pair
+blMetadataSchema.index({ projectId: 1, deliveryDate: 1 }, { unique: true });
+const BLMetadata = mongoose.model('BLMetadata', blMetadataSchema);
+
+
+// ── 2. ROUTES ─────────────────────────────────────────────────
+// Paste these right after:
+//   app.get('/api/projects/:id/bons-livraison', ...)
+
+/**
+ * GET /api/projects/:projectId/bl-metadata/:deliveryDate
+ * Returns saved BL form data for a specific delivery date.
+ * Returns empty defaults if none saved yet.
+ */
+app.get('/api/projects/:projectId/bl-metadata/:deliveryDate', async (req, res) => {
+  try {
+    const meta = await BLMetadata.findOne({
+      projectId: req.params.projectId,
+      deliveryDate: req.params.deliveryDate,
+    });
+    if (!meta) {
+      return res.json({ blId: '', localisation: '', transport: '', unitNotes: {} });
+    }
+    res.json(meta.toJSON());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * PUT /api/projects/:projectId/bl-metadata/:deliveryDate
+ * Creates or updates BL form data for a specific delivery date.
+ * Body: { blId, localisation, transport, unitNotes }
+ */
+app.put('/api/projects/:projectId/bl-metadata/:deliveryDate', async (req, res) => {
+  try {
+    const { blId, localisation, transport, unitNotes } = req.body;
+    const meta = await BLMetadata.findOneAndUpdate(
+      {
+        projectId: req.params.projectId,
+        deliveryDate: req.params.deliveryDate,
+      },
+      {
+        $set: {
+          blId: blId || '',
+          localisation: localisation || '',
+          transport: transport || '',
+          unitNotes: unitNotes || {},
+        }
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
+    res.json(meta.toJSON());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 // ==================== STATUS COMPUTATION ====================
 
 function computeProjectStatus(chassis) {
@@ -1281,11 +1372,11 @@ app.get('/api/analytics/dashboard', async (req, res) => {
     const topItems = Object.values(itemConsMap).sort((a, b) => b.total - a.total).slice(0, 5);
     const period = req.query.period || 'monthly';
     const movMap = {};
-    const fmtPeriod = (d) => { if (period === 'annual') return `${d.getFullYear()}`; if (period === 'daily') return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+    const fmtPeriod = (d) => { if (period === 'annual') return `${d.getFullYear()}`; if (period === 'daily') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
     const skeleton_start = new Date(2026, 0, 1);
     if (period === 'annual') { for (let y = skeleton_start.getFullYear(); y <= now.getFullYear(); y++) { const key = `${y}`; movMap[key] = { period: key, entrees: 0, sorties: 0, project_use: 0, project_return: 0, order_reception: 0 }; } }
-    else if (period === 'monthly') { for (let d = new Date(skeleton_start); d <= now; d.setMonth(d.getMonth()+1)) { const key = fmtPeriod(d); movMap[key] = { period: key, entrees: 0, sorties: 0, project_use: 0, project_return: 0, order_reception: 0 }; } }
-    else { for (let i = 59; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate()-i); const key = fmtPeriod(d); movMap[key] = { period: key, entrees: 0, sorties: 0, project_use: 0, project_return: 0, order_reception: 0 }; } }
+    else if (period === 'monthly') { for (let d = new Date(skeleton_start); d <= now; d.setMonth(d.getMonth() + 1)) { const key = fmtPeriod(d); movMap[key] = { period: key, entrees: 0, sorties: 0, project_use: 0, project_return: 0, order_reception: 0 }; } }
+    else { for (let i = 59; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i); const key = fmtPeriod(d); movMap[key] = { period: key, entrees: 0, sorties: 0, project_use: 0, project_return: 0, order_reception: 0 }; } }
     for (const m of movements) { const d = new Date(m.createdAt); const key = fmtPeriod(d); if (movMap[key]) { const typeKey = m.type === 'entree' ? 'entrees' : m.type === 'sortie' ? 'sorties' : m.type; movMap[key][typeKey] = (movMap[key][typeKey] || 0) + m.quantity; } }
     const catMap = {};
     for (const item of items) { const catId = item.categoryId?._id?.toString() || 'none'; const catName = item.categoryId?.name || { fr: 'Sans catégorie', it: 'Senza categoria', en: 'No category' }; const catColor = item.categoryId?.color || '#9ca3af'; if (!catMap[catId]) catMap[catId] = { catId, catName, catColor, total: 0, ok: 0, low: 0, critical: 0 }; catMap[catId].total++; const total = item.quantity + (item.orderedQuantity || 0); if (total < item.threshold) catMap[catId].critical++; else if (item.quantity < item.threshold) catMap[catId].low++; else catMap[catId].ok++; }
@@ -1344,13 +1435,13 @@ app.get('/api/inventory/poudres', async (req, res) => {
 const atelierTableLayoutSchema = new mongoose.Schema({
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
   tables: [{
-    id:     { type: String, required: true },
+    id: { type: String, required: true },
     number: { type: Number, required: true },
-    name:   { type: String, required: true },
-    x:      { type: Number, default: 0 },
-    y:      { type: Number, default: 0 },
-    w:      { type: Number, default: 200 },
-    h:      { type: Number, default: 90 },
+    name: { type: String, required: true },
+    x: { type: Number, default: 0 },
+    y: { type: Number, default: 0 },
+    w: { type: Number, default: 200 },
+    h: { type: Number, default: 90 },
   }],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const AtelierTableLayout = mongoose.model('AtelierTableLayout', atelierTableLayoutSchema);
@@ -1372,7 +1463,7 @@ app.put('/api/atelier-tables', async (req, res) => {
 app.get('/api/atelier-tables/names', async (req, res) => {
   try {
     const layout = await AtelierTableLayout.findOne({}).sort({ updatedAt: -1 });
-    if (!layout || !layout.tables.length) return res.json(['Table 1','Table 2','Table 3','Table 4','Table 5','Table 6','Table 7','Table 8']);
+    if (!layout || !layout.tables.length) return res.json(['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 6', 'Table 7', 'Table 8']);
     res.json([...layout.tables].sort((a, b) => a.number - b.number).map(t => t.name));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1380,30 +1471,30 @@ app.get('/api/atelier-tables/names', async (req, res) => {
 // ==================== TABLE STOCK ====================
 
 const tableStockSchema = new mongoose.Schema({
-  tableId:   { type: String, required: true, unique: true },
+  tableId: { type: String, required: true, unique: true },
   tableName: { type: String, default: '' },
-  workers:   [{ type: String }],
+  workers: [{ type: String }],
   stock: [{
-    itemId:  { type: String, required: true },
-    label:   { type: String, required: true },
-    unit:    { type: String, default: '' },
-    quantity:{ type: Number, default: 0, min: 0 },
+    itemId: { type: String, required: true },
+    label: { type: String, required: true },
+    unit: { type: String, default: '' },
+    quantity: { type: Number, default: 0, min: 0 },
   }],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const TableStock = mongoose.model('TableStock', tableStockSchema);
 
 const tableConsumptionSchema = new mongoose.Schema({
-  tableId:     { type: String, required: true },
-  tableName:   { type: String, default: '' },
-  itemId:      { type: String, required: true },
-  label:       { type: String, required: true },
-  unit:        { type: String, default: '' },
-  quantity:    { type: Number, required: true },
-  type:        { type: String, enum: ['chassis_assignment', 'manual_in', 'manual_out'], required: true },
-  projectId:   { type: String, default: '' },
+  tableId: { type: String, required: true },
+  tableName: { type: String, default: '' },
+  itemId: { type: String, required: true },
+  label: { type: String, required: true },
+  unit: { type: String, default: '' },
+  quantity: { type: Number, required: true },
+  type: { type: String, enum: ['chassis_assignment', 'manual_in', 'manual_out'], required: true },
+  projectId: { type: String, default: '' },
   projectName: { type: String, default: '' },
-  chassisRef:  { type: String, default: '' },
-  date:        { type: Date, default: Date.now },
+  chassisRef: { type: String, default: '' },
+  date: { type: Date, default: Date.now },
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 tableConsumptionSchema.index({ tableId: 1, date: -1 });
 tableConsumptionSchema.index({ date: -1 });
@@ -1496,9 +1587,9 @@ app.get('/api/table-consumption/recap', async (req, res) => {
   try {
     const { period = 'monthly', tableId } = req.query;
     const now = new Date(); let from;
-    if (period === 'daily')   from = new Date(now.getFullYear(), now.getMonth(), now.getDate()-29);
-    if (period === 'weekly')  from = new Date(now.getFullYear(), now.getMonth(), now.getDate()-83);
-    if (period === 'monthly') from = new Date(now.getFullYear(), now.getMonth()-11, 1);
+    if (period === 'daily') from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
+    if (period === 'weekly') from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 83);
+    if (period === 'monthly') from = new Date(now.getFullYear(), now.getMonth() - 11, 1);
     const match = { date: { $gte: from } }; if (tableId) match.tableId = tableId;
     const groupId = { tableId: '$tableId', tableName: '$tableName', itemId: '$itemId', label: '$label', unit: '$unit' };
     if (period === 'daily') { groupId.y = { $year: '$date' }; groupId.m = { $month: '$date' }; groupId.d = { $dayOfMonth: '$date' }; }
@@ -1513,9 +1604,9 @@ app.get('/api/table-consumption/recap', async (req, res) => {
     for (const row of agg) {
       const { tableId: tid, tableName, itemId, label, unit, y, m, d, w } = row._id;
       let periodKey;
-      if (period === 'daily')        periodKey = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      else if (period === 'weekly')  periodKey = `${y}-W${String(w).padStart(2,'0')}`;
-      else                           periodKey = `${y}-${String(m).padStart(2,'0')}`;
+      if (period === 'daily') periodKey = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      else if (period === 'weekly') periodKey = `${y}-W${String(w).padStart(2, '0')}`;
+      else periodKey = `${y}-${String(m).padStart(2, '0')}`;
       if (!result[tid]) result[tid] = { tableId: tid, tableName, periods: {} };
       if (!result[tid].periods[periodKey]) result[tid].periods[periodKey] = [];
       result[tid].periods[periodKey].push({ itemId, label, unit, consumed: row.consumed, restocked: row.restocked });
@@ -1546,7 +1637,7 @@ app.get('/api/atelier-tables/:tableId/workload', async (req, res) => {
           if ((unit.atelierTable || '') === tableName) {
             const accs = (ch.accessories || []).map(acc => {
               let qty = acc.quantity || 0;
-              if (acc.formula && acc.formula.trim()) { try { const L = ch.largeur; const H = ch.hauteur; qty = Function('L','H',`return (${acc.formula})`)(L,H); } catch { qty = 0; } }
+              if (acc.formula && acc.formula.trim()) { try { const L = ch.largeur; const H = ch.hauteur; qty = Function('L', 'H', `return (${acc.formula})`)(L, H); } catch { qty = 0; } }
               return { itemId: acc.itemId, label: acc.label, unit: acc.unit, quantity: Math.round(qty * 100) / 100 };
             });
             workload.push({ projectId: proj._id.toString(), projectName: proj.name, projectRef: proj.reference, clientName: proj.clientId?.name || '', chassisId: ch._id.toString(), chassisRef: ch.repere, chassisType: ch.type, dimension: ch.dimension || `${ch.largeur}×${ch.hauteur}`, unitIndex: unit.unitIndex, etat: unit.etat, deliveryDate: unit.deliveryDate, accessories: accs, assignedAt: unit.deliveryDate || proj.updatedAt });
@@ -1563,7 +1654,7 @@ app.get('/api/atelier-tables/:tableId/workload', async (req, res) => {
 
 const laquageBarresBrutesSchema = new mongoose.Schema({ reference: { type: String, default: '' }, quantiteBrute: { type: Number, default: 0 } }, { _id: false });
 const laquageBarresLaqueeSchema = new mongoose.Schema({ reference: { type: String, default: '' }, ral: { type: String, default: '' }, quantiteLaquee: { type: Number, default: 0 } }, { _id: false });
-const laquageMorceauBrutSchema  = new mongoose.Schema({ reference: { type: String, default: '' }, mesure: { type: String, default: '' }, quantite: { type: Number, default: 0 } }, { _id: false });
+const laquageMorceauBrutSchema = new mongoose.Schema({ reference: { type: String, default: '' }, mesure: { type: String, default: '' }, quantite: { type: Number, default: 0 } }, { _id: false });
 const laquageMorceauLaqueLigneSchema = new mongoose.Schema({ ral: { type: String, default: '' }, mesure: { type: String, default: '' }, quantite: { type: Number, default: 0 } }, { _id: false });
 const laquageMorceauLaqueSchema = new mongoose.Schema({ reference: { type: String, default: '' }, lignes: [laquageMorceauLaqueLigneSchema] }, { _id: false });
 
@@ -1571,31 +1662,31 @@ const LAQUAGE_STATUSES = ['draft', 'sent_to_laquage', 'received_laquage', 'retur
 
 // History entry schema — stores action, actor, timestamp, optional note and partialQty
 const laquageHistoryEntrySchema = new mongoose.Schema({
-  action:     { type: String, required: true },
-  by:         { type: String, default: '' },
-  at:         { type: Date, default: Date.now },
-  note:       { type: String, default: '' },
+  action: { type: String, required: true },
+  by: { type: String, default: '' },
+  at: { type: Date, default: Date.now },
+  note: { type: String, default: '' },
   partialQty: { type: Number, default: null },
 }, { _id: false });
 
 const laquageBarresSchema = new mongoose.Schema({
-  projectId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, unique: true },
-  barresBrutes:   [laquageBarresBrutesSchema],
-  barresLaquees:  [laquageBarresLaqueeSchema],
-  morceauxBruts:  [laquageMorceauBrutSchema],
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, unique: true },
+  barresBrutes: [laquageBarresBrutesSchema],
+  barresLaquees: [laquageBarresLaqueeSchema],
+  morceauxBruts: [laquageMorceauBrutSchema],
   morceauxLaques: [laquageMorceauLaqueSchema],
-  status:         { type: String, enum: LAQUAGE_STATUSES, default: 'draft' },
-  lineStatuses:   { type: mongoose.Schema.Types.Mixed, default: {} },
-  history:        [laquageHistoryEntrySchema],
+  status: { type: String, enum: LAQUAGE_STATUSES, default: 'draft' },
+  lineStatuses: { type: mongoose.Schema.Types.Mixed, default: {} },
+  history: [laquageHistoryEntrySchema],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const LaquageBarres = mongoose.model('LaquageBarres', laquageBarresSchema);
 
 const laquageAccSchema = new mongoose.Schema({
-  projectId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, unique: true },
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, unique: true },
   accessoires: [{ designation: { type: String, default: '' }, quantite: { type: Number, default: 0 }, notes: { type: String, default: '' } }],
-  status:      { type: String, enum: LAQUAGE_STATUSES, default: 'draft' },
-  lineStatuses:{ type: mongoose.Schema.Types.Mixed, default: {} },
-  history:     [laquageHistoryEntrySchema],
+  status: { type: String, enum: LAQUAGE_STATUSES, default: 'draft' },
+  lineStatuses: { type: mongoose.Schema.Types.Mixed, default: {} },
+  history: [laquageHistoryEntrySchema],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const LaquageAccessoires = mongoose.model('LaquageAccessoires', laquageAccSchema);
 
@@ -1696,10 +1787,10 @@ app.put('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res)
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) record = new LaquageBarres({ projectId: req.params.projectId });
     if (record.status !== 'draft') return res.status(400).json({ error: 'Cannot edit after draft stage.' });
-    if (barresBrutes  !== undefined) record.barresBrutes  = barresBrutes;
+    if (barresBrutes !== undefined) record.barresBrutes = barresBrutes;
     if (barresLaquees !== undefined) record.barresLaquees = barresLaquees;
     if (morceauxBruts !== undefined) record.morceauxBruts = morceauxBruts;
-    if (morceauxLaques!== undefined) record.morceauxLaques= morceauxLaques;
+    if (morceauxLaques !== undefined) record.morceauxLaques = morceauxLaques;
     await record.save(); res.json(record.toJSON());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1786,14 +1877,14 @@ app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
         if (!TOP_LEVEL_ACTIONS.has(h.action)) continue;
 
         events.push({
-          action:      h.action,
-          by:          h.by || '—',
-          at:          h.at,
-          note:        h.note || null,
-          partialQty:  h.partialQty ?? null,
-          projectId:   rec.projectId,
+          action: h.action,
+          by: h.by || '—',
+          at: h.at,
+          note: h.note || null,
+          partialQty: h.partialQty ?? null,
+          projectId: rec.projectId,
           projectName: proj.name,
-          projectRef:  proj.reference || '',
+          projectRef: proj.reference || '',
         });
       }
     }
@@ -1823,16 +1914,16 @@ app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
 // ==================== PURCHASE REQUEST SCHEMA ====================
 
 const purchaseRequestSchema = new mongoose.Schema({
-  itemId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
-  itemName:    { type: String, default: '' },
-  itemImage:   { type: String, default: '' },
-  quantity:    { type: Number, required: true, min: 0.01 },
-  note:        { type: String, default: '' },
+  itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
+  itemName: { type: String, default: '' },
+  itemImage: { type: String, default: '' },
+  quantity: { type: Number, required: true, min: 0.01 },
+  note: { type: String, default: '' },
   requestedBy: { type: String, default: 'Admin' },
   requestedAt: { type: Date, default: Date.now },
-  status:      { type: String, enum: ['pending', 'ordered'], default: 'pending' },
-  orderedBy:   { type: String, default: '' },
-  orderedAt:   { type: Date, default: null },
+  status: { type: String, enum: ['pending', 'ordered'], default: 'pending' },
+  orderedBy: { type: String, default: '' },
+  orderedAt: { type: Date, default: null },
 }, {
   timestamps: true,
   toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } }
@@ -1853,10 +1944,10 @@ app.post('/api/purchase-requests', requireAuth, requirePermission('admin.view'),
 
     const pr = await PurchaseRequest.create({
       itemId,
-      itemName:    itemName || '',
-      itemImage:   itemImage || '',
-      quantity:    parseFloat(quantity),
-      note:        note || '',
+      itemName: itemName || '',
+      itemImage: itemImage || '',
+      quantity: parseFloat(quantity),
+      note: note || '',
       requestedBy: req.user?.displayName || 'Admin',
       requestedAt: new Date(),
     });
@@ -1890,7 +1981,7 @@ app.patch('/api/purchase-requests/:id/mark-ordered', requireAuth, async (req, re
     if (!pr) return res.status(404).json({ error: 'Not found' });
     if (pr.status === 'ordered') return res.status(400).json({ error: 'Already ordered' });
 
-    pr.status    = 'ordered';
+    pr.status = 'ordered';
     pr.orderedBy = req.user?.displayName || req.user?.username || 'ACHAT';
     pr.orderedAt = new Date();
     await pr.save();

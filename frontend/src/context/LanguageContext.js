@@ -112,7 +112,7 @@ const translations = {
     addChassis: 'Ajouter châssis', exportPDF: 'Exporter PDF',
     chassis: 'Châssis', repere: 'Repère', type: 'Type', largeur: 'Largeur', hauteur: 'Hauteur',
     noChassis: 'Aucun châssis ajouté', deleteChassisConfirm: 'Supprimer ce châssis ?',
-    etat_non_entame: 'Non entamé', etat_en_cours: 'En cours', etat_fabrique: 'Fabriqué', etat_livre: 'Livré',status_non_entame: 'Non entamé',
+    etat_non_entame: 'Non entamé', etat_en_cours: 'En cours', etat_fabrique: 'Fabriqué', etat_livre: 'Livré', status_non_entame: 'Non entamé',
     dormant: 'Dormant', vantail: 'Vantail',
     usedBarsTitle: 'Matériaux utilisés', noUsedBars: 'Aucun matériau ajouté',
     tabBL: 'Bons de livraison', noBL: 'Aucune livraison enregistrée',
@@ -138,8 +138,106 @@ const translations = {
     status_pret_a_livrer: 'Prêt à livrer',
     status_non_vitre: 'Prêt sans verre',
     status_non_entame: 'Non entamé',
+
+    etat_non_entame: 'Non entamé',
+    etat_en_cours: 'En cours',
+    etat_non_vitre: 'Non vitré',
+    etat_fabrique: 'Fabriqué',
+    etat_pret_a_livrer: 'Prêt à livrer',
+    etat_livre: 'Livré',
+
+    // Analytics — KPIs
+    kpiProjects: 'Projets',
+    kpiInProgress: 'En cours',
+    kpiItems: 'Articles',
+    kpiCritical: 'Critiques',
+    kpiCriticalSub: 'sous seuil',
+    kpiDeliveries: 'Livraisons / mois',
+    kpiMovements: 'Mouvements',
+    refresh: 'Actualiser',
+
+    // Analytics — sections
+    anStatusTitle: 'Avancement des châssis',
+    anChassisGauges: 'État des châssis',
+    anDistTitle: 'Distribution des statuts',
+    anCatTitle: 'Santé du stock par catégorie',
+    anMonthlyTitle: 'Mouvements de stock',
+    anTopTitle: 'Articles les plus consommés',
+    anConsTitle: 'Consommation aluminium par projet',
+    anProgressRate: 'avancement global',
+    anStockOk: 'OK',
+    anStockCrit: 'Critique',
+    anBarsLabel: 'barres',
+
+    // Movements chart labels
+    mvEntrees: 'Entrées',
+    mvSorties: 'Sorties',
+    mvProjectUse: 'Utilisé projet',
+    mvProjectReturn: 'Retour projet',
+    mvBarsUsed: 'Barres utilisées',
+
+    // Period toggle
+    periodDaily: 'Jour',
+    periodMonthly: 'Mois',
+    periodAnnual: 'Année',
+
+    // Misc
+    noData: 'Aucune donnée',
+    allCompanies: 'Toutes',
+    deliveryDate: 'Date de livraison',
+    etat: 'État',
+    table: 'Table',
+    unitNotes: 'Notes',
+    dimension: 'Dimensions',
   },
   it: {
+
+    etat_non_entame: 'Non iniziato',
+    etat_en_cours: 'In corso',
+    etat_non_vitre: 'Non vetrato',
+    etat_fabrique: 'Fabbricato',
+    etat_pret_a_livrer: 'Pronto per consegna',
+    etat_livre: 'Consegnato',
+    table:'Tavolo',
+
+    // Analytics — KPI
+    kpiProjects: 'Progetti',
+    kpiInProgress: 'In corso',
+    kpiItems: 'Articoli',
+    kpiCritical: 'Critici',
+    kpiCriticalSub: 'sotto soglia',
+    kpiDeliveries: 'Consegne / mese',
+    kpiMovements: 'Movimenti',
+    refresh: 'Aggiorna',
+
+    // Analytics — sezioni
+    anStatusTitle: 'Avanzamento telai',
+    anChassisGauges: 'Stato dei telai',
+    anDistTitle: 'Distribuzione stati',
+    anCatTitle: 'Salute magazzino per categoria',
+    anMonthlyTitle: 'Movimenti di magazzino',
+    anTopTitle: 'Articoli più consumati',
+    anConsTitle: 'Consumo alluminio per progetto',
+    anProgressRate: 'avanzamento globale',
+    anStockOk: 'OK',
+    anStockCrit: 'Critico',
+    anBarsLabel: 'barre',
+
+    // Etichette grafico movimenti
+    mvEntrees: 'Entrate',
+    mvSorties: 'Uscite',
+    mvProjectUse: 'Usato progetto',
+    mvProjectReturn: 'Reso progetto',
+    mvBarsUsed: 'Barre utilizzate',
+
+    // Selezione periodo
+    periodDaily: 'Giorno',
+    periodMonthly: 'Mese',
+    periodAnnual: 'Anno',
+
+    // Vari
+    noData: 'Nessun dato',
+    allCompanies: 'Tutte',
     appTitle: 'CAMI ALUMINIUM', appSubtitle: 'DA HB',
     etat_non_vitre: "Senza vetri",
     navInventory: 'Inventario', navOrders: 'Ordini', navProjects: 'Progetti',
@@ -148,6 +246,7 @@ const translations = {
     etat_pret_a_livrer: 'Pronto per la consegna',
     status_pret_a_livrer: 'Pronto per la consegna',
     backCommandes: 'Torniamo agli ordini',
+    dimension: 'Dimensioni',
     Demandesadmin: "Richieste dell'amministratore",
     connectez: 'Accedi', utilisateur: 'Nome utente', mdp: 'Password',
     login_loading: 'Accesso in corso...', login_button: 'Accedere',
@@ -167,6 +266,7 @@ const translations = {
     imageUrl: 'URL Immagine', quantityLabel: 'Quantità', orderedQuantityLabel: 'Qta Ordinata',
     thresholdLabel: 'Soglia Minima', categoryLabel: 'Categoria',
     noCategory: 'Nessuna Categoria', showAll: 'Mostra Tutto',
+    unitNotes: 'Note',
     searchPlaceholder: 'Cerca per designazione...',
     addCategory: 'Aggiungi Categoria', editCategory: 'Modifica Categoria',
     deleteConfirmMessage: 'Sei sicuro di voler eliminare questo articolo?',
@@ -270,14 +370,21 @@ const translations = {
     addNewOrder: 'Aggiungere un ordine', cons: 'Consumo',
     status_non_vitre: 'Pronto senza vetri',
     status_en_cours: 'In corso', status_fabrique: 'Fabbricato', status_cloture: 'Chiuso',
+    deliveryDate: 'Data di consegna',
+    etat: 'stato',
+
+
+
   },
   en: {
-    appTitle: 'CAMI ALUMINIUM', appSubtitle: 'BY HB',
+    appTitle: 'CAMI ALUMINIUM', appSubtitle: 'BY HB', etat: 'Status',
     navInventory: 'Inventory', navOrders: 'Orders', navProjects: 'Projects',
     navClients: 'Clients', navDevis: 'Quotes', navMovements: 'Movements',
     navAnalytics: 'Dashboard', navAdmin: 'Admin',
     etat_pret_a_livrer: 'Ready to deliver',
     searchInventory: "Search in stock",
+    unitNotes: 'Notes',
+    dimension: 'Dimensions',
     backCommandes: 'Back to orders',
     status_pret_a_livrer: 'Ready to deliver',
     status_non_vitre: 'Ready without glazing',
@@ -338,6 +445,7 @@ const translations = {
     orderSupplier: 'Supplier',
     orderDateLabel: 'Order date',
     orderExpectedDate: 'Expected delivery date',
+    deliveryDate: 'Delivery date',
     orderStatusLabel: 'Status',
     orderNotesLabel: 'Notes',
     orderNoLines: 'No lines. Click + Add line',
@@ -402,6 +510,52 @@ const translations = {
     addNewOrder: 'Add an order', cons: 'Consumption',
     status_en_cours: 'In Progress', status_fabrique: 'Fabricated', status_cloture: 'Closed',
     etat_non_vitre: "Without glazing",
+
+    etat_non_entame: 'Not started',
+    etat_en_cours: 'In progress',
+    etat_non_vitre: 'Not glazed',
+    etat_fabrique: 'Fabricated',
+    etat_pret_a_livrer: 'Ready to deliver',
+    etat_livre: 'Delivered',
+
+    // Analytics — KPIs
+    kpiProjects: 'Projects',
+    kpiInProgress: 'In progress',
+    kpiItems: 'Items',
+    kpiCritical: 'Critical',
+    kpiCriticalSub: 'below threshold',
+    kpiDeliveries: 'Deliveries / month',
+    kpiMovements: 'Movements',
+    refresh: 'Refresh',
+
+    // Analytics — sections
+    anStatusTitle: 'Chassis progress',
+    anChassisGauges: 'Chassis status',
+    anDistTitle: 'Status distribution',
+    anCatTitle: 'Stock health by category',
+    anMonthlyTitle: 'Stock movements',
+    anTopTitle: 'Most consumed items',
+    anConsTitle: 'Aluminium consumption by project',
+    anProgressRate: 'global progress',
+    anStockOk: 'OK',
+    anStockCrit: 'Critical',
+    anBarsLabel: 'bars',
+
+    // Movement chart labels
+    mvEntrees: 'Inflows',
+    mvSorties: 'Outflows',
+    mvProjectUse: 'Project use',
+    mvProjectReturn: 'Project return',
+    mvBarsUsed: 'Bars used',
+
+    // Period toggle
+    periodDaily: 'Day',
+    periodMonthly: 'Month',
+    periodAnnual: 'Year',
+
+    // Misc
+    noData: 'No data',
+    allCompanies: 'All',
   }
 };
 
