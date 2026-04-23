@@ -1517,13 +1517,15 @@ function ProjectDetail({ project, onBack, currentUser }) {
                         <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
                         <td style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{unitM2} m²</td>
                         <td>
-                          <button
-                            title={t('gereR')}
-                            onClick={() => setRemplissageEditor({ ch, unitIndex })}
-                            style={{ fontSize: 13, background: unitRempCount === 0 ? '#f3f4f6' : (unitRempReady === unitRempCount ? '#dcfce7' : '#fef9c3'), border: '1px solid #e5e7eb', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', color: unitRempCount === 0 ? '#6b7280' : (unitRempReady === unitRempCount ? '#16a34a' : '#92400e'), fontWeight: 600 }}
-                          >
-                            <PlusCircle size={15} /> {unitRempCount === 0 ? '' : `${unitRempReady}/${unitRempCount}`}
-                          </button>
+                          {adminThing &&
+                            <button
+                              title={t('gereR')}
+                              onClick={() => setRemplissageEditor({ ch, unitIndex })}
+                              style={{ fontSize: 13, background: unitRempCount === 0 ? '#f3f4f6' : (unitRempReady === unitRempCount ? '#dcfce7' : '#fef9c3'), border: '1px solid #e5e7eb', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', color: unitRempCount === 0 ? '#6b7280' : (unitRempReady === unitRempCount ? '#16a34a' : '#92400e'), fontWeight: 600 }}
+                            >
+                              <PlusCircle size={15} /> {unitRempCount === 0 ? '' : `${unitRempReady}/${unitRempCount}`}
+                            </button>
+                          }
                         </td>
                         {stateThing && <td><select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)} style={{ borderLeftColor: ETAT_COLORS[etat] }}>
                           {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}

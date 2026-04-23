@@ -119,6 +119,7 @@ const translations = {
     usedBarsTitle: 'Matériaux utilisés', noUsedBars: 'Aucun matériau ajouté',
     tabBL: 'Bons de livraison', noBL: 'Aucune livraison enregistrée',
     blTitle: 'Bon de Livraison', blDate: 'Date livraison', blPrint: 'Imprimer BL',
+    blHistory: 'BLs',
     mvEntrees: 'Entrées', mvSorties: 'Sorties', mvProjectUse: 'Sorties projet', mvProjectReturn: 'Retours projet',
     mv_entree: 'Entrée', mv_sortie: 'Sortie', mv_project_use: 'Sortie projet', mv_project_return: 'Retour projet',
     mv_order_reception: 'Réception commande',
@@ -207,6 +208,7 @@ const translations = {
 
     add_infill: "Aggiungi tamponamento",
     type: "Tipo *",
+    blHistory: 'BLs',
     subtype: "Sotto-tipo",
     subtype_placeholder: "es: stratificato 8mm…",
     width_mm: "L (mm) *",
@@ -411,6 +413,7 @@ const translations = {
     searchInventory: "Search in stock",
     unitNotes: 'Notes',
     dimension: 'Dimensions',
+    blHistory: 'BLs',
     backCommandes: 'Back to orders',
     status_pret_a_livrer: 'Ready to deliver',
     status_non_vitre: 'Ready without glazing',
