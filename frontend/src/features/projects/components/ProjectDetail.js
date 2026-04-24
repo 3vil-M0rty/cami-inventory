@@ -105,6 +105,39 @@ function evalFormula(formula, L, H) {
   } catch { return null; }
 }
 
+// ─── Remplissage badge helper ─────────────────────────────────────────────────
+// Returns { cnt, rdy } for a given unitIndex + optional compIndex
+function getRemplissageCounts(chassis, unitIndex, compIndex = null) {
+  const all = chassis.remplissages || [];
+  const filtered = compIndex !== null
+    ? all.filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex === compIndex)
+    : all.filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex == null);
+  return {
+    cnt: filtered.length,
+    rdy: filtered.filter(r => r.etat === 'livre').length,
+  };
+}
+
+function RemplissageBadge({ chassis, unitIndex, compIndex = null, onClick }) {
+  const { cnt, rdy } = getRemplissageCounts(chassis, unitIndex, compIndex);
+  const bg = cnt === 0 ? '#f3f4f6' : (rdy === cnt ? '#dcfce7' : '#fef9c3');
+  const color = cnt === 0 ? '#6b7280' : (rdy === cnt ? '#16a34a' : '#92400e');
+  return (
+    <button
+      title="Gérer les remplissages"
+      onClick={onClick}
+      style={{
+        fontSize: 13, background: bg, border: '1px solid #e5e7eb',
+        borderRadius: 5, padding: '2px 8px', cursor: 'pointer',
+        color, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4,
+      }}
+    >
+      <PlusCircle size={14} />
+      {cnt === 0 ? '' : `${rdy}/${cnt}`}
+    </button>
+  );
+}
+
 // ─── BL Metadata API helpers ──────────────────────────────────────────────────
 async function loadBLMetadata(projectId, deliveryDate) {
   try {
@@ -207,16 +240,7 @@ function generateBLHtml(bl, project, logoBase64 = '') {
     @media print{
       *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
       body{padding:6mm 8mm}
-      @page{
-        size:A4;
-        margin:6mm 8mm 14mm 8mm;
-        @bottom-center{
-          content:"Page " counter(page) " / " counter(pages);
-          font-family:'Segoe UI',Arial,sans-serif;
-          font-size:9px;
-          color:#aaa;
-        }
-      }
+      @page{size:A4;margin:6mm 8mm 14mm 8mm;@bottom-center{content:"Page " counter(page) " / " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#aaa;}}
     }
     .bl-page-footer{margin-top:10px;padding-top:8px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center}
   </style>
@@ -328,57 +352,38 @@ function exportBLExcel(bl, project) {
     footer: { font: { sz: 9, color: { rgb: 'FFAAAAAA' } }, alignment: { horizontal: 'center' } },
   };
 
-  // ── HEADER SECTION ──
-  // Row 1: company name | BL label
+  // HEADER
   setCell(0, row, co.name || '', S.companyName);
   merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
   setCell(4, row, 'Bon de Livraison', S.blLabel);
   setCell(5, row, bl.blId || '', S.blId);
   merges.push({ s: { r: row - 1, c: 4 }, e: { r: row - 1, c: 6 } });
   row++;
-
-  // Row 2: address | date label
   setCell(0, row, co.address || '', S.subtext);
   merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
   setCell(4, row, 'Date de livraison', S.dateLabel);
   const delivDate = bl.deliveryDate ? new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR') : '';
   setCell(5, row, delivDate, S.dateVal);
   row++;
-
-  // Row 3: phone/email
   const phoneEmail = [co.phone ? 'Tél : ' + co.phone : '', co.email || ''].filter(Boolean).join('   ·   ');
   setCell(0, row, phoneEmail, S.subtext);
   merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
   row++;
-
-  // Blank separator
   row++;
 
-  // ── INFO CARDS (3 per row, 2 rows) ──
+  // INFO CARDS
   const cards = [
-    ['PROJET', project.name],
-    ['RÉFÉRENCE', project.reference],
-    ['RAL', project.ralCode],
-    ['PIÈCES LIVRÉES', bl.units.length],
-    ['LOCALISATION', bl.localisation || '—'],
-    ['TRANSPORT', bl.transport || '—'],
+    ['PROJET', project.name], ['RÉFÉRENCE', project.reference], ['RAL', project.ralCode],
+    ['PIÈCES LIVRÉES', bl.units.length], ['LOCALISATION', bl.localisation || '—'], ['TRANSPORT', bl.transport || '—'],
   ];
   [[0, 1, 2], [3, 4, 5]].forEach(idxs => {
-    // Label row
-    idxs.forEach((ci, pos) => {
-      setCell(pos * 2, row, cards[ci][0], S.cardLabel);
-      setCell(pos * 2 + 1, row, '', S.cardLabel);
-    });
+    idxs.forEach((ci, pos) => { setCell(pos * 2, row, cards[ci][0], S.cardLabel); setCell(pos * 2 + 1, row, '', S.cardLabel); });
     row++;
-    // Value row
-    idxs.forEach((ci, pos) => {
-      setCell(pos * 2, row, cards[ci][1], S.cardValue);
-      setCell(pos * 2 + 1, row, '', S.cardValue);
-    });
+    idxs.forEach((ci, pos) => { setCell(pos * 2, row, cards[ci][1], S.cardValue); setCell(pos * 2 + 1, row, '', S.cardValue); });
     row++;
   });
 
-  // ── CLIENT BLOCK ──
+  // CLIENT BLOCK
   const clientName = project.clientId?.name || '';
   if (clientName) {
     row++;
@@ -389,23 +394,17 @@ function exportBLExcel(bl, project) {
     merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
     row++;
     const addr = [project.clientId?.address, project.clientId?.city].filter(Boolean).join(', ');
-    if (addr) {
-      setCell(0, row, addr, S.clientSub);
-      merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
-      row++;
-    }
+    if (addr) { setCell(0, row, addr, S.clientSub); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } }); row++; }
   }
-
-  // Gap
   row++;
 
-  // ── TABLE HEADER ──
+  // TABLE HEADER
   ['#', 'Repère', 'Désignation', 'Dimension', 'm²', 'Date livraison', 'Notes'].forEach((h, i) => {
     setCell(i, row, h, i === 0 || i === 3 || i === 4 || i === 5 ? S.th : S.thLeft);
   });
   row++;
 
-  // ── TABLE ROWS ──
+  // TABLE ROWS
   const unitNotes = bl.unitNotes || {};
   bl.units.forEach((u, idx) => {
     const base = idx % 2 === 0 ? S.tdEven : S.tdOdd;
@@ -426,8 +425,6 @@ function exportBLExcel(bl, project) {
   setCell(3, row, 'Signature réceptionnaire', S.sigBox);
   merges.push({ s: { r: row - 1, c: 3 }, e: { r: row - 1, c: 6 } });
   row++;
-
-  // ── FOOTER ──
   row++;
   const footerParts = [co.name, co.address, co.phone ? 'Tél : ' + co.phone : '', co.rc ? 'RC : ' + co.rc : '', co.ice ? 'ICE : ' + co.ice : ''].filter(Boolean);
   setCell(0, row, footerParts.join('  ·  '), S.footer);
@@ -571,7 +568,7 @@ function AccessoriesExportModal({ project, chassisLabels, language, t, onClose }
   );
 }
 
-// ─── BL Export Modal (with saved metadata + per-unit notes) ──────────────────
+// ─── BL Export Modal ──────────────────────────────────────────────────────────
 function BLExportModal({ bl, project, t, onClose }) {
   const [blId, setBlId] = useState('');
   const [localisation, setLocalisation] = useState('');
@@ -584,7 +581,6 @@ function BLExportModal({ bl, project, t, onClose }) {
   const co = resolveCompany(project);
   const deliveryDate = bl.deliveryDate;
 
-  // Load saved metadata when modal opens
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -594,7 +590,6 @@ function BLExportModal({ bl, project, t, onClose }) {
         setBlId(meta.blId || '');
         setLocalisation(meta.localisation || '');
         setTransport(meta.transport || '');
-        // Initialise per-unit notes from saved meta; default empty for any new unit
         const merged = {};
         bl.units.forEach(u => { merged[u.unitLabel] = (meta.unitNotes || {})[u.unitLabel] || ''; });
         setUnitNotes(merged);
@@ -604,13 +599,7 @@ function BLExportModal({ bl, project, t, onClose }) {
     return () => { cancelled = true; };
   }, [bl, deliveryDate, project.id]);
 
-  const buildEnrichedBL = () => ({
-    ...bl,
-    blId: blId.trim() || bl.blId,
-    localisation,
-    transport,
-    unitNotes,
-  });
+  const buildEnrichedBL = () => ({ ...bl, blId: blId.trim() || bl.blId, localisation, transport, unitNotes });
 
   const handleSaveMeta = async () => {
     setSavingMeta(true);
@@ -654,22 +643,11 @@ function BLExportModal({ bl, project, t, onClose }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 540, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <h3 style={{ marginBottom: 18 }}>📤 Exporter le bon de livraison</h3>
-
-        {/* ── BL header fields ── */}
         <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '14px 16px', marginBottom: 14 }}>
           <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 10 }}>En-tête du BL</p>
           <div className="form-group" style={{ marginBottom: 12 }}>
-            <label style={{ fontWeight: 600 }}>
-              Numéro BL
-              <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6, fontSize: 11 }}>(actuel : {bl.blId})</span>
-            </label>
-            <input
-              type="text"
-              value={blId}
-              onChange={e => setBlId(e.target.value)}
-              placeholder="ex: BL26-107"
-              style={{ fontWeight: 700, letterSpacing: '0.03em' }}
-            />
+            <label style={{ fontWeight: 600 }}>Numéro BL <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6, fontSize: 11 }}>(actuel : {bl.blId})</span></label>
+            <input type="text" value={blId} onChange={e => setBlId(e.target.value)} placeholder="ex: BL26-107" style={{ fontWeight: 700, letterSpacing: '0.03em' }} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -682,62 +660,32 @@ function BLExportModal({ bl, project, t, onClose }) {
             </div>
           </div>
         </div>
-
-        {/* ── Per-unit notes ── */}
         {bl.units.length > 0 && (
           <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '14px 16px', marginBottom: 14 }}>
             <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 10 }}>
-              Notes par pièce
-              <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>— apparaissent dans la colonne Notes du PDF et Excel</span>
+              Notes par pièce <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none', letterSpacing: 0 }}>— apparaissent dans la colonne Notes du PDF et Excel</span>
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {bl.units.map(u => (
                 <div key={u.unitLabel} style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8, alignItems: 'center' }}>
-                  <span style={{
-                    fontSize: 12, fontWeight: 700, color: '#374151',
-                    background: '#fff', border: '1px solid #e5e7eb',
-                    borderRadius: 5, padding: '5px 9px',
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, padding: '5px 9px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {u.unitLabel}
                   </span>
-                  <input
-                    type="text"
-                    value={unitNotes[u.unitLabel] || ''}
-                    onChange={e => updateUnitNote(u.unitLabel, e.target.value)}
-                    placeholder="Note pour cette pièce…"
-                    style={{ fontSize: 12, padding: '5px 10px' }}
-                  />
+                  <input type="text" value={unitNotes[u.unitLabel] || ''} onChange={e => updateUnitNote(u.unitLabel, e.target.value)} placeholder="Note pour cette pièce…" style={{ fontSize: 12, padding: '5px 10px' }} />
                 </div>
               ))}
             </div>
           </div>
         )}
-
         <div className="modal-actions" style={{ marginTop: 8, gap: 8 }}>
           <button onClick={onClose}>{t('cancel')}</button>
-          <button
-            onClick={handleSaveMeta}
-            disabled={savingMeta}
-            title="Sauvegarder sans exporter"
-            style={{ background: '#6b7280', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
-          >
+          <button onClick={handleSaveMeta} disabled={savingMeta} title="Sauvegarder sans exporter" style={{ background: '#6b7280', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
             {savingMeta ? '⏳' : '💾'}
           </button>
-          <button
-            onClick={handleExcel}
-            title="Exporter Excel"
-            style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          >
+          <button onClick={handleExcel} title="Exporter Excel" style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             📊 Excel
           </button>
-          <button
-            className="primary"
-            onClick={handlePdf}
-            disabled={loadingPdf}
-            title="Imprimer PDF"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          >
+          <button className="primary" onClick={handlePdf} disabled={loadingPdf} title="Imprimer PDF" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             {loadingPdf ? '⏳' : '🖨'} PDF
           </button>
         </div>
@@ -747,197 +695,6 @@ function BLExportModal({ bl, project, t, onClose }) {
 }
 
 // ─── BL Panel ─────────────────────────────────────────────────────────────────
-
-// ─── Remplissage Manager ──────────────────────────────────────────────────────
-const EMPTY_REMP = { type: 'Verre', sousType: '', largeur: '', hauteur: '', etat: 'non_entame' };
-
-function RemplissageModal({ chassis, unitIndex = 0, project, onClose, onSaved }) {
-  const chId = chassis._id || chassis.id;
-  const [remplissages, setRemplissages] = React.useState([]);
-  const [loading, setLoading] = React.useState(true);
-  const [saving, setSaving] = React.useState(null);
-  const [newRemp, setNewRemp] = React.useState(EMPTY_REMP);
-  const [error, setError] = React.useState('');
-  const { t, currentLanguage: language } = useLanguage();
-  const [delivDateModal, setDelivDateModal] = React.useState(null);
-
-  React.useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages?unitIndex=${unitIndex}`);
-        setRemplissages(res.data || []);
-      } catch { setRemplissages([]); }
-      finally { setLoading(false); }
-    })();
-  }, [chId, project.id, unitIndex]);
-
-  const addRemp = async () => {
-    if (!newRemp.largeur || !newRemp.hauteur) return setError('Largeur et hauteur sont requises');
-    setError('');
-    try {
-      const res = await axios.post(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages`, { ...newRemp, unitIndex });
-      setRemplissages(prev => [...prev, res.data]);
-      setNewRemp(EMPTY_REMP);
-    } catch (e) { setError(e.response?.data?.error || 'Erreur ajout'); }
-  };
-
-  const deleteRemp = async (id) => {
-    if (!window.confirm('Supprimer ce remplissage ?')) return;
-    try {
-      await axios.delete(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${id}`);
-      setRemplissages(prev => prev.filter(r => (r._id || r.id) !== id));
-    } catch (e) { setError(e.response?.data?.error || 'Erreur suppression'); }
-  };
-
-  const patchRemp = async (id, patch) => {
-    setSaving(id);
-    try {
-      const res = await axios.patch(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${id}`, patch);
-      setRemplissages(prev => prev.map(r => (r._id || r.id) === id ? res.data : r));
-    } catch (e) { setError(e.response?.data?.error || 'Erreur mise à jour'); }
-    finally { setSaving(null); }
-  };
-
-  const handleEtatChange = (r, newEtat) => {
-    const id = r._id || r.id;
-    if (newEtat === 'livre' && !r.deliveryDate) { setDelivDateModal({ id, etat: newEtat }); return; }
-    patchRemp(id, { etat: newEtat });
-  };
-
-  const handleDeliveryConfirm = (date) => {
-    const { id, etat } = delivDateModal;
-    setDelivDateModal(null);
-    patchRemp(id, { etat, deliveryDate: date });
-  };
-
-  const calcM2 = (l, h) => {
-    const lv = parseFloat(l), hv = parseFloat(h);
-    if (!lv || !hv) return '—';
-    return ((lv * hv) / 1e6).toFixed(2) + ' m²';
-  };
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 720, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-        <div className="ct-manager__header">
-          <h2>
-            {t('remplissage')} — {t('repere')} : {chassis.repere}
-            {chassis.quantity > 1 ? ` #${unitIndex + 1}` : ''}
-            <span style={{ fontWeight: 400, fontSize: 13, color: '#6b7280', marginLeft: 8 }}>
-              ({chassis.largeur}×{chassis.hauteur} mm)
-            </span>
-          </h2>
-          <button className="chassis-form__close" onClick={onClose}>×</button>
-        </div>
-        {error && <div className="ct-manager__error">{error}</div>}
-        {loading ? <div className="ct-manager__loading">{t('loading')}</div> : (
-          <>
-            {remplissages.length > 0 ? (
-              <table className="proj-acc-table" style={{ marginBottom: 20 }}>
-                <thead>
-                  <tr>
-                    <th>{t('type')}</th><th>{t('subtype')}</th>
-                    <th style={{ width: 80 }}>L (mm)</th><th style={{ width: 80 }}>H (mm)</th>
-                    <th style={{ width: 90 }}>m²</th><th style={{ width: 120 }}>{t('status')}</th>
-                    <th style={{ width: 120 }}>{t('blDate')}</th><th style={{ width: 40 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {remplissages.map(r => {
-                    const id = r._id || r.id;
-                    const isSaving = saving === id;
-                    return (
-                      <tr key={id} style={{ opacity: isSaving ? 0.6 : 1 }}>
-                        <td><strong>{r.type}</strong></td>
-                        <td>{r.sousType || <span style={{ color: '#9ca3af' }}>—</span>}</td>
-                        <td style={{ textAlign: 'center' }}>{r.largeur}</td>
-                        <td style={{ textAlign: 'center' }}>{r.hauteur}</td>
-                        <td style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>{calcM2(r.largeur, r.hauteur)}</td>
-                        <td>
-                          <select
-                            value={r.etat}
-                            disabled={isSaving}
-                            onChange={e => handleEtatChange(r, e.target.value)}
-                            style={{ borderLeft: `3px solid ${ETAT_COLORS[r.etat]}`, borderRadius: 4, padding: '3px 6px', fontSize: 12, width: '100%' }}
-                          >
-                            {ETAT_OPTIONS.map(opt => (
-                              <option key={opt} value={opt}>{t('etat_' + opt)}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td style={{ textAlign: 'center', fontSize: 12 }}>
-                          {r.etat === 'livre' && r.deliveryDate
-                            ? <button className="date-btn" style={{ fontSize: 11 }} onClick={() => setDelivDateModal({ id, etat: 'livre', current: toDateInput(r.deliveryDate) })}>
-                              📅 {fmtDate(r.deliveryDate)}
-                            </button>
-                            : <span style={{ color: '#9ca3af' }}>—</span>}
-                        </td>
-                        <td><button className="delete-btn" onClick={() => deleteRemp(id)} disabled={isSaving}>✕</button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            ) : (
-              <div className="proj-acc-empty" style={{ marginBottom: 20 }}>{t('noData')}</div>
-            )}
-            <div className="proj-acc-add-form">
-              <div className="proj-acc-add-form__title">➕ {t('add_infill')}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 80px auto', gap: 10, alignItems: 'flex-end' }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>{t('type')}</label>
-                  <select value={newRemp.type} onChange={e => setNewRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>
-                    {REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}
-                  </select>
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>{t('subtype')}</label>
-                  <input type="text" value={newRemp.sousType} onChange={e => setNewRemp(p => ({ ...p, sousType: e.target.value }))} placeholder={t('subtype_placeholder')} style={{ width: '100%' }} />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>{t('width_mm')}</label>
-                  <input type="number" min="1" value={newRemp.largeur} onChange={e => setNewRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>{t('height_mm')}</label>
-                  <input type="number" min="1" value={newRemp.hauteur} onChange={e => setNewRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" />
-                </div>
-                <div>
-                  <button type="button" className="ct-config-btn" style={{ marginTop: 22 }} onClick={addRemp}>{t('add')}</button>
-                </div>
-              </div>
-              {newRemp.largeur && newRemp.hauteur && (
-                <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
-                  {t('surface')} <strong>{calcM2(newRemp.largeur, newRemp.hauteur)}</strong>
-                </div>
-              )}
-            </div>
-            <div className="modal-actions" style={{ marginTop: 16 }}>
-              <button onClick={() => { onSaved && onSaved(); onClose(); }}>Fermer</button>
-            </div>
-          </>
-        )}
-        {delivDateModal && (
-          <div className="modal-overlay" onClick={() => setDelivDateModal(null)}>
-            <div className="modal" style={{ maxWidth: 320 }} onClick={e => e.stopPropagation()}>
-              <h3 style={{ marginBottom: 16 }}>📅 Date de livraison</h3>
-              <div className="form-group">
-                <label>Date</label>
-                <input type="date" defaultValue={delivDateModal.current || new Date().toISOString().split('T')[0]} id="remp-date-input" />
-              </div>
-              <div className="modal-actions">
-                <button onClick={() => setDelivDateModal(null)}>Annuler</button>
-                <button className="primary" onClick={() => handleDeliveryConfirm(document.getElementById('remp-date-input').value)}>Confirmer</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function BLPanel({ project, t, language }) {
   const { getBonsLivraison } = useProjects();
   const [bls, setBls] = useState([]);
@@ -984,11 +741,9 @@ function BLPanel({ project, t, language }) {
                 </span>
               </div>
               <div className="bl-card__actions">
-                <button className="bl-print-btn" title="Exporter Excel"
-                  style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }}
+                <button className="bl-print-btn" title="Exporter" style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }}
                   onClick={e => { e.stopPropagation(); setBlExportModal({ bl }); }}>📊</button>
-                <button className="bl-print-btn" title="Imprimer PDF"
-                  style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }}
+                <button className="bl-print-btn" title="Imprimer PDF" style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }}
                   onClick={e => { e.stopPropagation(); setBlExportModal({ bl }); }}>🖨</button>
                 <span className="bl-card__toggle">{openBL === bl.deliveryDate ? '▲' : '▼'}</span>
               </div>
@@ -1263,6 +1018,230 @@ function buildChassisDetailHTML(ch, project, chassisLabels, language, accessorie
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Détail — ${ch.repere}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:28px 36px}h1{font-size:18px;font-weight:800;color:${companyColor};margin-bottom:4px}h2{font-size:13px;font-weight:700;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.06em;color:#374151}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}.chip{padding:5px 12px;border-radius:6px;border:1px solid #e5e7eb;background:#f9fafb;font-size:12px}.chip strong{color:${companyColor}}table{width:100%;border-collapse:collapse;margin-bottom:12px}thead tr{background:${companyColor};color:#fff}th{padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;text-align:left}td{padding:8px 10px;border-bottom:1px solid #f0f0f0}.row-even{background:#fff}.row-odd{background:#f9fafb}.no-acc{color:#9ca3af;font-style:italic;padding:12px 0}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm 16mm}@page{size:A4;margin:0}}</style></head><body><h1>🪟 ${ch.repere}</h1><div class="meta"><div class="chip">Type : <strong>${typeLabel}</strong></div><div class="chip">Dimensions : <strong>${L}×${H} mm</strong></div><div class="chip">Projet : <strong>${project.name}</strong></div><div class="chip">Réf. : <strong>${project.reference}</strong></div><div class="chip">RAL : <strong>${project.ralCode}</strong></div>${atelierChip}</div>${componentRows ? `<h2>Composants</h2><table><thead><tr><th>Repère</th><th>Rôle</th><th>Dimension</th></tr></thead><tbody>${componentRows}</tbody></table>` : ''}<h2>Accessoires nécessaires</h2>${mergedAccessories.length === 0 ? '<p class="no-acc">Aucun accessoire configuré pour ce châssis.</p>' : `<table><thead><tr><th>#</th><th>Désignation</th><th>Formule</th><th>Quantité</th></tr></thead><tbody>${accRows}</tbody></table>`}<script>window.onload = () => window.print();${closeScript}</body></html>`;
 }
 
+// ─── Remplissage Manager ──────────────────────────────────────────────────────
+const EMPTY_REMP = { type: 'Verre', sousType: '', largeur: '', hauteur: '', etat: 'non_entame' };
+
+function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, onClose, onSaved }) {
+  const chId = chassis._id || chassis.id;
+  const [remplissages, setRemplissages] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(null);
+  const [newRemp, setNewRemp] = React.useState(EMPTY_REMP);
+  const [error, setError] = React.useState('');
+  const { t } = useLanguage();
+  const [delivDateModal, setDelivDateModal] = React.useState(null);
+  const { user } = useAuth();
+  const userRole = user?.role;
+  const adminThing = userRole === 'Admin';
+
+  // Resolve component info for composite chassis
+  const comp = compIndex !== null ? (chassis.components || [])[compIndex] : null;
+  const compLabel = comp
+    ? (comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${compIndex}`))
+    : null;
+  const compDimL = comp?.largeur || chassis.largeur;
+  const compDimH = comp?.hauteur || chassis.hauteur;
+
+  React.useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        let url = `${API_URL}/projects/${project.id}/chassis/${chId}/remplissages?unitIndex=${unitIndex}`;
+        if (compIndex !== null) url += `&compIndex=${compIndex}`;
+        const res = await axios.get(url);
+        setRemplissages(res.data || []);
+      } catch { setRemplissages([]); }
+      finally { setLoading(false); }
+    })();
+  }, [chId, project.id, unitIndex, compIndex]);
+
+  const addRemp = async () => {
+    if (!newRemp.largeur || !newRemp.hauteur) return setError('Largeur et hauteur sont requises');
+    setError('');
+    try {
+      const body = {
+        ...newRemp,
+        unitIndex,
+        ...(compIndex !== null ? { compIndex } : {}),
+      };
+      const res = await axios.post(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages`, body);
+      setRemplissages(prev => [...prev, res.data]);
+      setNewRemp(EMPTY_REMP);
+    } catch (e) { setError(e.response?.data?.error || 'Erreur ajout'); }
+  };
+
+  const deleteRemp = async (id) => {
+    if (!window.confirm('Supprimer ce remplissage ?')) return;
+    try {
+      await axios.delete(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${id}`);
+      setRemplissages(prev => prev.filter(r => (r._id || r.id) !== id));
+    } catch (e) { setError(e.response?.data?.error || 'Erreur suppression'); }
+  };
+
+  const patchRemp = async (id, patch) => {
+    setSaving(id);
+    try {
+      const res = await axios.patch(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${id}`, patch);
+      setRemplissages(prev => prev.map(r => (r._id || r.id) === id ? res.data : r));
+    } catch (e) { setError(e.response?.data?.error || 'Erreur mise à jour'); }
+    finally { setSaving(null); }
+  };
+
+  const handleEtatChange = (r, newEtat) => {
+    const id = r._id || r.id;
+    if (newEtat === 'livre' && !r.deliveryDate) { setDelivDateModal({ id, etat: newEtat }); return; }
+    patchRemp(id, { etat: newEtat });
+  };
+
+  const handleDeliveryConfirm = (date) => {
+    const { id, etat } = delivDateModal;
+    setDelivDateModal(null);
+    patchRemp(id, { etat, deliveryDate: date });
+  };
+
+  const calcM2 = (l, h) => {
+    const lv = parseFloat(l), hv = parseFloat(h);
+    if (!lv || !hv) return '—';
+    return ((lv * hv) / 1e6).toFixed(2) + ' m²';
+  };
+
+  const unitSuffix = chassis.quantity > 1 ? ` #${unitIndex + 1}` : '';
+  function getAllowedEtats(userRole, currentEtat) {
+    if (userRole === 'Coordinateur') return ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'pret_a_livrer'];
+    if (userRole === 'LOGISTIQUE') {
+      if (currentEtat === 'pret_a_livrer' || currentEtat === 'livre') return ['pret_a_livrer', 'livre'];
+      return [currentEtat];
+    }
+    return ETAT_OPTIONS;
+  }
+  
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 720, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div className="ct-manager__header">
+          <h2>
+            {t('remplissage')} — {t('repere')} : {chassis.repere}{unitSuffix}
+            {compLabel && (
+              <span style={{ fontWeight: 400, fontSize: 13, color: '#6b7280', marginLeft: 4 }}>
+                — {compLabel}
+              </span>
+            )}
+            <span style={{ fontWeight: 400, fontSize: 13, color: '#6b7280', marginLeft: 8 }}>
+              ({compDimL}×{compDimH} mm)
+            </span>
+          </h2>
+          <button className="chassis-form__close" onClick={onClose}>×</button>
+        </div>
+        {error && <div className="ct-manager__error">{error}</div>}
+        {loading ? <div className="ct-manager__loading">{t('loading')}</div> : (
+          <>
+            {remplissages.length > 0 ? (
+              <table className="proj-acc-table" style={{ marginBottom: 20 }}>
+                <thead>
+                  <tr>
+                    <th>{t('type')}</th><th>{t('subtype')}</th>
+                    <th style={{ width: 80 }}>L (mm)</th><th style={{ width: 80 }}>H (mm)</th>
+                    <th style={{ width: 90 }}>m²</th><th style={{ width: 120 }}>{t('status')}</th>
+                    <th style={{ width: 120 }}>{t('blDate')}</th><th style={{ width: 40 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {remplissages.map(r => {
+                    const id = r._id || r.id;
+                    const isSaving = saving === id;
+                    return (
+                      <tr key={id} style={{ opacity: isSaving ? 0.6 : 1 }}>
+                        <td><strong>{r.type}</strong></td>
+                        <td>{r.sousType || <span style={{ color: '#9ca3af' }}>—</span>}</td>
+                        <td style={{ textAlign: 'center' }}>{r.largeur}</td>
+                        <td style={{ textAlign: 'center' }}>{r.hauteur}</td>
+                        <td style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>{calcM2(r.largeur, r.hauteur)}</td>
+                        <td>
+                          <select
+                            value={r.etat}
+                            disabled={isSaving}
+                            onChange={e => handleEtatChange(r, e.target.value)}
+                            style={{ borderLeft: `3px solid ${ETAT_COLORS[r.etat]}`, borderRadius: 4, padding: '3px 6px', fontSize: 12, width: '100%' }}
+                          >
+                            {getAllowedEtats(userRole, r.etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ textAlign: 'center', fontSize: 12 }}>
+                          {r.etat === 'livre' && r.deliveryDate
+                            ? <button className="date-btn" style={{ fontSize: 11 }} onClick={() => setDelivDateModal({ id, etat: 'livre', current: toDateInput(r.deliveryDate) })}>
+                              📅 {fmtDate(r.deliveryDate)}
+                            </button>
+                            : <span style={{ color: '#9ca3af' }}>—</span>}
+                        </td>
+                        <td><button className="delete-btn" onClick={() => deleteRemp(id)} disabled={isSaving}>✕</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div className="proj-acc-empty" style={{ marginBottom: 20 }}>{t('noData')}</div>
+            )}
+            {adminThing && (
+              <div className="proj-acc-add-form">
+                <div className="proj-acc-add-form__title">➕ {t('add_infill')}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 80px auto', gap: 10, alignItems: 'flex-end' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>{t('type')}</label>
+                    <select value={newRemp.type} onChange={e => setNewRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>
+                      {REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>{t('subtype')}</label>
+                    <input type="text" value={newRemp.sousType} onChange={e => setNewRemp(p => ({ ...p, sousType: e.target.value }))} placeholder={t('subtype_placeholder')} style={{ width: '100%' }} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>{t('width_mm')}</label>
+                    <input type="number" min="1" value={newRemp.largeur} onChange={e => setNewRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>{t('height_mm')}</label>
+                    <input type="number" min="1" value={newRemp.hauteur} onChange={e => setNewRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" />
+                  </div>
+                  <div>
+                    <button type="button" className="ct-config-btn" style={{ marginTop: 22 }} onClick={addRemp}>{t('add')}</button>
+                  </div>
+                </div>
+                {newRemp.largeur && newRemp.hauteur && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+                    {t('surface')} <strong>{calcM2(newRemp.largeur, newRemp.hauteur)}</strong>
+                  </div>
+                )}
+              </div>
+
+            )}
+            <div className="modal-actions" style={{ marginTop: 16 }}>
+              <button onClick={() => { onSaved && onSaved(); onClose(); }}>Fermer</button>
+            </div>
+          </>
+        )}
+        {delivDateModal && (
+          <div className="modal-overlay" onClick={() => setDelivDateModal(null)}>
+            <div className="modal" style={{ maxWidth: 320 }} onClick={e => e.stopPropagation()}>
+              <h3 style={{ marginBottom: 16 }}>📅 Date de livraison</h3>
+              <div className="form-group">
+                <label>Date</label>
+                <input type="date" defaultValue={delivDateModal.current || new Date().toISOString().split('T')[0]} id="remp-date-input" />
+              </div>
+              <div className="modal-actions">
+                <button onClick={() => setDelivDateModal(null)}>Annuler</button>
+                <button className="primary" onClick={() => handleDeliveryConfirm(document.getElementById('remp-date-input').value)}>Confirmer</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── ProjectDetail ────────────────────────────────────────────────────────────
 function ProjectDetail({ project, onBack, currentUser }) {
   const { deleteChassis, updateChassis, updateUnit, updateComponent, refreshProject } = useProjects();
@@ -1442,11 +1421,14 @@ function ProjectDetail({ project, onBack, currentUser }) {
                 </thead>
                 <tbody>
                   {rows.map(row => {
+                    // ── groupHead (composite chassis header row) ──────────────
                     if (row.kind === 'groupHead') {
                       const { ch, chId, unitIndex, label, derivedEtat } = row; const rowKey = row.rowKey;
-                      const rempCount = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex).length;
-                      const rempReady = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.etat === 'livre').length;
                       const chM2 = ch.largeur && ch.hauteur ? ((ch.largeur * ch.hauteur) / 1e6).toFixed(2) : '—';
+                      // Aggregate remplissage counts across all components for this unit
+                      const allCompsRemp = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex !== null);
+                      const allCompsCnt = allCompsRemp.length;
+                      const allCompsRdy = allCompsRemp.filter(r => r.etat === 'livre').length;
                       return (
                         <tr key={rowKey} className="chassis-row chassis-row--group-head">
                           {adminThing && <td className="chassis-row__check" />}
@@ -1456,9 +1438,10 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
                           <td style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{chM2} m²</td>
                           <td>
-                            {rempCount > 0
-                              ? <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: rempReady === rempCount ? '#dcfce7' : '#fef9c3', color: rempReady === rempCount ? '#16a34a' : '#92400e', fontWeight: 600 }}>
-                                {rempReady}/{rempCount} prêt{rempCount > 1 ? 's' : ''}
+                            {/* Summary badge for all components' remplissages */}
+                            {allCompsCnt > 0
+                              ? <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: allCompsRdy === allCompsCnt ? '#dcfce7' : '#fef9c3', color: allCompsRdy === allCompsCnt ? '#16a34a' : '#92400e', fontWeight: 600 }}>
+                                {allCompsRdy}/{allCompsCnt} {t('pret')}
                               </span>
                               : <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>}
                           </td>
@@ -1466,14 +1449,13 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           <td><span className="date-placeholder">—</span></td>
                           {coordinateurThing && <td className="atelier-table-col">
                             <select className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={savingTableKey === rowKey} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}>
-                              <option value="">——</option>
+                              <option value="">— non assigné —</option>
                               {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
                             </select>
                           </td>}
                           {adminThing && <td><div className="chassis-row__actions">
                             <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, _originalId: chId }); setShowChassisForm(true); }}>✏️</button>
                             <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>
-                            <button className="print-btn" title={t('gereR')} onClick={() => setRemplissageEditor({ ch, unitIndex })}><PlusCircle size={15} /></button>
                             <button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>
                             <button className="print-btn" onClick={() => { const toPrint = ch.components.map((comp, ci) => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; return { ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }; }); const html = buildLabelHTML(toPrint, project, chassisLabels, language); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🏷</button>
                             <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}>🗑</button>
@@ -1481,6 +1463,8 @@ function ProjectDetail({ project, onBack, currentUser }) {
                         </tr>
                       );
                     }
+
+                    // ── component row ─────────────────────────────────────────
                     if (row.kind === 'component') {
                       const { ch, unitIndex, comp, ci, rowKey, label, etat } = row;
                       const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey);
@@ -1493,20 +1477,30 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           <td>{comp.largeur || '—'}</td><td>{comp.hauteur || '—'}</td>
                           <td className="dim-cell">{comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}</td>
                           <td style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{compM2 !== '—' ? compM2 + ' m²' : '—'}</td>
-                          <td></td>
+                          {/* Remplissage badge for this specific component */}
+                          <td>
+                            <RemplissageBadge
+                              chassis={ch}
+                              unitIndex={unitIndex}
+                              compIndex={ci}
+                              onClick={() => setRemplissageEditor({ ch, unitIndex, compIndex: ci })}
+                            />
+                          </td>
                           {stateThing && <td><select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleComponentEtatChange(ch, unitIndex, ci, e.target.value, rowKey)}>
                             {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
                           </select></td>}
                           <td><span className="date-placeholder">—</span></td>
                           <td className="atelier-table-col"><span className="etat-select etat-select--livre atelier-select">{atelierTables[row.groupKey] || <span style={{ color: '#9ca3af' }}>—</span>}</span></td>
-                          <td>{adminThing && <div className="chassis-row__actions"><button className="print-btn" onClick={() => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; setPrintingChassis({ ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }); }}>🏷</button></div>}</td>
+                          <td>{adminThing && <div className="chassis-row__actions">
+                            <button className="print-btn" onClick={() => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; setPrintingChassis({ ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }); }}>🏷</button>
+                          </div>}</td>
                         </tr>
                       );
                     }
+
+                    // ── simple unit row ───────────────────────────────────────
                     const { ch, chId, unitIndex, unit, rowKey, label, etat } = row;
                     const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey);
-                    const unitRempCount = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex).length;
-                    const unitRempReady = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.etat === 'livre').length;
                     const unitM2 = ch.largeur && ch.hauteur ? ((ch.largeur * ch.hauteur) / 1e6).toFixed(2) : '—';
                     return (
                       <tr key={rowKey} className={`chassis-row${isSelected ? ' chassis-row--selected' : ''}${isSaving ? ' chassis-row--saving' : ''}`}>
@@ -1517,15 +1511,12 @@ function ProjectDetail({ project, onBack, currentUser }) {
                         <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
                         <td style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{unitM2} m²</td>
                         <td>
-                          {adminThing &&
-                            <button
-                              title={t('gereR')}
-                              onClick={() => setRemplissageEditor({ ch, unitIndex })}
-                              style={{ fontSize: 13, background: unitRempCount === 0 ? '#f3f4f6' : (unitRempReady === unitRempCount ? '#dcfce7' : '#fef9c3'), border: '1px solid #e5e7eb', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', color: unitRempCount === 0 ? '#6b7280' : (unitRempReady === unitRempCount ? '#16a34a' : '#92400e'), fontWeight: 600 }}
-                            >
-                              <PlusCircle size={15} /> {unitRempCount === 0 ? '' : `${unitRempReady}/${unitRempCount}`}
-                            </button>
-                          }
+                          <RemplissageBadge
+                            chassis={ch}
+                            unitIndex={unitIndex}
+                            compIndex={null}
+                            onClick={() => setRemplissageEditor({ ch, unitIndex, compIndex: null })}
+                          />
                         </td>
                         {stateThing && <td><select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)} style={{ borderLeftColor: ETAT_COLORS[etat] }}>
                           {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
@@ -1566,7 +1557,16 @@ function ProjectDetail({ project, onBack, currentUser }) {
       {printingChassis && <LabelPrint chassis={printingChassis} project={project} chassisLabels={chassisLabels} onClose={() => setPrintingChassis(null)} />}
       {deliveryModal && <DeliveryDateModal defaultDate={deliveryModal.currentDate} onConfirm={handleDeliveryConfirm} onCancel={() => setDeliveryModal(null)} t={t} />}
       {accLineEditor && <ChassisLineAccessoryEditor chassis={accLineEditor} project={project} onClose={() => setAccLineEditor(null)} onSaved={() => { if (refreshProject) refreshProject(project.id); }} />}
-      {remplissageEditor && <RemplissageModal chassis={remplissageEditor.ch} unitIndex={remplissageEditor.unitIndex} project={project} onClose={() => setRemplissageEditor(null)} onSaved={() => { if (refreshProject) refreshProject(project.id); }} />}
+      {remplissageEditor && (
+        <RemplissageModal
+          chassis={remplissageEditor.ch}
+          unitIndex={remplissageEditor.unitIndex}
+          compIndex={remplissageEditor.compIndex ?? null}
+          project={project}
+          onClose={() => setRemplissageEditor(null)}
+          onSaved={() => { if (refreshProject) refreshProject(project.id); }}
+        />
+      )}
       {showAccExport && <AccessoriesExportModal project={project} chassisLabels={chassisLabels} language={language} t={t} onClose={() => setShowAccExport(false)} />}
     </div>
   );

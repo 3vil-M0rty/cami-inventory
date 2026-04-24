@@ -203,6 +203,7 @@ const translations = {
     height_mm: "H (mm) *",
     add: "+ Ajouter",
     surface: "Surface :",
+    pret:'Prêt',
   },
   it: {
 
@@ -395,6 +396,7 @@ const translations = {
     receptionner: 'Ricevere', articlesRecues: 'Articoli ricevuti', articlesCommandes: 'Articoli ordinati',
     addNewOrder: 'Aggiungere un ordine', cons: 'Consumo',
     status_non_vitre: 'Pronto senza vetri',
+    pret: 'Pronto',
     status_en_cours: 'In corso', status_fabrique: 'Fabbricato', status_cloture: 'Chiuso',
     deliveryDate: 'Data di consegna',
     etat: 'stato',
@@ -406,6 +408,7 @@ const translations = {
   },
   en: {
     appTitle: 'CAMI ALUMINIUM', appSubtitle: 'BY HB', etat: 'Status',
+    pret: 'Ready',
     navInventory: 'Inventory', navOrders: 'Orders', navProjects: 'Projects',
     navClients: 'Clients', navDevis: 'Quotes', navMovements: 'Movements',
     navAnalytics: 'Dashboard', navAdmin: 'Admin',

@@ -242,7 +242,8 @@ const remplissageSchema = new mongoose.Schema({
   hauteur: { type: Number, required: true },
   etat: { type: String, enum: ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'livre', 'pret_a_livrer'], default: 'non_entame' },
   deliveryDate: { type: Date, default: null },
-  unitIndex: { type: Number, default: 0 },  // ← NEW
+  unitIndex: { type: Number, default: 0 },
+  compIndex: { type: Number, default: null }, // null = non-composite unit; 0..N = specific component index
 }, { _id: true });
 
 const chassisSchema = new mongoose.Schema({
@@ -280,28 +281,14 @@ const projectSchema = new mongoose.Schema({
 });
 const Project = mongoose.model('Project', projectSchema);
 
-// ==================== BL COMPUTATION ====================
-
-
-// ============================================================
-// BL METADATA — paste this into server.js in TWO places:
-//
-// 1. SCHEMA — paste near the other schemas (e.g. after laquageAccSchema)
-// 2. ROUTES — paste after the bons-livraison GET route
-// ============================================================
-
-
-// ── 1. SCHEMA ────────────────────────────────────────────────
-// Stores the BL export form data (blId, localisation, transport,
-// per-unit notes) keyed by project + deliveryDate.
+// ==================== BL METADATA ====================
 
 const blMetadataSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
-  deliveryDate: { type: String, required: true }, // YYYY-MM-DD
+  deliveryDate: { type: String, required: true },
   blId: { type: String, default: '' },
   localisation: { type: String, default: '' },
   transport: { type: String, default: '' },
-  // unitNotes: { "Repère #1": "note text", "Repère #2": "..." }
   unitNotes: { type: mongoose.Schema.Types.Mixed, default: {} },
 }, {
   timestamps: true,
@@ -314,20 +301,9 @@ const blMetadataSchema = new mongoose.Schema({
     }
   }
 });
-// One record per (project, deliveryDate) pair
 blMetadataSchema.index({ projectId: 1, deliveryDate: 1 }, { unique: true });
 const BLMetadata = mongoose.model('BLMetadata', blMetadataSchema);
 
-
-// ── 2. ROUTES ─────────────────────────────────────────────────
-// Paste these right after:
-//   app.get('/api/projects/:id/bons-livraison', ...)
-
-/**
- * GET /api/projects/:projectId/bl-metadata/:deliveryDate
- * Returns saved BL form data for a specific delivery date.
- * Returns empty defaults if none saved yet.
- */
 app.get('/api/projects/:projectId/bl-metadata/:deliveryDate', async (req, res) => {
   try {
     const meta = await BLMetadata.findOne({
@@ -343,11 +319,6 @@ app.get('/api/projects/:projectId/bl-metadata/:deliveryDate', async (req, res) =
   }
 });
 
-/**
- * PUT /api/projects/:projectId/bl-metadata/:deliveryDate
- * Creates or updates BL form data for a specific delivery date.
- * Body: { blId, localisation, transport, unitNotes }
- */
 app.put('/api/projects/:projectId/bl-metadata/:deliveryDate', async (req, res) => {
   try {
     const { blId, localisation, transport, unitNotes } = req.body;
@@ -371,6 +342,7 @@ app.put('/api/projects/:projectId/bl-metadata/:deliveryDate', async (req, res) =
     res.status(500).json({ error: e.message });
   }
 });
+
 // ==================== STATUS COMPUTATION ====================
 
 function computeProjectStatus(chassis) {
@@ -413,6 +385,7 @@ function deriveCompositeUnitEtat(unit, numComponents) {
   if (states.some(e => e !== 'non_entame')) return 'en_cours';
   return 'non_entame';
 }
+
 function syncUnits(chassis) {
   const qty = chassis.quantity || 1;
   const numComps = (chassis.components || []).length;
@@ -1242,8 +1215,8 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
 
       for (const unit of chassis.units || []) {
         if (!isComposite) {
-          // Only remplissages belonging to THIS specific unit
-          const unitRemplissages = remplissages.filter(r => (r.unitIndex ?? 0) === unit.unitIndex);
+          // Only remplissages belonging to THIS specific unit (non-composite: compIndex is null)
+          const unitRemplissages = remplissages.filter(r => (r.unitIndex ?? 0) === unit.unitIndex && r.compIndex == null);
 
           if (unit.etat === 'livre' && unit.deliveryDate) {
             const dateKey = new Date(unit.deliveryDate).toISOString().split('T')[0];
@@ -1329,17 +1302,38 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
                 unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${compRepere}`,
                 deliveryDate: cs.deliveryDate, notes: unit.notes || '', isComponent: true, role: roleLabel,
               });
+
+              // Remplissages for this specific component
+              const compRemplissages = remplissages.filter(r =>
+                (r.unitIndex ?? 0) === unit.unitIndex && r.compIndex === cs.compIndex
+              );
+              for (const r of compRemplissages) {
+                if (!r.deliveryDate || r.etat !== 'livre') continue;
+                const rDateKey = new Date(r.deliveryDate).toISOString().split('T')[0];
+                const already = blMap[rDateKey]?.units.some(u => u.remplissageId?.toString() === r._id.toString());
+                if (already) continue;
+                const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+                ensureBL(rDateKey).units.push({
+                  chassisId: chassis._id, chassisRepere: chassis.repere,
+                  chassisType: `↳ Remplissage ${rLabel} (${compRepere})`,
+                  dimension: `${r.largeur}×${r.hauteur}`, m2: m2(r.largeur, r.hauteur),
+                  unitIndex: unit.unitIndex, compIndex: cs.compIndex,
+                  unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${compRepere} — ${rLabel}`,
+                  deliveryDate: r.deliveryDate, notes: '', isComponent: true, isRemplissage: true,
+                  remplissageId: r._id,
+                });
+              }
             }
           }
         }
       }
     }
 
-    // Sort units within each BL: non-remplissage first, then remplissages under their parent
+    // Sort units within each BL
     for (const bl of Object.values(blMap)) {
       bl.units.sort((a, b) => {
-        const aKey = `${a.chassisRepere}-${a.unitIndex}-${a.isRemplissage ? 1 : 0}`;
-        const bKey = `${b.chassisRepere}-${b.unitIndex}-${b.isRemplissage ? 1 : 0}`;
+        const aKey = `${a.chassisRepere}-${a.unitIndex}-${a.compIndex ?? -1}-${a.isRemplissage ? 1 : 0}`;
+        const bKey = `${b.chassisRepere}-${b.unitIndex}-${b.compIndex ?? -1}-${b.isRemplissage ? 1 : 0}`;
         return aKey.localeCompare(bKey, 'fr', { numeric: true });
       });
     }
@@ -1350,7 +1344,7 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
 
 // ── Remplissage CRUD ──────────────────────────────────────────────────────────
 
-/** GET all remplissages for a chassis */
+/** GET all remplissages for a chassis, with optional unitIndex and compIndex filters */
 app.get('/api/projects/:projectId/chassis/:chassisId/remplissages', async (req, res) => {
   try {
     const project = await Project.findById(req.params.projectId);
@@ -1358,18 +1352,29 @@ app.get('/api/projects/:projectId/chassis/:chassisId/remplissages', async (req, 
     const chassis = project.chassis.id(req.params.chassisId);
     if (!chassis) return res.status(404).json({ error: 'Chassis not found' });
     let remplissages = chassis.remplissages || [];
+
     if (req.query.unitIndex !== undefined) {
       const ui = parseInt(req.query.unitIndex, 10);
       remplissages = remplissages.filter(r => (r.unitIndex ?? 0) === ui);
     }
+
+    if (req.query.compIndex !== undefined) {
+      // Fetch remplissages for a specific component of a composite chassis
+      const ci = parseInt(req.query.compIndex, 10);
+      remplissages = remplissages.filter(r => r.compIndex === ci);
+    } else if (req.query.unitIndex !== undefined) {
+      // Fetching for a non-composite unit: exclude any that belong to a component
+      remplissages = remplissages.filter(r => r.compIndex == null);
+    }
+
     res.json(remplissages);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/** POST — add a remplissage */
+/** POST — add a remplissage (supports compIndex for composite chassis components) */
 app.post('/api/projects/:projectId/chassis/:chassisId/remplissages', async (req, res) => {
   try {
-    const { type, sousType, largeur, hauteur, etat, unitIndex } = req.body;
+    const { type, sousType, largeur, hauteur, etat, unitIndex, compIndex } = req.body;
     if (!type || !largeur || !hauteur) return res.status(400).json({ error: 'type, largeur and hauteur are required' });
     const project = await Project.findById(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'Project not found' });
@@ -1382,15 +1387,15 @@ app.post('/api/projects/:projectId/chassis/:chassisId/remplissages', async (req,
       hauteur: Number(hauteur),
       etat: etat || 'non_entame',
       deliveryDate: null,
-      unitIndex: unitIndex !== undefined ? Number(unitIndex) : 0,  // ← NEW
+      unitIndex: unitIndex !== undefined ? Number(unitIndex) : 0,
+      compIndex: compIndex !== undefined ? Number(compIndex) : null, // null = non-composite
     });
     await project.save();
     res.status(201).json(chassis.remplissages[chassis.remplissages.length - 1]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-
-/** PATCH — update etat / deliveryDate of one remplissage */
+/** PATCH — update etat / deliveryDate / fields of one remplissage */
 app.patch('/api/projects/:projectId/chassis/:chassisId/remplissages/:remplissageId', async (req, res) => {
   try {
     const project = await Project.findById(req.params.projectId);
@@ -1832,7 +1837,6 @@ const laquageMorceauLaqueSchema = new mongoose.Schema({ reference: { type: Strin
 
 const LAQUAGE_STATUSES = ['draft', 'sent_to_laquage', 'received_laquage', 'returned_to_coord', 'received_coord'];
 
-// History entry schema — stores action, actor, timestamp, optional note and partialQty
 const laquageHistoryEntrySchema = new mongoose.Schema({
   action: { type: String, required: true },
   by: { type: String, default: '' },
@@ -1864,11 +1868,6 @@ const LaquageAccessoires = mongoose.model('LaquageAccessoires', laquageAccSchema
 
 // ==================== LAQUAGE HELPER ====================
 
-/**
- * Applies a workflow action to a laquage record.
- * All actions store full timestamps and actor name.
- * The 'incomplete_line' action also stores note + partialQty on lineStatuses.
- */
 function applyLaquageAction(record, action, lineKey, by, extra = {}) {
   const now = new Date();
   record.history = record.history || [];
@@ -1880,12 +1879,7 @@ function applyLaquageAction(record, action, lineKey, by, extra = {}) {
   }
   if (action === 'receive_line_laquage') {
     record.lineStatuses = record.lineStatuses || {};
-    record.lineStatuses[lineKey] = {
-      ...(record.lineStatuses[lineKey] || {}),
-      receivedLaquage: true,
-      receivedLaquageAt: now,
-      receivedLaquageBy: by,
-    };
+    record.lineStatuses[lineKey] = { ...(record.lineStatuses[lineKey] || {}), receivedLaquage: true, receivedLaquageAt: now, receivedLaquageBy: by };
     record.markModified('lineStatuses');
     record.history.push({ action: `receive_line_laquage:${lineKey}`, by, at: now });
     return;
@@ -1902,12 +1896,7 @@ function applyLaquageAction(record, action, lineKey, by, extra = {}) {
   }
   if (action === 'receive_line_coord') {
     record.lineStatuses = record.lineStatuses || {};
-    record.lineStatuses[lineKey] = {
-      ...(record.lineStatuses[lineKey] || {}),
-      receivedCoord: true,
-      receivedCoordAt: now,
-      receivedCoordBy: by,
-    };
+    record.lineStatuses[lineKey] = { ...(record.lineStatuses[lineKey] || {}), receivedCoord: true, receivedCoordAt: now, receivedCoordBy: by };
     record.markModified('lineStatuses');
     record.history.push({ action: `receive_line_coord:${lineKey}`, by, at: now });
     return;
@@ -1917,25 +1906,11 @@ function applyLaquageAction(record, action, lineKey, by, extra = {}) {
     record.history.push({ action, by, at: now });
     return;
   }
-  // Mark a specific line as incomplete with optional note + partial quantity received
   if (action === 'incomplete_line') {
     record.lineStatuses = record.lineStatuses || {};
-    record.lineStatuses[lineKey] = {
-      ...(record.lineStatuses[lineKey] || {}),
-      incomplete: true,
-      incompleteAt: now,
-      incompleteBy: by,
-      incompleteNote: extra.note || '',
-      partialQty: extra.partialQty ?? null,
-    };
+    record.lineStatuses[lineKey] = { ...(record.lineStatuses[lineKey] || {}), incomplete: true, incompleteAt: now, incompleteBy: by, incompleteNote: extra.note || '', partialQty: extra.partialQty ?? null };
     record.markModified('lineStatuses');
-    record.history.push({
-      action: 'incomplete_line',
-      by,
-      at: now,
-      note: extra.note || '',
-      partialQty: extra.partialQty ?? null,
-    });
+    record.history.push({ action: 'incomplete_line', by, at: now, note: extra.note || '', partialQty: extra.partialQty ?? null });
     return;
   }
 }
@@ -1969,7 +1944,6 @@ app.put('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res)
 
 app.post('/api/projects/:projectId/laquage/barres/action', requireAuth, async (req, res) => {
   try {
-    // Destructure extra fields for incomplete_line support
     const { action, lineKey, by, note, partialQty } = req.body;
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) return res.status(404).json({ error: 'Record not found' });
@@ -2012,61 +1986,28 @@ app.post('/api/projects/:projectId/laquage/accessoires/action', requireAuth, asy
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ==================== LAQUAGE NOTIFICATION BELL ENDPOINT ====================
+// ==================== LAQUAGE NOTIFICATION BELL ====================
 
-/**
- * GET /api/laquage/recent-actions
- * Returns the last N workflow history entries across ALL projects (barres + accessoires),
- * enriched with project name and reference. Used by LaquageNotifBell.
- */
 app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
-
-    // Top-level workflow actions only — per-line actions are too granular for the bell
-    const TOP_LEVEL_ACTIONS = new Set([
-      'send_to_laquage', 'receive_all_laquage', 'return_to_coord',
-      'receive_all_coord', 'incomplete_line',
-    ]);
-
+    const TOP_LEVEL_ACTIONS = new Set(['send_to_laquage', 'receive_all_laquage', 'return_to_coord', 'receive_all_coord', 'incomplete_line']);
     const [barresRecords, accRecords, projects] = await Promise.all([
       LaquageBarres.find({}).select('projectId history').lean(),
       LaquageAccessoires.find({}).select('projectId history').lean(),
       Project.find({}).select('name reference').lean(),
     ]);
-
     const projMap = Object.fromEntries(projects.map(p => [p._id.toString(), p]));
-
     const events = [];
     for (const rec of [...barresRecords, ...accRecords]) {
       const proj = projMap[rec.projectId?.toString()];
-
-      // Skip records with no linked project
       if (!proj || !proj.name) continue;
-
       for (const h of (rec.history || [])) {
-        // Only show top-level actions in the bell
         if (!TOP_LEVEL_ACTIONS.has(h.action)) continue;
-
-        events.push({
-          action: h.action,
-          by: h.by || '—',
-          at: h.at,
-          note: h.note || null,
-          partialQty: h.partialQty ?? null,
-          projectId: rec.projectId,
-          projectName: proj.name,
-          projectRef: proj.reference || '',
-        });
+        events.push({ action: h.action, by: h.by || '—', at: h.at, note: h.note || null, partialQty: h.partialQty ?? null, projectId: rec.projectId, projectName: proj.name, projectRef: proj.reference || '' });
       }
     }
-
-    // Sort newest first
     events.sort((a, b) => new Date(b.at) - new Date(a.at));
-
-    // Deduplicate: barres and accessoires both log the same action for the same
-    // project at virtually the same time — keep only the first occurrence within
-    // a 5-second window per (action, projectId) pair.
     const seen = new Map();
     const deduped = [];
     for (const ev of events) {
@@ -2078,7 +2019,6 @@ app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
       deduped.push(ev);
       if (deduped.length >= limit) break;
     }
-
     res.json(deduped);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2096,43 +2036,20 @@ const purchaseRequestSchema = new mongoose.Schema({
   status: { type: String, enum: ['pending', 'ordered'], default: 'pending' },
   orderedBy: { type: String, default: '' },
   orderedAt: { type: Date, default: null },
-}, {
-  timestamps: true,
-  toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } }
-});
+}, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const PurchaseRequest = mongoose.model('PurchaseRequest', purchaseRequestSchema);
 
 // ==================== PURCHASE REQUEST ROUTES ====================
 
-/**
- * POST /api/purchase-requests
- * Admin creates a purchase request. Does NOT touch inventory stock.
- */
 app.post('/api/purchase-requests', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     const { itemId, itemName, itemImage, quantity, note } = req.body;
-    if (!itemId || !quantity || quantity <= 0)
-      return res.status(400).json({ error: 'itemId and quantity (>0) required' });
-
-    const pr = await PurchaseRequest.create({
-      itemId,
-      itemName: itemName || '',
-      itemImage: itemImage || '',
-      quantity: parseFloat(quantity),
-      note: note || '',
-      requestedBy: req.user?.displayName || 'Admin',
-      requestedAt: new Date(),
-    });
+    if (!itemId || !quantity || quantity <= 0) return res.status(400).json({ error: 'itemId and quantity (>0) required' });
+    const pr = await PurchaseRequest.create({ itemId, itemName: itemName || '', itemImage: itemImage || '', quantity: parseFloat(quantity), note: note || '', requestedBy: req.user?.displayName || 'Admin', requestedAt: new Date() });
     res.status(201).json(pr);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/**
- * GET /api/purchase-requests
- * Returns purchase requests. ACHAT / admin sees all.
- * ?status=pending|ordered filters by status.
- * ?notifyAdmin=1 returns only 'ordered' items (for the bell).
- */
 app.get('/api/purchase-requests', requireAuth, async (req, res) => {
   try {
     const filter = {};
@@ -2142,17 +2059,11 @@ app.get('/api/purchase-requests', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/**
- * PATCH /api/purchase-requests/:id/mark-ordered
- * ACHAT marks a request as "commandé".
- * Triggers a notification back to admin via the bell.
- */
 app.patch('/api/purchase-requests/:id/mark-ordered', requireAuth, async (req, res) => {
   try {
     const pr = await PurchaseRequest.findById(req.params.id);
     if (!pr) return res.status(404).json({ error: 'Not found' });
     if (pr.status === 'ordered') return res.status(400).json({ error: 'Already ordered' });
-
     pr.status = 'ordered';
     pr.orderedBy = req.user?.displayName || req.user?.username || 'ACHAT';
     pr.orderedAt = new Date();
@@ -2161,49 +2072,21 @@ app.patch('/api/purchase-requests/:id/mark-ordered', requireAuth, async (req, re
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-
 // ==================== LAQUAGE HISTORY DELETE ROUTES ====================
-// Admin-only: delete a single history entry or clear all history across all records.
-// History is stored as embedded arrays on LaquageBarres / LaquageAccessoires documents.
 
-/**
- * DELETE /api/laquage/history-entry
- * Body: { projectId, action, at }
- * Removes the matching history entry from both barres and accessoires records for that project.
- */
 app.delete('/api/laquage/history-entry', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     const { projectId, action, at } = req.body;
     if (!projectId || !action || !at) return res.status(400).json({ error: 'projectId, action and at required' });
-
     const targetTime = new Date(at).getTime();
-
-    // Pull matching entry from barres record
     const barres = await LaquageBarres.findOne({ projectId });
-    if (barres) {
-      barres.history = (barres.history || []).filter(h =>
-        !(h.action === action && Math.abs(new Date(h.at).getTime() - targetTime) < 1000)
-      );
-      await barres.save();
-    }
-
-    // Pull matching entry from accessoires record
+    if (barres) { barres.history = (barres.history || []).filter(h => !(h.action === action && Math.abs(new Date(h.at).getTime() - targetTime) < 1000)); await barres.save(); }
     const acc = await LaquageAccessoires.findOne({ projectId });
-    if (acc) {
-      acc.history = (acc.history || []).filter(h =>
-        !(h.action === action && Math.abs(new Date(h.at).getTime() - targetTime) < 1000)
-      );
-      await acc.save();
-    }
-
+    if (acc) { acc.history = (acc.history || []).filter(h => !(h.action === action && Math.abs(new Date(h.at).getTime() - targetTime) < 1000)); await acc.save(); }
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/**
- * DELETE /api/laquage/history-all
- * Clears all history entries from every LaquageBarres and LaquageAccessoires record.
- */
 app.delete('/api/laquage/history-all', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     await Promise.all([
