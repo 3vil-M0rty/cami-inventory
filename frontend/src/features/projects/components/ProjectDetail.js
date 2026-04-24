@@ -101,12 +101,14 @@ function evalFormula(formula, L, H) {
     const safe = formula.replace(/[^0-9LH+\-*/().\s]/g, '');
     // eslint-disable-next-line no-new-func
     const result = new Function('L', 'H', `"use strict"; return (${safe});`)(L, H);
-    return typeof result === 'number' && isFinite(result) ? parseFloat(result.toFixed(2)) : null;
+    return typeof result === 'number' && isFinite(result) ? parseFloat(result.toFixed(4)) : null;
   } catch { return null; }
 }
 
 // ─── Remplissage badge helper ─────────────────────────────────────────────────
 // Returns { cnt, rdy } for a given unitIndex + optional compIndex
+const REMP_DONE_ETATS = new Set(['fabrique', 'pret_a_livrer', 'livre']);
+
 function getRemplissageCounts(chassis, unitIndex, compIndex = null) {
   const all = chassis.remplissages || [];
   const filtered = compIndex !== null
@@ -114,7 +116,7 @@ function getRemplissageCounts(chassis, unitIndex, compIndex = null) {
     : all.filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex == null);
   return {
     cnt: filtered.length,
-    rdy: filtered.filter(r => r.etat === 'livre').length,
+    rdy: filtered.filter(r => REMP_DONE_ETATS.has(r.etat)).length,
   };
 }
 
@@ -531,7 +533,7 @@ function AccessoriesExportModal({ project, chassisLabels, language, t, onClose }
           }
         } catch { }
       }));
-      const rows = Object.entries(accMap).map(([, v]) => ({ 'Désignation accessoire': v.label, 'Unité': v.unit, 'Quantité totale': v.hasFormula ? `Formule: ${v.formula}` : parseFloat(v.total.toFixed(2)) }));
+      const rows = Object.entries(accMap).map(([, v]) => ({ 'Désignation accessoire': v.label, 'Unité': v.unit, 'Quantité totale': v.hasFormula ? `Formule: ${v.formula}` : parseFloat(v.total.toFixed(4)) }));
       if (rows.length === 0) { setError('Aucun accessoire configuré pour les types de châssis de ce projet.'); setLoading(false); return; }
       const ws = XLSX.utils.json_to_sheet(rows); ws['!cols'] = [{ wch: 40 }, { wch: 14 }, { wch: 18 }];
       const wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, ws, 'Accessoires');
@@ -1018,10 +1020,111 @@ function buildChassisDetailHTML(ch, project, chassisLabels, language, accessorie
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Détail — ${ch.repere}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:28px 36px}h1{font-size:18px;font-weight:800;color:${companyColor};margin-bottom:4px}h2{font-size:13px;font-weight:700;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.06em;color:#374151}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}.chip{padding:5px 12px;border-radius:6px;border:1px solid #e5e7eb;background:#f9fafb;font-size:12px}.chip strong{color:${companyColor}}table{width:100%;border-collapse:collapse;margin-bottom:12px}thead tr{background:${companyColor};color:#fff}th{padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;text-align:left}td{padding:8px 10px;border-bottom:1px solid #f0f0f0}.row-even{background:#fff}.row-odd{background:#f9fafb}.no-acc{color:#9ca3af;font-style:italic;padding:12px 0}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm 16mm}@page{size:A4;margin:0}}</style></head><body><h1>🪟 ${ch.repere}</h1><div class="meta"><div class="chip">Type : <strong>${typeLabel}</strong></div><div class="chip">Dimensions : <strong>${L}×${H} mm</strong></div><div class="chip">Projet : <strong>${project.name}</strong></div><div class="chip">Réf. : <strong>${project.reference}</strong></div><div class="chip">RAL : <strong>${project.ralCode}</strong></div>${atelierChip}</div>${componentRows ? `<h2>Composants</h2><table><thead><tr><th>Repère</th><th>Rôle</th><th>Dimension</th></tr></thead><tbody>${componentRows}</tbody></table>` : ''}<h2>Accessoires nécessaires</h2>${mergedAccessories.length === 0 ? '<p class="no-acc">Aucun accessoire configuré pour ce châssis.</p>' : `<table><thead><tr><th>#</th><th>Désignation</th><th>Formule</th><th>Quantité</th></tr></thead><tbody>${accRows}</tbody></table>`}<script>window.onload = () => window.print();${closeScript}</body></html>`;
 }
 
-// ─── Remplissage Manager ──────────────────────────────────────────────────────
+// ─── Remplissage Label Print ──────────────────────────────────────────────────
+// Uses the same 9.5cm × 5.5cm format as buildLabelHTML, one label per page.
+function buildRemplissageLabelHTML(remplissages, chassis, project, compLabel, typeLabel) {
+  const ralHex = project.ralColor || '#cccccc';
+  const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
+  const unitSuffix = (idx) => chassis.quantity > 1 ? ` #${Number(idx) + 1}` : '';
+
+  const pages = remplissages.map(r => {
+    const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+    // repere line: e.g. "F1 — Dormant" or "F1"
+    const repere = compLabel
+      ? `${chassis.repere}${unitSuffix(r.unitIndex ?? 0)} — ${compLabel}`
+      : `${chassis.repere}${unitSuffix(r.unitIndex ?? 0)}`;
+    // sub-line showing chassis type + remplissage type
+    const parentLine = `<div class="parent-ref">${typeLabel}</div>`;
+
+    return `<div class="page"><div class="label">
+    <div class="lh">
+      <span class="brand">CAMI ALUMINIUM</span>
+      <span class="swatch"></span>
+    </div>
+    <div class="row">
+      <span class="f"><span class="k">Projet</span><span class="v">${project.name}</span></span>
+      <span class="f"><span class="k">Réf.</span><span class="v">${project.reference}</span></span>
+    </div>
+    <div class="row">
+      <span class="f"><span class="k">RAL</span><span class="v">${project.ralCode}</span></span>
+      <span class="f"><span class="k">Date</span><span class="v">${dateStr}</span></span>
+    </div>
+    <div class="div"></div>
+    <div class="grid">
+      <div class="cell"><span class="k">Repère</span><span class="repere">${repere}${parentLine}</span></div>
+      <div class="cell"><span class="k">Remplissage</span><span class="v remp-type">${rLabel}</span></div>
+      <div class="cell full"><span class="k">Dimensions</span><span class="dim">${r.largeur} × ${r.hauteur} mm</span></div>
+    </div>
+  </div></div>`;
+  }).join('\n');
+
+  const closeScript = '<' + '/script>';
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title> </title>
+<style>
+  @page {
+    size: 9.5cm 5.5cm;
+    margin: 0mm;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 9.5cm;
+    height: 5.5cm;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @media print {
+    html, body { margin: 0 !important; padding: 0 !important; }
+    .page { page-break-after: always; page-break-inside: avoid; }
+    .page:last-child { page-break-after: avoid; }
+  }
+  .page { width: 9.5cm; height: 5.5cm; overflow: hidden; display: block; }
+  .label {
+    width: 9.5cm; height: 5.5cm; padding: 3mm 4mm;
+    display: flex; flex-direction: column; gap: 1.2mm; overflow: hidden;
+  }
+  .lh    { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #1a1a1a; padding-bottom: 1.2mm; }
+  .brand { font-size: 8.5pt; font-weight: 900; color: #1a1a1a; letter-spacing: 0.05em; text-transform: uppercase; }
+  .swatch { width: 10mm; height: 5mm; border-radius: 2px; border: 1px solid #ccc; background-color: ${ralHex}; flex-shrink: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .row   { display: flex; gap: 6mm; }
+  .f     { display: flex; gap: 2px; align-items: baseline; }
+  .k     { font-size: 5.5pt; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; margin-right: 2px; }
+  .v     { font-size: 6.5pt; font-weight: 500; color: #1a1a1a; }
+  .remp-type { font-size: 7pt !important; font-weight: 700 !important; }
+  .div   { border-top: 1px dashed #ccc; margin: 0; flex-shrink: 0; }
+  .grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5mm 2mm; flex: 1; min-height: 0; }
+  .cell  { display: flex; flex-direction: column; gap: 0mm; }
+  .full  { grid-column: 1 / -1; }
+  .repere { font-size: 12pt; font-weight: 900; color: #1a1a1a; letter-spacing: -0.02em; line-height: 1; }
+  .dim   { font-size: 9.5pt; font-weight: 700; color: #1a1a1a; line-height: 1.1; }
+  .parent-ref { font-size: 6pt; font-weight: 600; color: #555; margin-top: 1mm; line-height: 1.2; }
+</style>
+</head>
+<body>
+${pages}
+<script>
+  document.title = ' ';
+  window.onload = function() {
+    window.focus();
+    window.print();
+    setTimeout(function(){ window.close(); }, 1000);
+  };
+${closeScript}
+</body>
+</html>`;
+}
+
+
 const EMPTY_REMP = { type: 'Verre', sousType: '', largeur: '', hauteur: '', etat: 'non_entame' };
 
-function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, onClose, onSaved }) {
+function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, onClose, onSaved, chassisLabels = {}, language = 'fr' }) {
   const chId = chassis._id || chassis.id;
   const [remplissages, setRemplissages] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -1033,6 +1136,18 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
   const { user } = useAuth();
   const userRole = user?.role;
   const adminThing = userRole === 'Admin';
+  const stateThing = userRole === 'Admin' || ['LOGISTIQUE', 'Coordinateur'].includes(userRole);
+
+  // Remplissages don't have non_vitre state
+  const REMP_ETAT_OPTIONS = ['non_entame', 'en_cours', 'fabrique', 'pret_a_livrer', 'livre'];
+  function getRemplissageAllowedEtats(role, currentEtat) {
+    if (role === 'Coordinateur') return ['non_entame', 'en_cours', 'fabrique', 'pret_a_livrer'];
+    if (role === 'LOGISTIQUE') {
+      if (currentEtat === 'pret_a_livrer' || currentEtat === 'livre') return ['pret_a_livrer', 'livre'];
+      return [currentEtat];
+    }
+    return REMP_ETAT_OPTIONS;
+  }
 
   // Resolve component info for composite chassis
   const comp = compIndex !== null ? (chassis.components || [])[compIndex] : null;
@@ -1067,6 +1182,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
       const res = await axios.post(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages`, body);
       setRemplissages(prev => [...prev, res.data]);
       setNewRemp(EMPTY_REMP);
+      if (onSaved) onSaved();
     } catch (e) { setError(e.response?.data?.error || 'Erreur ajout'); }
   };
 
@@ -1075,6 +1191,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
     try {
       await axios.delete(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${id}`);
       setRemplissages(prev => prev.filter(r => (r._id || r.id) !== id));
+      if (onSaved) onSaved();
     } catch (e) { setError(e.response?.data?.error || 'Erreur suppression'); }
   };
 
@@ -1083,6 +1200,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
     try {
       const res = await axios.patch(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${id}`, patch);
       setRemplissages(prev => prev.map(r => (r._id || r.id) === id ? res.data : r));
+      if (onSaved) onSaved();
     } catch (e) { setError(e.response?.data?.error || 'Erreur mise à jour'); }
     finally { setSaving(null); }
   };
@@ -1106,19 +1224,10 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
   };
 
   const unitSuffix = chassis.quantity > 1 ? ` #${unitIndex + 1}` : '';
-  function getAllowedEtats(userRole, currentEtat) {
-    if (userRole === 'Coordinateur') return ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'pret_a_livrer'];
-    if (userRole === 'LOGISTIQUE') {
-      if (currentEtat === 'pret_a_livrer' || currentEtat === 'livre') return ['pret_a_livrer', 'livre'];
-      return [currentEtat];
-    }
-    return ETAT_OPTIONS;
-  }
-  
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 720, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div className="ct-manager__header">
           <h2>
             {t('remplissage')} — {t('repere')} : {chassis.repere}{unitSuffix}
@@ -1143,7 +1252,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                     <th>{t('type')}</th><th>{t('subtype')}</th>
                     <th style={{ width: 80 }}>L (mm)</th><th style={{ width: 80 }}>H (mm)</th>
                     <th style={{ width: 90 }}>m²</th><th style={{ width: 120 }}>{t('status')}</th>
-                    <th style={{ width: 120 }}>{t('blDate')}</th><th style={{ width: 40 }}></th>
+                    <th style={{ width: 120 }}>{t('blDate')}</th><th style={{ width: 40 }}></th><th style={{ width: 40 }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1158,14 +1267,22 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                         <td style={{ textAlign: 'center' }}>{r.hauteur}</td>
                         <td style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>{calcM2(r.largeur, r.hauteur)}</td>
                         <td>
-                          <select
-                            value={r.etat}
-                            disabled={isSaving}
-                            onChange={e => handleEtatChange(r, e.target.value)}
-                            style={{ borderLeft: `3px solid ${ETAT_COLORS[r.etat]}`, borderRadius: 4, padding: '3px 6px', fontSize: 12, width: '100%' }}
-                          >
-                            {getAllowedEtats(userRole, r.etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
-                          </select>
+                          {stateThing ? (
+                            <select
+                              value={r.etat}
+                              disabled={isSaving || isEtatSelectDisabled(userRole, r.etat, isSaving)}
+                              onChange={e => handleEtatChange(r, e.target.value)}
+                              style={{ borderLeft: `3px solid ${ETAT_COLORS[r.etat]}`, borderRadius: 4, padding: '3px 6px', fontSize: 12, width: '100%' }}
+                            >
+                              {getRemplissageAllowedEtats(userRole, r.etat).map(opt => (
+                                <option key={opt} value={opt}>{t('etat_' + opt)}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="etat-badge" style={{ background: ETAT_COLORS[r.etat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>
+                              {t(`etat_${r.etat}`)}
+                            </span>
+                          )}
                         </td>
                         <td style={{ textAlign: 'center', fontSize: 12 }}>
                           {r.etat === 'livre' && r.deliveryDate
@@ -1174,10 +1291,25 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                             </button>
                             : <span style={{ color: '#9ca3af' }}>—</span>}
                         </td>
-                        {adminThing && 
+                        {adminThing && (
+                          <td>
+                          <button
+                            className="print-btn"
+                            title="Imprimer étiquette"
+                            onClick={() => {
+                              const tl = chassisLabels[chassis.type]?.[language] || chassisLabels[chassis.type]?.fr || chassis.type;
+                              const html = buildRemplissageLabelHTML([r], chassis, project, compLabel, tl);
+                              const w = window.open('', '_blank');
+                              if (w) { w.document.write(html); w.document.close(); }
+                            }}
+                          >🏷</button>
+                        </td>
+                        
+                        )}
+                        {adminThing && (
                           <td><button className="delete-btn" onClick={() => deleteRemp(id)} disabled={isSaving}>✕</button></td>
-                        }
-                  
+                        )}
+                        
                       </tr>
                     );
                   })}
@@ -1186,43 +1318,58 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
             ) : (
               <div className="proj-acc-empty" style={{ marginBottom: 20 }}>{t('noData')}</div>
             )}
-            {adminThing && (
-              <div className="proj-acc-add-form">
-                <div className="proj-acc-add-form__title">➕ {t('add_infill')}</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 80px auto', gap: 10, alignItems: 'flex-end' }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>{t('type')}</label>
-                    <select value={newRemp.type} onChange={e => setNewRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>
-                      {REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}
-                    </select>
+            {adminThing &&
+              (
+                <div className="proj-acc-add-form">
+                  <div className="proj-acc-add-form__title">➕ {t('add_infill')}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 80px auto', gap: 10, alignItems: 'flex-end' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label>{t('type')}</label>
+                      <select value={newRemp.type} onChange={e => setNewRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>
+                        {REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label>{t('subtype')}</label>
+                      <input type="text" value={newRemp.sousType} onChange={e => setNewRemp(p => ({ ...p, sousType: e.target.value }))} placeholder={t('subtype_placeholder')} style={{ width: '100%' }} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label>{t('width_mm')}</label>
+                      <input type="number" min="1" value={newRemp.largeur} onChange={e => setNewRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label>{t('height_mm')}</label>
+                      <input type="number" min="1" value={newRemp.hauteur} onChange={e => setNewRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" />
+                    </div>
+                    <div>
+                      <button type="button" className="ct-config-btn" style={{ marginTop: 22 }} onClick={addRemp}>{t('add')}</button>
+                    </div>
                   </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>{t('subtype')}</label>
-                    <input type="text" value={newRemp.sousType} onChange={e => setNewRemp(p => ({ ...p, sousType: e.target.value }))} placeholder={t('subtype_placeholder')} style={{ width: '100%' }} />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>{t('width_mm')}</label>
-                    <input type="number" min="1" value={newRemp.largeur} onChange={e => setNewRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>{t('height_mm')}</label>
-                    <input type="number" min="1" value={newRemp.hauteur} onChange={e => setNewRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" />
-                  </div>
-                  <div>
-                    <button type="button" className="ct-config-btn" style={{ marginTop: 22 }} onClick={addRemp}>{t('add')}</button>
-                  </div>
+                  {newRemp.largeur && newRemp.hauteur && (
+                    <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+                      {t('surface')} <strong>{calcM2(newRemp.largeur, newRemp.hauteur)}</strong>
+                    </div>
+                  )}
                 </div>
-                {newRemp.largeur && newRemp.hauteur && (
-                  <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
-                    {t('surface')} <strong>{calcM2(newRemp.largeur, newRemp.hauteur)}</strong>
-                  </div>
-                )}
-              </div>
 
-            )}
-            <div className="modal-actions" style={{ marginTop: 16 }}>
+              )
+            }
+           {/*  <div className="modal-actions" style={{ marginTop: 16 }}>
+              {remplissages.length > 0 && (
+                <button
+                  style={{ background: '#374151', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  onClick={() => {
+                    const tl = chassisLabels[chassis.type]?.[language] || chassisLabels[chassis.type]?.fr || chassis.type;
+                    const html = buildRemplissageLabelHTML(remplissages, chassis, project, compLabel, tl);
+                    const w = window.open('', '_blank');
+                    if (w) { w.document.write(html); w.document.close(); }
+                  }}
+                >
+                  🏷 Imprimer toutes les étiquettes ({remplissages.length})
+                </button>
+              )}
               <button onClick={() => { onSaved && onSaved(); onClose(); }}>Fermer</button>
-            </div>
+            </div> */}
           </>
         )}
         {delivDateModal && (
@@ -1409,6 +1556,89 @@ function ProjectDetail({ project, onBack, currentUser }) {
               <div className="selection-toolbar">
                 <button className="select-btn" onClick={toggleAll}>{selectedKeys.size === allSelectableKeys.length ? t('deselectAll') : t('selectAll')}</button>
                 {selectedKeys.size > 0 && <button className="print-selected-btn" onClick={startBatchPrint}>🖨 {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})</button>}
+                {(() => {
+                  const allRemp = (project.chassis || []).flatMap(ch => {
+                    const numComps = (ch.components || []).length;
+                    return (ch.remplissages || []).map(r => ({ r, ch, numComps }));
+                  });
+                  if (allRemp.length === 0) return null;
+                  return (
+                    <button
+                      className="print-selected-btn"
+                      style={{ background: '#6366f1' }}
+                      onClick={() => {
+                        // Build one label per remplissage, grouped by chassis
+                        const byChassisId = {};
+                        allRemp.forEach(({ r, ch, numComps }) => {
+                          const cid = (ch._id || ch.id).toString();
+                          if (!byChassisId[cid]) byChassisId[cid] = { ch, numComps, remps: [] };
+                          byChassisId[cid].remps.push(r);
+                        });
+                        // Collect all pages HTML: reuse buildRemplissageLabelHTML per chassis group
+                        const ralHex = project.ralColor || '#cccccc';
+                        const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
+                        const unitSuffix = (ch, idx) => (ch.quantity || 1) > 1 ? ` #${Number(idx) + 1}` : '';
+                        const allPages = Object.values(byChassisId).flatMap(({ ch, numComps, remps }) => {
+                          const tl = chassisLabels[ch.type]?.[language] || chassisLabels[ch.type]?.fr || ch.type;
+                          return remps.map(r => {
+                            const compLabel = r.compIndex != null
+                              ? (() => { const comp = (ch.components || [])[r.compIndex]; return comp ? (comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${r.compIndex}`)) : null; })()
+                              : null;
+                            const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+                            const repere = compLabel
+                              ? `${ch.repere}${unitSuffix(ch, r.unitIndex ?? 0)} — ${compLabel}`
+                              : `${ch.repere}${unitSuffix(ch, r.unitIndex ?? 0)}`;
+                            return `<div class="page"><div class="label">
+    <div class="lh"><span class="brand">CAMI ALUMINIUM</span><span class="swatch"></span></div>
+    <div class="row">
+      <span class="f"><span class="k">Projet</span><span class="v">${project.name}</span></span>
+      <span class="f"><span class="k">Réf.</span><span class="v">${project.reference}</span></span>
+    </div>
+    <div class="row">
+      <span class="f"><span class="k">RAL</span><span class="v">${project.ralCode}</span></span>
+      <span class="f"><span class="k">Date</span><span class="v">${dateStr}</span></span>
+    </div>
+    <div class="div"></div>
+    <div class="grid">
+      <div class="cell"><span class="k">Repère</span><span class="repere">${repere}<div class="parent-ref">${tl}</div></span></div>
+      <div class="cell"><span class="k">Remplissage</span><span class="v remp-type">${rLabel}</span></div>
+      <div class="cell full"><span class="k">Dimensions</span><span class="dim">${r.largeur} × ${r.hauteur} mm</span></div>
+    </div>
+  </div></div>`;
+                          });
+                        }).join('\n');
+                        const closeScript = '<' + '/script>';
+                        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title> </title><style>
+  @page{size:9.5cm 5.5cm;margin:0mm}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:9.5cm;height:5.5cm;margin:0!important;padding:0!important;background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  @media print{html,body{margin:0!important;padding:0!important}.page{page-break-after:always;page-break-inside:avoid}.page:last-child{page-break-after:avoid}}
+  .page{width:9.5cm;height:5.5cm;overflow:hidden;display:block}
+  .label{width:9.5cm;height:5.5cm;padding:3mm 4mm;display:flex;flex-direction:column;gap:1.2mm;overflow:hidden}
+  .lh{display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #1a1a1a;padding-bottom:1.2mm}
+  .brand{font-size:8.5pt;font-weight:900;color:#1a1a1a;letter-spacing:.05em;text-transform:uppercase}
+  .swatch{width:10mm;height:5mm;border-radius:2px;border:1px solid #ccc;background-color:${ralHex};flex-shrink:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .row{display:flex;gap:6mm}
+  .f{display:flex;gap:2px;align-items:baseline}
+  .k{font-size:5.5pt;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;margin-right:2px}
+  .v{font-size:6.5pt;font-weight:500;color:#1a1a1a}
+  .remp-type{font-size:7pt!important;font-weight:700!important}
+  .div{border-top:1px dashed #ccc;margin:0;flex-shrink:0}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:.5mm 2mm;flex:1;min-height:0}
+  .cell{display:flex;flex-direction:column;gap:0mm}
+  .full{grid-column:1/-1}
+  .repere{font-size:12pt;font-weight:900;color:#1a1a1a;letter-spacing:-.02em;line-height:1}
+  .dim{font-size:9.5pt;font-weight:700;color:#1a1a1a;line-height:1.1}
+  .parent-ref{font-size:6pt;font-weight:600;color:#555;margin-top:1mm;line-height:1.2}
+</style></head><body>${allPages}<script>document.title=' ';window.onload=function(){window.focus();window.print();setTimeout(function(){window.close();},1000)};${closeScript}</body></html>`;
+                        const w = window.open('', '_blank');
+                        if (w) { w.document.write(html); w.document.close(); }
+                      }}
+                    >
+                      🏷 Étiquettes remplissages ({allRemp.length})
+                    </button>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -1431,7 +1661,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                       // Aggregate remplissage counts across all components for this unit
                       const allCompsRemp = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex !== null);
                       const allCompsCnt = allCompsRemp.length;
-                      const allCompsRdy = allCompsRemp.filter(r => r.etat === 'livre').length;
+                      const allCompsRdy = allCompsRemp.filter(r => REMP_DONE_ETATS.has(r.etat)).length;
                       return (
                         <tr key={rowKey} className="chassis-row chassis-row--group-head">
                           {adminThing && <td className="chassis-row__check" />}
@@ -1444,7 +1674,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                             {/* Summary badge for all components' remplissages */}
                             {allCompsCnt > 0
                               ? <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: allCompsRdy === allCompsCnt ? '#dcfce7' : '#fef9c3', color: allCompsRdy === allCompsCnt ? '#16a34a' : '#92400e', fontWeight: 600 }}>
-                                {allCompsRdy}/{allCompsCnt} {t('pret')}
+                                {allCompsRdy}/{allCompsCnt} prêt{allCompsCnt > 1 ? 's' : ''}
                               </span>
                               : <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>}
                           </td>
@@ -1566,6 +1796,8 @@ function ProjectDetail({ project, onBack, currentUser }) {
           unitIndex={remplissageEditor.unitIndex}
           compIndex={remplissageEditor.compIndex ?? null}
           project={project}
+          chassisLabels={chassisLabels}
+          language={language}
           onClose={() => setRemplissageEditor(null)}
           onSaved={() => { if (refreshProject) refreshProject(project.id); }}
         />
