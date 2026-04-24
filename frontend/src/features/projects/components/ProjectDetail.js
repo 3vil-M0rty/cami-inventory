@@ -1174,7 +1174,10 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                             </button>
                             : <span style={{ color: '#9ca3af' }}>—</span>}
                         </td>
-                        <td><button className="delete-btn" onClick={() => deleteRemp(id)} disabled={isSaving}>✕</button></td>
+                        {adminThing && 
+                          <td><button className="delete-btn" onClick={() => deleteRemp(id)} disabled={isSaving}>✕</button></td>
+                        }
+                  
                       </tr>
                     );
                   })}
