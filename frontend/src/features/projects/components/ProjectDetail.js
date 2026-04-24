@@ -101,7 +101,7 @@ function evalFormula(formula, L, H) {
     const safe = formula.replace(/[^0-9LH+\-*/().\s]/g, '');
     // eslint-disable-next-line no-new-func
     const result = new Function('L', 'H', `"use strict"; return (${safe});`)(L, H);
-    return typeof result === 'number' && isFinite(result) ? parseFloat(result.toFixed(4)) : null;
+    return typeof result === 'number' && isFinite(result) ? parseFloat(result.toFixed(2)) : null;
   } catch { return null; }
 }
 
@@ -531,7 +531,7 @@ function AccessoriesExportModal({ project, chassisLabels, language, t, onClose }
           }
         } catch { }
       }));
-      const rows = Object.entries(accMap).map(([, v]) => ({ 'Désignation accessoire': v.label, 'Unité': v.unit, 'Quantité totale': v.hasFormula ? `Formule: ${v.formula}` : parseFloat(v.total.toFixed(4)) }));
+      const rows = Object.entries(accMap).map(([, v]) => ({ 'Désignation accessoire': v.label, 'Unité': v.unit, 'Quantité totale': v.hasFormula ? `Formule: ${v.formula}` : parseFloat(v.total.toFixed(2)) }));
       if (rows.length === 0) { setError('Aucun accessoire configuré pour les types de châssis de ce projet.'); setLoading(false); return; }
       const ws = XLSX.utils.json_to_sheet(rows); ws['!cols'] = [{ wch: 40 }, { wch: 14 }, { wch: 18 }];
       const wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, ws, 'Accessoires');

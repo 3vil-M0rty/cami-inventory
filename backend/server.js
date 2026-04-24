@@ -1205,7 +1205,7 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
       return blMap[dateKey];
     };
 
-    const m2 = (l, h) => l && h ? parseFloat(((l * h) / 1e6).toFixed(4)) : null;
+    const m2 = (l, h) => l && h ? parseFloat(((l * h) / 1e6).toFixed(2)) : null;
 
     for (const chassis of project.chassis) {
       const isComposite = (chassis.components || []).length > 0;
@@ -1285,44 +1285,53 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
           }
 
         } else {
-          // Composite chassis — components
-          for (const cs of (unit.componentStates || [])) {
+          // Composite chassis — iterate every component definition (not just delivered ones)
+          // so that remplissages can appear in BL even when their parent component isn't yet delivered.
+          const numComps = chassis.components.length;
+          for (let ci = 0; ci < numComps; ci++) {
+            const comp = chassis.components[ci];
+            if (!comp) continue;
+            const cs = (unit.componentStates || []).find(c => c.compIndex === ci) || { compIndex: ci, etat: 'non_entame', deliveryDate: null };
+            const roleLabel = comp.role === 'dormant' ? 'Dormant' : `Vantail ${ci}`;
+            const compRepere = comp.repere || roleLabel;
+            const compDim = comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : (chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`);
+            const compM2 = comp.largeur && comp.hauteur ? m2(comp.largeur, comp.hauteur) : m2(chassis.largeur, chassis.hauteur);
+
+            // Emit the component itself when delivered
             if (cs.etat === 'livre' && cs.deliveryDate) {
-              const comp = chassis.components[cs.compIndex];
-              if (!comp) continue;
               const dateKey = new Date(cs.deliveryDate).toISOString().split('T')[0];
-              const roleLabel = comp.role === 'dormant' ? 'Dormant' : `Vantail ${cs.compIndex}`;
-              const compRepere = comp.repere || roleLabel;
-              const compDim = comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : (chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`);
-              const compM2 = comp.largeur && comp.hauteur ? m2(comp.largeur, comp.hauteur) : m2(chassis.largeur, chassis.hauteur);
               ensureBL(dateKey).units.push({
                 chassisId: chassis._id, chassisRepere: chassis.repere, chassisType: designation,
                 dimension: compDim, m2: compM2,
-                unitIndex: unit.unitIndex, compIndex: cs.compIndex,
+                unitIndex: unit.unitIndex, compIndex: ci,
                 unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${compRepere}`,
                 deliveryDate: cs.deliveryDate, notes: unit.notes || '', isComponent: true, role: roleLabel,
               });
+            }
 
-              // Remplissages for this specific component
-              const compRemplissages = remplissages.filter(r =>
-                (r.unitIndex ?? 0) === unit.unitIndex && r.compIndex === cs.compIndex
-              );
-              for (const r of compRemplissages) {
-                if (!r.deliveryDate || r.etat !== 'livre') continue;
-                const rDateKey = new Date(r.deliveryDate).toISOString().split('T')[0];
-                const already = blMap[rDateKey]?.units.some(u => u.remplissageId?.toString() === r._id.toString());
-                if (already) continue;
-                const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
-                ensureBL(rDateKey).units.push({
-                  chassisId: chassis._id, chassisRepere: chassis.repere,
-                  chassisType: `↳ Remplissage ${rLabel} (${compRepere})`,
-                  dimension: `${r.largeur}×${r.hauteur}`, m2: m2(r.largeur, r.hauteur),
-                  unitIndex: unit.unitIndex, compIndex: cs.compIndex,
-                  unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${compRepere} — ${rLabel}`,
-                  deliveryDate: r.deliveryDate, notes: '', isComponent: true, isRemplissage: true,
-                  remplissageId: r._id,
-                });
-              }
+            // Emit remplissages for this component independently of the component's own delivery state
+            const compRemplissages = remplissages.filter(r =>
+              (r.unitIndex ?? 0) === unit.unitIndex && r.compIndex === ci
+            );
+            for (const r of compRemplissages) {
+              if (!r.deliveryDate || r.etat !== 'livre') continue;
+              const rDateKey = new Date(r.deliveryDate).toISOString().split('T')[0];
+              const already = blMap[rDateKey]?.units.some(u => u.remplissageId?.toString() === r._id.toString());
+              if (already) continue;
+              const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+              // Note whether the parent component was NOT delivered on the same date
+              const parentDeliveredSameDate = cs.etat === 'livre' && cs.deliveryDate &&
+                new Date(cs.deliveryDate).toISOString().split('T')[0] === rDateKey;
+              const rNote = parentDeliveredSameDate ? '' : `sans cadre (${compRepere})`;
+              ensureBL(rDateKey).units.push({
+                chassisId: chassis._id, chassisRepere: chassis.repere,
+                chassisType: `↳ Remplissage ${rLabel} (${compRepere})`,
+                dimension: `${r.largeur}×${r.hauteur}`, m2: m2(r.largeur, r.hauteur),
+                unitIndex: unit.unitIndex, compIndex: ci,
+                unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${compRepere} — ${rLabel}`,
+                deliveryDate: r.deliveryDate, notes: rNote, isComponent: true, isRemplissage: true,
+                remplissageId: r._id,
+              });
             }
           }
         }
