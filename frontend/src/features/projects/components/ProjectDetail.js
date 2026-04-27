@@ -106,7 +106,6 @@ function evalFormula(formula, L, H) {
 }
 
 // ─── Remplissage badge helper ─────────────────────────────────────────────────
-// Returns { cnt, rdy } for a given unitIndex + optional compIndex
 const REMP_DONE_ETATS = new Set(['fabrique', 'pret_a_livrer', 'livre']);
 
 function getRemplissageCounts(chassis, unitIndex, compIndex = null) {
@@ -1021,7 +1020,6 @@ function buildChassisDetailHTML(ch, project, chassisLabels, language, accessorie
 }
 
 // ─── Remplissage Label Print ──────────────────────────────────────────────────
-// Uses the same 9.5cm × 5.5cm format as buildLabelHTML, one label per page.
 function buildRemplissageLabelHTML(remplissages, chassis, project, compLabel, typeLabel) {
   const ralHex = project.ralColor || '#cccccc';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
@@ -1029,11 +1027,9 @@ function buildRemplissageLabelHTML(remplissages, chassis, project, compLabel, ty
 
   const pages = remplissages.map(r => {
     const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
-    // repere line: e.g. "F1 — Dormant" or "F1"
     const repere = compLabel
       ? `${chassis.repere}${unitSuffix(r.unitIndex ?? 0)} — ${compLabel}`
       : `${chassis.repere}${unitSuffix(r.unitIndex ?? 0)}`;
-    // sub-line showing chassis type + remplissage type
     const parentLine = `<div class="parent-ref">${typeLabel}</div>`;
 
     return `<div class="page"><div class="label">
@@ -1124,6 +1120,7 @@ ${closeScript}
 
 const EMPTY_REMP = { type: 'Verre', sousType: '', largeur: '', hauteur: '', etat: 'non_entame' };
 
+// ─── Remplissage Modal ────────────────────────────────────────────────────────
 function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, onClose, onSaved, chassisLabels = {}, language = 'fr' }) {
   const chId = chassis._id || chassis.id;
   const [remplissages, setRemplissages] = React.useState([]);
@@ -1131,14 +1128,18 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
   const [saving, setSaving] = React.useState(null);
   const [newRemp, setNewRemp] = React.useState(EMPTY_REMP);
   const [error, setError] = React.useState('');
-  const { t } = useLanguage();
   const [delivDateModal, setDelivDateModal] = React.useState(null);
+
+  // ── NEW: inline edit state (admin only) ───────────────────────────────────
+  const [editingRemp, setEditingRemp] = React.useState(null);
+  // editingRemp shape: { id, type, sousType, largeur, hauteur }
+
+  const { t } = useLanguage();
   const { user } = useAuth();
   const userRole = user?.role;
   const adminThing = userRole === 'Admin';
   const stateThing = userRole === 'Admin' || ['LOGISTIQUE', 'Coordinateur'].includes(userRole);
 
-  // Remplissages don't have non_vitre state
   const REMP_ETAT_OPTIONS = ['non_entame', 'en_cours', 'fabrique', 'pret_a_livrer', 'livre'];
   function getRemplissageAllowedEtats(role, currentEtat) {
     if (role === 'Coordinateur') return ['non_entame', 'en_cours', 'fabrique', 'pret_a_livrer'];
@@ -1149,7 +1150,6 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
     return REMP_ETAT_OPTIONS;
   }
 
-  // Resolve component info for composite chassis
   const comp = compIndex !== null ? (chassis.components || [])[compIndex] : null;
   const compLabel = comp
     ? (comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${compIndex}`))
@@ -1205,6 +1205,21 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
     finally { setSaving(null); }
   };
 
+  // ── Save inline edit ───────────────────────────────────────────────────────
+  const saveEdit = async () => {
+    if (!editingRemp) return;
+    const { id, type, sousType, largeur, hauteur } = editingRemp;
+    if (!largeur || !hauteur) return setError('Largeur et hauteur sont requises');
+    setError('');
+    await patchRemp(id, {
+      type,
+      sousType,
+      largeur: Number(largeur),
+      hauteur: Number(hauteur),
+    });
+    setEditingRemp(null);
+  };
+
   const handleEtatChange = (r, newEtat) => {
     const id = r._id || r.id;
     if (newEtat === 'livre' && !r.deliveryDate) { setDelivDateModal({ id, etat: newEtat }); return; }
@@ -1249,28 +1264,96 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
               <table className="proj-acc-table" style={{ marginBottom: 20 }}>
                 <thead>
                   <tr>
-                    <th>{t('type')}</th><th>{t('subtype')}</th>
-                    <th style={{ width: 80 }}>L (mm)</th><th style={{ width: 80 }}>H (mm)</th>
-                    <th style={{ width: 90 }}>m²</th><th style={{ width: 120 }}>{t('status')}</th>
-                    <th style={{ width: 120 }}>{t('blDate')}</th><th style={{ width: 40 }}></th><th style={{ width: 40 }}></th>
+                    <th>{t('type')}</th>
+                    <th>{t('subtype')}</th>
+                    <th style={{ width: 80 }}>L (mm)</th>
+                    <th style={{ width: 80 }}>H (mm)</th>
+                    <th style={{ width: 90 }}>m²</th>
+                    <th style={{ width: 120 }}>{t('status')}</th>
+                    <th style={{ width: 120 }}>{t('blDate')}</th>
+                    {/* Edit / Print / Delete columns — admin only */}
+                    {adminThing && <th style={{ width: 40 }}></th>}
+                    {adminThing && <th style={{ width: 40 }}></th>}
+                    {adminThing && <th style={{ width: 40 }}></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {remplissages.map(r => {
                     const id = r._id || r.id;
                     const isSaving = saving === id;
+                    const isEditing = editingRemp?.id === id;
+
                     return (
-                      <tr key={id} style={{ opacity: isSaving ? 0.6 : 1 }}>
-                        <td><strong>{r.type}</strong></td>
-                        <td>{r.sousType || <span style={{ color: '#9ca3af' }}>—</span>}</td>
-                        <td style={{ textAlign: 'center' }}>{r.largeur}</td>
-                        <td style={{ textAlign: 'center' }}>{r.hauteur}</td>
-                        <td style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>{calcM2(r.largeur, r.hauteur)}</td>
+                      <tr key={id} style={{ opacity: isSaving ? 0.6 : 1, background: isEditing ? '#f0f9ff' : undefined }}>
+
+                        {/* Type cell — editable when isEditing */}
+                        <td>
+                          {isEditing ? (
+                            <select
+                              value={editingRemp.type}
+                              onChange={e => setEditingRemp(p => ({ ...p, type: e.target.value }))}
+                              style={{ width: '100%' }}
+                            >
+                              {REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}
+                            </select>
+                          ) : <strong>{r.type}</strong>}
+                        </td>
+
+                        {/* Sous-type cell — editable when isEditing */}
+                        <td>
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editingRemp.sousType}
+                              onChange={e => setEditingRemp(p => ({ ...p, sousType: e.target.value }))}
+                              placeholder="Sous-type…"
+                              style={{ width: '100%' }}
+                            />
+                          ) : (r.sousType || <span style={{ color: '#9ca3af' }}>—</span>)}
+                        </td>
+
+                        {/* Largeur — editable when isEditing */}
+                        <td style={{ textAlign: 'center' }}>
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              min="1"
+                              value={editingRemp.largeur}
+                              onChange={e => setEditingRemp(p => ({ ...p, largeur: e.target.value }))}
+                              className="ct-acc-qty-input"
+                              style={{ width: 70 }}
+                            />
+                          ) : r.largeur}
+                        </td>
+
+                        {/* Hauteur — editable when isEditing */}
+                        <td style={{ textAlign: 'center' }}>
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              min="1"
+                              value={editingRemp.hauteur}
+                              onChange={e => setEditingRemp(p => ({ ...p, hauteur: e.target.value }))}
+                              className="ct-acc-qty-input"
+                              style={{ width: 70 }}
+                            />
+                          ) : r.hauteur}
+                        </td>
+
+                        {/* m² — live preview while editing */}
+                        <td style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>
+                          {calcM2(
+                            isEditing ? editingRemp.largeur : r.largeur,
+                            isEditing ? editingRemp.hauteur : r.hauteur,
+                          )}
+                        </td>
+
+                        {/* État selector */}
                         <td>
                           {stateThing ? (
                             <select
                               value={r.etat}
-                              disabled={isSaving || isEtatSelectDisabled(userRole, r.etat, isSaving)}
+                              disabled={isSaving || isEditing || isEtatSelectDisabled(userRole, r.etat, isSaving)}
                               onChange={e => handleEtatChange(r, e.target.value)}
                               style={{ borderLeft: `3px solid ${ETAT_COLORS[r.etat]}`, borderRadius: 4, padding: '3px 6px', fontSize: 12, width: '100%' }}
                             >
@@ -1284,6 +1367,8 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                             </span>
                           )}
                         </td>
+
+                        {/* Delivery date */}
                         <td style={{ textAlign: 'center', fontSize: 12 }}>
                           {r.etat === 'livre' && r.deliveryDate
                             ? <button className="date-btn" style={{ fontSize: 11 }} onClick={() => setDelivDateModal({ id, etat: 'livre', current: toDateInput(r.deliveryDate) })}>
@@ -1291,25 +1376,79 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                             </button>
                             : <span style={{ color: '#9ca3af' }}>—</span>}
                         </td>
+
+                        {/* ── Edit button (admin only) ── */}
                         {adminThing && (
                           <td>
-                          <button
-                            className="print-btn"
-                            title="Imprimer étiquette"
-                            onClick={() => {
-                              const tl = chassisLabels[chassis.type]?.[language] || chassisLabels[chassis.type]?.fr || chassis.type;
-                              const html = buildRemplissageLabelHTML([r], chassis, project, compLabel, tl);
-                              const w = window.open('', '_blank');
-                              if (w) { w.document.write(html); w.document.close(); }
-                            }}
-                          >🏷</button>
-                        </td>
-                        
+                            {isEditing ? (
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button
+                                  className="ct-config-btn"
+                                  title="Enregistrer"
+                                  style={{ fontSize: 11, padding: '2px 7px' }}
+                                  onClick={saveEdit}
+                                  disabled={isSaving}
+                                >
+                                  💾
+                                </button>
+                                <button
+                                  className="delete-btn"
+                                  title="Annuler"
+                                  style={{ fontSize: 11, padding: '2px 7px' }}
+                                  onClick={() => setEditingRemp(null)}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                className="edit-btn"
+                                title="Modifier"
+                                disabled={isSaving}
+                                onClick={() =>
+                                  setEditingRemp({
+                                    id,
+                                    type: r.type,
+                                    sousType: r.sousType || '',
+                                    largeur: r.largeur,
+                                    hauteur: r.hauteur,
+                                  })
+                                }
+                              >
+                                ✏️
+                              </button>
+                            )}
+                          </td>
                         )}
+
+                        {/* ── Print label button (admin only) ── */}
                         {adminThing && (
-                          <td><button className="delete-btn" onClick={() => deleteRemp(id)} disabled={isSaving}>✕</button></td>
+                          <td>
+                            <button
+                              className="print-btn"
+                              title="Imprimer étiquette"
+                              disabled={isEditing}
+                              onClick={() => {
+                                const tl = chassisLabels[chassis.type]?.[language] || chassisLabels[chassis.type]?.fr || chassis.type;
+                                const html = buildRemplissageLabelHTML([r], chassis, project, compLabel, tl);
+                                const w = window.open('', '_blank');
+                                if (w) { w.document.write(html); w.document.close(); }
+                              }}
+                            >🏷</button>
+                          </td>
                         )}
-                        
+
+                        {/* ── Delete button (admin only) ── */}
+                        {adminThing && (
+                          <td>
+                            <button
+                              className="delete-btn"
+                              onClick={() => deleteRemp(id)}
+                              disabled={isSaving || isEditing}
+                            >✕</button>
+                          </td>
+                        )}
+
                       </tr>
                     );
                   })}
@@ -1318,60 +1457,43 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
             ) : (
               <div className="proj-acc-empty" style={{ marginBottom: 20 }}>{t('noData')}</div>
             )}
-            {adminThing &&
-              (
-                <div className="proj-acc-add-form">
-                  <div className="proj-acc-add-form__title">➕ {t('add_infill')}</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 80px auto', gap: 10, alignItems: 'flex-end' }}>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label>{t('type')}</label>
-                      <select value={newRemp.type} onChange={e => setNewRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>
-                        {REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}
-                      </select>
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label>{t('subtype')}</label>
-                      <input type="text" value={newRemp.sousType} onChange={e => setNewRemp(p => ({ ...p, sousType: e.target.value }))} placeholder={t('subtype_placeholder')} style={{ width: '100%' }} />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label>{t('width_mm')}</label>
-                      <input type="number" min="1" value={newRemp.largeur} onChange={e => setNewRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label>{t('height_mm')}</label>
-                      <input type="number" min="1" value={newRemp.hauteur} onChange={e => setNewRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" />
-                    </div>
-                    <div>
-                      <button type="button" className="ct-config-btn" style={{ marginTop: 22 }} onClick={addRemp}>{t('add')}</button>
-                    </div>
-                  </div>
-                  {newRemp.largeur && newRemp.hauteur && (
-                    <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
-                      {t('surface')} <strong>{calcM2(newRemp.largeur, newRemp.hauteur)}</strong>
-                    </div>
-                  )}
-                </div>
 
-              )
-            }
-           {/*  <div className="modal-actions" style={{ marginTop: 16 }}>
-              {remplissages.length > 0 && (
-                <button
-                  style={{ background: '#374151', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  onClick={() => {
-                    const tl = chassisLabels[chassis.type]?.[language] || chassisLabels[chassis.type]?.fr || chassis.type;
-                    const html = buildRemplissageLabelHTML(remplissages, chassis, project, compLabel, tl);
-                    const w = window.open('', '_blank');
-                    if (w) { w.document.write(html); w.document.close(); }
-                  }}
-                >
-                  🏷 Imprimer toutes les étiquettes ({remplissages.length})
-                </button>
-              )}
-              <button onClick={() => { onSaved && onSaved(); onClose(); }}>Fermer</button>
-            </div> */}
+            {adminThing && (
+              <div className="proj-acc-add-form">
+                <div className="proj-acc-add-form__title">➕ {t('add_infill')}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 80px auto', gap: 10, alignItems: 'flex-end' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>{t('type')}</label>
+                    <select value={newRemp.type} onChange={e => setNewRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>
+                      {REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>{t('subtype')}</label>
+                    <input type="text" value={newRemp.sousType} onChange={e => setNewRemp(p => ({ ...p, sousType: e.target.value }))} placeholder={t('subtype_placeholder')} style={{ width: '100%' }} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>{t('width_mm')}</label>
+                    <input type="number" min="1" value={newRemp.largeur} onChange={e => setNewRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>{t('height_mm')}</label>
+                    <input type="number" min="1" value={newRemp.hauteur} onChange={e => setNewRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" />
+                  </div>
+                  <div>
+                    <button type="button" className="ct-config-btn" style={{ marginTop: 22 }} onClick={addRemp}>{t('add')}</button>
+                  </div>
+                </div>
+                {newRemp.largeur && newRemp.hauteur && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+                    {t('surface')} <strong>{calcM2(newRemp.largeur, newRemp.hauteur)}</strong>
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
+
         {delivDateModal && (
           <div className="modal-overlay" onClick={() => setDelivDateModal(null)}>
             <div className="modal" style={{ maxWidth: 320 }} onClick={e => e.stopPropagation()}>
@@ -1567,14 +1689,12 @@ function ProjectDetail({ project, onBack, currentUser }) {
                       className="print-selected-btn"
                       style={{ background: '#6366f1' }}
                       onClick={() => {
-                        // Build one label per remplissage, grouped by chassis
                         const byChassisId = {};
                         allRemp.forEach(({ r, ch, numComps }) => {
                           const cid = (ch._id || ch.id).toString();
                           if (!byChassisId[cid]) byChassisId[cid] = { ch, numComps, remps: [] };
                           byChassisId[cid].remps.push(r);
                         });
-                        // Collect all pages HTML: reuse buildRemplissageLabelHTML per chassis group
                         const ralHex = project.ralColor || '#cccccc';
                         const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
                         const unitSuffix = (ch, idx) => (ch.quantity || 1) > 1 ? ` #${Number(idx) + 1}` : '';
@@ -1654,11 +1774,9 @@ function ProjectDetail({ project, onBack, currentUser }) {
                 </thead>
                 <tbody>
                   {rows.map(row => {
-                    // ── groupHead (composite chassis header row) ──────────────
                     if (row.kind === 'groupHead') {
                       const { ch, chId, unitIndex, label, derivedEtat } = row; const rowKey = row.rowKey;
                       const chM2 = ch.largeur && ch.hauteur ? ((ch.largeur * ch.hauteur) / 1e6).toFixed(2) : '—';
-                      // Aggregate remplissage counts across all components for this unit
                       const allCompsRemp = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex !== null);
                       const allCompsCnt = allCompsRemp.length;
                       const allCompsRdy = allCompsRemp.filter(r => REMP_DONE_ETATS.has(r.etat)).length;
@@ -1671,7 +1789,6 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
                           <td style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{chM2} m²</td>
                           <td>
-                            {/* Summary badge for all components' remplissages */}
                             {allCompsCnt > 0
                               ? <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: allCompsRdy === allCompsCnt ? '#dcfce7' : '#fef9c3', color: allCompsRdy === allCompsCnt ? '#16a34a' : '#92400e', fontWeight: 600 }}>
                                 {allCompsRdy}/{allCompsCnt} prêt{allCompsCnt > 1 ? 's' : ''}
@@ -1697,7 +1814,6 @@ function ProjectDetail({ project, onBack, currentUser }) {
                       );
                     }
 
-                    // ── component row ─────────────────────────────────────────
                     if (row.kind === 'component') {
                       const { ch, unitIndex, comp, ci, rowKey, label, etat } = row;
                       const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey);
@@ -1710,7 +1826,6 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           <td>{comp.largeur || '—'}</td><td>{comp.hauteur || '—'}</td>
                           <td className="dim-cell">{comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}</td>
                           <td style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{compM2 !== '—' ? compM2 + ' m²' : '—'}</td>
-                          {/* Remplissage badge for this specific component */}
                           <td>
                             <RemplissageBadge
                               chassis={ch}
