@@ -204,11 +204,14 @@ const translations = {
     add: "+ Ajouter",
     surface: "Surface :",
     pret:'Prêt',
+    mvOrderReception: 'Réception commande',
+    navChantiers: 'Chantiers',
   },
   it: {
 
     add_infill: "Aggiungi tamponamento",
     type: "Tipo *",
+    mvOrderReception: "Ricevuta dell'ordine",
     blHistory: 'BLs',
     subtype: "Sotto-tipo",
     subtype_placeholder: "es: stratificato 8mm…",
@@ -402,7 +405,7 @@ const translations = {
     etat: 'stato',
     remplissage: 'Tamponamento',
     gereR: 'Gestire il tamponamento',
-
+    navChantiers: 'Cantieri',
 
 
   },
@@ -414,6 +417,7 @@ const translations = {
     navAnalytics: 'Dashboard', navAdmin: 'Admin',
     etat_pret_a_livrer: 'Ready to deliver',
     searchInventory: "Search in stock",
+    navChantiers: 'Sites',
     unitNotes: 'Notes',
     dimension: 'Dimensions',
     blHistory: 'BLs',
@@ -421,6 +425,7 @@ const translations = {
     status_pret_a_livrer: 'Ready to deliver',
     status_non_vitre: 'Ready without glazing',
     Demandesadmin: 'Admin requests',
+    mvOrderReception: "Order recepetion",
     connectez: 'Log in', utilisateur: 'Username', mdp: 'Password',
     login_loading: 'Logging in...', login_button: 'Sign in',
     mdpoubliécontactezadmin: 'Forgot password? Contact the administrator',

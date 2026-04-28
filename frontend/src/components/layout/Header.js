@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import {
   Package, ShoppingCart, HardHat, Users, FileText,
   BarChart2, TrendingUp, Settings, Factory,
-  Lock, LogOut, ChevronDown, Menu, X, Building2
+  Lock, LogOut, ChevronDown, Menu, X, Building2, Shovel
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
@@ -13,15 +13,16 @@ import ChangePasswordModal from '../../features/admin/ChangePasswordModal';
 import './Header.css';
 
 const NAV_ICONS = {
-  inventory:     <Package     size={14} strokeWidth={2} />,
+  inventory:     <Package      size={14} strokeWidth={2} />,
   orders:        <ShoppingCart size={14} strokeWidth={2} />,
-  projects:      <HardHat     size={14} strokeWidth={2} />,
-  clients:       <Users       size={14} strokeWidth={2} />,
-  devis:         <FileText    size={14} strokeWidth={2} />,
-  movements:     <BarChart2   size={14} strokeWidth={2} />,
-  analytics:     <TrendingUp  size={14} strokeWidth={2} />,
-  admin:         <Settings    size={14} strokeWidth={2} />,
-  ateliertables: <Factory     size={14} strokeWidth={2} />,
+  projects:      <HardHat      size={14} strokeWidth={2} />,
+  chantiers:     <Shovel       size={14} strokeWidth={2} />,
+  clients:       <Users        size={14} strokeWidth={2} />,
+  devis:         <FileText     size={14} strokeWidth={2} />,
+  movements:     <BarChart2    size={14} strokeWidth={2} />,
+  analytics:     <TrendingUp   size={14} strokeWidth={2} />,
+  admin:         <Settings     size={14} strokeWidth={2} />,
+  ateliertables: <Factory      size={14} strokeWidth={2} />,
 };
 
 const Header = ({ activePage, onNavigate }) => {
@@ -39,6 +40,7 @@ const Header = ({ activePage, onNavigate }) => {
     { key: 'inventory',     label: t('navInventory'),     perm: 'inventory.view'    },
     { key: 'orders',        label: t('navOrders'),        perm: 'orders.view'       },
     { key: 'projects',      label: t('navProjects'),      perm: 'projects.view'     },
+    { key: 'chantiers',     label: t('navChantiers') || 'Chantiers', perm: 'chantiers.view' },
     { key: 'clients',       label: t('navClients'),       perm: 'clients.view'      },
     { key: 'devis',         label: t('navDevis'),         perm: 'devis.view'        },
     { key: 'movements',     label: t('navMovements'),     perm: 'movements.view'    },

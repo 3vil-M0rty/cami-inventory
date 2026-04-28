@@ -65,7 +65,8 @@ const ALL_PERMISSIONS = [
   'movements.view',
   'analytics.view',
   'admin.view',
-  'ateliertables.view'
+  'ateliertables.view',
+  'chantiers.view', 'chantiers.edit', 'chantiers.delete',
 ];
 
 const roleSchema = new mongoose.Schema({
@@ -281,6 +282,62 @@ const projectSchema = new mongoose.Schema({
 });
 const Project = mongoose.model('Project', projectSchema);
 
+// ==================== CHANTIER SCHEMAS ====================
+
+const chantierStateSchema = new mongoose.Schema({
+  key:       { type: String, required: true, unique: true, trim: true },
+  label:     { type: String, required: true, trim: true },
+  color:     { type: String, default: '#6b7280' },
+  order:     { type: Number, default: 0 },
+  isDefault: { type: Boolean, default: false },
+}, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
+const ChantierState = mongoose.model('ChantierState', chantierStateSchema);
+
+const teamSchema = new mongoose.Schema({
+  name:        { type: String, required: true, trim: true },
+  color:       { type: String, default: '#3b82f6' },
+  description: { type: String, default: '' },
+  stock: [{
+    itemId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
+    quantity: { type: Number, default: 0, min: 0 },
+  }],
+}, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
+const Team = mongoose.model('Team', teamSchema);
+
+const teamStockMovementSchema = new mongoose.Schema({
+  teamId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
+  itemId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
+  type:         { type: String, enum: ['entree', 'sortie', 'chantier_use', 'chantier_return'], required: true },
+  quantity:     { type: Number, required: true },
+  balanceAfter: { type: Number, required: true },
+  note:         { type: String, default: '' },
+  chantierId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Chantier', default: null },
+  chantierName: { type: String, default: '' },
+}, { timestamps: true });
+const TeamStockMovement = mongoose.model('TeamStockMovement', teamStockMovementSchema);
+
+const chantierUnitSchema = new mongoose.Schema({
+  chassisId: { type: String, required: true },
+  unitIndex: { type: Number, required: true },
+  stateKey:  { type: String, required: true },
+  notes:     { type: String, default: '' },
+  updatedAt: { type: Date, default: Date.now },
+}, { _id: true });
+
+const chantierSchema = new mongoose.Schema({
+  name:        { type: String, required: true, trim: true },
+  reference:   { type: String, required: true, trim: true },
+  teamId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
+  projectIds:  [{ type: mongoose.Schema.Types.ObjectId, ref: 'Project' }],
+  dateDebut:   { type: Date, default: null },
+  dateCloture: { type: Date, default: null },
+  status:      { type: String, enum: ['planifie', 'en_cours', 'suspendu', 'cloture'], default: 'planifie' },
+  notes:       { type: String, default: '' },
+  unitStates:  [chantierUnitSchema],
+}, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
+const Chantier = mongoose.model('Chantier', chantierSchema);
+
+
 // ==================== BL METADATA ====================
 
 const blMetadataSchema = new mongoose.Schema({
@@ -421,6 +478,13 @@ async function createDefaultAdminUser() {
   if (!adminRole) {
     adminRole = await Role.create({ name: 'Admin', permissions: ALL_PERMISSIONS, color: '#1a1a1a', isSystem: true });
     console.log('✅ Admin role created');
+  } else {
+    const missing = ALL_PERMISSIONS.filter(p => !adminRole.permissions.includes(p));
+    if (missing.length > 0) {
+      adminRole.permissions = ALL_PERMISSIONS;
+      await adminRole.save();
+      console.log('✅ Admin role synced, added:', missing.join(', '));
+    }
   }
   const existing = await User.findOne({ username: 'admin' });
   if (!existing) {
@@ -481,6 +545,22 @@ async function initSampleData() {
       { image: 'https://images.unsplash.com/photo-1565793298595-6a879b1d9492?w=400', designation: { it: 'Barra Alluminio 2024 - 40x20mm', fr: 'Barre Aluminium 2024 - 40x20mm', en: 'Aluminum Bar 2024 - 40x20mm' }, quantity: 12, orderedQuantity: 20, threshold: 30, superCategory: 'aluminium' },
     ]);
     console.log('✅ Sample inventory seeded');
+  }
+
+  await seedChantierStates();
+}
+
+async function seedChantierStates() {
+  const count = await ChantierState.countDocuments();
+  if (count === 0) {
+    await ChantierState.insertMany([
+      { key: 'non_pose',         label: 'Non posé',              color: '#9ca3af', order: 1, isDefault: true },
+      { key: 'en_cours_de_pose', label: 'En cours de pose',      color: '#f59e0b', order: 2 },
+      { key: 'pose',             label: 'Posé',                  color: '#22c55e', order: 3 },
+      { key: 'retourne_atelier', label: "Retourné à l'atelier",  color: '#ef4444', order: 4 },
+      { key: 'pose_partiel',     label: 'Posé partiellement',    color: '#a855f7', order: 5 },
+    ]);
+    console.log('✅ Default chantier states seeded');
   }
 }
 
@@ -774,6 +854,9 @@ app.get('/api/permissions', requireAuth, requirePermission('admin.view'), async 
     { key: 'movements.view', label: 'Mouvements — Voir', group: 'Mouvements' },
     { key: 'analytics.view', label: 'Analytics — Voir', group: 'Analytics' },
     { key: 'admin.view', label: 'Administration — Accès total', group: 'Administration' },
+    { key: 'chantiers.view',   label: 'Chantiers — Voir',           group: 'Chantiers' },
+    { key: 'chantiers.edit',   label: 'Chantiers — Créer/Modifier', group: 'Chantiers' },
+    { key: 'chantiers.delete', label: 'Chantiers — Supprimer',      group: 'Chantiers' },
   ]);
 });
 
@@ -2105,6 +2188,218 @@ app.delete('/api/laquage/history-all', requireAuth, requirePermission('admin.vie
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+
+// ==================== CHANTIER STATE ROUTES ====================
+
+app.get('/api/chantier-states', requireAuth, async (req, res) => {
+  try { res.json(await ChantierState.find().sort({ order: 1, createdAt: 1 })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/chantier-states', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const { key, label, color, order, isDefault } = req.body;
+    if (!key || !label) return res.status(400).json({ error: 'key et label requis' });
+    if (isDefault) await ChantierState.updateMany({}, { isDefault: false });
+    const s = await ChantierState.create({ key: key.toLowerCase().replace(/\s+/g, '_'), label, color: color || '#6b7280', order: order || 0, isDefault: !!isDefault });
+    res.status(201).json(s);
+  } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ error: e.message }); }
+});
+app.put('/api/chantier-states/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const { label, color, order, isDefault } = req.body;
+    if (isDefault) await ChantierState.updateMany({ _id: { $ne: req.params.id } }, { isDefault: false });
+    const s = await ChantierState.findByIdAndUpdate(req.params.id, { label, color, order, isDefault: !!isDefault }, { new: true, runValidators: true });
+    if (!s) return res.status(404).json({ error: 'Not found' });
+    res.json(s);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/chantier-states/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const s = await ChantierState.findByIdAndDelete(req.params.id);
+    if (!s) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==================== TEAM ROUTES ====================
+
+app.get('/api/teams', requireAuth, async (req, res) => {
+  try { res.json(await Team.find().populate('stock.itemId').sort({ createdAt: 1 })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/teams/:id', requireAuth, async (req, res) => {
+  try {
+    const t = await Team.findById(req.params.id).populate('stock.itemId');
+    if (!t) return res.status(404).json({ error: 'Not found' });
+    res.json(t);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/teams', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const { name, color, description } = req.body;
+    if (!name) return res.status(400).json({ error: 'name requis' });
+    const t = await Team.create({ name, color: color || '#3b82f6', description: description || '', stock: [] });
+    res.status(201).json(t);
+  } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ error: e.message }); }
+});
+app.put('/api/teams/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const { name, color, description } = req.body;
+    const t = await Team.findByIdAndUpdate(req.params.id, { name, color, description }, { new: true, runValidators: true }).populate('stock.itemId');
+    if (!t) return res.status(404).json({ error: 'Not found' });
+    res.json(t);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/teams/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const assigned = await Chantier.countDocuments({ teamId: req.params.id });
+    if (assigned > 0) return res.status(400).json({ error: `Cette équipe est assignée à ${assigned} chantier(s). Désassignez-la d'abord.` });
+    await Team.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/teams/:id/stock/allocate', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const { itemId, quantity } = req.body;
+    const qty = Number(quantity);
+    if (!itemId || !qty || qty <= 0) return res.status(400).json({ error: 'itemId et quantity > 0 requis' });
+    const item = await Item.findById(itemId);
+    if (!item) return res.status(404).json({ error: 'Article introuvable' });
+    if (item.quantity < qty) return res.status(400).json({ error: `Stock insuffisant: disponible ${item.quantity}` });
+    item.quantity -= qty;
+    await item.save();
+    await StockMovement.create({ itemId: item._id, type: 'sortie', quantity: qty, balanceAfter: item.quantity, note: 'Allocation équipe' });
+    const team = await Team.findById(req.params.id);
+    if (!team) return res.status(404).json({ error: 'Équipe introuvable' });
+    const existing = team.stock.find(s => s.itemId.toString() === itemId);
+    if (existing) existing.quantity += qty;
+    else team.stock.push({ itemId, quantity: qty });
+    await team.save();
+    await TeamStockMovement.create({ teamId: team._id, itemId, type: 'entree', quantity: qty, balanceAfter: existing ? existing.quantity : qty, note: 'Allocation depuis inventaire principal' });
+    await team.populate('stock.itemId');
+    res.json(team);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/teams/:id/stock/consume', requireAuth, async (req, res) => {
+  try {
+    const { itemId, quantity, chantierId, note } = req.body;
+    const qty = Number(quantity);
+    if (!itemId || !qty || qty <= 0) return res.status(400).json({ error: 'itemId et quantity > 0 requis' });
+    const team = await Team.findById(req.params.id);
+    if (!team) return res.status(404).json({ error: 'Équipe introuvable' });
+    const stockEntry = team.stock.find(s => s.itemId.toString() === itemId);
+    if (!stockEntry || stockEntry.quantity < qty) return res.status(400).json({ error: `Stock équipe insuffisant: disponible ${stockEntry?.quantity || 0}` });
+    stockEntry.quantity -= qty;
+    await team.save();
+    let chantierName = '';
+    if (chantierId) { const ch = await Chantier.findById(chantierId); chantierName = ch?.name || ''; }
+    await TeamStockMovement.create({ teamId: team._id, itemId, type: 'chantier_use', quantity: qty, balanceAfter: stockEntry.quantity, chantierId: chantierId || null, chantierName, note: note || '' });
+    await team.populate('stock.itemId');
+    res.json(team);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/teams/:id/stock/return', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const { itemId, quantity } = req.body;
+    const qty = Number(quantity);
+    if (!itemId || !qty || qty <= 0) return res.status(400).json({ error: 'itemId et quantity > 0 requis' });
+    const team = await Team.findById(req.params.id);
+    if (!team) return res.status(404).json({ error: 'Équipe introuvable' });
+    const stockEntry = team.stock.find(s => s.itemId.toString() === itemId);
+    if (!stockEntry || stockEntry.quantity < qty) return res.status(400).json({ error: 'Quantité insuffisante dans le stock équipe' });
+    stockEntry.quantity -= qty;
+    await team.save();
+    const item = await Item.findById(itemId);
+    if (item) { item.quantity += qty; await item.save(); await StockMovement.create({ itemId: item._id, type: 'entree', quantity: qty, balanceAfter: item.quantity, note: `Retour stock équipe ${team.name}` }); }
+    await TeamStockMovement.create({ teamId: team._id, itemId, type: 'chantier_return', quantity: qty, balanceAfter: stockEntry.quantity, note: 'Retour vers inventaire principal' });
+    await team.populate('stock.itemId');
+    res.json(team);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/teams/:id/stock/movements', requireAuth, async (req, res) => {
+  try {
+    const movements = await TeamStockMovement.find({ teamId: req.params.id })
+      .populate('itemId').populate('chantierId').sort({ createdAt: -1 }).limit(200);
+    res.json(movements);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==================== CHANTIER ROUTES ====================
+
+app.get('/api/chantiers', requireAuth, requirePermission('chantiers.view'), async (req, res) => {
+  try {
+    const chantiers = await Chantier.find()
+      .populate('teamId')
+      .populate({ path: 'projectIds', populate: [{ path: 'companyId' }, { path: 'clientId' }] })
+      .sort({ createdAt: -1 });
+    res.json(chantiers.map(c => c.toJSON()));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/chantiers/:id', requireAuth, requirePermission('chantiers.view'), async (req, res) => {
+  try {
+    const c = await Chantier.findById(req.params.id)
+      .populate('teamId')
+      .populate({ path: 'projectIds', populate: [{ path: 'companyId' }, { path: 'clientId' }, { path: 'usedBars.itemId' }] });
+    if (!c) return res.status(404).json({ error: 'Not found' });
+    res.json(c.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/chantiers', requireAuth, requirePermission('chantiers.edit'), async (req, res) => {
+  try {
+    const { name, reference, teamId, projectIds, dateDebut, dateCloture, status, notes } = req.body;
+    if (!name || !reference) return res.status(400).json({ error: 'name et reference requis' });
+    const c = await Chantier.create({ name, reference, teamId: teamId || null, projectIds: projectIds || [], dateDebut: dateDebut || null, dateCloture: dateCloture || null, status: status || 'planifie', notes: notes || '' });
+    await c.populate('teamId');
+    await c.populate({ path: 'projectIds', populate: [{ path: 'companyId' }, { path: 'clientId' }] });
+    res.status(201).json(c.toJSON());
+  } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
+});
+app.put('/api/chantiers/:id', requireAuth, requirePermission('chantiers.edit'), async (req, res) => {
+  try {
+    const { name, reference, teamId, projectIds, dateDebut, dateCloture, status, notes } = req.body;
+    const c = await Chantier.findByIdAndUpdate(req.params.id,
+      { name, reference, teamId: teamId || null, projectIds: projectIds || [], dateDebut: dateDebut || null, dateCloture: dateCloture || null, status: status || 'planifie', notes: notes || '' },
+      { new: true, runValidators: true }
+    ).populate('teamId').populate({ path: 'projectIds', populate: [{ path: 'companyId' }, { path: 'clientId' }] });
+    if (!c) return res.status(404).json({ error: 'Not found' });
+    res.json(c.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.patch('/api/chantiers/:id/projects', requireAuth, requirePermission('chantiers.edit'), async (req, res) => {
+  try {
+    const { projectIds } = req.body;
+    if (!Array.isArray(projectIds)) return res.status(400).json({ error: 'projectIds doit être un tableau' });
+    const c = await Chantier.findByIdAndUpdate(req.params.id, { projectIds }, { new: true })
+      .populate('teamId')
+      .populate({ path: 'projectIds', populate: [{ path: 'companyId' }, { path: 'clientId' }] });
+    if (!c) return res.status(404).json({ error: 'Not found' });
+    res.json(c.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.patch('/api/chantiers/:id/unit-state', requireAuth, requirePermission('chantiers.edit'), async (req, res) => {
+  try {
+    const { chassisId, unitIndex, stateKey, notes } = req.body;
+    if (!chassisId || unitIndex === undefined || !stateKey) return res.status(400).json({ error: 'chassisId, unitIndex et stateKey requis' });
+    const stateExists = await ChantierState.findOne({ key: stateKey });
+    if (!stateExists) return res.status(400).json({ error: `État inconnu: ${stateKey}` });
+    const chantier = await Chantier.findById(req.params.id);
+    if (!chantier) return res.status(404).json({ error: 'Chantier not found' });
+    const existing = chantier.unitStates.find(u => u.chassisId === chassisId && u.unitIndex === unitIndex);
+    if (existing) { existing.stateKey = stateKey; existing.notes = notes || existing.notes; existing.updatedAt = new Date(); }
+    else { chantier.unitStates.push({ chassisId, unitIndex, stateKey, notes: notes || '', updatedAt: new Date() }); }
+    await chantier.save();
+    res.json({ success: true, unitStates: chantier.unitStates });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/chantiers/:id', requireAuth, requirePermission('chantiers.delete'), async (req, res) => {
+  try {
+    const c = await Chantier.findByIdAndDelete(req.params.id);
+    if (!c) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // ==================== ERROR HANDLERS ====================
 app.use((req, res) => res.status(404).json({ error: 'Not Found', path: req.path }));

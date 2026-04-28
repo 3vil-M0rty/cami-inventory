@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { useLanguage } from '../../context/LanguageContext';
 import './MovementsPage.css';
+import { PackageOpen, ChartNetwork } from 'lucide-react';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -338,11 +339,11 @@ export default function MovementsPage() {
               >
                 {showGraph ? '✕ Masquer graphique' : '📈 Graphique'}
               </button>
-              {hiddenCount > 0 && (
+              {/* {hiddenCount > 0 && (
                 <button className="mv-refresh-btn" onClick={restoreAll} style={{ background: '#6b7280' }}>
                   ↩ Restaurer ({hiddenCount})
                 </button>
-              )}
+              )} */}
               <button className="mv-refresh-btn" onClick={load}>↻ {t('refresh') || 'Actualiser'}</button>
             </>
           )}
@@ -353,10 +354,10 @@ export default function MovementsPage() {
       </div>
 
       {/* Main tab switcher */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '2px solid #e5e7eb', paddingBottom: 0 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '2px solid #e5e7eb', paddingBottom: 0, backgroundColor: '#222' }}>
         {[
-          { key: 'inventory', label: '📦 Inventaire' },
-          { key: 'tables', label: '🏭 Mouvements Atelier' },
+          { key: 'inventory', label: 'Inventaire' },
+          { key: 'tables', label: 'Mouvements Atelier' },
         ].map(tab => (
           <button
             key={tab.key}

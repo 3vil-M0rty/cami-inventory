@@ -14,6 +14,7 @@ import OrdersPage from './features/orders/OrdersPage';
 import ClientsPage from './features/clients/ClientsPage';
 import DevisPage from './features/devis/DevisPage';
 import AdminPage from './features/admin/AdminPage';
+import ChantierPage from './features/chantiers/ChantierPage';
 import './App.css';
 import AtelierTablesPage from './features/AtelierTables';
 
@@ -28,8 +29,6 @@ function AppInner() {
   const [activePage, setActivePage] = useState('inventory');
   const [pageInitialized, setPageInitialized] = useState(false);
 
-  // Once auth resolves (loading done + user known), set the correct default page.
-  // Only do this once — after that the user navigates freely.
   useEffect(() => {
     if (!loading && !pageInitialized) {
       if (user) {
@@ -54,7 +53,7 @@ function AppInner() {
 
   if (!user) {
     return <LoginPage onLogin={(loggedInUser) => {
-      setPageInitialized(false); // allow re-init on next render
+      setPageInitialized(false);
       setActivePage(getDefaultPage(loggedInUser?.role));
     }} />;
   }
@@ -62,7 +61,8 @@ function AppInner() {
   const pagePerms = {
     inventory: 'inventory.view', orders: 'orders.view', projects: 'projects.view',
     clients: 'clients.view', devis: 'devis.view', movements: 'movements.view',
-    analytics: 'analytics.view', admin: 'admin.view', ateliertables: 'ateliertables.view'
+    analytics: 'analytics.view', admin: 'admin.view', ateliertables: 'ateliertables.view',
+    chantiers: 'chantiers.view',
   };
   const currentAllowed = !pagePerms[activePage] || can(pagePerms[activePage]);
 
@@ -90,6 +90,7 @@ function AppInner() {
                   {activePage === 'movements'     && can('movements.view')      && <MovementsPage />}
                   {activePage === 'admin'         && can('admin.view')          && <AdminPage />}
                   {activePage === 'ateliertables' && can('ateliertables.view')  && <AtelierTablesPage />}
+                  {activePage === 'chantiers'     && can('chantiers.view')      && <ChantierPage />}
                 </>
               )}
             </main>
