@@ -245,6 +245,7 @@ const remplissageSchema = new mongoose.Schema({
   deliveryDate: { type: Date, default: null },
   unitIndex: { type: Number, default: 0 },
   compIndex: { type: Number, default: null }, // null = non-composite unit; 0..N = specific component index
+  atelierTable: { type: String, default: '' },
 }, { _id: true });
 
 const chassisSchema = new mongoose.Schema({
@@ -1496,7 +1497,7 @@ app.patch('/api/projects/:projectId/chassis/:chassisId/remplissages/:remplissage
     if (!chassis) return res.status(404).json({ error: 'Chassis not found' });
     const remp = chassis.remplissages.id(req.params.remplissageId);
     if (!remp) return res.status(404).json({ error: 'Remplissage not found' });
-    const allowed = ['type', 'sousType', 'largeur', 'hauteur', 'etat', 'deliveryDate'];
+    const allowed = ['type', 'sousType', 'largeur', 'hauteur', 'etat', 'deliveryDate', 'atelierTable'];
     for (const k of allowed) { if (req.body[k] !== undefined) remp[k] = req.body[k]; }
     await project.save();
     res.json(remp);

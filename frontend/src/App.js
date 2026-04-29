@@ -19,9 +19,12 @@ import './App.css';
 import AtelierTablesPage from './features/AtelierTables';
 
 const PROJECTS_DEFAULT_ROLES = new Set(['LOGISTIQUE', 'Coordinateur', 'BARREMAN']);
+const CHANTIER_DEFAULT_ROLES = new Set(['chefChantier', 'BARREMAN']);
 
 function getDefaultPage(role) {
-  return PROJECTS_DEFAULT_ROLES.has(role) ? 'projects' : 'inventory';
+  if (CHANTIER_DEFAULT_ROLES.has(role)) return 'chantiers';
+  if (PROJECTS_DEFAULT_ROLES.has(role)) return 'projects';
+  return 'inventory';
 }
 
 function AppInner() {

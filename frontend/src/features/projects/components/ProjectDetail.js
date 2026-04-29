@@ -139,6 +139,66 @@ function RemplissageBadge({ chassis, unitIndex, compIndex = null, onClick }) {
   );
 }
 
+// ─── Remplissage Atelier Table Cell ──────────────────────────────────────────
+// Shows a compact select for the atelier table of all remplissages belonging to
+// a given unit+compIndex. Selecting a value bulk-patches all of them at once.
+// Styled with a blue tint to visually distinguish from the chassis atelier col.
+function RemplissageAtelierCell({ chassis, unitIndex, compIndex = null, project, atelierTableOptions, onPatched }) {
+  const chId = chassis._id || chassis.id;
+  const relevant = (chassis.remplissages || []).filter(r =>
+    (r.unitIndex ?? 0) === unitIndex &&
+    (compIndex !== null ? r.compIndex === compIndex : r.compIndex == null)
+  );
+
+  // Derive current value: if all same table → show it; mixed → show ''
+  const tables = [...new Set(relevant.map(r => r.atelierTable || ''))];
+  const currentTable = tables.length === 1 ? tables[0] : '';
+
+  const [saving, setSaving] = useState(false);
+
+  if (relevant.length === 0) {
+    return <span style={{ color: '#cbd5e1', fontSize: 11 }}>—</span>;
+  }
+
+  const handleChange = async (newTable) => {
+    setSaving(true);
+    try {
+      await Promise.all(
+        relevant.map(r =>
+          axios.patch(
+            `${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${r._id || r.id}`,
+            { atelierTable: newTable }
+          )
+        )
+      );
+      if (onPatched) onPatched();
+    } catch (e) {
+      console.error('Remplissage atelierTable patch failed', e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <select
+      className={`etat-select atelier-select${saving ? ' atelier-select--saving' : ''}`}
+      value={currentTable}
+      disabled={saving}
+      onChange={e => handleChange(e.target.value)}
+      style={{
+        borderLeft: '3px solid #3b82f6',
+        background: currentTable ? '#eff6ff' : undefined,
+        fontSize: 11,
+        minWidth: 90,
+      }}
+      title={`Table vitrage — ${relevant.length} remplissage(s)`}
+    >
+      <option value="">——</option>
+      {atelierTableOptions.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
+    </select>
+  );
+}
+
 // ─── BL Metadata API helpers ──────────────────────────────────────────────────
 async function loadBLMetadata(projectId, deliveryDate) {
   try {
@@ -443,7 +503,7 @@ function exportBLExcel(bl, project) {
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
 function ProgressBar({ chassis, t }) {
   if (!chassis || chassis.length === 0) return null;
-  const counts = { non_entame: 0, en_cours: 0, non_vitre: 0, fabrique: 0, livre: 0 };
+  const counts = { non_entame: 0, en_cours: 0, non_vitre: 0, fabrique: 0, livre: 0, pret_a_livrer:0 };
   let total = 0;
   for (const ch of chassis) {
     const qty = ch.quantity || 1;
@@ -1130,9 +1190,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
   const [error, setError] = React.useState('');
   const [delivDateModal, setDelivDateModal] = React.useState(null);
 
-  // ── NEW: inline edit state (admin only) ───────────────────────────────────
   const [editingRemp, setEditingRemp] = React.useState(null);
-  // editingRemp shape: { id, type, sousType, largeur, hauteur }
 
   const { t } = useLanguage();
   const { user } = useAuth();
@@ -1205,7 +1263,6 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
     finally { setSaving(null); }
   };
 
-  // ── Save inline edit ───────────────────────────────────────────────────────
   const saveEdit = async () => {
     if (!editingRemp) return;
     const { id, type, sousType, largeur, hauteur } = editingRemp;
@@ -1271,7 +1328,6 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                     <th style={{ width: 90 }}>m²</th>
                     <th style={{ width: 120 }}>{t('status')}</th>
                     <th style={{ width: 120 }}>{t('blDate')}</th>
-                    {/* Edit / Print / Delete columns — admin only */}
                     {adminThing && <th style={{ width: 40 }}></th>}
                     {adminThing && <th style={{ width: 40 }}></th>}
                     {adminThing && <th style={{ width: 40 }}></th>}
@@ -1285,78 +1341,34 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
 
                     return (
                       <tr key={id} style={{ opacity: isSaving ? 0.6 : 1, background: isEditing ? '#f0f9ff' : undefined }}>
-
-                        {/* Type cell — editable when isEditing */}
                         <td>
                           {isEditing ? (
-                            <select
-                              value={editingRemp.type}
-                              onChange={e => setEditingRemp(p => ({ ...p, type: e.target.value }))}
-                              style={{ width: '100%' }}
-                            >
+                            <select value={editingRemp.type} onChange={e => setEditingRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>
                               {REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}
                             </select>
                           ) : <strong>{r.type}</strong>}
                         </td>
-
-                        {/* Sous-type cell — editable when isEditing */}
                         <td>
                           {isEditing ? (
-                            <input
-                              type="text"
-                              value={editingRemp.sousType}
-                              onChange={e => setEditingRemp(p => ({ ...p, sousType: e.target.value }))}
-                              placeholder="Sous-type…"
-                              style={{ width: '100%' }}
-                            />
+                            <input type="text" value={editingRemp.sousType} onChange={e => setEditingRemp(p => ({ ...p, sousType: e.target.value }))} placeholder="Sous-type…" style={{ width: '100%' }} />
                           ) : (r.sousType || <span style={{ color: '#9ca3af' }}>—</span>)}
                         </td>
-
-                        {/* Largeur — editable when isEditing */}
                         <td style={{ textAlign: 'center' }}>
                           {isEditing ? (
-                            <input
-                              type="number"
-                              min="1"
-                              value={editingRemp.largeur}
-                              onChange={e => setEditingRemp(p => ({ ...p, largeur: e.target.value }))}
-                              className="ct-acc-qty-input"
-                              style={{ width: 70 }}
-                            />
+                            <input type="number" min="1" value={editingRemp.largeur} onChange={e => setEditingRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" style={{ width: 70 }} />
                           ) : r.largeur}
                         </td>
-
-                        {/* Hauteur — editable when isEditing */}
                         <td style={{ textAlign: 'center' }}>
                           {isEditing ? (
-                            <input
-                              type="number"
-                              min="1"
-                              value={editingRemp.hauteur}
-                              onChange={e => setEditingRemp(p => ({ ...p, hauteur: e.target.value }))}
-                              className="ct-acc-qty-input"
-                              style={{ width: 70 }}
-                            />
+                            <input type="number" min="1" value={editingRemp.hauteur} onChange={e => setEditingRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" style={{ width: 70 }} />
                           ) : r.hauteur}
                         </td>
-
-                        {/* m² — live preview while editing */}
                         <td style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>
-                          {calcM2(
-                            isEditing ? editingRemp.largeur : r.largeur,
-                            isEditing ? editingRemp.hauteur : r.hauteur,
-                          )}
+                          {calcM2(isEditing ? editingRemp.largeur : r.largeur, isEditing ? editingRemp.hauteur : r.hauteur)}
                         </td>
-
-                        {/* État selector */}
                         <td>
                           {stateThing ? (
-                            <select
-                              value={r.etat}
-                              disabled={isSaving || isEditing || isEtatSelectDisabled(userRole, r.etat, isSaving)}
-                              onChange={e => handleEtatChange(r, e.target.value)}
-                              style={{ borderLeft: `3px solid ${ETAT_COLORS[r.etat]}`, borderRadius: 4, padding: '3px 6px', fontSize: 12, width: '100%' }}
-                            >
+                            <select value={r.etat} disabled={isSaving || isEditing || isEtatSelectDisabled(userRole, r.etat, isSaving)} onChange={e => handleEtatChange(r, e.target.value)} style={{ borderLeft: `3px solid ${ETAT_COLORS[r.etat]}`, borderRadius: 4, padding: '3px 6px', fontSize: 12, width: '100%' }}>
                               {getRemplissageAllowedEtats(userRole, r.etat).map(opt => (
                                 <option key={opt} value={opt}>{t('etat_' + opt)}</option>
                               ))}
@@ -1367,8 +1379,6 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                             </span>
                           )}
                         </td>
-
-                        {/* Delivery date */}
                         <td style={{ textAlign: 'center', fontSize: 12 }}>
                           {r.etat === 'livre' && r.deliveryDate
                             ? <button className="date-btn" style={{ fontSize: 11 }} onClick={() => setDelivDateModal({ id, etat: 'livre', current: toDateInput(r.deliveryDate) })}>
@@ -1376,79 +1386,33 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                             </button>
                             : <span style={{ color: '#9ca3af' }}>—</span>}
                         </td>
-
-                        {/* ── Edit button (admin only) ── */}
                         {adminThing && (
                           <td>
                             {isEditing ? (
                               <div style={{ display: 'flex', gap: 4 }}>
-                                <button
-                                  className="ct-config-btn"
-                                  title="Enregistrer"
-                                  style={{ fontSize: 11, padding: '2px 7px' }}
-                                  onClick={saveEdit}
-                                  disabled={isSaving}
-                                >
-                                  💾
-                                </button>
-                                <button
-                                  className="delete-btn"
-                                  title="Annuler"
-                                  style={{ fontSize: 11, padding: '2px 7px' }}
-                                  onClick={() => setEditingRemp(null)}
-                                >
-                                  ✕
-                                </button>
+                                <button className="ct-config-btn" title="Enregistrer" style={{ fontSize: 11, padding: '2px 7px' }} onClick={saveEdit} disabled={isSaving}>💾</button>
+                                <button className="delete-btn" title="Annuler" style={{ fontSize: 11, padding: '2px 7px' }} onClick={() => setEditingRemp(null)}>✕</button>
                               </div>
                             ) : (
-                              <button
-                                className="edit-btn"
-                                title="Modifier"
-                                disabled={isSaving}
-                                onClick={() =>
-                                  setEditingRemp({
-                                    id,
-                                    type: r.type,
-                                    sousType: r.sousType || '',
-                                    largeur: r.largeur,
-                                    hauteur: r.hauteur,
-                                  })
-                                }
-                              >
-                                ✏️
-                              </button>
+                              <button className="edit-btn" title="Modifier" disabled={isSaving} onClick={() => setEditingRemp({ id, type: r.type, sousType: r.sousType || '', largeur: r.largeur, hauteur: r.hauteur })}>✏️</button>
                             )}
                           </td>
                         )}
-
-                        {/* ── Print label button (admin only) ── */}
                         {adminThing && (
                           <td>
-                            <button
-                              className="print-btn"
-                              title="Imprimer étiquette"
-                              disabled={isEditing}
-                              onClick={() => {
-                                const tl = chassisLabels[chassis.type]?.[language] || chassisLabels[chassis.type]?.fr || chassis.type;
-                                const html = buildRemplissageLabelHTML([r], chassis, project, compLabel, tl);
-                                const w = window.open('', '_blank');
-                                if (w) { w.document.write(html); w.document.close(); }
-                              }}
-                            >🏷</button>
+                            <button className="print-btn" title="Imprimer étiquette" disabled={isEditing} onClick={() => {
+                              const tl = chassisLabels[chassis.type]?.[language] || chassisLabels[chassis.type]?.fr || chassis.type;
+                              const html = buildRemplissageLabelHTML([r], chassis, project, compLabel, tl);
+                              const w = window.open('', '_blank');
+                              if (w) { w.document.write(html); w.document.close(); }
+                            }}>🏷</button>
                           </td>
                         )}
-
-                        {/* ── Delete button (admin only) ── */}
                         {adminThing && (
                           <td>
-                            <button
-                              className="delete-btn"
-                              onClick={() => deleteRemp(id)}
-                              disabled={isSaving || isEditing}
-                            >✕</button>
+                            <button className="delete-btn" onClick={() => deleteRemp(id)} disabled={isSaving || isEditing}>✕</button>
                           </td>
                         )}
-
                       </tr>
                     );
                   })}
@@ -1625,6 +1589,9 @@ function ProjectDetail({ project, onBack, currentUser }) {
   const magThing = userRole === 'Admin' || userRole === 'Magasinier';
   const stateThing = userRole === 'Admin' || ['LOGISTIQUE', 'Coordinateur'].includes(userRole);
 
+  // Same permission as atelierTables column — coordinateurThing
+  const canEditRemplissageTable = coordinateurThing;
+
   const detailTabs = [
     { key: 'chassis', label: t('tabChassis'), count: totalDisplayRows },
     { key: 'bars', label: t('cons'), count: project.usedBars?.length || 0 },
@@ -1768,12 +1735,27 @@ function ProjectDetail({ project, onBack, currentUser }) {
                 <thead>
                   <tr>
                     {adminThing && <th style={{ width: 40 }}><input type="checkbox" checked={allSelectableKeys.length > 0 && selectedKeys.size === allSelectableKeys.length} onChange={toggleAll} /></th>}
-                    <th>{t('repere')}</th><th>{t('type')}</th><th>{t('largeur')} (mm)</th><th>{t('hauteur')} (mm)</th><th>{t('dimension')}</th><th>m²</th><th>{t('remplissage')}</th>
-                    <th>{t('etat')}</th><th>{t('deliveryDate')}</th><th className="atelier-table-col">Table atelier</th><th>{t('actions')}</th>
+                    <th>{t('repere')}</th>
+                    <th>{t('type')}</th>
+                    <th>{t('largeur')} (mm)</th>
+                    <th>{t('hauteur')} (mm)</th>
+                    <th>{t('dimension')}</th>
+                    <th>m²</th>
+                    <th>{t('remplissage')}</th>
+                    <th>{t('etat')}</th>
+                    <th>{t('deliveryDate')}</th>
+                    {/* Chassis atelier table — grey-left-border */}
+                    <th className="atelier-table-col">Table atelier</th>
+                    {/* Remplissage atelier table — blue-left-border, always shown but editable only for coordinateurThing */}
+                    <th className="atelier-table-col" style={{ color: '#3b82f6' }}>
+                      Table vitrage
+                    </th>
+                    <th>{t('actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map(row => {
+                    // ── GROUP HEAD (composite parent) ────────────────────────
                     if (row.kind === 'groupHead') {
                       const { ch, chId, unitIndex, label, derivedEtat } = row; const rowKey = row.rowKey;
                       const chM2 = ch.largeur && ch.hauteur ? ((ch.largeur * ch.hauteur) / 1e6).toFixed(2) : '—';
@@ -1795,14 +1777,20 @@ function ProjectDetail({ project, onBack, currentUser }) {
                               </span>
                               : <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>}
                           </td>
-                          <td><span className="etat-badge" style={{ background: ETAT_COLORS[derivedEtat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap' }}>{t(`etat_${derivedEtat}`)}</span></td>
+                          <td>
+                            <span className="etat-badge" style={{ background: ETAT_COLORS[derivedEtat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap' }}>
+                              {t(`etat_${derivedEtat}`)}
+                            </span>
+                          </td>
                           <td><span className="date-placeholder">—</span></td>
-                          {coordinateurThing && <td className="atelier-table-col">
-                            <select className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={savingTableKey === rowKey} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}>
-                              <option value="">— non assigné —</option>
-                              {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
-                            </select>
-                          </td>}
+                          {/* Chassis atelier table — group head: no assignment (components handle it) */}
+                          <td className="atelier-table-col">
+                            <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>
+                          </td>
+                          {/* Remplissage atelier table — group head: no direct remplissages (components have them) */}
+                          <td className="atelier-table-col">
+                            <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>
+                          </td>
                           {adminThing && <td><div className="chassis-row__actions">
                             <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, _originalId: chId }); setShowChassisForm(true); }}>✏️</button>
                             <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>
@@ -1814,9 +1802,11 @@ function ProjectDetail({ project, onBack, currentUser }) {
                       );
                     }
 
+                    // ── COMPONENT ROW ───────────────────────────────────────
                     if (row.kind === 'component') {
-                      const { ch, unitIndex, comp, ci, rowKey, label, etat } = row;
+                      const { ch, chId, unitIndex, comp, ci, rowKey, groupKey, label, etat } = row;
                       const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey);
+                      const isSavingTable = savingTableKey === groupKey;
                       const compM2 = comp.largeur && comp.hauteur ? ((comp.largeur * comp.hauteur) / 1e6).toFixed(2) : '—';
                       return (
                         <tr key={rowKey} className={`component-row${isSelected ? ' component-row--selected' : ''}${isSaving ? ' component-row--saving' : ''}`}>
@@ -1834,11 +1824,51 @@ function ProjectDetail({ project, onBack, currentUser }) {
                               onClick={() => setRemplissageEditor({ ch, unitIndex, compIndex: ci })}
                             />
                           </td>
-                          {stateThing && <td><select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleComponentEtatChange(ch, unitIndex, ci, e.target.value, rowKey)}>
-                            {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
-                          </select></td>}
+                          {stateThing && <td>
+                            <select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleComponentEtatChange(ch, unitIndex, ci, e.target.value, rowKey)}>
+                              {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
+                            </select>
+                          </td>}
                           <td><span className="date-placeholder">—</span></td>
-                          <td className="atelier-table-col"><span className="etat-select etat-select--livre atelier-select">{atelierTables[row.groupKey] || <span style={{ color: '#9ca3af' }}>—</span>}</span></td>
+                          {/* Chassis atelier table — components share the unit's table, editable per component row */}
+                          <td className="atelier-table-col">
+                            {coordinateurThing ? (
+                              <select
+                                className={`etat-select etat-select--livre atelier-select${isSavingTable ? ' atelier-select--saving' : ''}`}
+                                value={atelierTables[groupKey] || ''}
+                                disabled={isSavingTable}
+                                onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, groupKey)}
+                              >
+                                <option value="">——</option>
+                                {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
+                              </select>
+                            ) : (
+                              <span className="etat-select etat-select--livre atelier-select">
+                                {atelierTables[groupKey] || <span style={{ color: '#9ca3af' }}>—</span>}
+                              </span>
+                            )}
+                          </td>
+                          {/* Remplissage atelier table — per component */}
+                          <td className="atelier-table-col">
+                            {canEditRemplissageTable ? (
+                              <RemplissageAtelierCell
+                                chassis={ch}
+                                unitIndex={unitIndex}
+                                compIndex={ci}
+                                project={project}
+                                atelierTableOptions={ATELIER_TABLES}
+                                onPatched={() => { if (refreshProject) refreshProject(project.id); }}
+                              />
+                            ) : (
+                              <span style={{ fontSize: 11, color: '#6b7280' }}>
+                                {(() => {
+                                  const relevant = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex === ci && r.atelierTable);
+                                  const tables = [...new Set(relevant.map(r => r.atelierTable))];
+                                  return tables.length ? tables.join(', ') : <span style={{ color: '#cbd5e1' }}>—</span>;
+                                })()}
+                              </span>
+                            )}
+                          </td>
                           <td>{adminThing && <div className="chassis-row__actions">
                             <button className="print-btn" onClick={() => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; setPrintingChassis({ ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }); }}>🏷</button>
                           </div>}</td>
@@ -1846,7 +1876,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                       );
                     }
 
-                    // ── simple unit row ───────────────────────────────────────
+                    // ── SIMPLE UNIT ROW ──────────────────────────────────────
                     const { ch, chId, unitIndex, unit, rowKey, label, etat } = row;
                     const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey);
                     const unitM2 = ch.largeur && ch.hauteur ? ((ch.largeur * ch.hauteur) / 1e6).toFixed(2) : '—';
@@ -1866,18 +1896,42 @@ function ProjectDetail({ project, onBack, currentUser }) {
                             onClick={() => setRemplissageEditor({ ch, unitIndex, compIndex: null })}
                           />
                         </td>
-                        {stateThing && <td><select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)} style={{ borderLeftColor: ETAT_COLORS[etat] }}>
-                          {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
-                        </select></td>}
+                        {stateThing && <td>
+                          <select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)} style={{ borderLeftColor: ETAT_COLORS[etat] }}>
+                            {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
+                          </select>
+                        </td>}
                         <td className="delivery-date-cell">
                           {etat === 'livre' ? <button className="date-btn" onClick={() => setDeliveryModal({ kind: 'unit', chId, unitIndex, rowKey, currentDate: toDateInput(unit.deliveryDate) })}>📅 {unit.deliveryDate ? fmtDate(unit.deliveryDate) : 'Définir'}</button> : <span className="date-placeholder">—</span>}
                         </td>
+                        {/* Chassis atelier table */}
                         {stateThing && <td className="atelier-table-col">
                           <select className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={savingTableKey === rowKey} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}>
                             <option value="">——</option>
                             {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
                           </select>
                         </td>}
+                        {/* Remplissage atelier table — blue tint */}
+                        <td className="atelier-table-col">
+                          {canEditRemplissageTable ? (
+                            <RemplissageAtelierCell
+                              chassis={ch}
+                              unitIndex={unitIndex}
+                              compIndex={null}
+                              project={project}
+                              atelierTableOptions={ATELIER_TABLES}
+                              onPatched={() => { if (refreshProject) refreshProject(project.id); }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: 11, color: '#6b7280' }}>
+                              {(() => {
+                                const relevant = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex == null && r.atelierTable);
+                                const tables = [...new Set(relevant.map(r => r.atelierTable))];
+                                return tables.length ? tables.join(', ') : <span style={{ color: '#cbd5e1' }}>—</span>;
+                              })()}
+                            </span>
+                          )}
+                        </td>
                         <td>{adminThing && <div className="chassis-row__actions">
                           <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, quantity: 1, etat, _originalId: chId, _unitIndex: unitIndex, _totalQty: ch.quantity ?? 1 }); setShowChassisForm(true); }}>✏️</button>
                           <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>
