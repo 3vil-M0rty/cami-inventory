@@ -239,6 +239,19 @@
   font-size: 12px; font-weight: 700;
   border: 1px solid #fecaca;
 }
+.ubp-modal__qty-chip--return {
+  background: #f0fdf4; color: #16a34a;
+  border-color: #bbf7d0;
+}
+.ubp-modal__row--return td {
+  opacity: 0.7;
+}
+.ubp-modal__return-tag {
+  display: inline-block; margin-left: 6px;
+  font-size: 10px; font-weight: 700; padding: 1px 6px;
+  border-radius: 4px; background: #f0fdf4; color: #16a34a;
+  border: 1px solid #bbf7d0; vertical-align: middle;
+}
 .ubp-modal__running {
   font-size: 12px; font-weight: 700; color: var(--900);
 }

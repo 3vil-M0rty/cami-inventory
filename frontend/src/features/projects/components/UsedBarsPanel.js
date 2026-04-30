@@ -50,11 +50,17 @@ function MovementModal({ item, projectId, onClose, language }) {
     setError('');
     axios.get(`${API_URL}/movements/item/${item.id || item._id}`)
       .then(res => {
-        // Filter to only project_use movements for this specific project
+        // Keep project_use (consumption) AND project_return (deletion restore) for this project
         const filtered = res.data.filter(
-          m => m.type === 'project_use' && m.projectId === projectId
+          m => (m.type === 'project_use' || m.type === 'project_return') &&
+               m.projectId === projectId
         );
-        setMovements(filtered);
+        // Attach signed quantity: project_use = negative (consumed), project_return = positive (restored)
+        const signed = filtered.map(m => ({
+          ...m,
+          signedQty: m.type === 'project_use' ? -m.quantity : +m.quantity
+        }));
+        setMovements(signed);
       })
       .catch(() => setError('Impossible de charger les mouvements'))
       .finally(() => setLoading(false));
@@ -64,14 +70,15 @@ function MovementModal({ item, projectId, onClose, language }) {
 
   const designation = item.designation?.[language] || item.designation?.fr || '—';
 
-  // Build running total (movements are sorted newest-first, reverse for running calc)
+  // Build running cumulative (oldest → newest), then reverse for display (newest first)
   const chronological = [...movements].reverse();
   const withRunning = chronological.map((m, i) => ({
     ...m,
-    runningTotal: chronological.slice(0, i + 1).reduce((s, x) => s + x.quantity, 0)
-  })).reverse(); // back to newest-first for display
+    runningTotal: chronological.slice(0, i + 1).reduce((s, x) => s + x.signedQty, 0)
+  })).reverse();
 
-  const grandTotal = movements.reduce((s, m) => s + m.quantity, 0);
+  // Net total = what's actually still consumed right now
+  const grandTotal = movements.reduce((s, m) => s + m.signedQty, 0);
 
   return (
     <div className="ubp-modal-overlay" onClick={onClose}>
@@ -118,18 +125,26 @@ function MovementModal({ item, projectId, onClose, language }) {
                 </tr>
               </thead>
               <tbody>
-                {withRunning.map((m, i) => (
-                  <tr key={m._id || i}>
-                    <td className="ubp-modal__row-num">{withRunning.length - i}</td>
-                    <td className="ubp-modal__date">{formatMovementDate(m.createdAt)}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span className="ubp-modal__qty-chip">−{fmt(m.quantity)}</span>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span className="ubp-modal__running">{fmt(m.runningTotal)}</span>
-                    </td>
-                  </tr>
-                ))}
+                {withRunning.map((m, i) => {
+                  const isReturn = m.type === 'project_return';
+                  return (
+                    <tr key={m._id || i} className={isReturn ? 'ubp-modal__row--return' : ''}>
+                      <td className="ubp-modal__row-num">{withRunning.length - i}</td>
+                      <td className="ubp-modal__date">
+                        {formatMovementDate(m.createdAt)}
+                        {isReturn && <span className="ubp-modal__return-tag">annulé</span>}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className={isReturn ? 'ubp-modal__qty-chip ubp-modal__qty-chip--return' : 'ubp-modal__qty-chip'}>
+                          {isReturn ? `+${fmt(m.quantity)}` : `−${fmt(m.quantity)}`}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className="ubp-modal__running">{fmt(m.runningTotal)}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
