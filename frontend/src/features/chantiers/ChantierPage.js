@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     HardHat, Users, Calendar, Package, Plus, Edit2, Trash2,
     X, Check, Layers, ArrowRight, BarChart2, Wrench,
-    ClipboardList, Box, FileText, ChevronLeft, StepBack
+    ClipboardList, Box, FileText, ChevronLeft, StepBack, Camera, Image, ExternalLink
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -11,6 +11,145 @@ import './ChantierPage.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
+// ─── Cloudinary config (safe to hardcode — unsigned preset) ──────────────────
+const CLOUDINARY_CLOUD_NAME = 'dt3mnmu8d';
+const CLOUDINARY_UPLOAD_PRESET = 'CAMICHANTIER';
+
+async function uploadToCloudinary(file) {
+    const data = new FormData();
+    data.append('file', file);
+    data.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+        { method: 'POST', body: data }
+    );
+    if (!res.ok) throw new Error('Upload Cloudinary échoué');
+    const json = await res.json();
+    return json.secure_url;
+}
+
+// ─── Camera Cell Component ────────────────────────────────────────────────────
+function CameraCell({ chassisId, unitIndex, chantier, authFetch, onRefresh }) {
+    const [uploading, setUploading] = useState(false);
+    const [lightbox, setLightbox] = useState(null);
+    const inputRef = useRef(null);
+
+    const existing = (chantier.unitPhotos || []).filter(
+        p => p.chassisId === chassisId && p.unitIndex === unitIndex
+    );
+
+    const handleCapture = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setUploading(true);
+        try {
+            const url = await uploadToCloudinary(file);
+            await authFetch(`${API_URL}/chantiers/${chantier.id}/unit-photo`, {
+                method: 'POST',
+                body: JSON.stringify({ chassisId, unitIndex, url }),
+            });
+            onRefresh();
+        } catch (err) {
+            alert('Erreur lors de l\'upload : ' + err.message);
+        } finally {
+            setUploading(false);
+            if (inputRef.current) inputRef.current.value = '';
+        }
+    };
+
+    // ↓ ADD THIS
+    const handleDelete = async (url) => {
+        await authFetch(`${API_URL}/chantiers/${chantier.id}/unit-photo`, {
+            method: 'DELETE',
+            body: JSON.stringify({ url }),
+        });
+        onRefresh();
+        if (existing.length <= 1) setLightbox(null);
+        else setLightbox(existing.filter(p => p.url !== url));
+    };
+
+    return (
+        <div className="ch-camera-cell">
+            <label className={`ch-camera-btn ${uploading ? 'uploading' : ''}`} title="Prendre une photo">
+                <input
+                    ref={inputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: 'none' }}
+                    onChange={handleCapture}
+                    disabled={uploading}
+                />
+                {uploading
+                    ? <span className="ch-camera-spinner" />
+                    : <Camera size={14} />
+                }
+            </label>
+
+            {existing.length > 0 && (
+                <button
+                    className="ch-camera-count"
+                    title={`${existing.length} photo(s)`}
+                    onClick={() => setLightbox(existing)}
+                    type="button"
+                >
+                    <Image size={12} />
+                    <span>{existing.length}</span>
+                </button>
+            )}
+
+            {/* ↓ onDelete added here */}
+            {lightbox && (
+                <PhotoLightbox
+                    photos={lightbox}
+                    onClose={() => setLightbox(null)}
+                    onDelete={handleDelete}
+                />
+            )}
+        </div>
+    );
+}
+// ─── Photo Lightbox ───────────────────────────────────────────────────────────
+function PhotoLightbox({ photos, onClose, onDelete }) {
+    const [idx, setIdx] = useState(0);
+
+    useEffect(() => {
+        const handler = (e) => { if (e.key === 'Escape') onClose(); };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [onClose]);
+
+    const handleDelete = () => {
+        if (!window.confirm('Supprimer cette photo ?')) return;
+        onDelete(photos[idx].url);
+    };
+
+    return (
+        <div className="ch-lightbox-overlay" onClick={onClose}>
+            <div className="ch-lightbox" onClick={e => e.stopPropagation()}>
+                <div className="ch-lightbox-topbar">
+                    <button className="ch-lightbox-delete" onClick={handleDelete} title="Supprimer cette photo">
+                        <Trash2 size={14} /> Supprimer
+                    </button>
+                    <button className="ch-lightbox-close" onClick={onClose}><X size={18} /></button>
+                </div>
+                <div className="ch-lightbox-img-wrap">
+                    <img src={photos[idx].url} alt={`Photo ${idx + 1}`} className="ch-lightbox-img" />
+                </div>
+                {photos.length > 1 && (
+                    <div className="ch-lightbox-nav">
+                        <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}>‹</button>
+                        <span>{idx + 1} / {photos.length}</span>
+                        <button onClick={() => setIdx(i => Math.min(photos.length - 1, i + 1))} disabled={idx === photos.length - 1}>›</button>
+                    </div>
+                )}
+                <a href={photos[idx].url} target="_blank" rel="noopener noreferrer" className="ch-lightbox-open">
+                    <ExternalLink size={13} /> Ouvrir dans un nouvel onglet
+                </a>
+            </div>
+        </div>
+    );
+}
 const CHANTIER_STATUS_META = {
     planifie: { label: 'Planifié', color: '#6b7280', bg: 'rgba(107,114,128,.12)' },
     en_cours: { label: 'En cours', color: '#d97706', bg: 'rgba(217,119,6,.12)' },
@@ -118,14 +257,11 @@ export default function ChantierPage() {
                 </div>
                 <div className="ch-page__header-right">
                     <div className="ch-tab-toggle">
-                        {adminThing &&
-                            (
-                                <button className="ch-new-btn" onClick={() => { setEditItem(null); setShowForm(true); }}>
-                                    <Plus size={14} /> Nouveau chantier
-                                </button>
-                            )
-
-                        }
+                        {adminThing && (
+                            <button className="ch-new-btn" onClick={() => { setEditItem(null); setShowForm(true); }}>
+                                <Plus size={14} /> Nouveau chantier
+                            </button>
+                        )}
                         <button className={`ch-tab-btn ${view === 'chantiers' ? 'active' : ''}`} onClick={() => setView('chantiers')}>
                             <ClipboardList size={13} /> Chantiers
                         </button>
@@ -143,9 +279,9 @@ export default function ChantierPage() {
                     <div className="ch-empty-page">
                         <HardHat size={44} strokeWidth={1.2} />
                         <p>Aucun chantier pour l'instant.</p>
-                        {adminThing &&
-                            (<button className="ch-new-btn" onClick={() => { setEditItem(null); setShowForm(true); }}>+ Créer un chantier</button>)
-                        }
+                        {adminThing && (
+                            <button className="ch-new-btn" onClick={() => { setEditItem(null); setShowForm(true); }}>+ Créer un chantier</button>
+                        )}
                     </div>
                 ) : (
                     <div className="ch-cards-grid">
@@ -205,7 +341,7 @@ function ChantierGridCard({ chantier, teams, chantierStates, isAdmin, onClick, o
     const assignedProjects = chantier.projectIds || [];
     const { user } = useAuth();
     const adminThing = user?.role === 'Admin';
-    const chefchThing = user?.role === 'Admin' || user?.role === 'chefChantier';
+
     const stateCounts = {};
     let totalUnits = 0;
     assignedProjects.forEach(proj => {
@@ -214,7 +350,6 @@ function ChantierGridCard({ chantier, teams, chantierStates, isAdmin, onClick, o
             const qty = ch.quantity || 1;
             const isComposite = (ch.components || []).length > 0;
             for (let i = 0; i < qty; i++) {
-                // Only count units that are livré
                 const unit = (ch.units || []).find(u => u.unitIndex === i);
                 if (!unit) continue;
                 const isLivre = isComposite
@@ -278,15 +413,12 @@ function ChantierGridCard({ chantier, teams, chantierStates, isAdmin, onClick, o
                 {chantier.notes && <p className="ch-card__notes">{chantier.notes}</p>}
             </div>
 
-
             <div className="ch-card__actions" onClick={e => e.stopPropagation()}>
                 <button className="ch-card__act" onClick={onEdit} title="Modifier"><Edit2 size={13} /></button>
-                {adminThing &&
-                    (<button className="ch-card__act danger" onClick={onDelete} title="Supprimer"><Trash2 size={13} /></button>)
-                }
-
+                {adminThing && (
+                    <button className="ch-card__act danger" onClick={onDelete} title="Supprimer"><Trash2 size={13} /></button>
+                )}
             </div>
-
         </div>
     );
 }
@@ -296,8 +428,9 @@ function ChantierDetail({ chantier, teams, projects, chantierStates, chassisType
     const meta = CHANTIER_STATUS_META[chantier.status] || CHANTIER_STATUS_META.planifie;
     const team = teams.find(t => t.id === (chantier.teamId?.id || chantier.teamId));
     const assignedProjects = chantier.projectIds || [];
-    const {user} = useAuth();
+    const { user } = useAuth();
     const adminThing = user?.role === "Admin";
+
     return (
         <div className="ch-detail">
             <div className="ch-detail__topbar">
@@ -307,10 +440,9 @@ function ChantierDetail({ chantier, teams, projects, chantierStates, chassisType
                 {isAdmin && (
                     <div style={{ display: 'flex', gap: 8 }}>
                         <button className="ch-icon-btn" onClick={onEdit}><Edit2 size={15} /> Modifier</button>
-                        {adminThing && 
+                        {adminThing &&
                             <button className="ch-icon-btn danger" onClick={onDelete}><Trash2 size={15} /> Supprimer</button>
                         }
-                        
                     </div>
                 )}
             </div>
@@ -373,12 +505,6 @@ function getChassisTypeLabel(chassisTypes, typeValue) {
     return ct ? (ct.fr || ct.value || typeValue) : typeValue;
 }
 
-/**
- * Derive the composite chantier state from component-level unit states.
- * - All components posé → parent posé
- * - All components share state X → parent is X
- * - Mixed → "en_cours_de_pose" (or first available state after default)
- */
 function deriveCompositeChantierState(chantier, chassisId, unitIndex, numComponents, chantierStates, defaultState) {
     if (!numComponents) return defaultState;
 
@@ -389,16 +515,13 @@ function deriveCompositeChantierState(chantier, chassisId, unitIndex, numCompone
         compStates.push(us?.stateKey || defaultState?.key);
     }
 
-    // All same state → inherit
     if (compStates.every(k => k === compStates[0])) {
         return chantierStates.find(s => s.key === compStates[0]) || defaultState;
     }
 
-    // Mixed → find "en_cours_de_pose" or second state in the list
     const inProgress = chantierStates.find(s => s.key === 'en_cours_de_pose');
     if (inProgress) return inProgress;
 
-    // Fallback: if any is non-default, pick the most "advanced" one
     const nonDefault = compStates.filter(k => k !== defaultState?.key);
     if (nonDefault.length > 0) {
         const sorted = chantierStates.filter(s => nonDefault.includes(s.key)).sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -408,18 +531,16 @@ function deriveCompositeChantierState(chantier, chassisId, unitIndex, numCompone
     return defaultState;
 }
 
-// ─── Project block — only shows livré chassis ─────────────────────────────────
+// ─── Project block ────────────────────────────────────────────────────────────
 function ChantierProjectBlock({ project, chantier, chantierStates, defaultState, isAdmin, authFetch, onRefresh, chassisTypes }) {
     const chassis = project.chassis || [];
     const unitStates = chantier.unitStates || [];
 
-    // Get chantier state for a simple (non-composite) unit
     const getUnitState = (chassisId, unitIndex) => {
         const u = unitStates.find(s => s.chassisId === chassisId && s.unitIndex === unitIndex);
         return u ? (chantierStates.find(s => s.key === u.stateKey) || defaultState) : (defaultState || chantierStates[0]);
     };
 
-    // Get chantier state for a component slot (keyed as chassisId__comp__ci__unitIndex)
     const getComponentState = (chassisId, unitIndex, compIndex) => {
         const compKey = `${chassisId}__comp__${compIndex}__${unitIndex}`;
         const u = unitStates.find(s => s.chassisId === compKey);
@@ -435,7 +556,6 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
     };
 
     const setComponentState = async (chassisId, unitIndex, compIndex, stateKey) => {
-        // We store component states with a composite key in chassisId field
         const compKey = `${chassisId}__comp__${compIndex}__${unitIndex}`;
         await authFetch(`${API_URL}/chantiers/${chantier.id}/unit-state`, {
             method: 'PATCH',
@@ -444,7 +564,6 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
         onRefresh();
     };
 
-    // Build rows — ONLY for livré units / components
     const rows = chassis.flatMap(ch => {
         const qty = ch.quantity || 1;
         const chId = ch._id || ch.id;
@@ -459,7 +578,6 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
             const unitLabel = qty > 1 ? `${ch.repere} #${unitIndex + 1}` : ch.repere;
 
             if (!isComposite) {
-                // ── Simple: only show if etat === 'livre'
                 if (unit.etat !== 'livre') return [];
                 return [{
                     kind: 'unit', ch, chId, unitIndex, typeLabel,
@@ -467,8 +585,6 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                 }];
             }
 
-            // ── Composite: show if AT LEAST ONE component is 'livre'
-            // Only render child rows for components that are 'livre'
             const deliveredComps = (ch.components || []).filter((_, ci) => {
                 const cs = (unit.componentStates || []).find(c => c.compIndex === ci);
                 return cs?.etat === 'livre';
@@ -484,7 +600,6 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                 deliveredCount,
                 totalComps: numComps,
             };
-            // Only include delivered component rows
             const compRows = ch.components
                 .map((comp, ci) => ({ comp, ci }))
                 .filter(({ ci }) => {
@@ -499,7 +614,6 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
         });
     }).flat();
 
-    // Summary counts (unit-level for group heads and simple units)
     const stateCounts = {};
     let totalUnits = 0;
     rows.filter(r => r.kind === 'unit' || r.kind === 'groupHead').forEach(r => {
@@ -537,7 +651,6 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
 
     return (
         <div className="ch-proj-block">
-            {/* Project header */}
             <div className="ch-proj-block__header">
                 <div className="ch-proj-block__title">
                     <span className="ch-proj-block__dot" style={{ background: project.ralColor || '#ccc' }} />
@@ -558,7 +671,6 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                 )}
             </div>
 
-            {/* Chassis table */}
             <div className="ch-chassis-table-wrap">
                 <table className="ch-chassis-table">
                     <thead>
@@ -570,12 +682,12 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                             <th>Dimension</th>
                             <th>m²</th>
                             <th>État chantier</th>
+                            <th className="ch-ct-photo-th"><Camera size={13} /></th>
                         </tr>
                     </thead>
                     <tbody>
                         {rows.map((row, idx) => {
                             if (row.kind === 'groupHead') {
-                                // Derived state from children
                                 const derivedState = deriveCompositeChantierState(
                                     chantier, row.chId, row.unitIndex, row.numComps, chantierStates, defaultState
                                 );
@@ -598,12 +710,20 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                                         <td className="ch-ct-dim">{row.ch.dimension || `${row.ch.largeur}×${row.ch.hauteur}`}</td>
                                         <td className="ch-ct-num">{chM2} m²</td>
                                         <td>
-                                            {/* Read-only parent: derived from children */}
                                             <span className="ch-state-badge--derived" title="État dérivé des composants">
                                                 <span className="ch-state-badge-dot" style={{ background: derivedState?.color || '#6b7280' }} />
                                                 {derivedState?.label || '—'}
                                                 <span className="ch-state-badge-hint">↓ hérité</span>
                                             </span>
+                                        </td>
+                                        <td className="ch-ct-photo-td">
+                                            <CameraCell
+                                                chassisId={row.chId}
+                                                unitIndex={row.unitIndex}
+                                                chantier={chantier}
+                                                authFetch={authFetch}
+                                                onRefresh={onRefresh}
+                                            />
                                         </td>
                                     </tr>
                                 );
@@ -616,6 +736,7 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                                 const compM2 = m2(compL, compH);
                                 const roleLabel = comp.role === 'dormant' ? 'Dormant' : 'Vantail';
                                 const compState = getComponentState(row.chId, row.unitIndex, row.ci);
+                                const compCameraId = `${row.chId}__comp__${row.ci}__${row.unitIndex}`;
                                 return (
                                     <tr key={`${row.chId}-${row.unitIndex}-c${row.ci}`} className="ch-ct-row ch-ct-row--comp">
                                         <td className="ch-ct-comp-indent">↳ <strong>{row.label}</strong></td>
@@ -630,6 +751,15 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                                                 allStates={chantierStates}
                                                 editable={isAdmin}
                                                 onChange={key => setComponentState(row.chId, row.unitIndex, row.ci, key)}
+                                            />
+                                        </td>
+                                        <td className="ch-ct-photo-td">
+                                            <CameraCell
+                                                chassisId={compCameraId}
+                                                unitIndex={row.unitIndex}
+                                                chantier={chantier}
+                                                authFetch={authFetch}
+                                                onRefresh={onRefresh}
                                             />
                                         </td>
                                     </tr>
@@ -655,6 +785,15 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                                             onChange={key => setUnitState(row.chId, row.unitIndex, key)}
                                         />
                                     </td>
+                                    <td className="ch-ct-photo-td">
+                                        <CameraCell
+                                            chassisId={row.chId}
+                                            unitIndex={row.unitIndex}
+                                            chantier={chantier}
+                                            authFetch={authFetch}
+                                            onRefresh={onRefresh}
+                                        />
+                                    </td>
                                 </tr>
                             );
                         })}
@@ -665,14 +804,13 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
     );
 }
 
-// ─── Chantier State Select — fixed-position dropdown (no clipping) ───────────
+// ─── Chantier State Select ────────────────────────────────────────────────────
 function ChantierStateSelect({ state, allStates, editable, onChange }) {
     const [open, setOpen] = useState(false);
     const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0, openUpward: false });
     const btnRef = useRef(null);
     const dropRef = useRef(null);
 
-    // Position the dropdown using fixed coordinates so it's never clipped by overflow:hidden
     const openDropdown = () => {
         if (!btnRef.current) return;
         const rect = btnRef.current.getBoundingClientRect();
@@ -729,7 +867,6 @@ function ChantierStateSelect({ state, allStates, editable, onChange }) {
             </button>
 
             {open && typeof document !== 'undefined' && (
-                // Use a portal-like approach with fixed positioning
                 <div
                     ref={dropRef}
                     className="ch-state-select-dropdown ch-state-select-dropdown--fixed"
@@ -771,7 +908,6 @@ function TeamCard({ team, chantiers, onViewStock }) {
     const { user } = useAuth();
     const adminThing = user?.role === 'Admin';
     const totalQty = (team.stock || []).reduce((a, s) => a + s.quantity, 0);
-
 
     return (
         <div className="ch-card" onClick={adminThing ? onViewStock : undefined}
@@ -1022,9 +1158,10 @@ function ChantierFormModal({ chantier, projects, teams, isAdmin, authFetch, onCl
             onSave();
         } catch (e) { setError(e.message); }
     };
+
     const { user } = useAuth();
     const adminThing = user?.role === 'Admin';
-    const chefchThing = user?.role === 'Admin' || user?.role === "chefChantier";
+
     const ReadOnly = ({ value }) => (
         <div style={{ padding: '8px 12px', background: 'var(--50)', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13.5, color: 'var(--text-2)', opacity: 0.8, minHeight: 38 }}>
             {value || '—'}
@@ -1038,15 +1175,12 @@ function ChantierFormModal({ chantier, projects, teams, isAdmin, authFetch, onCl
                 <form onSubmit={handleSubmit}>
                     <div className="form-grid-2">
                         <div className="form-group">
-
                             <label>Nom *</label>
                             {adminThing ? <input required type="text" value={form.name} onChange={e => set('name', e.target.value)} placeholder="ex: Résidence Al Nour" /> : <ReadOnly value={form.name} />}
-
                         </div>
                         <div className="form-group">
                             <label>Référence *</label>
                             {adminThing ? <input required type="text" value={form.reference} onChange={e => set('reference', e.target.value)} placeholder="ex: CH-2025-001" /> : <ReadOnly value={form.reference} />}
-
                         </div>
                         <div className="form-group"><label>Équipe</label>
                             <select value={form.teamId} onChange={e => set('teamId', e.target.value)}>
@@ -1063,20 +1197,17 @@ function ChantierFormModal({ chantier, projects, teams, isAdmin, authFetch, onCl
                         <div className="form-group"><label>Date de clôture</label><input type="date" value={form.dateCloture} onChange={e => set('dateCloture', e.target.value)} /></div>
                     </div>
                     <div className="form-group"><label>Notes</label><textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Remarques..." /></div>
-                    {adminThing &&
-                        (
-                            <div className="form-group">
-                                <label>
-                                    Projets assignés à ce chantier
-                                    {form.projectIds.length > 0 && (
-                                        <span className="ch-form-count">{form.projectIds.length} sélectionné(s)</span>
-                                    )}
-                                </label>
-                                <ProjectSearchPicker projects={projects} selectedIds={form.projectIds} onChange={ids => set('projectIds', ids)} />
-                            </div>
-
-                        )
-                    }
+                    {adminThing && (
+                        <div className="form-group">
+                            <label>
+                                Projets assignés à ce chantier
+                                {form.projectIds.length > 0 && (
+                                    <span className="ch-form-count">{form.projectIds.length} sélectionné(s)</span>
+                                )}
+                            </label>
+                            <ProjectSearchPicker projects={projects} selectedIds={form.projectIds} onChange={ids => set('projectIds', ids)} />
+                        </div>
+                    )}
                     {error && <div className="form-error">{error}</div>}
                     <div className="modal-actions">
                         <button type="button" onClick={onClose}>Annuler</button>

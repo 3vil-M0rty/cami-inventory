@@ -286,33 +286,33 @@ const Project = mongoose.model('Project', projectSchema);
 // ==================== CHANTIER SCHEMAS ====================
 
 const chantierStateSchema = new mongoose.Schema({
-  key:       { type: String, required: true, unique: true, trim: true },
-  label:     { type: String, required: true, trim: true },
-  color:     { type: String, default: '#6b7280' },
-  order:     { type: Number, default: 0 },
+  key: { type: String, required: true, unique: true, trim: true },
+  label: { type: String, required: true, trim: true },
+  color: { type: String, default: '#6b7280' },
+  order: { type: Number, default: 0 },
   isDefault: { type: Boolean, default: false },
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const ChantierState = mongoose.model('ChantierState', chantierStateSchema);
 
 const teamSchema = new mongoose.Schema({
-  name:        { type: String, required: true, trim: true },
-  color:       { type: String, default: '#3b82f6' },
+  name: { type: String, required: true, trim: true },
+  color: { type: String, default: '#3b82f6' },
   description: { type: String, default: '' },
   stock: [{
-    itemId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
+    itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
     quantity: { type: Number, default: 0, min: 0 },
   }],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const Team = mongoose.model('Team', teamSchema);
 
 const teamStockMovementSchema = new mongoose.Schema({
-  teamId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
-  itemId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
-  type:         { type: String, enum: ['entree', 'sortie', 'chantier_use', 'chantier_return'], required: true },
-  quantity:     { type: Number, required: true },
+  teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
+  itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
+  type: { type: String, enum: ['entree', 'sortie', 'chantier_use', 'chantier_return'], required: true },
+  quantity: { type: Number, required: true },
   balanceAfter: { type: Number, required: true },
-  note:         { type: String, default: '' },
-  chantierId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Chantier', default: null },
+  note: { type: String, default: '' },
+  chantierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chantier', default: null },
   chantierName: { type: String, default: '' },
 }, { timestamps: true });
 const TeamStockMovement = mongoose.model('TeamStockMovement', teamStockMovementSchema);
@@ -320,21 +320,27 @@ const TeamStockMovement = mongoose.model('TeamStockMovement', teamStockMovementS
 const chantierUnitSchema = new mongoose.Schema({
   chassisId: { type: String, required: true },
   unitIndex: { type: Number, required: true },
-  stateKey:  { type: String, required: true },
-  notes:     { type: String, default: '' },
+  stateKey: { type: String, required: true },
+  notes: { type: String, default: '' },
   updatedAt: { type: Date, default: Date.now },
 }, { _id: true });
 
 const chantierSchema = new mongoose.Schema({
-  name:        { type: String, required: true, trim: true },
-  reference:   { type: String, required: true, trim: true },
-  teamId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
-  projectIds:  [{ type: mongoose.Schema.Types.ObjectId, ref: 'Project' }],
-  dateDebut:   { type: Date, default: null },
+  name: { type: String, required: true, trim: true },
+  reference: { type: String, required: true, trim: true },
+  teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
+  projectIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Project' }],
+  dateDebut: { type: Date, default: null },
   dateCloture: { type: Date, default: null },
-  status:      { type: String, enum: ['planifie', 'en_cours', 'suspendu', 'cloture'], default: 'planifie' },
-  notes:       { type: String, default: '' },
-  unitStates:  [chantierUnitSchema],
+  status: { type: String, enum: ['planifie', 'en_cours', 'suspendu', 'cloture'], default: 'planifie' },
+  notes: { type: String, default: '' },
+  unitStates: [chantierUnitSchema],
+  unitPhotos: [{
+    chassisId: String,
+    unitIndex: Number,
+    url: String,
+    createdAt: { type: Date, default: Date.now }
+  }],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const Chantier = mongoose.model('Chantier', chantierSchema);
 
@@ -555,11 +561,11 @@ async function seedChantierStates() {
   const count = await ChantierState.countDocuments();
   if (count === 0) {
     await ChantierState.insertMany([
-      { key: 'non_pose',         label: 'Non posé',              color: '#9ca3af', order: 1, isDefault: true },
-      { key: 'en_cours_de_pose', label: 'En cours de pose',      color: '#f59e0b', order: 2 },
-      { key: 'pose',             label: 'Posé',                  color: '#22c55e', order: 3 },
-      { key: 'retourne_atelier', label: "Retourné à l'atelier",  color: '#ef4444', order: 4 },
-      { key: 'pose_partiel',     label: 'Posé partiellement',    color: '#a855f7', order: 5 },
+      { key: 'non_pose', label: 'Non posé', color: '#9ca3af', order: 1, isDefault: true },
+      { key: 'en_cours_de_pose', label: 'En cours de pose', color: '#f59e0b', order: 2 },
+      { key: 'pose', label: 'Posé', color: '#22c55e', order: 3 },
+      { key: 'retourne_atelier', label: "Retourné à l'atelier", color: '#ef4444', order: 4 },
+      { key: 'pose_partiel', label: 'Posé partiellement', color: '#a855f7', order: 5 },
     ]);
     console.log('✅ Default chantier states seeded');
   }
@@ -855,9 +861,9 @@ app.get('/api/permissions', requireAuth, requirePermission('admin.view'), async 
     { key: 'movements.view', label: 'Mouvements — Voir', group: 'Mouvements' },
     { key: 'analytics.view', label: 'Analytics — Voir', group: 'Analytics' },
     { key: 'admin.view', label: 'Administration — Accès total', group: 'Administration' },
-    { key: 'chantiers.view',   label: 'Chantiers — Voir',           group: 'Chantiers' },
-    { key: 'chantiers.edit',   label: 'Chantiers — Créer/Modifier', group: 'Chantiers' },
-    { key: 'chantiers.delete', label: 'Chantiers — Supprimer',      group: 'Chantiers' },
+    { key: 'chantiers.view', label: 'Chantiers — Voir', group: 'Chantiers' },
+    { key: 'chantiers.edit', label: 'Chantiers — Créer/Modifier', group: 'Chantiers' },
+    { key: 'chantiers.delete', label: 'Chantiers — Supprimer', group: 'Chantiers' },
   ]);
 });
 
@@ -2206,6 +2212,7 @@ app.post('/api/chantier-states', requireAuth, requirePermission('admin.view'), a
     res.status(201).json(s);
   } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ error: e.message }); }
 });
+
 app.put('/api/chantier-states/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
     const { label, color, order, isDefault } = req.body;
@@ -2223,6 +2230,33 @@ app.delete('/api/chantier-states/:id', requireAuth, requirePermission('admin.vie
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Chantier Unit Photos ─────────────────────────────────────────────────────
+app.post('/api/chantiers/:id/unit-photo', requireAuth, async (req, res) => {
+  try {
+    const { chassisId, unitIndex, url } = req.body;
+    if (!chassisId || url === undefined) return res.status(400).json({ error: 'chassisId et url requis' });
+    const chantier = await Chantier.findByIdAndUpdate(
+      req.params.id,
+      { $push: { unitPhotos: { chassisId, unitIndex, url, createdAt: new Date() } } },
+      { new: true }
+    );
+    if (!chantier) return res.status(404).json({ error: 'Chantier introuvable' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/chantiers/:id/unit-photo', requireAuth, async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'url requis' });
+    const chantier = await Chantier.findByIdAndUpdate(
+      req.params.id,
+      { $pull: { unitPhotos: { url } } },
+      { new: true }
+    );
+    if (!chantier) return res.status(404).json({ error: 'Chantier introuvable' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 // ==================== TEAM ROUTES ====================
 
 app.get('/api/teams', requireAuth, async (req, res) => {
