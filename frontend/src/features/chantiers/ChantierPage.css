@@ -948,7 +948,7 @@
 
 /* ─── Photo column in table ────────────────────────────────────────────────── */
 .ch-ct-photo-th {
-  width: 60px;
+  width: 150px;
   text-align: center;
   color: var(--text-2, #6b7280);
 }
