@@ -71,6 +71,16 @@ export default function OrdersPage() {
     } catch (e) { console.error(e); } finally { setMarkingId(null); }
   };
 
+  const [deletingPrId, setDeletingPrId] = useState(null);
+  const deletePurchaseRequest = async (id) => {
+    if (!window.confirm('Supprimer cette demande ?')) return;
+    setDeletingPrId(id);
+    try {
+      await axios.delete(`${API_URL}/purchase-requests/${id}`);
+      setPurchaseRequests(prev => prev.filter(r => (r.id || r._id) !== id));
+    } catch (e) { console.error(e); } finally { setDeletingPrId(null); }
+  };
+
   useEffect(() => { fetchOrders(); fetchItems(); fetchPurchaseRequests(); }, [fetchOrders, fetchItems, fetchPurchaseRequests]);
 
   // Keep selectedOrder in sync after a re-fetch
@@ -333,7 +343,9 @@ export default function OrdersPage() {
           requests={purchaseRequests}
           loading={prLoading}
           markingId={markingId}
+          deletingId={deletingPrId}
           onMarkOrdered={markOrdered}
+          onDelete={deletePurchaseRequest}
           onRefresh={fetchPurchaseRequests}
           isAdmin={isAdmin}
           lang={lang}
@@ -788,7 +800,7 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
    ACHAT role sees all pending requests, can mark them as "commandé".
    Admin sees full history (pending + done).
 ────────────────────────────────────────────────────────────────────────── */
-function PurchaseRequestsPanel({ requests, loading, markingId, onMarkOrdered, onRefresh, isAdmin, lang }) {
+function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMarkOrdered, onDelete, onRefresh, isAdmin, lang }) {
   const [filter, setFilter] = useState('pending'); // 'pending' | 'all'
 
   const visible = filter === 'pending'
@@ -862,6 +874,7 @@ function PurchaseRequestsPanel({ requests, loading, markingId, onMarkOrdered, on
                 <th>Date</th>
                 <th>Statut</th>
                 <th style={{ width: 140 }}>Action</th>
+                {isAdmin && <th style={{ width: 44 }}></th>}
               </tr>
             </thead>
             <tbody>
@@ -925,6 +938,29 @@ function PurchaseRequestsPanel({ requests, loading, markingId, onMarkOrdered, on
                       <span style={{ fontSize: 11, color: '#aaa' }}>Traité</span>
                     )}
                   </td>
+                  {/* Delete — admin only */}
+                  {isAdmin && (
+                    <td style={{ textAlign: 'center' }}>
+                      <button
+                        title="Supprimer"
+                        disabled={deletingId === (req.id || req._id)}
+                        onClick={() => onDelete(req.id || req._id)}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: '#ddd', padding: 4, borderRadius: 4,
+                          display: 'inline-flex', alignItems: 'center',
+                          transition: 'color .15s',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
+                        onMouseLeave={e => e.currentTarget.style.color = '#ddd'}
+                      >
+                        {deletingId === (req.id || req._id)
+                          ? <LoaderCircle size={13} style={{ animation: 'spin .7s linear infinite' }} />
+                          : <Trash2 size={13} />
+                        }
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

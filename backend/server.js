@@ -2171,6 +2171,14 @@ app.patch('/api/purchase-requests/:id/mark-ordered', requireAuth, async (req, re
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.delete('/api/purchase-requests/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const pr = await PurchaseRequest.findByIdAndDelete(req.params.id);
+    if (!pr) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ==================== LAQUAGE HISTORY DELETE ROUTES ====================
 
 app.delete('/api/laquage/history-entry', requireAuth, requirePermission('admin.view'), async (req, res) => {

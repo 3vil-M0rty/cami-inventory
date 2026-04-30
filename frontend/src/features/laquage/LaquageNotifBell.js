@@ -1,16 +1,3 @@
-/**
- * NotifBell — unified notification bell for Header.
- *
- * Handles two event sources:
- *   1. Laquage workflow actions  (GET /api/laquage/recent-actions)
- *   2. Purchase requests ordered (GET /api/purchase-requests?notifyAdmin=1)
- *
- * Usage in Header.js:
- *   import NotifBell from '../features/notifications/NotifBell';
- *   <NotifBell />
- *
- * Replace the previous LaquageNotifBell with this.
- */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import {
@@ -19,9 +6,42 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-const API_URL  = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 const POLL_MS  = 20_000;
-const LS_SEEN  = 'notif_bell_seen_at';
+const LS_READ  = 'notif_bell_read_ids';   // replaces the old single-timestamp key
+const PRUNE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/* ── Per-notification ID helpers ─────────────────────────────── */
+function getNotifId(ev) {
+  if (ev._type === 'purchase') return `pr_${ev._id}`;
+  return `laq_${ev.action}_${ev.projectId}_${new Date(ev.at).getTime()}`;
+}
+
+function loadReadIds() {
+  try {
+    const raw  = JSON.parse(localStorage.getItem(LS_READ) || '{}');
+    const cutoff = Date.now() - PRUNE_MS;
+    // raw is { id: savedAt_ms }
+    return new Set(
+      Object.entries(raw)
+        .filter(([, ts]) => ts > cutoff)
+        .map(([id]) => id)
+    );
+  } catch { return new Set(); }
+}
+
+function persistReadIds(newIds, existingSet) {
+  try {
+    const raw    = JSON.parse(localStorage.getItem(LS_READ) || '{}');
+    const now    = Date.now();
+    const cutoff = now - PRUNE_MS;
+    // merge new IDs
+    for (const id of newIds) { if (!raw[id]) raw[id] = now; }
+    // prune old
+    for (const id of Object.keys(raw)) { if (raw[id] < cutoff) delete raw[id]; }
+    localStorage.setItem(LS_READ, JSON.stringify(raw));
+  } catch { /* silent */ }
+}
 
 /* ── Laquage action metadata ─────────────────────────────────── */
 const LAQUAGE_META = {
@@ -46,13 +66,11 @@ export default function NotifBell() {
   const { can } = useAuth();
   const isAdmin = can('admin.view');
 
-  /* Combined event list — each item has a `_type: 'laquage' | 'purchase'` */
   const [events,   setEvents]   = useState([]);
+  const [readIds,  setReadIds]  = useState(() => loadReadIds());
   const [open,     setOpen]     = useState(false);
   const [badge,    setBadge]    = useState(0);
   const [deleting, setDeleting] = useState(false);
-
-  const seenAtRef = useRef(new Date(localStorage.getItem(LS_SEEN) || 0));
 
   /* ── Fetch both sources ─────────────────────────────────────── */
   const fetchAll = useCallback(async () => {
@@ -60,7 +78,6 @@ export default function NotifBell() {
       const requests = [
         axios.get(`${API_URL}/laquage/recent-actions?limit=30`).catch(() => ({ data: [] })),
       ];
-      // Admin also sees "purchase ordered" notifications
       if (isAdmin) {
         requests.push(
           axios.get(`${API_URL}/purchase-requests?status=ordered&limit=30`).catch(() => ({ data: [] }))
@@ -82,17 +99,19 @@ export default function NotifBell() {
           }))
         : [];
 
-      // Merge and sort newest first
       const all = [...laqEvents, ...prEvents].sort((a, b) => new Date(b.at) - new Date(a.at));
       setEvents(all.slice(0, 40));
-
-      const newCount = all.filter(ev => new Date(ev.at) > seenAtRef.current).length;
-      setBadge(Math.min(newCount, 9));
     } catch { /* silent */ }
   }, [isAdmin]);
 
+  /* ── Recompute badge whenever events or readIds change ─────── */
   useEffect(() => {
-    seenAtRef.current = new Date(localStorage.getItem(LS_SEEN) || 0);
+    const currentRead = loadReadIds(); // always read fresh from localStorage
+    const unread = events.filter(ev => !currentRead.has(getNotifId(ev))).length;
+    setBadge(Math.min(unread, 9));
+  }, [events, readIds]);
+
+  useEffect(() => {
     fetchAll();
     const id = setInterval(fetchAll, POLL_MS);
     return () => clearInterval(id);
@@ -106,37 +125,44 @@ export default function NotifBell() {
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  /* ── Open / close ───────────────────────────────────────────── */
-  const markSeen = () => {
-    const now = new Date();
-    localStorage.setItem(LS_SEEN, now.toISOString());
-    seenAtRef.current = now;
+  /* ── Mark all visible notifications as read ─────────────────── */
+  const markAllRead = useCallback(() => {
+    const ids = events.map(getNotifId);
+    persistReadIds(ids);
+    setReadIds(loadReadIds());
     setBadge(0);
-  };
+  }, [events]);
 
   const handleBellClick = () => {
     if (open) {
       setOpen(false);
     } else {
-      markSeen();
+      markAllRead();
       setOpen(true);
     }
   };
 
-  /* ── Admin: delete one laquage history entry ────────────────── */
+  /* ── Admin: delete one notification ────────────────────────── */
   const deleteOne = async (ev) => {
-    if (deleting || ev._type !== 'laquage') return;
+    if (deleting) return;
     setDeleting(true);
     try {
-      await axios.delete(`${API_URL}/laquage/history-entry`, {
-        data: { projectId: ev.projectId, action: ev.action, at: ev.at }
-      });
-      setEvents(prev => prev.filter(e =>
-        !(e._type === 'laquage' &&
-          String(e.projectId) === String(ev.projectId) &&
-          e.action === ev.action &&
-          new Date(e.at).getTime() === new Date(ev.at).getTime())
-      ));
+      if (ev._type === 'laquage') {
+        await axios.delete(`${API_URL}/laquage/history-entry`, {
+          data: { projectId: ev.projectId, action: ev.action, at: ev.at }
+        });
+        setEvents(prev => prev.filter(e =>
+          !(e._type === 'laquage' &&
+            String(e.projectId) === String(ev.projectId) &&
+            e.action === ev.action &&
+            new Date(e.at).getTime() === new Date(ev.at).getTime())
+        ));
+      } else if (ev._type === 'purchase') {
+        await axios.delete(`${API_URL}/purchase-requests/${ev._id}`);
+        setEvents(prev => prev.filter(e =>
+          !(e._type === 'purchase' && String(e._id) === String(ev._id))
+        ));
+      }
     } catch { /* silent */ }
     finally { setDeleting(false); }
   };
@@ -157,16 +183,29 @@ export default function NotifBell() {
   const displayBadge = badge >= 9 ? '9+' : badge;
   const hasLaquage   = events.some(e => e._type === 'laquage');
 
+  const unreadCount = events.filter(ev => !readIds.has(getNotifId(ev))).length;
+
   const renderEvent = (ev, i) => {
+    const isRead    = readIds.has(getNotifId(ev));
+    const rowStyle  = {
+      display: 'flex', gap: 12, padding: '11px 16px',
+      borderBottom: '1px solid #f5f5f5', alignItems: 'flex-start',
+      background: isRead ? 'transparent' : '#fffbf0',
+      borderLeft: isRead ? '3px solid transparent' : '3px solid #f59e0b',
+      opacity: isRead ? 0.72 : 1,
+      transition: 'background .15s',
+    };
+
     if (ev._type === 'purchase') {
       return (
-        <div key={`pr-${i}`} className="notif-row" style={{ display: 'flex', gap: 12, padding: '11px 16px', borderBottom: '1px solid #f5f5f5', alignItems: 'flex-start' }}>
+        <div key={`pr-${i}`} className="notif-row" style={rowStyle}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#f59e0b18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#f59e0b' }}>
             <ShoppingCart size={13}/>
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 2 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
               Commande lancée par ACHAT
+              {isRead && <span style={{ fontSize: 9, fontWeight: 600, color: '#aaa', background: '#f0f0f0', borderRadius: 4, padding: '1px 5px', letterSpacing: '.03em' }}>VU</span>}
             </div>
             <div style={{ fontSize: 12, color: '#222', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {ev.projectName}
@@ -182,6 +221,18 @@ export default function NotifBell() {
               </div>
             )}
           </div>
+          {isAdmin && (
+            <button
+              onClick={() => deleteOne(ev)}
+              disabled={deleting}
+              title="Supprimer"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ddd', padding: 2, flexShrink: 0, display: 'flex', alignItems: 'center', marginTop: 2 }}
+              onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
+              onMouseLeave={e => e.currentTarget.style.color = '#ddd'}
+            >
+              <Trash2 size={12}/>
+            </button>
+          )}
         </div>
       );
     }
@@ -189,12 +240,15 @@ export default function NotifBell() {
     // Laquage event
     const meta = getLaquageMeta(ev.action);
     return (
-      <div key={`lq-${i}`} className="notif-row" style={{ display: 'flex', gap: 12, padding: '11px 16px', borderBottom: '1px solid #f5f5f5', alignItems: 'flex-start' }}>
+      <div key={`lq-${i}`} className="notif-row" style={rowStyle}>
         <div style={{ width: 32, height: 32, borderRadius: '50%', background: meta.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: meta.color }}>
           {meta.icon}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: meta.color, marginBottom: 2 }}>{meta.label}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: meta.color, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+            {meta.label}
+            {isRead && <span style={{ fontSize: 9, fontWeight: 600, color: '#aaa', background: '#f0f0f0', borderRadius: 4, padding: '1px 5px', letterSpacing: '.03em' }}>VU</span>}
+          </div>
           {ev.projectName && (
             <div style={{ fontSize: 12, color: '#222', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {ev.projectName}
@@ -279,7 +333,6 @@ export default function NotifBell() {
         }}>
           <style>{`
             @keyframes notifBellIn { from { opacity:0; transform:translateY(-8px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
-            @keyframes spin { to { transform: rotate(360deg); } }
             .notif-row:hover { background: #f9f9f9 !important; }
           `}</style>
 
@@ -288,6 +341,11 @@ export default function NotifBell() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Bell size={15} style={{ color: '#555' }}/>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Notifications</span>
+              {unreadCount > 0 && (
+                <span style={{ fontSize: 10, fontWeight: 700, background: '#dc2626', color: '#fff', borderRadius: 999, padding: '1px 6px' }}>
+                  {unreadCount} non lu{unreadCount > 1 ? 'es' : 'e'}
+                </span>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {isAdmin && hasLaquage && (
@@ -314,7 +372,7 @@ export default function NotifBell() {
           {events.length > 0 && (
             <div style={{ padding: '9px 16px', borderTop: '1px solid #f0f0f0', background: '#fafafa', textAlign: 'center' }}>
               <span style={{ fontSize: 11, color: '#bbb' }}>
-                {events.length} dernière{events.length > 1 ? 's' : ''} notification{events.length > 1 ? 's' : ''}
+                {events.length} notification{events.length > 1 ? 's' : ''} · {events.length - unreadCount} lue{events.length - unreadCount !== 1 ? 's' : ''}
               </span>
             </div>
           )}
