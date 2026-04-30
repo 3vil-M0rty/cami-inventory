@@ -31,7 +31,7 @@ async function uploadToCloudinary(file) {
 // ─── Camera Cell Component ────────────────────────────────────────────────────
 function CameraCell({ chassisId, unitIndex, chantier, authFetch, onRefresh }) {
     const [uploading, setUploading] = useState(false);
-    const [lightbox, setLightbox] = useState(null); // url to preview
+    const [lightbox, setLightbox] = useState(null);
     const inputRef = useRef(null);
 
     const existing = (chantier.unitPhotos || []).filter(
@@ -53,11 +53,20 @@ function CameraCell({ chassisId, unitIndex, chantier, authFetch, onRefresh }) {
             alert('Erreur lors de l\'upload : ' + err.message);
         } finally {
             setUploading(false);
-            // Reset input so same file can be re-selected
             if (inputRef.current) inputRef.current.value = '';
         }
     };
-    
+
+    // ↓ ADD THIS
+    const handleDelete = async (url) => {
+        await authFetch(`${API_URL}/chantiers/${chantier.id}/unit-photo`, {
+            method: 'DELETE',
+            body: JSON.stringify({ url }),
+        });
+        onRefresh();
+        if (existing.length <= 1) setLightbox(null);
+        else setLightbox(existing.filter(p => p.url !== url));
+    };
 
     return (
         <div className="ch-camera-cell">
@@ -89,16 +98,17 @@ function CameraCell({ chassisId, unitIndex, chantier, authFetch, onRefresh }) {
                 </button>
             )}
 
+            {/* ↓ onDelete added here */}
             {lightbox && (
                 <PhotoLightbox
                     photos={lightbox}
                     onClose={() => setLightbox(null)}
+                    onDelete={handleDelete}
                 />
             )}
         </div>
     );
 }
-
 // ─── Photo Lightbox ───────────────────────────────────────────────────────────
 function PhotoLightbox({ photos, onClose, onDelete }) {
     const [idx, setIdx] = useState(0);
