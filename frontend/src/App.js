@@ -20,6 +20,7 @@ import AtelierTablesPage from './features/AtelierTables';
 
 const PROJECTS_DEFAULT_ROLES = new Set(['LOGISTIQUE', 'Coordinateur', 'BARREMAN']);
 const CHANTIER_DEFAULT_ROLES = new Set(['chefChantier', 'BARREMAN']);
+const LS_PAGE = 'app_active_page';
 
 function getDefaultPage(role) {
   if (CHANTIER_DEFAULT_ROLES.has(role)) return 'chantiers';
@@ -35,11 +36,17 @@ function AppInner() {
   useEffect(() => {
     if (!loading && !pageInitialized) {
       if (user) {
-        setActivePage(getDefaultPage(user.role));
+        const saved = localStorage.getItem(LS_PAGE);
+        setActivePage(saved || getDefaultPage(user.role));
       }
       setPageInitialized(true);
     }
   }, [loading, user, pageInitialized]);
+
+  const navigate = (page) => {
+    localStorage.setItem(LS_PAGE, page);
+    setActivePage(page);
+  };
 
   if (loading) {
     return (
@@ -56,8 +63,10 @@ function AppInner() {
 
   if (!user) {
     return <LoginPage onLogin={(loggedInUser) => {
+      const defaultPage = getDefaultPage(loggedInUser?.role);
+      localStorage.setItem(LS_PAGE, defaultPage);
       setPageInitialized(false);
-      setActivePage(getDefaultPage(loggedInUser?.role));
+      setActivePage(defaultPage);
     }} />;
   }
 
@@ -74,7 +83,7 @@ function AppInner() {
       <InventoryProvider>
         <ProjectProvider>
           <div className="app">
-            <Header activePage={activePage} onNavigate={setActivePage} />
+            <Header activePage={activePage} onNavigate={navigate} />
             <main className="app__main">
               {!currentAllowed ? (
                 <div style={{ textAlign: 'center', padding: 80 }}>
