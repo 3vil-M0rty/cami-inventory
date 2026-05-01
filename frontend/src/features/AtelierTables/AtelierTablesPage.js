@@ -18,8 +18,25 @@ const DEFAULT_LAYOUT = [
 const CANVAS_W = 880;
 const CANVAS_H = 800;
 
-const ETAT_COLORS = { non_entame: '#9ca3af', en_cours: '#f59e0b', fabrique: '#3b82f6', livre: '#16a34a' };
-const ETAT_LABELS = { non_entame: 'Non entamé', en_cours: 'En cours', fabrique: 'Fabriqué', livre: 'Livré' };
+const ETAT_COLORS = {
+  non_entame: '#9ca3af',
+  en_cours: '#f59e0b',
+  non_vitre: '#a855f7',
+  fabrique: '#3b82f6',
+  pret_a_livrer: '#ef4444',
+  livre: '#16a34a',
+};
+const ETAT_LABELS = {
+  non_entame: 'Non entamé',
+  en_cours: 'En cours',
+  non_vitre: 'Non vitré',
+  fabrique: 'Fabriqué',
+  pret_a_livrer: 'Prêt à livrer',
+  livre: 'Livré',
+};
+
+// All possible etat keys in display order
+const ALL_ETATS = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'pret_a_livrer', 'livre'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function fmtDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('fr-FR'); }
@@ -80,7 +97,6 @@ function WorkshopTable({ table, isSelected, isDragging, onMouseDown, onDoubleCli
           <TableNameEditor value={editName} onChange={onEditChange} onBlur={onEditBlur} />
         </foreignObject>
       )}
-      {/* Workload badge */}
       {workloadCount > 0 && (
         <g>
           <circle cx={table.x + table.w - 18} cy={table.y + 18} r={13} fill="#3b82f6" />
@@ -88,7 +104,6 @@ function WorkshopTable({ table, isSelected, isDragging, onMouseDown, onDoubleCli
             style={{ fontSize: 10, fontWeight: 700, fill: '#fff', userSelect: 'none' }}>{workloadCount}</text>
         </g>
       )}
-      {/* Stock alert dot */}
       {stockAlert && (
         <circle cx={table.x + table.w - 14} cy={table.y + table.h - 14} r={7} fill="#ef4444" />
       )}
@@ -100,23 +115,109 @@ function WorkshopTable({ table, isSelected, isDragging, onMouseDown, onDoubleCli
   );
 }
 
+// ─── Etat Filter Bar ──────────────────────────────────────────────────────────
+function EtatFilterBar({ workload, activeFilter, onChange }) {
+  // Count how many rows exist per etat
+  const counts = {};
+  for (const w of workload) {
+    const e = w.etat || 'non_entame';
+    counts[e] = (counts[e] || 0) + 1;
+  }
+  // Only show etats that actually appear in this workload
+  const presentEtats = ALL_ETATS.filter(e => counts[e] > 0);
+
+  if (presentEtats.length === 0) return null;
+
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '10px 0 4px', alignItems: 'center' }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', marginRight: 2 }}>
+        Filtrer :
+      </span>
+      {/* "All" pill */}
+      <button
+        onClick={() => onChange('all')}
+        style={{
+          padding: '3px 10px',
+          borderRadius: 999,
+          border: '1.5px solid',
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: 'pointer',
+          borderColor: activeFilter === 'all' ? '#1a1a1a' : '#e5e7eb',
+          background: activeFilter === 'all' ? '#1a1a1a' : '#fff',
+          color: activeFilter === 'all' ? '#fff' : '#374151',
+          transition: 'all .15s',
+        }}
+      >
+        Tous ({workload.length})
+      </button>
+      {presentEtats.map(e => {
+        const active = activeFilter === e;
+        return (
+          <button
+            key={e}
+            onClick={() => onChange(active ? 'all' : e)}
+            style={{
+              padding: '3px 10px',
+              borderRadius: 999,
+              border: '1.5px solid',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              borderColor: active ? ETAT_COLORS[e] : '#e5e7eb',
+              background: active ? ETAT_COLORS[e] : '#fff',
+              color: active ? '#fff' : '#374151',
+              transition: 'all .15s',
+            }}
+          >
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: active ? '#fff' : ETAT_COLORS[e],
+              display: 'inline-block', flexShrink: 0,
+            }} />
+            {ETAT_LABELS[e]}
+            <span style={{
+              background: active ? 'rgba(255,255,255,.25)' : ETAT_COLORS[e] + '22',
+              color: active ? '#fff' : ETAT_COLORS[e],
+              borderRadius: 999,
+              padding: '0 5px',
+              fontSize: 11,
+              fontWeight: 700,
+              minWidth: 18,
+              textAlign: 'center',
+            }}>
+              {counts[e]}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Table Detail Popup ───────────────────────────────────────────────────────
 function TableDetailPopup({ table, onClose }) {
-  const [activeTab, setActiveTab] = useState('workload');
-  const [workload, setWorkload]   = useState([]);
-  const [stock, setStock]         = useState([]);
-  const [workers, setWorkers]     = useState([]);
-  const [recap, setRecap]         = useState([]);
-  const [recapPeriod, setRecapPeriod] = useState('daily');
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-  const [newWorker, setNewWorker] = useState('');
+  const [activeTab, setActiveTab]         = useState('workload');
+  const [workload, setWorkload]           = useState([]);
+  const [stock, setStock]                 = useState([]);
+  const [workers, setWorkers]             = useState([]);
+  const [recap, setRecap]                 = useState([]);
+  const [recapPeriod, setRecapPeriod]     = useState('daily');
+  const [loading, setLoading]             = useState(true);
+  const [saving, setSaving]               = useState(false);
+  const [newWorker, setNewWorker]         = useState('');
   const [inventoryItems, setInventoryItems] = useState([]);
-  const [stockSearch, setStockSearch] = useState('');
-  const [addingItem, setAddingItem] = useState(null); // {itemId,label,unit}
-  const [addQty, setAddQty]       = useState('');
-  const [adjusting, setAdjusting] = useState(null);  // {idx, delta:''}
-  const [savingStock, setSavingStock] = useState(false);
+  const [stockSearch, setStockSearch]     = useState('');
+  const [addingItem, setAddingItem]       = useState(null);
+  const [addQty, setAddQty]               = useState('');
+  const [adjusting, setAdjusting]         = useState(null);
+  const [savingStock, setSavingStock]     = useState(false);
+
+  // ── Etat filter for workload tab ──────────────────────────────────────────
+  const [etatFilter, setEtatFilter] = useState('all');
 
   // Load workload + stock
   useEffect(() => {
@@ -136,7 +237,9 @@ function TableDetailPopup({ table, onClose }) {
     load();
   }, [table.id]);
 
-  // Load recap when tab or period changes — uses raw logs so each entry has an _id for deletion
+  // Reset filter when workload changes (e.g. table switch)
+  useEffect(() => { setEtatFilter('all'); }, [table.id]);
+
   const loadRecap = () => {
     axios.get(`${API_URL}/table-consumption?tableId=${table.id}`)
       .then(r => setRecap(r.data || []))
@@ -156,7 +259,6 @@ function TableDetailPopup({ table, onClose }) {
     } catch (e) { console.error(e); }
   };
 
-  // Load accessory inventory for adding stock
   useEffect(() => {
     if (activeTab !== 'stock') return;
     axios.get(`${API_URL}/inventory?superCategory=accessoires`)
@@ -176,7 +278,6 @@ function TableDetailPopup({ table, onClose }) {
     finally { setSavingStock(false); }
   };
 
-  // Workers
   const addWorker = () => {
     const w = newWorker.trim();
     if (!w) return;
@@ -191,7 +292,6 @@ function TableDetailPopup({ table, onClose }) {
     saveStock(null, next);
   };
 
-  // Stock: add item
   const handleAddItem = async () => {
     if (!addingItem || !addQty) return;
     const qty = parseFloat(addQty);
@@ -210,7 +310,6 @@ function TableDetailPopup({ table, onClose }) {
     finally { setSaving(false); setAddingItem(null); setAddQty(''); }
   };
 
-  // Stock: manual adjust
   const handleAdjust = async (item, delta) => {
     setSaving(true);
     try {
@@ -226,7 +325,6 @@ function TableDetailPopup({ table, onClose }) {
     finally { setSaving(false); }
   };
 
-  // Stock: remove item entirely (returns qty to global inventory)
   const handleRemoveItem = async (item) => {
     if (!window.confirm(`Retirer "${item.label}" du stock de cette table ?\nLa quantité restante (${item.quantity}) sera retournée à l'inventaire global.`)) return;
     setSaving(true);
@@ -237,12 +335,17 @@ function TableDetailPopup({ table, onClose }) {
     finally { setSaving(false); }
   };
 
-  const filteredInventory = inventoryItems.filter(it => {
-    const label = it.designation?.fr || it.designation?.en || '';
-    return label.toLowerCase().includes(stockSearch.toLowerCase());
-  }).filter(it => !stock.some(s => s.itemId === it.id));
+  const filteredInventory = inventoryItems
+    .filter(it => {
+      const label = it.designation?.fr || it.designation?.en || '';
+      return label.toLowerCase().includes(stockSearch.toLowerCase());
+    })
+    .filter(it => !stock.some(s => s.itemId === it.id));
 
-  const periods = recapPeriod === 'daily' ? 'Jour' : recapPeriod === 'weekly' ? 'Semaine' : 'Mois';
+  // Apply etat filter to workload
+  const filteredWorkload = etatFilter === 'all'
+    ? workload
+    : workload.filter(w => (w.etat || 'non_entame') === etatFilter);
 
   return (
     <div className="atp__popup-overlay" onClick={onClose}>
@@ -277,8 +380,14 @@ function TableDetailPopup({ table, onClose }) {
 
         {/* Tabs */}
         <div className="atp__popup-tabs">
-          {[['workload','📋 En cours'], ['stock','🔧 Stock'], ['recap','📊 Récap']].map(([k, label]) => (
-            <button key={k} className={`atp__popup-tab${activeTab === k ? ' active' : ''}`} onClick={() => setActiveTab(k)}>{label}</button>
+          {[
+            ['workload', `📋 En cours${workload.length > 0 ? ` (${workload.length})` : ''}`],
+            ['stock', '🔧 Stock'],
+            ['recap', '📊 Récap'],
+          ].map(([k, label]) => (
+            <button key={k} className={`atp__popup-tab${activeTab === k ? ' active' : ''}`} onClick={() => setActiveTab(k)}>
+              {label}
+            </button>
           ))}
         </div>
 
@@ -293,33 +402,90 @@ function TableDetailPopup({ table, onClose }) {
                   {workload.length === 0 ? (
                     <div className="atp__popup-empty">Aucun châssis assigné à cette table</div>
                   ) : (
-                    <table className="atp__popup-table">
-                      <thead>
-                        <tr>
-                          <th>Projet</th><th>Client</th><th>Réf châssis</th><th>Dim.</th>
-                          <th>État</th><th>Livraison</th><th>Accessoires</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {workload.map((w, i) => (
-                          <tr key={i}>
-                            <td><strong>{w.projectName}</strong><br /><small>{w.projectRef}</small></td>
-                            <td>{w.clientName || '—'}</td>
-                            <td><code>{w.chassisRef}</code>{w.unitIndex > 0 && <span className="atp__unit-idx"> #{w.unitIndex + 1}</span>}</td>
-                            <td>{w.dimension}</td>
-                            <td><span className="atp__etat-dot" style={{ background: ETAT_COLORS[w.etat] || '#9ca3af' }} />{ETAT_LABELS[w.etat] || w.etat}</td>
-                            <td>{fmtDate(w.deliveryDate)}</td>
-                            <td>
-                              {(w.accessories || []).filter(a => a.quantity > 0).length === 0
-                                ? <span style={{ color: '#9ca3af' }}>—</span>
-                                : (w.accessories || []).filter(a => a.quantity > 0).map((a, ai) => (
-                                  <span key={ai} className="atp__acc-chip">{a.label} <strong>{a.quantity}</strong>{a.unit && ` ${a.unit}`}</span>
-                                ))}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <>
+                      {/* Etat filter pills */}
+                      <EtatFilterBar
+                        workload={workload}
+                        activeFilter={etatFilter}
+                        onChange={setEtatFilter}
+                      />
+
+                      {filteredWorkload.length === 0 ? (
+                        <div className="atp__popup-empty" style={{ marginTop: 16 }}>
+                          Aucun châssis avec l'état &laquo;&nbsp;
+                          <span style={{ color: ETAT_COLORS[etatFilter], fontWeight: 700 }}>
+                            {ETAT_LABELS[etatFilter]}
+                          </span>
+                          &nbsp;&raquo;
+                        </div>
+                      ) : (
+                        <table className="atp__popup-table" style={{ marginTop: 8 }}>
+                          <thead>
+                            <tr>
+                              <th>Projet</th>
+                              <th>Client</th>
+                              <th>Réf châssis</th>
+                              <th>Dim.</th>
+                              <th>État</th>
+                              <th>Livraison</th>
+                              <th>Accessoires</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredWorkload.map((w, i) => (
+                              <tr key={i}>
+                                <td>
+                                  <strong>{w.projectName}</strong>
+                                  <br />
+                                  <small style={{ color: '#6b7280' }}>{w.projectRef}</small>
+                                </td>
+                                <td>{w.clientName || '—'}</td>
+                                <td>
+                                  <code>{w.chassisRef}</code>
+                                  {w.unitIndex > 0 && (
+                                    <span className="atp__unit-idx"> #{w.unitIndex + 1}</span>
+                                  )}
+                                </td>
+                                <td>{w.dimension}</td>
+                                <td>
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    padding: '2px 8px',
+                                    borderRadius: 999,
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    background: (ETAT_COLORS[w.etat] || '#9ca3af') + '1a',
+                                    color: ETAT_COLORS[w.etat] || '#9ca3af',
+                                    border: `1px solid ${(ETAT_COLORS[w.etat] || '#9ca3af')}40`,
+                                    whiteSpace: 'nowrap',
+                                  }}>
+                                    <span style={{
+                                      width: 7, height: 7, borderRadius: '50%',
+                                      background: ETAT_COLORS[w.etat] || '#9ca3af',
+                                      display: 'inline-block', flexShrink: 0,
+                                    }} />
+                                    {ETAT_LABELS[w.etat] || w.etat}
+                                  </span>
+                                </td>
+                                <td>{fmtDate(w.deliveryDate)}</td>
+                                <td>
+                                  {(w.accessories || []).filter(a => a.quantity > 0).length === 0
+                                    ? <span style={{ color: '#9ca3af' }}>—</span>
+                                    : (w.accessories || []).filter(a => a.quantity > 0).map((a, ai) => (
+                                      <span key={ai} className="atp__acc-chip">
+                                        {a.label} <strong>{a.quantity}</strong>{a.unit && ` ${a.unit}`}
+                                      </span>
+                                    ))
+                                  }
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -328,12 +494,15 @@ function TableDetailPopup({ table, onClose }) {
               {activeTab === 'stock' && (
                 <div className="atp__popup-stock">
                   <h4 className="atp__popup-section-title">Stock d'accessoires de la table</h4>
-
                   {stock.length === 0 ? (
                     <div className="atp__popup-empty">Aucun accessoire en stock</div>
                   ) : (
                     <table className="atp__popup-table">
-                      <thead><tr><th>Accessoire</th><th>Unité</th><th style={{ textAlign: 'right' }}>Qté</th><th>Ajuster</th><th></th></tr></thead>
+                      <thead>
+                        <tr>
+                          <th>Accessoire</th><th>Unité</th><th style={{ textAlign: 'right' }}>Qté</th><th>Ajuster</th><th></th>
+                        </tr>
+                      </thead>
                       <tbody>
                         {stock.map((item, i) => (
                           <tr key={i} className={item.quantity <= 0 ? 'atp__stock-row--zero' : ''}>
@@ -379,7 +548,6 @@ function TableDetailPopup({ table, onClose }) {
                     </table>
                   )}
 
-                  {/* Add from inventory */}
                   <div className="atp__stock-add-section">
                     <h5 className="atp__popup-section-subtitle">➕ Ajouter depuis l'inventaire accessoires</h5>
                     <input className="atp__stock-search" value={stockSearch} onChange={e => setStockSearch(e.target.value)}
@@ -420,7 +588,6 @@ function TableDetailPopup({ table, onClose }) {
                   </div>
 
                   {(() => {
-                    // Group raw log entries by period key client-side
                     const getPeriodKey = (dateStr) => {
                       const d = new Date(dateStr);
                       if (recapPeriod === 'daily')   return d.toISOString().split('T')[0];
@@ -519,7 +686,6 @@ function GlobalRecapModal({ tables, onClose }) {
       .finally(() => setLoading(false));
   }, [period]);
 
-  // Build all period keys
   const allPeriodKeys = [...new Set(recap.flatMap(t => Object.keys(t.periods)))].sort((a, b) => b.localeCompare(a));
 
   return (
@@ -589,12 +755,11 @@ function AtelierTablesPage() {
   const [dragging, setDragging]       = useState(null);
   const [popupTable, setPopupTable]   = useState(null);
   const [showGlobalRecap, setShowGlobalRecap] = useState(false);
-  const [workloads, setWorkloads]     = useState({}); // { tableId: count }
-  const [stockAlerts, setStockAlerts] = useState({}); // { tableId: bool }
+  const [workloads, setWorkloads]     = useState({});
+  const [stockAlerts, setStockAlerts] = useState({});
   const svgRef = useRef(null);
   const clickTimerRef = useRef(null);
 
-  // ── Load layout ──
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -602,7 +767,6 @@ function AtelierTablesPage() {
         const res = await axios.get(`${API_URL}/atelier-tables`);
         const t = res.data?.length ? res.data : DEFAULT_LAYOUT;
         setTables(t);
-        // Load workload counts for all tables
         loadWorkloads(t);
       } catch {
         setTables(DEFAULT_LAYOUT);
@@ -631,7 +795,6 @@ function AtelierTablesPage() {
     setStockAlerts(alerts);
   };
 
-  // ── Save layout ──
   const handleSave = async () => {
     setSaving(true); setError('');
     try {
@@ -642,7 +805,6 @@ function AtelierTablesPage() {
     } finally { setSaving(false); }
   };
 
-  // ── Add table ──
   const handleAddTable = () => {
     const nextNum = tables.length > 0 ? Math.max(...tables.map(t => t.number)) + 1 : 1;
     const newTable = {
@@ -656,7 +818,6 @@ function AtelierTablesPage() {
     setSelectedId(newTable.id);
   };
 
-  // ── Delete ──
   const handleDeleteSelected = () => {
     if (!selectedId) return;
     if (!window.confirm('Supprimer cette table ?')) return;
@@ -664,7 +825,6 @@ function AtelierTablesPage() {
     setSelectedId(null);
   };
 
-  // ── Double-click → rename ──
   const handleDoubleClick = (table, e) => {
     e.stopPropagation();
     if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null; }
@@ -679,7 +839,6 @@ function AtelierTablesPage() {
     }
   };
 
-  // ── Single click → open popup (with delay to let dblclick cancel it) ──
   const handleTableClick = (table, e) => {
     e.stopPropagation();
     if (editingId) return;
@@ -691,7 +850,6 @@ function AtelierTablesPage() {
     }, 220);
   };
 
-  // ── Drag ──
   const handleMouseDown = useCallback((e, tableId) => {
     if (editingId) return;
     e.preventDefault();
@@ -731,7 +889,6 @@ function AtelierTablesPage() {
 
   return (
     <div className="atp">
-      {/* Header */}
       <div className="atp__header">
         <div className="atp__header-left">
           <div className="atp__header-icon">🏭</div>
@@ -767,7 +924,6 @@ function AtelierTablesPage() {
         </div>
       )}
 
-      {/* Canvas */}
       <div className="atp__canvas-wrap">
         <div className="atp__canvas-label atp__canvas-label--top">ENTRÉE</div>
         <div className="atp__canvas-label atp__canvas-label--left">NORD</div>
@@ -830,7 +986,6 @@ function AtelierTablesPage() {
         <div className="atp__canvas-label atp__canvas-label--right">SUD</div>
       </div>
 
-      {/* Table list */}
       <div className="atp__list-section">
         <h3 className="atp__list-title">Tables configurées <span className="atp__list-count">{tables.length}</span></h3>
         <div className="atp__list">
@@ -850,13 +1005,11 @@ function AtelierTablesPage() {
         </div>
       </div>
 
-      {/* Popups */}
       {popupTable && (
         <TableDetailPopup
           table={popupTable}
           onClose={() => {
             setPopupTable(null);
-            // Refresh workload counts after popup closes (stock may have changed)
             loadWorkloads(tables);
           }}
         />
