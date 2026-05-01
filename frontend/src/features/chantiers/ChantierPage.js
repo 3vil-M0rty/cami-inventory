@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
     HardHat, Users, Calendar, Package, Plus, Edit2, Trash2,
     X, Check, Layers, ArrowRight, BarChart2, Wrench,
@@ -28,14 +28,20 @@ async function uploadToCloudinary(file) {
     return json.secure_url;
 }
 
+// ─── Static data cache (survives re-renders, loaded once per session) ─────────
+const _staticCache = { chantierStates: null, chassisTypes: null };
+
 // ─── Camera Cell Component ────────────────────────────────────────────────────
-function CameraCell({ chassisId, unitIndex, chantier, authFetch, onRefresh }) {
+function CameraCell({ chassisId, unitIndex, chantier, authFetch, onPhotoAdded, onPhotoDeleted }) {
     const [uploading, setUploading] = useState(false);
     const [lightbox, setLightbox] = useState(null);
     const inputRef = useRef(null);
 
-    const existing = (chantier.unitPhotos || []).filter(
-        p => p.chassisId === chassisId && p.unitIndex === unitIndex
+    const existing = useMemo(() =>
+        (chantier.unitPhotos || []).filter(
+            p => p.chassisId === chassisId && p.unitIndex === unitIndex
+        ),
+        [chantier.unitPhotos, chassisId, unitIndex]
     );
 
     const handleCapture = async (e) => {
@@ -48,7 +54,8 @@ function CameraCell({ chassisId, unitIndex, chantier, authFetch, onRefresh }) {
                 method: 'POST',
                 body: JSON.stringify({ chassisId, unitIndex, url }),
             });
-            onRefresh();
+            // Optimistic: notify parent with new photo entry
+            onPhotoAdded && onPhotoAdded({ chassisId, unitIndex, url });
         } catch (err) {
             alert('Erreur lors de l\'upload : ' + err.message);
         } finally {
@@ -57,15 +64,15 @@ function CameraCell({ chassisId, unitIndex, chantier, authFetch, onRefresh }) {
         }
     };
 
-    // ↓ ADD THIS
     const handleDelete = async (url) => {
         await authFetch(`${API_URL}/chantiers/${chantier.id}/unit-photo`, {
             method: 'DELETE',
             body: JSON.stringify({ url }),
         });
-        onRefresh();
-        if (existing.length <= 1) setLightbox(null);
-        else setLightbox(existing.filter(p => p.url !== url));
+        onPhotoDeleted && onPhotoDeleted(url);
+        const remaining = existing.filter(p => p.url !== url);
+        if (remaining.length === 0) setLightbox(null);
+        else setLightbox(remaining);
     };
 
     return (
@@ -98,7 +105,6 @@ function CameraCell({ chassisId, unitIndex, chantier, authFetch, onRefresh }) {
                 </button>
             )}
 
-            {/* ↓ onDelete added here */}
             {lightbox && (
                 <PhotoLightbox
                     photos={lightbox}
@@ -109,6 +115,7 @@ function CameraCell({ chassisId, unitIndex, chantier, authFetch, onRefresh }) {
         </div>
     );
 }
+
 // ─── Photo Lightbox ───────────────────────────────────────────────────────────
 function PhotoLightbox({ photos, onClose, onDelete }) {
     const [idx, setIdx] = useState(0);
@@ -150,6 +157,7 @@ function PhotoLightbox({ photos, onClose, onDelete }) {
         </div>
     );
 }
+
 const CHANTIER_STATUS_META = {
     planifie: { label: 'Planifié', color: '#6b7280', bg: 'rgba(107,114,128,.12)' },
     en_cours: { label: 'En cours', color: '#d97706', bg: 'rgba(217,119,6,.12)' },
@@ -170,8 +178,9 @@ export default function ChantierPage() {
     const [chantiers, setChantiers] = useState([]);
     const [projects, setProjects] = useState([]);
     const [teams, setTeams] = useState([]);
-    const [chantierStates, setChantierStates] = useState([]);
-    const [chassisTypes, setChassisTypes] = useState([]);
+    // Static data: fetched once and cached
+    const [chantierStates, setChantierStates] = useState(_staticCache.chantierStates || []);
+    const [chassisTypes, setChassisTypes] = useState(_staticCache.chassisTypes || []);
     const [loading, setLoading] = useState(true);
 
     const [view, setView] = useState('chantiers');
@@ -180,38 +189,64 @@ export default function ChantierPage() {
     const [showForm, setShowForm] = useState(false);
     const [editItem, setEditItem] = useState(null);
 
-    const load = useCallback(async () => {
-        setLoading(true);
+    // ── Load dynamic data only (chantiers/projects/teams) ──────────────────────
+    const loadDynamic = useCallback(async () => {
         try {
-            const [cRes, pRes, tRes, sRes, ctRes] = await Promise.all([
+            const [cRes, pRes, tRes] = await Promise.all([
                 authFetch(`${API_URL}/chantiers`),
                 authFetch(`${API_URL}/projects`),
                 authFetch(`${API_URL}/teams`),
-                authFetch(`${API_URL}/chantier-states`),
-                authFetch(`${API_URL}/chassis-types`),
             ]);
-            const [ch, pr, tm, st, cts] = await Promise.all([cRes.json(), pRes.json(), tRes.json(), sRes.json(), ctRes.json()]);
+            const [ch, pr, tm] = await Promise.all([cRes.json(), pRes.json(), tRes.json()]);
             setChantiers(Array.isArray(ch) ? ch : []);
             setProjects(Array.isArray(pr) ? pr : []);
             setTeams(Array.isArray(tm) ? tm : []);
-            setChantierStates(Array.isArray(st) ? st : []);
-            setChassisTypes(Array.isArray(cts) ? cts : []);
         } catch (e) { console.error(e); }
-        finally { setLoading(false); }
     }, [authFetch]);
+
+    // ── Load static data once, use cache on subsequent mounts ─────────────────
+    const loadStatic = useCallback(async () => {
+        if (_staticCache.chantierStates && _staticCache.chassisTypes) return; // already cached
+        try {
+            const [sRes, ctRes] = await Promise.all([
+                authFetch(`${API_URL}/chantier-states`),
+                authFetch(`${API_URL}/chassis-types`),
+            ]);
+            const [st, cts] = await Promise.all([sRes.json(), ctRes.json()]);
+            _staticCache.chantierStates = Array.isArray(st) ? st : [];
+            _staticCache.chassisTypes = Array.isArray(cts) ? cts : [];
+            setChantierStates(_staticCache.chantierStates);
+            setChassisTypes(_staticCache.chassisTypes);
+        } catch (e) { console.error(e); }
+    }, [authFetch]);
+
+    // ── Full initial load ──────────────────────────────────────────────────────
+    const load = useCallback(async () => {
+        setLoading(true);
+        await Promise.all([loadDynamic(), loadStatic()]);
+        setLoading(false);
+    }, [loadDynamic, loadStatic]);
 
     useEffect(() => { load(); }, [load]);
 
     const deleteChantier = async (id) => {
         if (!window.confirm('Supprimer ce chantier ?')) return;
         await authFetch(`${API_URL}/chantiers/${id}`, { method: 'DELETE' });
-        setView('chantiers'); setDetailId(null); load();
+        setView('chantiers'); setDetailId(null);
+        setChantiers(prev => prev.filter(c => c.id !== id));
     };
-    const adminThing = user?.role === 'Admin';
-    const chefchThing = user?.role === 'Admin' || user?.role === "chefChantier";
 
-    const defaultState = chantierStates.find(s => s.isDefault) || chantierStates[0];
+    const adminThing = user?.role === 'Admin';
+    const defaultState = useMemo(
+        () => chantierStates.find(s => s.isDefault) || chantierStates[0],
+        [chantierStates]
+    );
     const detailChantier = chantiers.find(c => c.id === detailId);
+
+    // ── Optimistic chantier patch: update a single chantier in state ───────────
+    const patchChantier = useCallback((id, patchFn) => {
+        setChantiers(prev => prev.map(c => c.id === id ? patchFn(c) : c));
+    }, []);
 
     if (view === 'team_stock' && teamPanel) {
         return (
@@ -220,7 +255,7 @@ export default function ChantierPage() {
                 chantiers={chantiers}
                 authFetch={authFetch}
                 isAdmin={isAdmin}
-                onBack={() => { setView('teams'); setTeamPanel(null); load(); }}
+                onBack={() => { setView('teams'); setTeamPanel(null); loadDynamic(); }}
             />
         );
     }
@@ -236,13 +271,14 @@ export default function ChantierPage() {
                 defaultState={defaultState}
                 isAdmin={isAdmin}
                 authFetch={authFetch}
-                onBack={() => { setView('chantiers'); setDetailId(null); load(); }}
+                onBack={() => { setView('chantiers'); setDetailId(null); loadDynamic(); }}
                 onEdit={() => { setEditItem(detailChantier); setShowForm(true); }}
                 onDelete={() => deleteChantier(detailChantier.id)}
-                onRefresh={load}
+                onRefreshFull={loadDynamic}
+                patchChantier={patchChantier}
                 showForm={showForm}
                 editItem={editItem}
-                onCloseForm={() => { setShowForm(false); setEditItem(null); load(); }}
+                onCloseForm={() => { setShowForm(false); setEditItem(null); loadDynamic(); }}
             />
         );
     }
@@ -327,7 +363,7 @@ export default function ChantierPage() {
                     isAdmin={isAdmin}
                     authFetch={authFetch}
                     onClose={() => { setShowForm(false); setEditItem(null); }}
-                    onSave={() => { setShowForm(false); setEditItem(null); load(); }}
+                    onSave={() => { setShowForm(false); setEditItem(null); loadDynamic(); }}
                 />
             )}
         </div>
@@ -342,31 +378,33 @@ function ChantierGridCard({ chantier, teams, chantierStates, isAdmin, onClick, o
     const { user } = useAuth();
     const adminThing = user?.role === 'Admin';
 
-    const stateCounts = {};
-    let totalUnits = 0;
-    assignedProjects.forEach(proj => {
-        (proj.chassis || []).forEach(ch => {
-            const chId = ch._id || ch.id;
-            const qty = ch.quantity || 1;
-            const isComposite = (ch.components || []).length > 0;
-            for (let i = 0; i < qty; i++) {
-                const unit = (ch.units || []).find(u => u.unitIndex === i);
-                if (!unit) continue;
-                const isLivre = isComposite
-                    ? (ch.components || []).every((_, ci) => {
-                        const cs = (unit.componentStates || []).find(c => c.compIndex === ci);
-                        return cs?.etat === 'livre';
-                    })
-                    : unit.etat === 'livre';
-                if (!isLivre) continue;
-
-                const us = (chantier.unitStates || []).find(u => u.chassisId === chId && u.unitIndex === i);
-                const key = us?.stateKey || (chantierStates.find(s => s.isDefault)?.key || 'non_pose');
-                stateCounts[key] = (stateCounts[key] || 0) + 1;
-                totalUnits++;
-            }
+    const { stateCounts, totalUnits } = useMemo(() => {
+        const counts = {};
+        let total = 0;
+        assignedProjects.forEach(proj => {
+            (proj.chassis || []).forEach(ch => {
+                const chId = ch._id || ch.id;
+                const qty = ch.quantity || 1;
+                const isComposite = (ch.components || []).length > 0;
+                for (let i = 0; i < qty; i++) {
+                    const unit = (ch.units || []).find(u => u.unitIndex === i);
+                    if (!unit) continue;
+                    const isLivre = isComposite
+                        ? (ch.components || []).every((_, ci) => {
+                            const cs = (unit.componentStates || []).find(c => c.compIndex === ci);
+                            return cs?.etat === 'livre';
+                        })
+                        : unit.etat === 'livre';
+                    if (!isLivre) continue;
+                    const us = (chantier.unitStates || []).find(u => u.chassisId === chId && u.unitIndex === i);
+                    const key = us?.stateKey || (chantierStates.find(s => s.isDefault)?.key || 'non_pose');
+                    counts[key] = (counts[key] || 0) + 1;
+                    total++;
+                }
+            });
         });
-    });
+        return { stateCounts: counts, totalUnits: total };
+    }, [assignedProjects, chantier.unitStates, chantierStates]);
 
     return (
         <div className="ch-card" onClick={onClick}>
@@ -379,7 +417,6 @@ function ChantierGridCard({ chantier, teams, chantierStates, isAdmin, onClick, o
                     </div>
                     <span className="ch-card__status-pill" style={{ color: meta.color, background: meta.bg }}>{meta.label}</span>
                 </div>
-
                 <div className="ch-card__rows">
                     {team && (
                         <div className="ch-card__row">
@@ -398,7 +435,6 @@ function ChantierGridCard({ chantier, teams, chantierStates, isAdmin, onClick, o
                         <span>{assignedProjects.length} projet(s) · {totalUnits} unité(s) livrée(s)</span>
                     </div>
                 </div>
-
                 {totalUnits > 0 && (
                     <div className="ch-card__progress">
                         {chantierStates.filter(s => stateCounts[s.key]).map(s => (
@@ -409,10 +445,8 @@ function ChantierGridCard({ chantier, teams, chantierStates, isAdmin, onClick, o
                         ))}
                     </div>
                 )}
-
                 {chantier.notes && <p className="ch-card__notes">{chantier.notes}</p>}
             </div>
-
             <div className="ch-card__actions" onClick={e => e.stopPropagation()}>
                 <button className="ch-card__act" onClick={onEdit} title="Modifier"><Edit2 size={13} /></button>
                 {adminThing && (
@@ -424,7 +458,11 @@ function ChantierGridCard({ chantier, teams, chantierStates, isAdmin, onClick, o
 }
 
 // ─── Chantier Detail View ─────────────────────────────────────────────────────
-function ChantierDetail({ chantier, teams, projects, chantierStates, chassisTypes, defaultState, isAdmin, authFetch, onBack, onEdit, onDelete, onRefresh, showForm, editItem, onCloseForm }) {
+function ChantierDetail({
+    chantier, teams, projects, chantierStates, chassisTypes, defaultState,
+    isAdmin, authFetch, onBack, onEdit, onDelete, onRefreshFull, patchChantier,
+    showForm, editItem, onCloseForm
+}) {
     const meta = CHANTIER_STATUS_META[chantier.status] || CHANTIER_STATUS_META.planifie;
     const team = teams.find(t => t.id === (chantier.teamId?.id || chantier.teamId));
     const assignedProjects = chantier.projectIds || [];
@@ -479,7 +517,7 @@ function ChantierDetail({ chantier, teams, projects, chantierStates, chassisType
                         defaultState={defaultState}
                         isAdmin={isAdmin}
                         authFetch={authFetch}
-                        onRefresh={onRefresh}
+                        patchChantier={patchChantier}
                     />
                 ))}
             </div>
@@ -505,66 +543,132 @@ function getChassisTypeLabel(chassisTypes, typeValue) {
     return ct ? (ct.fr || ct.value || typeValue) : typeValue;
 }
 
-function deriveCompositeChantierState(chantier, chassisId, unitIndex, numComponents, chantierStates, defaultState) {
+function deriveCompositeChantierState(unitStates, chassisId, unitIndex, numComponents, chantierStates, defaultState) {
     if (!numComponents) return defaultState;
-
     const compStates = [];
     for (let ci = 0; ci < numComponents; ci++) {
         const compKey = `${chassisId}__comp__${ci}__${unitIndex}`;
-        const us = (chantier.unitStates || []).find(u => u.chassisId === compKey);
+        const us = unitStates.find(u => u.chassisId === compKey);
         compStates.push(us?.stateKey || defaultState?.key);
     }
-
     if (compStates.every(k => k === compStates[0])) {
         return chantierStates.find(s => s.key === compStates[0]) || defaultState;
     }
-
     const inProgress = chantierStates.find(s => s.key === 'en_cours_de_pose');
     if (inProgress) return inProgress;
-
     const nonDefault = compStates.filter(k => k !== defaultState?.key);
     if (nonDefault.length > 0) {
         const sorted = chantierStates.filter(s => nonDefault.includes(s.key)).sort((a, b) => (a.order || 0) - (b.order || 0));
         return sorted[0] || defaultState;
     }
-
     return defaultState;
 }
 
 // ─── Project block ────────────────────────────────────────────────────────────
-function ChantierProjectBlock({ project, chantier, chantierStates, defaultState, isAdmin, authFetch, onRefresh, chassisTypes }) {
+function ChantierProjectBlock({ project, chantier, chantierStates, defaultState, isAdmin, authFetch, patchChantier, chassisTypes }) {
     const chassis = project.chassis || [];
-    const unitStates = chantier.unitStates || [];
+    // Local copy of unitStates for optimistic updates within this block
+    const [localUnitStates, setLocalUnitStates] = useState(chantier.unitStates || []);
 
-    const getUnitState = (chassisId, unitIndex) => {
-        const u = unitStates.find(s => s.chassisId === chassisId && s.unitIndex === unitIndex);
+    // Sync if parent chantier changes (e.g. after full refresh)
+    useEffect(() => {
+        setLocalUnitStates(chantier.unitStates || []);
+    }, [chantier.unitStates]);
+
+    // Local copy of photos for optimistic updates
+    const [localPhotos, setLocalPhotos] = useState(chantier.unitPhotos || []);
+    useEffect(() => {
+        setLocalPhotos(chantier.unitPhotos || []);
+    }, [chantier.unitPhotos]);
+
+    const getUnitState = useCallback((chassisId, unitIndex) => {
+        const u = localUnitStates.find(s => s.chassisId === chassisId && s.unitIndex === unitIndex);
         return u ? (chantierStates.find(s => s.key === u.stateKey) || defaultState) : (defaultState || chantierStates[0]);
-    };
+    }, [localUnitStates, chantierStates, defaultState]);
 
-    const getComponentState = (chassisId, unitIndex, compIndex) => {
+    const getComponentState = useCallback((chassisId, unitIndex, compIndex) => {
         const compKey = `${chassisId}__comp__${compIndex}__${unitIndex}`;
-        const u = unitStates.find(s => s.chassisId === compKey);
+        const u = localUnitStates.find(s => s.chassisId === compKey);
         return u ? (chantierStates.find(s => s.key === u.stateKey) || defaultState) : (defaultState || chantierStates[0]);
-    };
+    }, [localUnitStates, chantierStates, defaultState]);
 
-    const setUnitState = async (chassisId, unitIndex, stateKey) => {
-        await authFetch(`${API_URL}/chantiers/${chantier.id}/unit-state`, {
-            method: 'PATCH',
-            body: JSON.stringify({ chassisId, unitIndex, stateKey }),
+    // ── Optimistic unit state update ──────────────────────────────────────────
+    const setUnitState = useCallback(async (chassisId, unitIndex, stateKey) => {
+        // 1. Update local state immediately (optimistic)
+        setLocalUnitStates(prev => {
+            const next = prev.filter(u => !(u.chassisId === chassisId && u.unitIndex === unitIndex));
+            return [...next, { chassisId, unitIndex, stateKey }];
         });
-        onRefresh();
-    };
+        // 2. Also patch parent so the card grid reflects it
+        patchChantier(chantier.id, c => ({
+            ...c,
+            unitStates: [
+                ...(c.unitStates || []).filter(u => !(u.chassisId === chassisId && u.unitIndex === unitIndex)),
+                { chassisId, unitIndex, stateKey }
+            ]
+        }));
+        // 3. Fire and forget API call (no await on UI)
+        try {
+            await authFetch(`${API_URL}/chantiers/${chantier.id}/unit-state`, {
+                method: 'PATCH',
+                body: JSON.stringify({ chassisId, unitIndex, stateKey }),
+            });
+        } catch (e) {
+            console.error('Failed to save unit state', e);
+            // On failure, rollback by re-syncing from chantier prop
+            setLocalUnitStates(chantier.unitStates || []);
+        }
+    }, [authFetch, chantier.id, chantier.unitStates, patchChantier]);
 
-    const setComponentState = async (chassisId, unitIndex, compIndex, stateKey) => {
+    // ── Optimistic component state update ────────────────────────────────────
+    const setComponentState = useCallback(async (chassisId, unitIndex, compIndex, stateKey) => {
         const compKey = `${chassisId}__comp__${compIndex}__${unitIndex}`;
-        await authFetch(`${API_URL}/chantiers/${chantier.id}/unit-state`, {
-            method: 'PATCH',
-            body: JSON.stringify({ chassisId: compKey, unitIndex, stateKey }),
+        setLocalUnitStates(prev => {
+            const next = prev.filter(u => u.chassisId !== compKey);
+            return [...next, { chassisId: compKey, unitIndex, stateKey }];
         });
-        onRefresh();
-    };
+        patchChantier(chantier.id, c => ({
+            ...c,
+            unitStates: [
+                ...(c.unitStates || []).filter(u => u.chassisId !== compKey),
+                { chassisId: compKey, unitIndex, stateKey }
+            ]
+        }));
+        try {
+            await authFetch(`${API_URL}/chantiers/${chantier.id}/unit-state`, {
+                method: 'PATCH',
+                body: JSON.stringify({ chassisId: compKey, unitIndex, stateKey }),
+            });
+        } catch (e) {
+            console.error('Failed to save component state', e);
+            setLocalUnitStates(chantier.unitStates || []);
+        }
+    }, [authFetch, chantier.id, chantier.unitStates, patchChantier]);
 
-    const rows = chassis.flatMap(ch => {
+    // ── Optimistic photo updates ──────────────────────────────────────────────
+    const handlePhotoAdded = useCallback((photoEntry) => {
+        setLocalPhotos(prev => [...prev, photoEntry]);
+        patchChantier(chantier.id, c => ({
+            ...c,
+            unitPhotos: [...(c.unitPhotos || []), photoEntry]
+        }));
+    }, [chantier.id, patchChantier]);
+
+    const handlePhotoDeleted = useCallback((url) => {
+        setLocalPhotos(prev => prev.filter(p => p.url !== url));
+        patchChantier(chantier.id, c => ({
+            ...c,
+            unitPhotos: (c.unitPhotos || []).filter(p => p.url !== url)
+        }));
+    }, [chantier.id, patchChantier]);
+
+    // Build a local chantier proxy for CameraCell (only needs unitPhotos)
+    const chantierWithLocalPhotos = useMemo(() => ({
+        ...chantier,
+        unitPhotos: localPhotos,
+    }), [chantier, localPhotos]);
+
+    const rows = useMemo(() => chassis.flatMap(ch => {
         const qty = ch.quantity || 1;
         const chId = ch._id || ch.id;
         const isComposite = (ch.components || []).length > 0;
@@ -574,15 +678,11 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
         return Array.from({ length: qty }, (_, unitIndex) => {
             const unit = (ch.units || []).find(u => u.unitIndex === unitIndex);
             if (!unit) return [];
-
             const unitLabel = qty > 1 ? `${ch.repere} #${unitIndex + 1}` : ch.repere;
 
             if (!isComposite) {
                 if (unit.etat !== 'livre') return [];
-                return [{
-                    kind: 'unit', ch, chId, unitIndex, typeLabel,
-                    label: unitLabel, isComposite: false,
-                }];
+                return [{ kind: 'unit', ch, chId, unitIndex, typeLabel, label: unitLabel, isComposite: false }];
             }
 
             const deliveredComps = (ch.components || []).filter((_, ci) => {
@@ -591,13 +691,11 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
             });
             if (deliveredComps.length === 0) return [];
 
-            const deliveredCount = deliveredComps.length;
             const head = {
                 kind: 'groupHead', ch, chId, unitIndex, typeLabel,
                 label: unitLabel, isComposite: true,
-                components: ch.components,
-                numComps,
-                deliveredCount,
+                components: ch.components, numComps,
+                deliveredCount: deliveredComps.length,
                 totalComps: numComps,
             };
             const compRows = ch.components
@@ -612,21 +710,24 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                 }));
             return [head, ...compRows];
         });
-    }).flat();
+    }).flat(), [chassis, chassisTypes]);
 
-    const stateCounts = {};
-    let totalUnits = 0;
-    rows.filter(r => r.kind === 'unit' || r.kind === 'groupHead').forEach(r => {
-        let st;
-        if (r.kind === 'groupHead') {
-            st = deriveCompositeChantierState(chantier, r.chId, r.unitIndex, r.numComps, chantierStates, defaultState);
-        } else {
-            st = getUnitState(r.chId, r.unitIndex);
-        }
-        const key = st?.key || (defaultState?.key || 'non_pose');
-        stateCounts[key] = (stateCounts[key] || 0) + 1;
-        totalUnits++;
-    });
+    const { stateCounts, totalUnits } = useMemo(() => {
+        const counts = {};
+        let total = 0;
+        rows.filter(r => r.kind === 'unit' || r.kind === 'groupHead').forEach(r => {
+            let st;
+            if (r.kind === 'groupHead') {
+                st = deriveCompositeChantierState(localUnitStates, r.chId, r.unitIndex, r.numComps, chantierStates, defaultState);
+            } else {
+                st = getUnitState(r.chId, r.unitIndex);
+            }
+            const key = st?.key || (defaultState?.key || 'non_pose');
+            counts[key] = (counts[key] || 0) + 1;
+            total++;
+        });
+        return { stateCounts: counts, totalUnits: total };
+    }, [rows, localUnitStates, chantierStates, defaultState, getUnitState]);
 
     const m2 = (l, h) => (l && h) ? ((l * h) / 1e6).toFixed(2) : '—';
 
@@ -686,10 +787,10 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                         </tr>
                     </thead>
                     <tbody>
-                        {rows.map((row, idx) => {
+                        {rows.map((row) => {
                             if (row.kind === 'groupHead') {
                                 const derivedState = deriveCompositeChantierState(
-                                    chantier, row.chId, row.unitIndex, row.numComps, chantierStates, defaultState
+                                    localUnitStates, row.chId, row.unitIndex, row.numComps, chantierStates, defaultState
                                 );
                                 const chM2 = m2(row.ch.largeur, row.ch.hauteur);
                                 const isPartial = row.deliveredCount < row.totalComps;
@@ -720,9 +821,10 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                                             <CameraCell
                                                 chassisId={row.chId}
                                                 unitIndex={row.unitIndex}
-                                                chantier={chantier}
+                                                chantier={chantierWithLocalPhotos}
                                                 authFetch={authFetch}
-                                                onRefresh={onRefresh}
+                                                onPhotoAdded={handlePhotoAdded}
+                                                onPhotoDeleted={handlePhotoDeleted}
                                             />
                                         </td>
                                     </tr>
@@ -757,9 +859,10 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                                             <CameraCell
                                                 chassisId={compCameraId}
                                                 unitIndex={row.unitIndex}
-                                                chantier={chantier}
+                                                chantier={chantierWithLocalPhotos}
                                                 authFetch={authFetch}
-                                                onRefresh={onRefresh}
+                                                onPhotoAdded={handlePhotoAdded}
+                                                onPhotoDeleted={handlePhotoDeleted}
                                             />
                                         </td>
                                     </tr>
@@ -789,9 +892,10 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                                         <CameraCell
                                             chassisId={row.chId}
                                             unitIndex={row.unitIndex}
-                                            chantier={chantier}
+                                            chantier={chantierWithLocalPhotos}
                                             authFetch={authFetch}
-                                            onRefresh={onRefresh}
+                                            onPhotoAdded={handlePhotoAdded}
+                                            onPhotoDeleted={handlePhotoDeleted}
                                         />
                                     </td>
                                 </tr>
@@ -832,9 +936,7 @@ function ChantierStateSelect({ state, allStates, editable, onChange }) {
             if (
                 btnRef.current && !btnRef.current.contains(e.target) &&
                 dropRef.current && !dropRef.current.contains(e.target)
-            ) {
-                setOpen(false);
-            }
+            ) setOpen(false);
         };
         const handleScroll = () => setOpen(false);
         document.addEventListener('mousedown', handleClose);
@@ -870,13 +972,7 @@ function ChantierStateSelect({ state, allStates, editable, onChange }) {
                 <div
                     ref={dropRef}
                     className="ch-state-select-dropdown ch-state-select-dropdown--fixed"
-                    style={{
-                        position: 'fixed',
-                        top: dropPos.top,
-                        left: dropPos.left,
-                        minWidth: dropPos.width,
-                        zIndex: 99999,
-                    }}
+                    style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, minWidth: dropPos.width, zIndex: 99999 }}
                 >
                     {allStates.map(s => (
                         <button
@@ -889,10 +985,7 @@ function ChantierStateSelect({ state, allStates, editable, onChange }) {
                                 setOpen(false);
                             }}
                         >
-                            <span style={{
-                                width: 10, height: 10, borderRadius: '50%',
-                                background: s.color, display: 'inline-block', flexShrink: 0,
-                            }} />
+                            <span style={{ width: 10, height: 10, borderRadius: '50%', background: s.color, display: 'inline-block', flexShrink: 0 }} />
                             {s.label}
                             {state?.key === s.key && <Check size={11} style={{ marginLeft: 'auto', color: '#22c55e' }} />}
                         </button>
@@ -924,11 +1017,7 @@ function TeamCard({ team, chantiers, onViewStock }) {
                     <div className="ch-card__row"><ClipboardList size={12} /><span>{chantiers.length} chantier(s)</span></div>
                     <div className="ch-card__row"><Package size={12} /><span>{(team.stock || []).length} articles · {totalQty} unités</span></div>
                 </div>
-                {adminThing && (
-                    <div className="ch-card__cta">
-                        <BarChart2 size={13} /> Voir le stock
-                    </div>
-                )}
+                {adminThing && <div className="ch-card__cta"><BarChart2 size={13} /> Voir le stock</div>}
             </div>
         </div>
     );
@@ -970,7 +1059,6 @@ function TeamStockPanel({ team, chantiers, authFetch, isAdmin, onBack }) {
                     </div>
                 )}
             </div>
-
             <div className="ch-detail__hero" style={{ borderLeftColor: teamData.color || team.color }}>
                 <div className="ch-detail__hero-top">
                     <h1 className="ch-detail__name">{teamData.name || team.name}</h1>
@@ -981,7 +1069,6 @@ function TeamStockPanel({ team, chantiers, authFetch, isAdmin, onBack }) {
                     <span className="ch-detail__meta-item"><ClipboardList size={13} /> {chantiers.length} chantier(s)</span>
                 </div>
             </div>
-
             <div className="ch-detail__content">
                 <div className="ch-section">
                     <h3 className="ch-section__title">Stock actuel</h3>
@@ -995,7 +1082,6 @@ function TeamStockPanel({ team, chantiers, authFetch, isAdmin, onBack }) {
                         </tbody></table>
                     }
                 </div>
-
                 <div className="ch-section">
                     <h3 className="ch-section__title">Historique des mouvements</h3>
                     {movements.length === 0
@@ -1015,7 +1101,6 @@ function TeamStockPanel({ team, chantiers, authFetch, isAdmin, onBack }) {
                     }
                 </div>
             </div>
-
             {showAllocate && <TeamStockActionModal title="Allouer depuis l'inventaire principal" inventory={inventory} chantiers={chantiers} showChantier={false} onClose={() => setShowAllocate(false)} onConfirm={async (itemId, qty) => { await authFetch(`${API_URL}/teams/${team.id}/stock/allocate`, { method: 'POST', body: JSON.stringify({ itemId, quantity: qty }) }); setShowAllocate(false); refresh(); }} />}
             {showConsume && <TeamStockActionModal title="Enregistrer une consommation" inventory={(teamData.stock || []).map(s => s.itemId).filter(Boolean)} chantiers={chantiers} showChantier={true} onClose={() => setShowConsume(false)} onConfirm={async (itemId, qty, chantierId, note) => { await authFetch(`${API_URL}/teams/${team.id}/stock/consume`, { method: 'POST', body: JSON.stringify({ itemId, quantity: qty, chantierId, note }) }); setShowConsume(false); refresh(); }} />}
             {showReturn && <TeamStockActionModal title="Retourner vers l'inventaire" inventory={(teamData.stock || []).map(s => s.itemId).filter(Boolean)} chantiers={chantiers} showChantier={false} onClose={() => setShowReturn(false)} onConfirm={async (itemId, qty) => { await authFetch(`${API_URL}/teams/${team.id}/stock/return`, { method: 'POST', body: JSON.stringify({ itemId, quantity: qty }) }); setShowReturn(false); refresh(); }} />}

@@ -215,7 +215,8 @@ const componentSchema = new mongoose.Schema({
 const unitComponentSchema = new mongoose.Schema({
   compIndex: { type: Number, required: true },
   etat: { type: String, enum: ['non_entame', 'en_cours', 'fabrique', 'livre', 'non_vitre', 'pret_a_livrer'], default: 'non_entame' },
-  deliveryDate: { type: Date, default: null }
+  deliveryDate: { type: Date, default: null },
+  atelierTable: { type: String, default: '' },
 }, { _id: false });
 
 const unitSchema = new mongoose.Schema({
@@ -1241,6 +1242,7 @@ app.patch('/api/projects/:id/chassis/:cid/units/:unitIndex/components/:compIndex
     let cs = unit.componentStates.find(c => c.compIndex === compIdx);
     if (!cs) { unit.componentStates.push({ compIndex: compIdx, etat: 'non_entame', deliveryDate: null }); cs = unit.componentStates.find(c => c.compIndex === compIdx); }
     if (req.body.etat !== undefined) { cs.etat = req.body.etat; cs.deliveryDate = req.body.etat === 'livre' ? (req.body.deliveryDate ? new Date(req.body.deliveryDate) : new Date()) : null; }
+    if (req.body.atelierTable !== undefined) cs.atelierTable = req.body.atelierTable;
     unit.etat = deriveCompositeUnitEtat(unit, numComps);
     if (unit.etat === 'livre') { const dates = (unit.componentStates || []).map(c => c.deliveryDate).filter(Boolean); unit.deliveryDate = dates.length ? new Date(Math.max(...dates.map(d => new Date(d)))) : new Date(); }
     else { unit.deliveryDate = null; }

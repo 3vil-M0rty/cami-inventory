@@ -1506,16 +1506,25 @@ function ProjectDetail({ project, onBack, currentUser }) {
     const init = {};
     for (const ch of project.chassis || []) {
       const qty = ch.quantity || 1; const chId = ch._id || ch.id;
-      for (let i = 0; i < qty; i++) { const unit = getUnit(ch, i); const key = `${chId}-${i}`; if (unit.atelierTable) init[key] = unit.atelierTable; }
+      const isComposite = (ch.components || []).length > 0;
+      for (let i = 0; i < qty; i++) {
+        const unit = getUnit(ch, i); const key = `${chId}-${i}`;
+        if (!isComposite) { if (unit.atelierTable) init[key] = unit.atelierTable; }
+        else { (ch.components || []).forEach((_, ci) => { const cs = (unit.componentStates || []).find(c => c.compIndex === ci); if (cs?.atelierTable) init[`${key}-c${ci}`] = cs.atelierTable; }); }
+      }
     }
     setAtelierTables(init);
   }, [project]);
 
-  const handleAtelierTableChange = useCallback(async (ch, unitIndex, newTable, rowKey) => {
+  const handleAtelierTableChange = useCallback(async (ch, unitIndex, newTable, rowKey, compIndex = null) => {
     setSavingTableKey(rowKey);
     const chId = ch._id || ch.id; const prevTable = atelierTables[rowKey] || '';
     try {
-      await axios.patch(`${API_URL}/projects/${project.id}/chassis/${chId}/units/${unitIndex}`, { atelierTable: newTable });
+      if (compIndex !== null) {
+        await axios.patch(`${API_URL}/projects/${project.id}/chassis/${chId}/units/${unitIndex}/components/${compIndex}`, { atelierTable: newTable });
+      } else {
+        await axios.patch(`${API_URL}/projects/${project.id}/chassis/${chId}/units/${unitIndex}`, { atelierTable: newTable });
+      }
       setAtelierTables(prev => ({ ...prev, [rowKey]: newTable }));
       if (refreshProject) refreshProject(project.id);
       if (newTable && newTable !== prevTable) {
@@ -1806,7 +1815,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                     if (row.kind === 'component') {
                       const { ch, chId, unitIndex, comp, ci, rowKey, groupKey, label, etat } = row;
                       const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey);
-                      const isSavingTable = savingTableKey === groupKey;
+                      const isSavingTable = savingTableKey === rowKey;
                       const compM2 = comp.largeur && comp.hauteur ? ((comp.largeur * comp.hauteur) / 1e6).toFixed(2) : '—';
                       return (
                         <tr key={rowKey} className={`component-row${isSelected ? ' component-row--selected' : ''}${isSaving ? ' component-row--saving' : ''}`}>
@@ -1830,21 +1839,21 @@ function ProjectDetail({ project, onBack, currentUser }) {
                             </select>
                           </td>}
                           <td><span className="date-placeholder">—</span></td>
-                          {/* Chassis atelier table — components share the unit's table, editable per component row */}
+                          {/* Chassis atelier table — per component, saved independently */}
                           <td className="atelier-table-col">
                             {coordinateurThing ? (
                               <select
                                 className={`etat-select etat-select--livre atelier-select${isSavingTable ? ' atelier-select--saving' : ''}`}
-                                value={atelierTables[groupKey] || ''}
+                                value={atelierTables[rowKey] || ''}
                                 disabled={isSavingTable}
-                                onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, groupKey)}
+                                onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey, ci)}
                               >
                                 <option value="">——</option>
                                 {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
                               </select>
                             ) : (
                               <span className="etat-select etat-select--livre atelier-select">
-                                {atelierTables[groupKey] || <span style={{ color: '#9ca3af' }}>—</span>}
+                                {atelierTables[rowKey] || <span style={{ color: '#9ca3af' }}>—</span>}
                               </span>
                             )}
                           </td>
