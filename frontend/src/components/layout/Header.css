@@ -1,5 +1,8 @@
 /* ============================================================
-   HEADER — responsive: mobile / tablet / desktop
+   HEADER — mobile-first responsive nav
+   Default: mobile (hamburger + drawer)
+   769px+:  desktop (inline nav bar)
+   1025px+: company pills visible, full nav text
    ============================================================ */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -20,8 +23,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
-  height: 52px;
+  padding: 0 12px;
+  height: 48px;
   gap: 12px;
 }
 
@@ -33,26 +36,26 @@
   border: 1px solid rgba(255,255,255,.14);
   border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; color: #fff; transition: background .15s;
+  flex-shrink: 0; color: #fff; transition: background var(--t);
 }
 .hdr__logo:hover { background: rgba(255,255,255,.15); }
 .hdr__logo svg { width: 18px; height: 18px; }
-.hdr__brand-text { display: flex; flex-direction: column; gap: 1px; }
-.hdr__title { font-size: 15px; font-weight: 800; letter-spacing: -.01em; line-height: 1; color: #fff; }
-.hdr__subtitle { font-family: var(--mono); font-size: 9px; opacity: .4; text-transform: uppercase; letter-spacing: .1em; }
+.hdr__brand-text { display: none; flex-direction: column; gap: 1px; }
+.hdr__title { font-size: 13px; font-weight: 800; letter-spacing: -.01em; line-height: 1; color: #fff; }
+.hdr__subtitle { display: none; font-family: var(--mono); font-size: 9px; opacity: .4; text-transform: uppercase; letter-spacing: .1em; }
 
 /* ── Controls ── */
 .hdr__controls { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: flex-end; min-width: 0; }
 
-/* ── Company pills ── */
-.hdr__companies { display: flex; gap: 4px; align-items: center; flex-wrap: nowrap; overflow: hidden; min-width: 0; }
+/* ── Company pills — hidden by default, shown at 1025px+ ── */
+.hdr__companies { display: none; gap: 4px; align-items: center; flex-wrap: nowrap; overflow: hidden; min-width: 0; }
 .hdr__company-pill {
   display: flex; align-items: center; gap: 5px;
   padding: 4px 10px; border-radius: 999px;
   border: 1.5px solid rgba(255,255,255,.18);
   background: transparent; color: rgba(255,255,255,.55);
   font-size: 11.5px; font-weight: 600; cursor: pointer;
-  transition: all .15s; white-space: nowrap; font-family: inherit;
+  transition: all var(--t); white-space: nowrap; font-family: inherit;
 }
 .hdr__company-pill:hover { border-color: rgba(255,255,255,.4); color: #fff; }
 .hdr__company-pill.active { background: #fff; color: var(--900); border-color: #fff; }
@@ -68,7 +71,7 @@
 .hdr__lang-btn {
   font-family: var(--mono); font-size: 10px; font-weight: 600;
   padding: 4px 8px; background: transparent; color: rgba(255,255,255,.5);
-  border: none; border-radius: 4px; cursor: pointer; transition: all .15s; text-transform: uppercase;
+  border: none; border-radius: 4px; cursor: pointer; transition: all var(--t); text-transform: uppercase;
 }
 .hdr__lang-btn:hover { color: #fff; background: rgba(255,255,255,.1); }
 .hdr__lang-btn.active { background: #fff; color: var(--900); }
@@ -76,11 +79,11 @@
 /* ── User button ── */
 .hdr__user { position: relative; flex-shrink: 0; }
 .hdr__user-btn {
-  display: flex; align-items: center; gap: 7px;
+  display: flex; align-items: center; gap: 0;
   background: rgba(255,255,255,.08);
   border: 1px solid rgba(255,255,255,.13);
-  border-radius: 999px; padding: 4px 10px 4px 4px;
-  cursor: pointer; color: #fff; font-family: inherit; transition: background .15s;
+  border-radius: 999px; padding: 4px;
+  cursor: pointer; color: #fff; font-family: inherit; transition: background var(--t);
 }
 .hdr__user-btn:hover { background: rgba(255,255,255,.15); }
 .hdr__avatar {
@@ -90,12 +93,13 @@
   font-size: 12px; font-weight: 800; flex-shrink: 0;
 }
 .hdr__avatar--lg { width: 36px; height: 36px; font-size: 16px; }
-.hdr__username { font-size: 12px; font-weight: 600; }
+.hdr__username { display: none; font-size: 12px; font-weight: 600; }
 .hdr__role {
+  display: none;
   background: rgba(255,255,255,.14); font-size: 9px; font-weight: 700;
   padding: 1px 6px; border-radius: 999px; letter-spacing: .03em;
 }
-.hdr__chevron { color: rgba(255,255,255,.4); flex-shrink: 0; }
+.hdr__chevron { color: rgba(255,255,255,.4); flex-shrink: 0; display: none; }
 
 /* ── Dropdown ── */
 .hdr__dropdown {
@@ -120,47 +124,47 @@
   display: flex; align-items: center; gap: 8px;
   width: 100%; text-align: left; padding: 10px 14px;
   background: none; border: none; font-size: 13px;
-  cursor: pointer; font-family: inherit; color: var(--text-2); transition: background .15s;
+  cursor: pointer; font-family: inherit; color: var(--text-2); transition: background var(--t);
 }
-.hdr__dropdown-item svg { width: 15px; height: 15px; color: var(--text-4); transition: color .15s; flex-shrink: 0; }
+.hdr__dropdown-item svg { width: 15px; height: 15px; color: var(--text-4); transition: color var(--t); flex-shrink: 0; }
 .hdr__dropdown-item:hover { background: var(--50); color: var(--text); }
 .hdr__dropdown-item:hover svg { color: var(--text-2); }
 .hdr__dropdown-logout { color: var(--danger) !important; border-top: 1px solid var(--100); }
 .hdr__dropdown-logout:hover { background: var(--danger-bg) !important; }
 .hdr__dropdown-logout svg { color: var(--danger) !important; }
 
-/* ── Row 2: desktop nav ── */
+/* ── Row 2: desktop nav — hidden by default ── */
 .hdr__nav {
-  display: flex; gap: 0; padding: 0 20px;
+  display: none; gap: 0; padding: 0 20px;
   border-top: 1px solid rgba(255,255,255,.05);
   overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
 }
 .hdr__nav::-webkit-scrollbar { display: none; }
 .hdr__nav-btn {
   display: flex; align-items: center; gap: 6px;
-  padding: 0 12px; height: 38px;
+  padding: 0 10px; height: 38px;
   background: transparent; color: rgba(255,255,255,.5);
   border: none; border-bottom: 2px solid transparent;
-  font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
   text-transform: uppercase; letter-spacing: .06em;
   cursor: pointer; white-space: nowrap;
-  transition: color .15s, border-color .15s;
+  transition: color var(--t), border-color var(--t);
   margin-bottom: -1px; flex-shrink: 0;
 }
 .hdr__nav-btn:hover { color: rgba(255,255,255,.85); }
 .hdr__nav-btn.active { color: #fff; border-bottom-color: #fff; font-weight: 700; }
 
-/* Nav icon — Lucide SVGs, no font-size needed */
+/* Nav icon */
 .hdr__nav-icon {
   display: inline-flex; align-items: center; justify-content: center;
   flex-shrink: 0; color: currentColor;
 }
 .hdr__nav-icon svg { width: 14px; height: 14px; color: currentColor; }
 
-/* ── Hamburger ── */
+/* ── Hamburger — visible by default (mobile) ── */
 .hdr__hamburger {
   background: transparent; border: none; cursor: pointer; padding: 6px;
-  display: none; flex-direction: column; gap: 4px; width: 34px; align-items: center; flex-shrink: 0;
+  display: flex; flex-direction: column; gap: 4px; width: 34px; align-items: center; flex-shrink: 0;
 }
 .hdr__hamburger span {
   display: block; height: 2px; width: 20px;
@@ -189,7 +193,7 @@
 .hdr__mobile-close {
   background: rgba(255,255,255,.1); border: none; color: #fff;
   width: 32px; height: 32px; border-radius: 8px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; transition: background .15s;
+  display: flex; align-items: center; justify-content: center; transition: background var(--t);
 }
 .hdr__mobile-close:hover { background: rgba(255,255,255,.18); }
 .hdr__mobile-close svg { width: 16px; height: 16px; }
@@ -200,7 +204,7 @@
   padding: 11px 14px; border-radius: 8px;
   background: transparent; color: rgba(255,255,255,.6);
   border: none; font-family: inherit; font-size: 14px; font-weight: 500;
-  cursor: pointer; text-align: left; transition: all .15s; width: 100%;
+  cursor: pointer; text-align: left; transition: all var(--t); width: 100%;
 }
 .hdr__mobile-nav-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
 .hdr__mobile-nav-btn.active { background: rgba(255,255,255,.12); color: #fff; font-weight: 700; }
@@ -224,41 +228,69 @@
   border: 1px solid rgba(255,255,255,.18);
   background: transparent; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  color: rgba(255,255,255,.7); transition: all .15s;
+  color: rgba(255,255,255,.7); transition: all var(--t);
 }
 .hdr__mobile-action-btn:hover { background: rgba(255,255,255,.1); color: #fff; }
 .hdr__mobile-action-btn.danger { border-color: rgba(220,38,38,.4); color: #f87171; }
 .hdr__mobile-action-btn.danger:hover { background: rgba(220,38,38,.12); }
 .hdr__mobile-action-btn svg { width: 15px; height: 15px; }
 
-/* ── Visibility helpers ── */
-.desktop-only { display: flex; }
-.mobile-only  { display: none; }
+/* ── Visibility helpers — default mobile ── */
+.desktop-only { display: none; }
+.mobile-only  { display: flex; }
 
-/* ── Breakpoints ── */
-@media (max-width: 1024px) {
-  .hdr__companies { display: none; }
-  .hdr__nav-btn { padding: 0 10px; font-size: 10px; }
+/* ── Mobile: lang switcher lives in the drawer, not the top bar ──
+   Hide it from the cramped top-bar controls so only
+   [bell] [avatar] [hamburger] remain — much cleaner. */
+.mobile-only .hdr__lang { display: none; }
+
+/* ── Lang switcher style inside the mobile drawer ── */
+.hdr__mobile-lang {
+  display: flex;
+  gap: 4px;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 8px;
+  padding: 4px;
+  width: fit-content;
+}
+.hdr__mobile-lang .hdr__lang-btn {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 5px 10px; background: transparent; color: rgba(255,255,255,.5);
+  border: none; border-radius: 5px; cursor: pointer;
+  transition: all var(--t); text-transform: uppercase;
+}
+.hdr__mobile-lang .hdr__lang-btn:hover { color: #fff; background: rgba(255,255,255,.1); }
+.hdr__mobile-lang .hdr__lang-btn.active { background: #fff; color: var(--900); }
+
+/* ── 361px: show brand text ── */
+@media (min-width:361px) {
+  .hdr__brand-text { display: flex; }
+  .hdr__top { padding: 0 14px; }
 }
 
-@media (max-width: 768px) {
-  .desktop-only { display: none !important; }
-  .mobile-only  { display: flex !important; }
-  .hdr__hamburger { display: flex; }
-  .hdr__top { padding: 0 16px; }
-  .hdr__nav { display: none; }
+/* ── 481px: show username, subtitle, expand top bar ── */
+@media (min-width:481px) {
+  .hdr__top { padding: 0 16px; height: 52px; }
+  .hdr__title { font-size: 15px; }
+  .hdr__subtitle { display: block; }
+  .hdr__username { display: block; }
+  .hdr__role { display: block; }
+  .hdr__chevron { display: flex; }
+  .hdr__user-btn { padding: 4px 10px 4px 4px; gap: 7px; }
 }
 
-@media (max-width: 480px) {
-  .hdr__top { padding: 0 12px; height: 48px; }
-  .hdr__title { font-size: 13px; }
-  .hdr__subtitle { display: none; }
-  .hdr__username { display: none; }
-  .hdr__role { display: none; }
-  .hdr__user-btn { padding: 4px; gap: 0; }
+/* ── 769px: switch to desktop nav ── */
+@media (min-width:769px) {
+  .desktop-only { display: flex; }
+  .mobile-only  { display: none; }
+  .hdr__hamburger { display: none; }
+  .hdr__top { padding: 0 20px; }
+  .hdr__nav { display: flex; }
+  .hdr__nav-btn { padding: 0 12px; font-size: 10.5px; }
 }
 
-@media (max-width: 360px) {
-  .hdr__brand-text { display: none; }
-  .hdr__top { padding: 0 10px; }
+/* ── 1025px: show company pills ── */
+@media (min-width:1025px) {
+  .hdr__companies { display: flex; }
 }
