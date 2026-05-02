@@ -1,14 +1,133 @@
-/* PROJECTS PAGE */
+/* ============================================================
+   PROJECTS PAGE — mobile-first, all breakpoints
+   ============================================================ */
+
 .projects-page { max-width:var(--page-max);margin:0 auto;padding:var(--page-pad); }
-.projects-page__header { display:flex;justify-content:space-between;align-items:center;background:var(--surface);padding:var(--sp-5) var(--sp-6);border-radius:var(--r-lg);border:1px solid var(--border);margin-bottom:var(--sp-5);box-shadow:var(--sh-sm);gap:var(--sp-4);flex-wrap:wrap; }
-.projects-page__header-left { display:flex;align-items:center;gap:var(--sp-3); }
-.projects-page__title { font-size:20px;font-weight:800;color:var(--text);letter-spacing:-.02em;margin:0; }
+
+/* ── Header card ── */
+.projects-page__header {
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  background:var(--surface);
+  padding:14px 16px;
+  border-radius:var(--r-lg);
+  border:1px solid var(--border);
+  margin-bottom:var(--sp-5);
+  box-shadow:var(--sh-sm);
+}
+@media (min-width:640px) { .projects-page__header { padding:var(--sp-4) var(--sp-5); gap:var(--sp-3); } }
+@media (min-width:769px) {
+  .projects-page__header {
+    flex-direction:row;
+    align-items:center;
+    justify-content:space-between;
+    padding:var(--sp-5) var(--sp-6);
+    gap:var(--sp-4);
+  }
+}
+
+/* ── Title row ── */
+.projects-page__header-left { display:flex;align-items:center;gap:var(--sp-3);flex-shrink:0; }
+.projects-page__title { font-size:18px;font-weight:800;color:var(--text);letter-spacing:-.02em;margin:0; }
 .projects-page__count { background:var(--900);color:#fff;font-size:11px;font-weight:700;padding:2px 9px;border-radius:var(--r-full); }
-.projects-page__header-right { display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap; }
-.search-input { padding:9px 12px 9px 34px;border:1.5px solid var(--border);border-radius:var(--r-md);font-size:13px;font-family:inherit;background:var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E'") no-repeat 10px center;color:var(--text);min-width:200px;outline:none;transition:border-color var(--t); }
-.search-input:focus { border-color:var(--900);background-color:var(--surface); }
+@media (min-width:481px) { .projects-page__title { font-size:20px; } }
+
+/* ── Controls row (right side) ── */
+.projects-page__header-right {
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:10px;
+  width:100%;
+  min-width:0;
+}
+@media (min-width:640px) {
+  .projects-page__header-right {
+    flex-direction:row;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:var(--sp-2);
+  }
+}
+@media (min-width:769px) {
+  /* Stay wrapping — company tabs land on a second row when they're wider
+     than the remaining space next to the search + add button */
+  .projects-page__header-right {
+    width:auto;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:flex-end;
+    gap:var(--sp-2);
+  }
+}
+
+/* ── Company filter tabs — scrollable strip, always full row on desktop ── */
+.project-company-tabs {
+  display:flex;
+  gap:6px;
+  overflow-x:auto;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+  flex-wrap:nowrap;
+  padding-bottom:2px;
+  width:100%;          /* full-width so it occupies its own row when it wraps */
+}
+.project-company-tabs::-webkit-scrollbar { display:none; }
+/* On desktop the strip is already scrollable — no width cap needed */
+
+.proj-company-tab {
+  padding:6px 13px;
+  border:1.5px solid var(--border);
+  border-radius:var(--r-full);
+  background:var(--surface);
+  font-size:12px;
+  font-weight:600;
+  cursor:pointer;
+  transition:all var(--t);
+  color:var(--text-2);
+  font-family:inherit;
+  white-space:nowrap;
+  flex-shrink:0;       /* ← never compress: this was the overflow culprit */
+}
+.proj-company-tab:hover { background:var(--50);border-color:var(--700); }
+.proj-company-tab.active { background:var(--900);color:#fff;border-color:var(--900); }
+
+/* ── Search input — visible loop icon + responsive width ── */
+.search-input {
+  /* padding-left leaves room for the icon at 11px from left */
+  padding:9px 12px 9px 36px;
+  border:1.5px solid var(--border);
+  border-radius:var(--r-md);
+  font-size:13px;
+  font-family:inherit;
+  /* Darker icon (#555) for better visibility; slightly larger (14px) */
+  background:
+    var(--surface-2)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E")
+    no-repeat 11px center;
+  color:var(--text);
+  width:100%;        /* full-width on mobile */
+  min-width:0;
+  outline:none;
+  transition:border-color var(--t), box-shadow var(--t);
+}
+.search-input:focus {
+  border-color:var(--900);
+  background-color:var(--surface);
+  box-shadow:0 0 0 3px rgba(0,0,0,.06);
+}
 .search-input::placeholder { color:var(--text-4); }
-.projects-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--sp-4); }
+@media (min-width:640px) { .search-input { width:220px; } }
+@media (min-width:769px) { .search-input { width:240px; } }
+@media (min-width:1025px) { .search-input { width:280px; } }
+
+/* ── Projects grid ── */
+.projects-grid { display:grid;grid-template-columns:1fr;gap:var(--sp-3); }
+@media (min-width:540px) { .projects-grid { grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--sp-4); } }
+@media (min-width:769px) { .projects-grid { grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); } }
+
+/* ── Project card ── */
 .project-card { background:var(--surface);border-radius:var(--r-lg);border:1.5px solid var(--border);box-shadow:var(--sh-sm);overflow:hidden;cursor:pointer;transition:box-shadow var(--t),transform var(--t),border-color var(--t);display:flex;flex-direction:column;animation:fadeUp .22s ease-out; }
 .project-card:hover { box-shadow:var(--sh-md);transform:translateY(-2px);border-color:var(--400); }
 .project-card__ral { height:4px;width:100%; }
@@ -19,22 +138,25 @@
 .project-card__meta { display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--text-2);margin-bottom:10px; }
 .project-card__stats { display:flex;gap:var(--sp-4);font-size:12px;font-weight:600;color:var(--text-3);padding-top:10px;border-top:1px solid var(--150); }
 .project-card__actions { display:flex;gap:var(--sp-2);padding:10px var(--sp-5);background:var(--50);border-top:1px solid var(--150); }
-.projects-empty { text-align:center;padding:64px var(--sp-5);color:var(--text-3);font-size:14px;background:var(--surface);border-radius:var(--r-lg);border:1px solid var(--border); }
+.projects-empty { text-align:center;padding:48px var(--sp-4);color:var(--text-3);font-size:14px;background:var(--surface);border-radius:var(--r-lg);border:1px solid var(--border); }
+@media (min-width:481px) { .projects-empty { padding:64px var(--sp-5); } }
+
+/* ── Project form ── */
 .project-form { display:flex;flex-direction:column;gap:4px; }
-.project-form__grid { display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4); }
+.project-form__grid { display:grid;grid-template-columns:1fr;gap:var(--sp-4); }
 .project-form__grid--full { grid-column:1/-1; }
-.project-company-tabs { display:flex;gap:var(--sp-1); }
-.proj-company-tab { padding:6px 14px;border:1.5px solid var(--border);border-radius:var(--r-full);background:var(--surface);font-size:12px;font-weight:600;cursor:pointer;transition:all var(--t);color:var(--text-2);font-family:inherit; }
-.proj-company-tab:hover { background:var(--50);border-color:var(--700); }
-.proj-company-tab.active { background:var(--900);color:#fff;border-color:var(--900); }
+@media (min-width:481px) { .project-form__grid { grid-template-columns:1fr 1fr; } }
+
+/* ── Company / client tags ── */
 .project-company-tag { background:var(--900);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:var(--r-full);letter-spacing:.04em; }
 .project-client-tag { font-size:12px;color:var(--text-2);margin-bottom:4px; }
+
+/* ── Form company selector ── */
 .project-form-company-selector { margin-bottom:var(--sp-5);padding:var(--sp-4);background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r-lg); }
-.company-choice-btns { display:flex;gap:10px; }
-.company-choice-btn { flex:1;padding:12px var(--sp-5);border:2px solid var(--border);border-radius:var(--r-md);background:var(--surface);font-size:13px;font-weight:700;cursor:pointer;transition:all var(--t);color:var(--text-2);font-family:inherit; }
+.company-choice-btns { display:flex;gap:10px;flex-wrap:wrap; }
+.company-choice-btn { flex:1;min-width:120px;padding:12px var(--sp-5);border:2px solid var(--border);border-radius:var(--r-md);background:var(--surface);font-size:13px;font-weight:700;cursor:pointer;transition:all var(--t);color:var(--text-2);font-family:inherit; }
 .company-choice-btn:hover { border-color:var(--900);color:var(--text); }
 .company-choice-btn.active { background:var(--900);color:#fff;border-color:var(--900); }
-@media (max-width:768px) { .projects-page { padding:16px; } .projects-grid { grid-template-columns:1fr; } .project-form__grid { grid-template-columns:1fr; } .projects-page__header { flex-direction:column;align-items:flex-start; } }
 
 /* ── Add these rules to your existing ProjectsPage.css ── */
 
@@ -51,7 +173,7 @@
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  color: var(--color-text-secondary, #6b7280);
+  color: var(--text-2);
 }
 
 .project-card__etat-pip {
@@ -70,6 +192,6 @@
 .project-card__etat-total {
   margin-left: auto;
   font-size: 11px;
-  color: var(--color-text-secondary, #9ca3af);
+  color: var(--text-3);
   font-weight: 500;
 }
