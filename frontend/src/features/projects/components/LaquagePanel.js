@@ -294,6 +294,8 @@ function RowActions({ lKey, lineLabel, lineStatuses, side, onConfirm, onIncomple
   );
 }
 
+
+
 /* ── PDF printer ──────────────────────────────────────────────── */
 function printPDF(record, project, type, selectedKeys, imageMap) {
   const isBarres = type === 'barres';
@@ -367,15 +369,43 @@ export function BarresLaquerPanel({ project, currentUser }) {
   const [newMB, setNewMB] = useState(emptyMB);
   const [newML, setNewML] = useState(emptyML);
 
+  const loadImages = useCallback(async (rec) => {
+    const refs = new Set();
+
+    // Collect all references/designations from the record
+    (rec.barresBrutes || []).forEach(r => r.reference && refs.add(r.reference));
+    (rec.barresLaquees || []).forEach(r => r.reference && refs.add(r.reference));
+    (rec.morceauxBruts || []).forEach(r => r.reference && refs.add(r.reference));
+    (rec.morceauxLaques || []).forEach(r => r.reference && refs.add(r.reference));
+
+    const map = {};
+    await Promise.all([...refs].map(async (ref) => {
+      try {
+        const res = await axios.get(
+          `${API_URL}/inventory/search?q=${encodeURIComponent(ref)}&superCategory=aluminium`
+        );
+        const items = res.data || [];
+        const match = items.find(i => {
+          const label = i.designation?.fr || i.designation || '';
+          return label === ref;
+        });
+        if (match?.image) map[ref] = match.image;
+      } catch { }
+    }));
+
+    setImageMap(map);
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await axios.get(`${API_URL}/projects/${project.id}/laquage/barres`);
       setRecord(res.data);
+      await loadImages(res.data);  // ← add this
     } catch {
       setRecord({ barresBrutes: [], barresLaquees: [], morceauxBruts: [], morceauxLaques: [], status: 'draft', lineStatuses: {}, history: [] });
     } finally { setLoading(false); }
-  }, [project.id]);
+  }, [project.id, loadImages]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -717,16 +747,38 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
 
   const emptyAcc = { designation: '', quantite: 1, notes: '' };
   const [newAcc, setNewAcc] = useState(emptyAcc);
+  const loadImages = useCallback(async (rec) => {
+    const refs = new Set();
+    (rec.accessoires || []).forEach(a => a.designation && refs.add(a.designation));
+
+    const map = {};
+    await Promise.all([...refs].map(async (ref) => {
+      try {
+        const res = await axios.get(
+          `${API_URL}/inventory/search?q=${encodeURIComponent(ref)}&superCategory=accessoires`
+        );
+        const items = res.data || [];
+        const match = items.find(i => {
+          const label = i.designation?.fr || i.designation || '';
+          return label === ref;
+        });
+        if (match?.image) map[ref] = match.image;
+      } catch { }
+    }));
+
+    setImageMap(map);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await axios.get(`${API_URL}/projects/${project.id}/laquage/accessoires`);
       setRecord(res.data);
+      await loadImages(res.data);  // ← add this
     } catch {
       setRecord({ accessoires: [], status: 'draft', lineStatuses: {}, history: [] });
     } finally { setLoading(false); }
-  }, [project.id]);
+  }, [project.id, loadImages]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -2034,7 +2034,13 @@ app.put('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res)
     const { barresBrutes, barresLaquees, morceauxBruts, morceauxLaques } = req.body;
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) record = new LaquageBarres({ projectId: req.params.projectId });
-    if (record.status !== 'draft') return res.status(400).json({ error: 'Cannot edit after draft stage.' });
+    
+    const userRole = req.user?.roleId?.name || '';
+    const isAdmin = userRole === 'Admin';
+    
+    if (record.status !== 'draft' && !isAdmin)  // ← changed
+      return res.status(400).json({ error: 'Cannot edit after draft stage.' });
+    
     if (barresBrutes !== undefined) record.barresBrutes = barresBrutes;
     if (barresLaquees !== undefined) record.barresLaquees = barresLaquees;
     if (morceauxBruts !== undefined) record.morceauxBruts = morceauxBruts;
@@ -2071,7 +2077,12 @@ app.put('/api/projects/:projectId/laquage/accessoires', requireAuth, async (req,
     const { accessoires } = req.body;
     let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
     if (!record) record = new LaquageAccessoires({ projectId: req.params.projectId });
-    if (record.status !== 'draft') return res.status(400).json({ error: 'Cannot edit after draft stage.' });
+
+    const userRole = req.user?.roleId?.name || '';
+    const isAdmin = userRole === 'Admin';
+
+    if (record.status !== 'draft' && !isAdmin)  // ← changed
+      return res.status(400).json({ error: 'Cannot edit after draft stage.' });
     if (accessoires !== undefined) record.accessoires = accessoires;
     await record.save(); res.json(record.toJSON());
   } catch (e) { res.status(500).json({ error: e.message }); }
