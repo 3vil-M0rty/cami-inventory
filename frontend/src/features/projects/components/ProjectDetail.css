@@ -276,6 +276,99 @@
 
 
 
+/* ── ≤599px: chassis-table + bl-table → card stacking ── */
+@media (max-width: 599px) {
+  /* chassis table — collapse to labeled cards */
+  .chassis-table-wrapper { overflow-x: visible; border: none; border-radius: 0; }
+  .chassis-table,
+  .chassis-table tbody,
+  .chassis-table tr { display: block; }
+  .chassis-table { min-width: 0; }
+  .chassis-table thead { display: none; }
+  .chassis-table tr {
+    background: #fff;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  .chassis-row--group-head { border-left: 3px solid #8b5cf6; }
+  .component-row { border-left: 3px solid #d0d0d0; margin-left: 12px; }
+  .chassis-table td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 5px 0;
+    border: none;
+    border-bottom: 1px solid #f5f5f5;
+    background: transparent !important;
+    color: #1a1a1a !important;
+    font-size: 13px;
+    vertical-align: unset;
+  }
+  .chassis-table td:last-child { border-bottom: none; }
+  .chassis-table td[data-label]:not([data-label=""])::before {
+    content: attr(data-label);
+    min-width: 80px;
+    max-width: 80px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #9ca3af;
+    flex-shrink: 0;
+    padding-right: 8px;
+    line-height: 1.7;
+  }
+  .chassis-table td[data-label=""] { padding-top: 8px; border-bottom: none; }
+  .chassis-row__check { display: none !important; }
+  .component-indent { padding-left: 0 !important; }
+  .chassis-row:hover td,
+  .chassis-row--group-head:hover td,
+  .component-row:hover td { background: transparent !important; color: #1a1a1a !important; }
+  .chassis-row--selected td { background: rgba(59,130,246,.06) !important; }
+  .chassis-row--saving td { opacity: 0.6; background: transparent !important; }
+  .etat-select { font-size: 12px; padding: 4px 24px 4px 8px; }
+
+  /* bl-table — collapse to labeled rows */
+  .bl-table,
+  .bl-table tbody,
+  .bl-table tr { display: block; }
+  .bl-table thead { display: none; }
+  .bl-table tr {
+    padding: 8px 14px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .bl-table tr:last-child { border-bottom: none; }
+  .bl-table td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 3px 0;
+    border: none;
+    background: transparent !important;
+    font-size: 12px;
+  }
+  .bl-table td[data-label]:not([data-label=""])::before {
+    content: attr(data-label);
+    min-width: 72px;
+    max-width: 72px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #9ca3af;
+    flex-shrink: 0;
+    padding-right: 8px;
+    line-height: 1.7;
+  }
+  .bl-table tr:hover td { background: transparent !important; }
+
+  /* laq-table — keep scrollable, set min-width so columns don't collapse */
+  .laq-table { min-width: 480px; }
+}
+
 /* ── 360px: xs phones ── */
 @media (max-width: 360px) {
   .project-detail__tab { padding: 8px 10px; font-size: 11px; }

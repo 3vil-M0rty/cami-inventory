@@ -821,12 +821,12 @@ function BLPanel({ project, t, language }) {
                   <tbody>
                     {bl.units.map((u, i) => (
                       <tr key={i} className={u.isComponent ? 'bl-row--component' : (u.isRemplissage ? 'bl-row--remplissage' : '')}>
-                        <td><strong>{u.unitLabel}</strong></td>
-                        <td>{u.chassisType || '—'}</td>
-                        <td className="dim-cell">{u.dimension}</td>
-                        <td style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>{u.m2 ? u.m2 + ' m²' : '—'}</td>
-                        <td>{fmtDate(u.deliveryDate)}</td>
-                        <td>{u.notes || '—'}</td>
+                        <td data-label="Repère"><strong>{u.unitLabel}</strong></td>
+                        <td data-label="Type">{u.chassisType || '—'}</td>
+                        <td data-label="Dimension" className="dim-cell">{u.dimension}</td>
+                        <td data-label="m²" style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>{u.m2 ? u.m2 + ' m²' : '—'}</td>
+                        <td data-label="Date">{fmtDate(u.deliveryDate)}</td>
+                        <td data-label="Notes">{u.notes || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1774,33 +1774,33 @@ function ProjectDetail({ project, onBack, currentUser }) {
                       return (
                         <tr key={rowKey} className="chassis-row chassis-row--group-head">
                           {adminThing && <td className="chassis-row__check" />}
-                          <td><strong>{label}</strong><span className="composite-badge" title="Composite">⊞</span></td>
-                          <td>{chassisLabels[ch.type]?.[language] || ch.type}</td>
-                          <td>{ch.largeur}</td><td>{ch.hauteur}</td>
-                          <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
-                          <td style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{chM2} m²</td>
-                          <td>
+                          <td data-label="Repère"><strong>{label}</strong><span className="composite-badge" title="Composite">⊞</span></td>
+                          <td data-label="Type">{chassisLabels[ch.type]?.[language] || ch.type}</td>
+                          <td data-label="L (mm)">{ch.largeur}</td><td data-label="H (mm)">{ch.hauteur}</td>
+                          <td data-label="Dimension" className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
+                          <td data-label="m²" style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{chM2} m²</td>
+                          <td data-label="Remplissage">
                             {allCompsCnt > 0
                               ? <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: allCompsRdy === allCompsCnt ? '#dcfce7' : '#fef9c3', color: allCompsRdy === allCompsCnt ? '#16a34a' : '#92400e', fontWeight: 600 }}>
                                 {allCompsRdy}/{allCompsCnt} prêt{allCompsCnt > 1 ? 's' : ''}
                               </span>
                               : <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>}
                           </td>
-                          <td>
+                          <td data-label="État">
                             <span className="etat-badge" style={{ background: ETAT_COLORS[derivedEtat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap' }}>
                               {t(`etat_${derivedEtat}`)}
                             </span>
                           </td>
-                          <td><span className="date-placeholder">—</span></td>
+                          <td data-label="Date"><span className="date-placeholder">—</span></td>
                           {/* Chassis atelier table — group head: no assignment (components handle it) */}
-                          <td className="atelier-table-col">
+                          <td data-label="Atelier" className="atelier-table-col">
                             <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>
                           </td>
                           {/* Remplissage atelier table — group head: no direct remplissages (components have them) */}
-                          <td className="atelier-table-col">
+                          <td data-label="Vitrage" className="atelier-table-col">
                             <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>
                           </td>
-                          {adminThing && <td><div className="chassis-row__actions">
+                          {adminThing && <td data-label=""><div className="chassis-row__actions">
                             <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, _originalId: chId }); setShowChassisForm(true); }}>✏️</button>
                             <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>
                             <button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>
@@ -1820,12 +1820,12 @@ function ProjectDetail({ project, onBack, currentUser }) {
                       return (
                         <tr key={rowKey} className={`component-row${isSelected ? ' component-row--selected' : ''}${isSaving ? ' component-row--saving' : ''}`}>
                           {adminThing && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}
-                          <td className="component-indent">↳ <strong>{label}</strong></td>
-                          <td className="component-role">{comp.role === 'dormant' ? t('dormant') : t('vantail')}</td>
-                          <td>{comp.largeur || '—'}</td><td>{comp.hauteur || '—'}</td>
-                          <td className="dim-cell">{comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}</td>
-                          <td style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{compM2 !== '—' ? compM2 + ' m²' : '—'}</td>
-                          <td>
+                          <td data-label="Repère" className="component-indent">↳ <strong>{label}</strong></td>
+                          <td data-label="Type" className="component-role">{comp.role === 'dormant' ? t('dormant') : t('vantail')}</td>
+                          <td data-label="L (mm)">{comp.largeur || '—'}</td><td data-label="H (mm)">{comp.hauteur || '—'}</td>
+                          <td data-label="Dimension" className="dim-cell">{comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}</td>
+                          <td data-label="m²" style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{compM2 !== '—' ? compM2 + ' m²' : '—'}</td>
+                          <td data-label="Remplissage">
                             <RemplissageBadge
                               chassis={ch}
                               unitIndex={unitIndex}
@@ -1833,14 +1833,14 @@ function ProjectDetail({ project, onBack, currentUser }) {
                               onClick={() => setRemplissageEditor({ ch, unitIndex, compIndex: ci })}
                             />
                           </td>
-                          {stateThing && <td>
+                          {stateThing && <td data-label="État">
                             <select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleComponentEtatChange(ch, unitIndex, ci, e.target.value, rowKey)}>
                               {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
                             </select>
                           </td>}
-                          <td><span className="date-placeholder">—</span></td>
+                          <td data-label="Date"><span className="date-placeholder">—</span></td>
                           {/* Chassis atelier table — per component, saved independently */}
-                          <td className="atelier-table-col">
+                          <td data-label="Atelier" className="atelier-table-col">
                             {coordinateurThing ? (
                               <select
                                 className={`etat-select etat-select--livre atelier-select${isSavingTable ? ' atelier-select--saving' : ''}`}
@@ -1858,7 +1858,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                             )}
                           </td>
                           {/* Remplissage atelier table — per component */}
-                          <td className="atelier-table-col">
+                          <td data-label="Vitrage" className="atelier-table-col">
                             {canEditRemplissageTable ? (
                               <RemplissageAtelierCell
                                 chassis={ch}
@@ -1878,7 +1878,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                               </span>
                             )}
                           </td>
-                          <td>{adminThing && <div className="chassis-row__actions">
+                          <td data-label="">{adminThing && <div className="chassis-row__actions">
                             <button className="print-btn" onClick={() => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; setPrintingChassis({ ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }); }}>🏷</button>
                           </div>}</td>
                         </tr>
@@ -1892,12 +1892,12 @@ function ProjectDetail({ project, onBack, currentUser }) {
                     return (
                       <tr key={rowKey} className={`chassis-row${isSelected ? ' chassis-row--selected' : ''}${isSaving ? ' chassis-row--saving' : ''}`}>
                         {adminThing && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}
-                        <td><strong>{label}</strong></td>
-                        <td>{chassisLabels[ch.type]?.[language] || ch.type}</td>
-                        <td>{ch.largeur}</td><td>{ch.hauteur}</td>
-                        <td className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
-                        <td style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{unitM2} m²</td>
-                        <td>
+                        <td data-label="Repère"><strong>{label}</strong></td>
+                        <td data-label="Type">{chassisLabels[ch.type]?.[language] || ch.type}</td>
+                        <td data-label="L (mm)">{ch.largeur}</td><td data-label="H (mm)">{ch.hauteur}</td>
+                        <td data-label="Dimension" className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
+                        <td data-label="m²" style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{unitM2} m²</td>
+                        <td data-label="Remplissage">
                           <RemplissageBadge
                             chassis={ch}
                             unitIndex={unitIndex}
@@ -1905,23 +1905,23 @@ function ProjectDetail({ project, onBack, currentUser }) {
                             onClick={() => setRemplissageEditor({ ch, unitIndex, compIndex: null })}
                           />
                         </td>
-                        {stateThing && <td>
+                        {stateThing && <td data-label="État">
                           <select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)} style={{ borderLeftColor: ETAT_COLORS[etat] }}>
                             {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
                           </select>
                         </td>}
-                        <td className="delivery-date-cell">
+                        <td data-label="Date" className="delivery-date-cell">
                           {etat === 'livre' ? <button className="date-btn" onClick={() => setDeliveryModal({ kind: 'unit', chId, unitIndex, rowKey, currentDate: toDateInput(unit.deliveryDate) })}>📅 {unit.deliveryDate ? fmtDate(unit.deliveryDate) : 'Définir'}</button> : <span className="date-placeholder">—</span>}
                         </td>
                         {/* Chassis atelier table */}
-                        {stateThing && <td className="atelier-table-col">
+                        {stateThing && <td data-label="Atelier" className="atelier-table-col">
                           <select className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={savingTableKey === rowKey} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}>
                             <option value="">——</option>
                             {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
                           </select>
                         </td>}
                         {/* Remplissage atelier table — blue tint */}
-                        <td className="atelier-table-col">
+                        <td data-label="Vitrage" className="atelier-table-col">
                           {canEditRemplissageTable ? (
                             <RemplissageAtelierCell
                               chassis={ch}
@@ -1941,7 +1941,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                             </span>
                           )}
                         </td>
-                        <td>{adminThing && <div className="chassis-row__actions">
+                        <td data-label="">{adminThing && <div className="chassis-row__actions">
                           <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, quantity: 1, etat, _originalId: chId, _unitIndex: unitIndex, _totalQty: ch.quantity ?? 1 }); setShowChassisForm(true); }}>✏️</button>
                           <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>
                           <button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>
