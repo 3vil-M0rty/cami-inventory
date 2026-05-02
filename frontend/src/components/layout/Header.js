@@ -214,6 +214,19 @@ const Header = ({ activePage, onNavigate }) => {
             </nav>
 
             <div className="hdr__mobile-footer">
+              {/* Language switcher — moved here from the crowded top bar */}
+              <div className="hdr__mobile-section">
+                <div className="hdr__mobile-label">{t('language') || 'Langue'}</div>
+                <div className="hdr__mobile-lang">
+                  {Object.keys(languageLabels).map(code => (
+                    <button key={code}
+                      className={`hdr__lang-btn ${currentLanguage === code ? 'active' : ''}`}
+                      onClick={() => changeLanguage(code)}>
+                      {code.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="hdr__mobile-section hdr__mobile-user">
                 <span className="hdr__avatar hdr__avatar--lg">
                   {user?.displayName?.charAt(0).toUpperCase()}

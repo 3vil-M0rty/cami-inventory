@@ -322,18 +322,37 @@ export default function NotifBell() {
 
       {/* Dropdown */}
       {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 10px)', right: 0,
+        <div className="notif-bell-panel" style={{
           width: 'min(370px, 92vw)',
           background: '#fff', borderRadius: 14,
           boxShadow: '0 16px 60px rgba(0,0,0,.22)',
           border: '1px solid #e8e8e8',
-          zIndex: 9999, overflow: 'hidden',
           animation: 'notifBellIn .18s ease',
         }}>
           <style>{`
             @keyframes notifBellIn { from { opacity:0; transform:translateY(-8px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
             .notif-row:hover { background: #f9f9f9 !important; }
+            /* ── Desktop: anchored to bell button ── */
+            .notif-bell-panel {
+              position: absolute;
+              top: calc(100% + 10px);
+              right: 0;
+              z-index: 9999;
+              overflow: hidden;
+            }
+            /* ── Mobile: fixed to viewport so it never clips off the left edge ── */
+            @media (max-width: 768px) {
+              .notif-bell-panel {
+                position: fixed;
+                top: 58px;
+                right: 8px;
+                left: 8px;
+                width: auto !important;
+                max-height: calc(100dvh - 74px);
+                overflow-y: auto;
+                border-radius: 12px;
+              }
+            }
           `}</style>
 
           {/* Header */}
