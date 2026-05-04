@@ -7,8 +7,8 @@ import {
 import { useAuth } from '../../context/AuthContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
-const POLL_MS  = 20_000;
-const LS_READ  = 'notif_bell_read_ids';   // replaces the old single-timestamp key
+const POLL_MS = 20_000;
+const LS_READ = 'notif_bell_read_ids';   // replaces the old single-timestamp key
 const PRUNE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 /* ── Per-notification ID helpers ─────────────────────────────── */
@@ -19,7 +19,7 @@ function getNotifId(ev) {
 
 function loadReadIds() {
   try {
-    const raw  = JSON.parse(localStorage.getItem(LS_READ) || '{}');
+    const raw = JSON.parse(localStorage.getItem(LS_READ) || '{}');
     const cutoff = Date.now() - PRUNE_MS;
     // raw is { id: savedAt_ms }
     return new Set(
@@ -32,8 +32,8 @@ function loadReadIds() {
 
 function persistReadIds(newIds, existingSet) {
   try {
-    const raw    = JSON.parse(localStorage.getItem(LS_READ) || '{}');
-    const now    = Date.now();
+    const raw = JSON.parse(localStorage.getItem(LS_READ) || '{}');
+    const now = Date.now();
     const cutoff = now - PRUNE_MS;
     // merge new IDs
     for (const id of newIds) { if (!raw[id]) raw[id] = now; }
@@ -45,15 +45,15 @@ function persistReadIds(newIds, existingSet) {
 
 /* ── Laquage action metadata ─────────────────────────────────── */
 const LAQUAGE_META = {
-  send_to_laquage:     { label: 'Envoyé au laquage',               color: '#f59e0b', icon: <Send size={13}/> },
-  receive_all_laquage: { label: 'Tout réceptionné (Laquage)',      color: '#3b82f6', icon: <PackageCheck size={13}/> },
-  return_to_coord:     { label: 'Retourné au coordinateur',        color: '#8b5cf6', icon: <RotateCcw size={13}/> },
-  receive_all_coord:   { label: 'Tout réceptionné (Coordinateur)', color: '#16a34a', icon: <CheckCircle2 size={13}/> },
-  incomplete_line:     { label: 'Ligne signalée incomplète',       color: '#dc2626', icon: <AlertTriangle size={13}/> },
+  send_to_laquage: { label: 'Envoyé au laquage', color: '#f59e0b', icon: <Send size={13} /> },
+  receive_all_laquage: { label: 'Tout réceptionné (Laquage)', color: '#3b82f6', icon: <PackageCheck size={13} /> },
+  return_to_coord: { label: 'Retourné au coordinateur', color: '#8b5cf6', icon: <RotateCcw size={13} /> },
+  receive_all_coord: { label: 'Tout réceptionné (Coordinateur)', color: '#16a34a', icon: <CheckCircle2 size={13} /> },
+  incomplete_line: { label: 'Ligne signalée incomplète', color: '#dc2626', icon: <AlertTriangle size={13} /> },
 };
 
 function getLaquageMeta(action) {
-  return LAQUAGE_META[action] || { label: action, color: '#9ca3af', icon: <Bell size={13}/> };
+  return LAQUAGE_META[action] || { label: action, color: '#9ca3af', icon: <Bell size={13} /> };
 }
 
 function fmtDT(d) {
@@ -66,10 +66,10 @@ export default function NotifBell() {
   const { can } = useAuth();
   const isAdmin = can('admin.view');
 
-  const [events,   setEvents]   = useState([]);
-  const [readIds,  setReadIds]  = useState(() => loadReadIds());
-  const [open,     setOpen]     = useState(false);
-  const [badge,    setBadge]    = useState(0);
+  const [events, setEvents] = useState([]);
+  const [readIds, setReadIds] = useState(() => loadReadIds());
+  const [open, setOpen] = useState(false);
+  const [badge, setBadge] = useState(0);
   const [deleting, setDeleting] = useState(false);
 
   /* ── Fetch both sources ─────────────────────────────────────── */
@@ -86,17 +86,17 @@ export default function NotifBell() {
       const [laqRes, prRes] = await Promise.all(requests);
 
       const laqEvents = (laqRes.data || []).map(ev => ({ ...ev, _type: 'laquage' }));
-      const prEvents  = isAdmin
+      const prEvents = isAdmin
         ? (prRes?.data || []).map(pr => ({
-            _type:       'purchase',
-            action:      'purchase_ordered',
-            at:          pr.orderedAt || pr.updatedAt,
-            by:          pr.orderedBy || 'ACHAT',
-            projectName: pr.itemName,
-            projectRef:  `Qté : ${pr.quantity}`,
-            note:        pr.note || null,
-            _id:         pr.id || pr._id,
-          }))
+          _type: 'purchase',
+          action: 'purchase_ordered',
+          at: pr.orderedAt || pr.updatedAt,
+          by: pr.orderedBy || 'ACHAT',
+          projectName: pr.itemName,
+          projectRef: `Qté : ${pr.quantity}`,
+          note: pr.note || null,
+          _id: pr.id || pr._id,
+        }))
         : [];
 
       const all = [...laqEvents, ...prEvents].sort((a, b) => new Date(b.at) - new Date(a.at));
@@ -181,13 +181,13 @@ export default function NotifBell() {
 
   /* ── Render helpers ─────────────────────────────────────────── */
   const displayBadge = badge >= 9 ? '9+' : badge;
-  const hasLaquage   = events.some(e => e._type === 'laquage');
+  const hasLaquage = events.some(e => e._type === 'laquage');
 
   const unreadCount = events.filter(ev => !readIds.has(getNotifId(ev))).length;
 
   const renderEvent = (ev, i) => {
-    const isRead    = readIds.has(getNotifId(ev));
-    const rowStyle  = {
+    const isRead = readIds.has(getNotifId(ev));
+    const rowStyle = {
       display: 'flex', gap: 12, padding: '11px 16px',
       borderBottom: '1px solid #f5f5f5', alignItems: 'flex-start',
       background: isRead ? 'transparent' : '#fffbf0',
@@ -200,7 +200,7 @@ export default function NotifBell() {
       return (
         <div key={`pr-${i}`} className="notif-row" style={rowStyle}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#f59e0b18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#f59e0b' }}>
-            <ShoppingCart size={13}/>
+            <ShoppingCart size={13} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -212,7 +212,7 @@ export default function NotifBell() {
               {ev.projectRef && <span style={{ color: '#888', fontWeight: 400 }}> · {ev.projectRef}</span>}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#999', marginTop: 2 }}>
-              <Clock size={10}/> {fmtDT(ev.at)}
+              <Clock size={10} /> {fmtDT(ev.at)}
               {ev.by && ev.by !== '—' && <><span>·</span><span>{ev.by}</span></>}
             </div>
             {ev.note && (
@@ -230,7 +230,7 @@ export default function NotifBell() {
               onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
               onMouseLeave={e => e.currentTarget.style.color = '#ddd'}
             >
-              <Trash2 size={12}/>
+              <Trash2 size={12} />
             </button>
           )}
         </div>
@@ -239,6 +239,12 @@ export default function NotifBell() {
 
     // Laquage event
     const meta = getLaquageMeta(ev.action);
+    const laqType = ev.laqType || ev.recordType; // 'barres' | 'accessoires'
+    const laqBadge = laqType === 'barres'
+      ? { label: 'BARRES', bg: '#bd5f08', color: '#fff' }
+      : laqType === 'accessoires'
+        ? { label: 'ACC', bg: '#ff0000', color: '#fff' }
+        : null;
     return (
       <div key={`lq-${i}`} className="notif-row" style={rowStyle}>
         <div style={{ width: 32, height: 32, borderRadius: '50%', background: meta.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: meta.color }}>
@@ -246,6 +252,15 @@ export default function NotifBell() {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: meta.color, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+            {laqBadge && (
+              <span style={{
+                fontSize: 9, fontWeight: 800, letterSpacing: '.05em',
+                background: laqBadge.bg, color: laqBadge.color,
+                borderRadius: 4, padding: '1px 5px', flexShrink: 0,
+              }}>
+                {laqBadge.label}
+              </span>
+            )}
             {meta.label}
             {isRead && <span style={{ fontSize: 9, fontWeight: 600, color: '#aaa', background: '#f0f0f0', borderRadius: 4, padding: '1px 5px', letterSpacing: '.03em' }}>VU</span>}
           </div>
@@ -256,7 +271,7 @@ export default function NotifBell() {
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#999', marginTop: 2 }}>
-            <Clock size={10}/> {fmtDT(ev.at)}
+            <Clock size={10} /> {fmtDT(ev.at)}
             {ev.by && ev.by !== '—' && <><span>·</span><span>{ev.by}</span></>}
           </div>
           {ev.note && (
@@ -275,7 +290,7 @@ export default function NotifBell() {
             onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
             onMouseLeave={e => e.currentTarget.style.color = '#ddd'}
           >
-            <Trash2 size={12}/>
+            <Trash2 size={12} />
           </button>
         )}
       </div>
@@ -301,7 +316,7 @@ export default function NotifBell() {
           transition: 'background .15s',
         }}
       >
-        <Bell size={16} strokeWidth={2}/>
+        <Bell size={16} strokeWidth={2} />
 
         {badge > 0 && (
           <span style={{
@@ -358,7 +373,7 @@ export default function NotifBell() {
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #f0f0f0', background: '#fafafa' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Bell size={15} style={{ color: '#555' }}/>
+              <Bell size={15} style={{ color: '#555' }} />
               <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Notifications</span>
               {unreadCount > 0 && (
                 <span style={{ fontSize: 10, fontWeight: 700, background: '#dc2626', color: '#fff', borderRadius: 999, padding: '1px 6px' }}>
@@ -370,11 +385,11 @@ export default function NotifBell() {
               {isAdmin && hasLaquage && (
                 <button onClick={clearAll} disabled={deleting} title="Effacer historique laquage"
                   style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, cursor: 'pointer', color: '#dc2626', fontSize: 11, fontWeight: 600, fontFamily: 'inherit', opacity: deleting ? .5 : 1 }}>
-                  <Trash2 size={11}/> Tout effacer
+                  <Trash2 size={11} /> Tout effacer
                 </button>
               )}
               <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', display: 'flex', padding: 4 }}>
-                <X size={14}/>
+                <X size={14} />
               </button>
             </div>
           </div>

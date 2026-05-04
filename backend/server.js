@@ -2034,13 +2034,13 @@ app.put('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res)
     const { barresBrutes, barresLaquees, morceauxBruts, morceauxLaques } = req.body;
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) record = new LaquageBarres({ projectId: req.params.projectId });
-    
+
     const userRole = req.user?.roleId?.name || '';
     const isAdmin = userRole === 'Admin';
-    
+
     if (record.status !== 'draft' && !isAdmin)  // ← changed
       return res.status(400).json({ error: 'Cannot edit after draft stage.' });
-    
+
     if (barresBrutes !== undefined) record.barresBrutes = barresBrutes;
     if (barresLaquees !== undefined) record.barresLaquees = barresLaquees;
     if (morceauxBruts !== undefined) record.morceauxBruts = morceauxBruts;
@@ -2111,12 +2111,20 @@ app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
     ]);
     const projMap = Object.fromEntries(projects.map(p => [p._id.toString(), p]));
     const events = [];
-    for (const rec of [...barresRecords, ...accRecords]) {
+    for (const rec of [
+      ...barresRecords.map(r => ({ ...r, _laqType: 'barres' })),
+      ...accRecords.map(r => ({ ...r, _laqType: 'accessoires' })),
+    ]) {
       const proj = projMap[rec.projectId?.toString()];
       if (!proj || !proj.name) continue;
       for (const h of (rec.history || [])) {
         if (!TOP_LEVEL_ACTIONS.has(h.action)) continue;
-        events.push({ action: h.action, by: h.by || '—', at: h.at, note: h.note || null, partialQty: h.partialQty ?? null, projectId: rec.projectId, projectName: proj.name, projectRef: proj.reference || '' });
+        events.push({
+          action: h.action, by: h.by || '—', at: h.at,
+          note: h.note || null, partialQty: h.partialQty ?? null,
+          projectId: rec.projectId, projectName: proj.name, projectRef: proj.reference || '',
+          laqType: rec._laqType,   // ← 'barres' | 'accessoires'
+        });
       }
     }
     events.sort((a, b) => new Date(b.at) - new Date(a.at));
