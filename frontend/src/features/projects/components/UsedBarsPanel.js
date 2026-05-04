@@ -174,6 +174,7 @@ function UsedBarsPanel({ project }) {
 
   const userRole = user?.role;
   const adminThing = userRole === 'Admin';
+  const magaThing = userRole == 'Magasinier' || userRole == 'Admin';
 
   const ROLE_SUPER_CAT_ACCESS = {
     Laquage: ['poudre'],
@@ -411,7 +412,7 @@ function UsedBarsPanel({ project }) {
                       </button>
                     </td>
                     <td>
-                      {adminThing && (
+                      {magaThing && (
                         <button className="ubp__remove-btn" title={t('delete')} onClick={() => handleRemove(item.id || item._id)}>
                           <Trash2 size={15} />
                         </button>
