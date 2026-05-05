@@ -42,14 +42,17 @@ function deriveCompositeEtat(unit, components) {
   const n = components.length;
   if (!n) return unit.etat || 'non_entame';
   const states = components.map((comp, i) => getComponentEtat(unit, i, comp));
-  if (states.every(e => e === 'livre')) return 'livre';
-  if (states.every(e => e === 'pret_a_livrer')) return 'pret_a_livrer';
+  const allowed = ['non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
+
   if (
-    states.every(e => e === 'non_vitre' || e === 'fabrique') &&
+    states.every(e => allowed.includes(e)) &&
     states.some(e => e === 'non_vitre')
   ) {
     return 'non_vitre';
   }
+  if (states.every(e => e === 'livre')) return 'livre';
+  if (states.every(e => e === 'pret_a_livrer')) return 'pret_a_livrer';
+  
   if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre')) return 'fabrique';
   if (states.some(e => e !== 'non_entame')) return 'en_cours';
   return 'non_entame';
@@ -509,7 +512,7 @@ function exportBLExcel(bl, project) {
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
 function ProgressBar({ chassis, t }) {
   if (!chassis || chassis.length === 0) return null;
-  const counts = { non_entame: 0, en_cours: 0, non_vitre: 0, fabrique: 0, livre: 0, pret_a_livrer:0 };
+  const counts = { non_entame: 0, en_cours: 0, non_vitre: 0, fabrique: 0, livre: 0, pret_a_livrer: 0 };
   let total = 0;
   for (const ch of chassis) {
     const qty = ch.quantity || 1;

@@ -42,18 +42,21 @@ function deriveCompositeEtat(unit, components) {
     return cs ? cs.etat : (comp.etat || 'non_entame');
   });
 
+  const allowed = ['non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
+
+  if (
+    states.every(e => allowed.includes(e)) &&
+    states.some(e => e === 'non_vitre')
+  ) {
+    return 'non_vitre';
+  }
   if (states.every(e => e === 'livre')) return 'livre';
 
   if (states.every(e => e === 'pret_a_livrer' || e === 'livre'))
     return 'pret_a_livrer';
 
   // ✅ SPECIAL RULE (must come before "fabrique")
-  if (
-    states.every(e => e === 'non_vitre' || e === 'fabrique') &&
-    states.some(e => e === 'non_vitre')
-  ) {
-    return 'non_vitre';
-  }
+  
 
   if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre'))
     return 'fabrique';
@@ -134,7 +137,7 @@ function ProjectsPage() {
       );
     }
   }
- 
+
   return (
     <div className="projects-page">
       <div className="projects-page__header">

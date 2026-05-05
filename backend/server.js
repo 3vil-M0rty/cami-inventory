@@ -443,8 +443,10 @@ function computeProjectStatus(chassis) {
     return 'pret_a_livrer';
 
   // ✅ YOUR RULE (must come before "fabrique")
+  const allowed = ['non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
+
   if (
-    allEtats.every(e => e === 'non_vitre' || e === 'fabrique') &&
+    allEtats.every(e => allowed.includes(e)) &&
     allEtats.some(e => e === 'non_vitre')
   ) {
     return 'non_vitre';
@@ -466,14 +468,17 @@ function deriveCompositeUnitEtat(unit, numComponents) {
     const cs = (unit.componentStates || []).find(c => c.compIndex === i);
     states.push(cs ? cs.etat : 'non_entame');
   }
-  if (states.every(e => e === 'livre')) return 'livre';
-  if (states.every(e => e === 'pret_a_livrer' || e === 'livre')) return 'pret_a_livrer';
+  const allowed = ['non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
+
   if (
-    states.every(e => e === 'non_vitre' || e === 'fabrique') &&
+    states.every(e => allowed.includes(e)) &&
     states.some(e => e === 'non_vitre')
   ) {
     return 'non_vitre';
   }
+  if (states.every(e => e === 'livre')) return 'livre';
+  if (states.every(e => e === 'pret_a_livrer' || e === 'livre')) return 'pret_a_livrer';
+  
   if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre')) return 'fabrique';
   if (states.every(e => e === 'non_vitre')) return 'non_vitre';
   if (states.some(e => e !== 'non_entame')) return 'en_cours';
