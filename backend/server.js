@@ -411,7 +411,7 @@ app.put('/api/projects/:projectId/bl-metadata/:deliveryDate', async (req, res) =
 // ==================== STATUS COMPUTATION ====================
 
 function computeProjectStatus(chassis) {
-  if (!chassis || chassis.length === 0) return 'en_cours';
+  if (!chassis || chassis.length === 0) return 'non_entame';
 
   const allEtats = [];
 
