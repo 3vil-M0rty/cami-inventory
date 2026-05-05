@@ -36,15 +36,33 @@ function getUnit(ch, idx) {
 
 function deriveCompositeEtat(unit, components) {
   if (!components.length) return unit.etat || 'non_entame';
+
   const states = components.map((comp, i) => {
     const cs = (unit.componentStates || []).find(c => c.compIndex === i);
     return cs ? cs.etat : (comp.etat || 'non_entame');
   });
+
   if (states.every(e => e === 'livre')) return 'livre';
-  if (states.every(e => e === 'pret_a_livrer' || e === 'livre')) return 'pret_a_livrer';
-  if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre')) return 'fabrique';
-  if (states.every(e => e === 'non_vitre')) return 'non_vitre';
+
+  if (states.every(e => e === 'pret_a_livrer' || e === 'livre'))
+    return 'pret_a_livrer';
+
+  // ✅ SPECIAL RULE (must come before "fabrique")
+  if (
+    states.every(e => e === 'non_vitre' || e === 'fabrique') &&
+    states.some(e => e === 'non_vitre')
+  ) {
+    return 'non_vitre';
+  }
+
+  if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre'))
+    return 'fabrique';
+
+  if (states.every(e => e === 'non_vitre'))
+    return 'non_vitre';
+
   if (states.some(e => e !== 'non_entame')) return 'en_cours';
+
   return 'non_entame';
 }
 

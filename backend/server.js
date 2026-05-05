@@ -412,27 +412,50 @@ app.put('/api/projects/:projectId/bl-metadata/:deliveryDate', async (req, res) =
 
 function computeProjectStatus(chassis) {
   if (!chassis || chassis.length === 0) return 'en_cours';
+
   const allEtats = [];
+
   for (const ch of chassis) {
     const units = ch.units || [];
     const qty = ch.quantity || 1;
     const numComps = (ch.components || []).length;
     const composite = numComps > 0;
+
     if (units.length === 0) {
       for (let i = 0; i < qty; i++) allEtats.push('non_entame');
     } else {
       for (const u of units) {
-        const etat = composite ? deriveCompositeUnitEtat(u, numComps) : (u.etat || 'non_entame');
+        const etat = composite
+          ? deriveCompositeUnitEtat(u, numComps)
+          : (u.etat || 'non_entame');
         allEtats.push(etat);
       }
     }
   }
+
   if (allEtats.length === 0) return 'en_cours';
+
   if (allEtats.every(e => e === 'non_entame')) return 'non_entame';
-  if (allEtats.every(e => e === 'non_vitre')) return 'non_vitre';
+
   if (allEtats.every(e => e === 'livre')) return 'cloture';
-  if (allEtats.every(e => e === 'pret_a_livrer')) return 'pret_a_livrer';
-  if (allEtats.every(e => e === 'fabrique' || e === 'livre')) return 'fabrique';
+
+  if (allEtats.every(e => e === 'pret_a_livrer' || e === 'livre'))
+    return 'pret_a_livrer';
+
+  // ✅ YOUR RULE (must come before "fabrique")
+  if (
+    allEtats.every(e => e === 'non_vitre' || e === 'fabrique') &&
+    allEtats.some(e => e === 'non_vitre')
+  ) {
+    return 'non_vitre';
+  }
+
+  if (allEtats.every(e => e === 'fabrique' || e === 'livre'))
+    return 'fabrique';
+
+  if (allEtats.every(e => e === 'non_vitre'))
+    return 'non_vitre';
+
   return 'en_cours';
 }
 
@@ -445,6 +468,12 @@ function deriveCompositeUnitEtat(unit, numComponents) {
   }
   if (states.every(e => e === 'livre')) return 'livre';
   if (states.every(e => e === 'pret_a_livrer' || e === 'livre')) return 'pret_a_livrer';
+  if (
+    states.every(e => e === 'non_vitre' || e === 'fabrique') &&
+    states.some(e => e === 'non_vitre')
+  ) {
+    return 'non_vitre';
+  }
   if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre')) return 'fabrique';
   if (states.every(e => e === 'non_vitre')) return 'non_vitre';
   if (states.some(e => e !== 'non_entame')) return 'en_cours';

@@ -19,7 +19,7 @@ const ETAT_COLORS = {
   non_entame: '#9ca3af', en_cours: '#f59e0b', non_vitre: '#a855f7',
   fabrique: '#3b82f6', livre: '#16a34a', pret_a_livrer: 'rgb(255, 0, 0)',
 };
-const STATUS_COLORS = { en_cours: '#f59e0b', fabrique: '#3b82f6', cloture: '#16a34a', pret_a_livrer: 'rgb(255, 0, 0)' };
+const STATUS_COLORS = { en_cours: '#f59e0b', fabrique: '#3b82f6', cloture: '#16a34a', pret_a_livrer: 'rgb(255, 0, 0)', non_vitre: '#a855f7' };
 
 const REMPLISSAGE_TYPES = ['Verre', 'MDF', 'Tôle', 'Panneau sandwich', 'Autre'];
 
@@ -44,6 +44,12 @@ function deriveCompositeEtat(unit, components) {
   const states = components.map((comp, i) => getComponentEtat(unit, i, comp));
   if (states.every(e => e === 'livre')) return 'livre';
   if (states.every(e => e === 'pret_a_livrer')) return 'pret_a_livrer';
+  if (
+    states.every(e => e === 'non_vitre' || e === 'fabrique') &&
+    states.some(e => e === 'non_vitre')
+  ) {
+    return 'non_vitre';
+  }
   if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre')) return 'fabrique';
   if (states.some(e => e !== 'non_entame')) return 'en_cours';
   return 'non_entame';
