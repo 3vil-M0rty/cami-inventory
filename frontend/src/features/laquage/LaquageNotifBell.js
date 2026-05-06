@@ -2,16 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import {
   Bell, Clock, X, CheckCircle2, AlertTriangle,
-  Send, RotateCcw, PackageCheck, Trash2, ShoppingCart
+  Send, RotateCcw, PackageCheck, Trash2, ShoppingCart, Package
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 const POLL_MS = 20_000;
-const LS_READ = 'notif_bell_read_ids';   // replaces the old single-timestamp key
-const PRUNE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const LS_READ = 'notif_bell_read_ids';
+const PRUNE_MS = 30 * 24 * 60 * 60 * 1000;
 
-/* ── Per-notification ID helpers ─────────────────────────────── */
 function getNotifId(ev) {
   if (ev._type === 'purchase') return `pr_${ev._id}`;
   return `laq_${ev.action}_${ev.projectId}_${new Date(ev.at).getTime()}`;
@@ -21,7 +20,6 @@ function loadReadIds() {
   try {
     const raw = JSON.parse(localStorage.getItem(LS_READ) || '{}');
     const cutoff = Date.now() - PRUNE_MS;
-    // raw is { id: savedAt_ms }
     return new Set(
       Object.entries(raw)
         .filter(([, ts]) => ts > cutoff)
@@ -30,50 +28,63 @@ function loadReadIds() {
   } catch { return new Set(); }
 }
 
-function persistReadIds(newIds, existingSet) {
+function persistReadIds(newIds) {
   try {
     const raw = JSON.parse(localStorage.getItem(LS_READ) || '{}');
     const now = Date.now();
     const cutoff = now - PRUNE_MS;
-    // merge new IDs
     for (const id of newIds) { if (!raw[id]) raw[id] = now; }
-    // prune old
     for (const id of Object.keys(raw)) { if (raw[id] < cutoff) delete raw[id]; }
     localStorage.setItem(LS_READ, JSON.stringify(raw));
-  } catch { /* silent */ }
+  } catch { }
 }
 
-/* ── Laquage action metadata ─────────────────────────────────── */
 const LAQUAGE_META = {
-  send_to_laquage: { label: 'Envoyé au laquage', color: '#f59e0b', icon: <Send size={13} /> },
-  receive_all_laquage: { label: 'Tout réceptionné (Laquage)', color: '#3b82f6', icon: <PackageCheck size={13} /> },
-  return_to_coord: { label: 'Retourné au coordinateur', color: '#8b5cf6', icon: <RotateCcw size={13} /> },
-  receive_all_coord: { label: 'Tout réceptionné (Coordinateur)', color: '#16a34a', icon: <CheckCircle2 size={13} /> },
-  incomplete_line: { label: 'Ligne signalée incomplète', color: '#dc2626', icon: <AlertTriangle size={13} /> },
-  receive_incomplete_line_laquage: { 
-    label: 'Ligne incomplète réceptionnée (Laquage)', 
-    color: '#3b82f6', 
-    icon: <PackageCheck size={13} /> 
+  add_lot:            { label: 'Nouveau lot créé',                    color: '#3b5bdb', icon: <Package size={13} /> },
+  send_to_laquage:    { label: 'Envoyé au laquage',                   color: '#f59e0b', icon: <Send size={13} /> },
+  receive_all_laquage:{ label: 'Tout réceptionné (Laquage)',          color: '#3b82f6', icon: <PackageCheck size={13} /> },
+  return_to_coord:    { label: 'Retourné au coordinateur',            color: '#8b5cf6', icon: <RotateCcw size={13} /> },
+  receive_all_coord:  { label: 'Tout réceptionné (Coordinateur)',     color: '#16a34a', icon: <CheckCircle2 size={13} /> },
+  incomplete_line:    { label: 'Ligne signalée incomplète',           color: '#dc2626', icon: <AlertTriangle size={13} /> },
+  receive_incomplete_line_laquage: {
+    label: 'Ligne incomplète réceptionnée (Laquage)',
+    color: '#3b82f6', icon: <PackageCheck size={13} />,
   },
-  receive_incomplete_line_coord: { 
-    label: 'Ligne incomplète réceptionnée (Coordinateur)', 
-    color: '#16a34a', 
-    icon: <PackageCheck size={13} /> 
+  receive_incomplete_line_coord: {
+    label: 'Ligne incomplète réceptionnée (Coordinateur)',
+    color: '#16a34a', icon: <PackageCheck size={13} />,
   },
 };
 
 function getLaquageMeta(action) {
   if (action.startsWith('receive_line_laquage:'))
-    return { label: 'Ligne réceptionnée (Laquage)', color: '#3b82f6', icon: <PackageCheck size={13} /> };
+    return { label: 'Ligne réceptionnée (Laquage)',       color: '#3b82f6', icon: <PackageCheck size={13} /> };
   if (action.startsWith('receive_line_coord:'))
-    return { label: 'Ligne réceptionnée (Coordinateur)', color: '#16a34a', icon: <CheckCircle2 size={13} /> };
+    return { label: 'Ligne réceptionnée (Coordinateur)',  color: '#16a34a', icon: <CheckCircle2 size={13} /> };
   return LAQUAGE_META[action] || { label: action, color: '#9ca3af', icon: <Bell size={13} /> };
 }
 
 function fmtDT(d) {
   if (!d) return '—';
   const dt = new Date(d);
-  return dt.toLocaleDateString('fr-FR') + ' ' + dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  return dt.toLocaleDateString('fr-FR') + ' ' +
+    dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+/* ── Lot pill ─────────────────────────────────────────────────── */
+function LotPill({ lotIndex }) {
+  if (lotIndex == null) return null;
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 800, letterSpacing: '.04em',
+      background: '#f0f4ff', color: '#3b5bdb',
+      border: '1px solid #c5d0f5',
+      borderRadius: 4, padding: '1px 5px', flexShrink: 0,
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+    }}>
+      <Package size={9} /> Lot {lotIndex + 1}
+    </span>
+  );
 }
 
 export default function NotifBell() {
@@ -86,7 +97,6 @@ export default function NotifBell() {
   const [badge, setBadge] = useState(0);
   const [deleting, setDeleting] = useState(false);
 
-  /* ── Fetch both sources ─────────────────────────────────────── */
   const fetchAll = useCallback(async () => {
     try {
       const requests = [
@@ -102,25 +112,24 @@ export default function NotifBell() {
       const laqEvents = (laqRes.data || []).map(ev => ({ ...ev, _type: 'laquage' }));
       const prEvents = isAdmin
         ? (prRes?.data || []).map(pr => ({
-          _type: 'purchase',
-          action: 'purchase_ordered',
-          at: pr.orderedAt || pr.updatedAt,
-          by: pr.orderedBy || 'ACHAT',
-          projectName: pr.itemName,
-          projectRef: `Qté : ${pr.quantity}`,
-          note: pr.note || null,
-          _id: pr.id || pr._id,
-        }))
+            _type: 'purchase',
+            action: 'purchase_ordered',
+            at: pr.orderedAt || pr.updatedAt,
+            by: pr.orderedBy || 'ACHAT',
+            projectName: pr.itemName,
+            projectRef: `Qté : ${pr.quantity}`,
+            note: pr.note || null,
+            _id: pr.id || pr._id,
+          }))
         : [];
 
       const all = [...laqEvents, ...prEvents].sort((a, b) => new Date(b.at) - new Date(a.at));
       setEvents(all.slice(0, 40));
-    } catch { /* silent */ }
+    } catch { }
   }, [isAdmin]);
 
-  /* ── Recompute badge whenever events or readIds change ─────── */
   useEffect(() => {
-    const currentRead = loadReadIds(); // always read fresh from localStorage
+    const currentRead = loadReadIds();
     const unread = events.filter(ev => !currentRead.has(getNotifId(ev))).length;
     setBadge(Math.min(unread, 9));
   }, [events, readIds]);
@@ -131,15 +140,15 @@ export default function NotifBell() {
     return () => clearInterval(id);
   }, [fetchAll]);
 
-  /* ── Close on outside click ─────────────────────────────────── */
   const wrapRef = useRef(null);
   useEffect(() => {
-    const h = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    const h = e => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  /* ── Mark all visible notifications as read ─────────────────── */
   const markAllRead = useCallback(() => {
     const ids = events.map(getNotifId);
     persistReadIds(ids);
@@ -148,22 +157,17 @@ export default function NotifBell() {
   }, [events]);
 
   const handleBellClick = () => {
-    if (open) {
-      setOpen(false);
-    } else {
-      markAllRead();
-      setOpen(true);
-    }
+    if (open) { setOpen(false); }
+    else { markAllRead(); setOpen(true); }
   };
 
-  /* ── Admin: delete one notification ────────────────────────── */
   const deleteOne = async (ev) => {
     if (deleting) return;
     setDeleting(true);
     try {
       if (ev._type === 'laquage') {
         await axios.delete(`${API_URL}/laquage/history-entry`, {
-          data: { projectId: ev.projectId, action: ev.action, at: ev.at }
+          data: { projectId: ev.projectId, action: ev.action, at: ev.at },
         });
         setEvents(prev => prev.filter(e =>
           !(e._type === 'laquage' &&
@@ -177,11 +181,10 @@ export default function NotifBell() {
           !(e._type === 'purchase' && String(e._id) === String(ev._id))
         ));
       }
-    } catch { /* silent */ }
+    } catch { }
     finally { setDeleting(false); }
   };
 
-  /* ── Admin: clear all laquage history ──────────────────────── */
   const clearAll = async () => {
     if (deleting) return;
     if (!window.confirm('Supprimer toutes les notifications laquage ?')) return;
@@ -189,16 +192,15 @@ export default function NotifBell() {
     try {
       await axios.delete(`${API_URL}/laquage/history-all`);
       setEvents(prev => prev.filter(e => e._type !== 'laquage'));
-    } catch { /* silent */ }
+    } catch { }
     finally { setDeleting(false); }
   };
 
-  /* ── Render helpers ─────────────────────────────────────────── */
   const displayBadge = badge >= 9 ? '9+' : badge;
   const hasLaquage = events.some(e => e._type === 'laquage');
-
   const unreadCount = events.filter(ev => !readIds.has(getNotifId(ev))).length;
 
+  /* ── Render a single notification row ────────────────────────── */
   const renderEvent = (ev, i) => {
     const isRead = readIds.has(getNotifId(ev));
     const rowStyle = {
@@ -210,6 +212,7 @@ export default function NotifBell() {
       transition: 'background .15s',
     };
 
+    /* Purchase notification */
     if (ev._type === 'purchase') {
       return (
         <div key={`pr-${i}`} className="notif-row" style={rowStyle}>
@@ -219,7 +222,7 @@ export default function NotifBell() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
               Commande lancée par ACHAT
-              {isRead && <span style={{ fontSize: 9, fontWeight: 600, color: '#aaa', background: '#f0f0f0', borderRadius: 4, padding: '1px 5px', letterSpacing: '.03em' }}>VU</span>}
+              {isRead && <span style={{ fontSize: 9, fontWeight: 600, color: '#aaa', background: '#f0f0f0', borderRadius: 4, padding: '1px 5px' }}>VU</span>}
             </div>
             <div style={{ fontSize: 12, color: '#222', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {ev.projectName}
@@ -236,14 +239,10 @@ export default function NotifBell() {
             )}
           </div>
           {isAdmin && (
-            <button
-              onClick={() => deleteOne(ev)}
-              disabled={deleting}
-              title="Supprimer"
+            <button onClick={() => deleteOne(ev)} disabled={deleting} title="Supprimer"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ddd', padding: 2, flexShrink: 0, display: 'flex', alignItems: 'center', marginTop: 2 }}
               onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
-              onMouseLeave={e => e.currentTarget.style.color = '#ddd'}
-            >
+              onMouseLeave={e => e.currentTarget.style.color = '#ddd'}>
               <Trash2 size={12} />
             </button>
           )}
@@ -251,59 +250,70 @@ export default function NotifBell() {
       );
     }
 
-    // Laquage event
+    /* Laquage notification */
     const meta = getLaquageMeta(ev.action);
-    const laqType = ev.laqType || ev.recordType; // 'barres' | 'accessoires'
+    const laqType = ev.laqType || ev.recordType;
     const laqBadge = laqType === 'barres'
       ? { label: 'BARRES', bg: '#bd5f08', color: '#fff' }
       : laqType === 'accessoires'
         ? { label: 'ACC', bg: '#ff0000', color: '#fff' }
         : null;
+
     return (
       <div key={`lq-${i}`} className="notif-row" style={rowStyle}>
         <div style={{ width: 32, height: 32, borderRadius: '50%', background: meta.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: meta.color }}>
           {meta.icon}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: meta.color, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+          {/* Action label row: type badge + action name + lot pill + read badge */}
+          <div style={{ fontSize: 12, fontWeight: 700, color: meta.color, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
             {laqBadge && (
-              <span style={{
-                fontSize: 9, fontWeight: 800, letterSpacing: '.05em',
-                background: laqBadge.bg, color: laqBadge.color,
-                borderRadius: 4, padding: '1px 5px', flexShrink: 0,
-              }}>
+              <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.05em', background: laqBadge.bg, color: laqBadge.color, borderRadius: 4, padding: '1px 5px', flexShrink: 0 }}>
                 {laqBadge.label}
               </span>
             )}
             {meta.label}
-            {isRead && <span style={{ fontSize: 9, fontWeight: 600, color: '#aaa', background: '#f0f0f0', borderRadius: 4, padding: '1px 5px', letterSpacing: '.03em' }}>VU</span>}
+            {/* ← NEW: show which lot this action belongs to */}
+            <LotPill lotIndex={ev.lotIndex} />
+            {isRead && (
+              <span style={{ fontSize: 9, fontWeight: 600, color: '#aaa', background: '#f0f0f0', borderRadius: 4, padding: '1px 5px' }}>VU</span>
+            )}
           </div>
+
+          {/* Project name + ref */}
           {ev.projectName && (
             <div style={{ fontSize: 12, color: '#222', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {ev.projectName}
               {ev.projectRef && <span style={{ color: '#888', fontWeight: 400 }}> · {ev.projectRef}</span>}
             </div>
           )}
+
+          {/* Time + author */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#999', marginTop: 2 }}>
             <Clock size={10} /> {fmtDT(ev.at)}
             {ev.by && ev.by !== '—' && <><span>·</span><span>{ev.by}</span></>}
           </div>
+
+          {/* Note (e.g. reception observation) */}
           {ev.note && (
             <div style={{ fontSize: 11, color: '#555', marginTop: 3, padding: '2px 7px', background: '#f5f5f5', borderRadius: 4 }}>
               📝 {ev.note}
             </div>
           )}
+
+          {/* Partial qty (e.g. received more/less than expected) */}
+          {ev.partialQty != null && (
+            <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 2, padding: '2px 7px', background: '#eff6ff', borderRadius: 4 }}>
+              📦 Qté reçue : <strong>{ev.partialQty}</strong>
+            </div>
+          )}
         </div>
+
         {isAdmin && (
-          <button
-            className="notif-trash"
-            onClick={() => deleteOne(ev)}
-            disabled={deleting}
-            title="Supprimer"
+          <button onClick={() => deleteOne(ev)} disabled={deleting} title="Supprimer"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ddd', padding: 2, flexShrink: 0, display: 'flex', alignItems: 'center', marginTop: 2 }}
             onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
-            onMouseLeave={e => e.currentTarget.style.color = '#ddd'}
-          >
+            onMouseLeave={e => e.currentTarget.style.color = '#ddd'}>
             <Trash2 size={12} />
           </button>
         )}
@@ -311,7 +321,6 @@ export default function NotifBell() {
     );
   };
 
-  /* ── JSX ────────────────────────────────────────────────────── */
   return (
     <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
 
@@ -328,10 +337,8 @@ export default function NotifBell() {
           borderRadius: '50%',
           cursor: 'pointer', color: '#fff',
           transition: 'background .15s',
-        }}
-      >
+        }}>
         <Bell size={16} strokeWidth={2} />
-
         {badge > 0 && (
           <span style={{
             position: 'absolute', top: -5, right: -5,
@@ -352,7 +359,7 @@ export default function NotifBell() {
       {/* Dropdown */}
       {open && (
         <div className="notif-bell-panel" style={{
-          width: 'min(370px, 92vw)',
+          width: 'min(380px, 92vw)',
           background: '#fff', borderRadius: 14,
           boxShadow: '0 16px 60px rgba(0,0,0,.22)',
           border: '1px solid #e8e8e8',
@@ -361,7 +368,6 @@ export default function NotifBell() {
           <style>{`
             @keyframes notifBellIn { from { opacity:0; transform:translateY(-8px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
             .notif-row:hover { background: #f9f9f9 !important; }
-            /* ── Desktop: anchored to bell button ── */
             .notif-bell-panel {
               position: absolute;
               top: calc(100% + 10px);
@@ -369,7 +375,6 @@ export default function NotifBell() {
               z-index: 9999;
               overflow: hidden;
             }
-            /* ── Mobile: fixed to viewport so it never clips off the left edge ── */
             @media (max-width: 768px) {
               .notif-bell-panel {
                 position: fixed;
@@ -409,7 +414,7 @@ export default function NotifBell() {
           </div>
 
           {/* Event list */}
-          <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
             {events.length === 0 ? (
               <div style={{ padding: '36px 16px', textAlign: 'center', color: '#bbb', fontSize: 13 }}>
                 Aucune activité récente

@@ -27,7 +27,7 @@ app.use((req, res, next) => {
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aluminum-inventory';
 
 mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => { console.log('✅ MongoDB connected'); initSampleData(); migrateExistingData(); })
+  .then(() => { console.log('✅ MongoDB connected'); initSampleData(); migrateExistingData(); migrateLaquageToLots(); })
   .catch(err => { console.error('❌ MongoDB error:', err); process.exit(1); });
 
 // ==================== SCHEMAS ====================
@@ -1964,7 +1964,7 @@ app.get('/api/atelier-tables/:tableId/workload', async (req, res) => {
 
 // ==================== LAQUAGE SCHEMAS ====================
 
-const laquageBarresBrutesSchema = new mongoose.Schema({ reference: { type: String, default: '' }, quantiteBrute: { type: Number, default: 0 } }, { _id: false });
+/* const laquageBarresBrutesSchema = new mongoose.Schema({ reference: { type: String, default: '' }, quantiteBrute: { type: Number, default: 0 } }, { _id: false });
 const laquageBarresLaqueeSchema = new mongoose.Schema({ reference: { type: String, default: '' }, ral: { type: String, default: '' }, quantiteLaquee: { type: Number, default: 0 } }, { _id: false });
 const laquageMorceauBrutSchema = new mongoose.Schema({ reference: { type: String, default: '' }, mesure: { type: String, default: '' }, quantite: { type: Number, default: 0 } }, { _id: false });
 const laquageMorceauLaqueLigneSchema = new mongoose.Schema({ ral: { type: String, default: '' }, mesure: { type: String, default: '' }, quantite: { type: Number, default: 0 } }, { _id: false });
@@ -2068,90 +2068,557 @@ function applyLaquageAction(record, action, lineKey, by, extra = {}) {
     record.history.push({ action: 'incomplete_line', by, at: now, note: incompleteNote, partialQty: extra.partialQty ?? null });
     return;
   }
-}
+} */
 
 // ==================== LAQUAGE BARRES ROUTES ====================
+
+// ==================== LAQUAGE SCHEMAS (REPLACE EXISTING) ====================
+//
+// KEY CHANGES:
+//  - Each record now has an array of "lots" (batches).
+//  - Each lot has its own status: draft → sent → received_laquage → returned → received_coord
+//  - The record-level status is derived from all lots.
+//  - Barreman can add a new lot at ANY time as long as the record is not fully "received_coord".
+//  - "Réceptionner TOUT" on a lot now accepts an optional global note + partialQty.
+//  - lineStatuses are scoped per lot: `lot_${lotIndex}_${lineKey}`.
+
+const laquageBarresBrutesSchema = new mongoose.Schema(
+  { reference: { type: String, default: '' }, quantiteBrute: { type: Number, default: 0 } },
+  { _id: false }
+);
+const laquageBarresLaqueeSchema = new mongoose.Schema(
+  { reference: { type: String, default: '' }, ral: { type: String, default: '' }, quantiteLaquee: { type: Number, default: 0 } },
+  { _id: false }
+);
+const laquageMorceauBrutSchema = new mongoose.Schema(
+  { reference: { type: String, default: '' }, mesure: { type: String, default: '' }, quantite: { type: Number, default: 0 } },
+  { _id: false }
+);
+const laquageMorceauLaqueLigneSchema = new mongoose.Schema(
+  { ral: { type: String, default: '' }, mesure: { type: String, default: '' }, quantite: { type: Number, default: 0 } },
+  { _id: false }
+);
+const laquageMorceauLaqueSchema = new mongoose.Schema(
+  { reference: { type: String, default: '' }, lignes: [laquageMorceauLaqueLigneSchema] },
+  { _id: false }
+);
+
+const LOT_STATUSES = ['draft', 'sent_to_laquage', 'received_laquage', 'returned_to_coord', 'received_coord'];
+
+const laquageHistoryEntrySchema = new mongoose.Schema(
+  {
+    action: { type: String, required: true },
+    by: { type: String, default: '' },
+    at: { type: Date, default: Date.now },
+    note: { type: String, default: '' },
+    partialQty: { type: Number, default: null },
+    lotIndex: { type: Number, default: null },  // which lot this action belongs to
+  },
+  { _id: false }
+);
+
+// ── Per-lot sub-document ──────────────────────────────────────────────────────
+const laquageLotSchema = new mongoose.Schema(
+  {
+    lotIndex: { type: Number, required: true },        // 0-based, auto-incremented
+    status: { type: String, enum: LOT_STATUSES, default: 'draft' },
+    barresBrutes: [laquageBarresBrutesSchema],
+    barresLaquees: [laquageBarresLaqueeSchema],
+    morceauxBruts: [laquageMorceauBrutSchema],
+    morceauxLaques: [laquageMorceauLaqueSchema],
+    // lineStatuses: keyed by lineKey (bb-0, bl-1, ml-0-2, etc.)
+    lineStatuses: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Notes added during "Réceptionner TOUT" actions
+    receptionLaquageNote: { type: String, default: '' },
+    receptionCoordNote: { type: String, default: '' },
+    receptionLaquageQty: { type: Number, default: null },  // if received more than expected
+    receptionCoordQty: { type: Number, default: null },
+  },
+  { _id: false }
+);
+
+const laquageBarresSchema = new mongoose.Schema(
+  {
+    projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, unique: true },
+    lots: [laquageLotSchema],
+    history: [laquageHistoryEntrySchema],
+  },
+  {
+    timestamps: true,
+    toJSON: {
+      transform: (doc, ret) => {
+        ret.id = ret._id;
+        delete ret._id;
+        delete ret.__v;
+        // Compute derived record-level status from all lots
+        ret.status = deriveLaquageRecordStatus(ret.lots || []);
+        return ret;
+      },
+    },
+  }
+);
+const LaquageBarres = mongoose.model('LaquageBarres', laquageBarresSchema);
+
+// ── Accessoires: same lot structure but with accessoires array ────────────────
+const laquageAccLotSchema = new mongoose.Schema(
+  {
+    lotIndex: { type: Number, required: true },
+    status: { type: String, enum: LOT_STATUSES, default: 'draft' },
+    accessoires: [
+      {
+        designation: { type: String, default: '' },
+        quantite: { type: Number, default: 0 },
+        notes: { type: String, default: '' },
+      },
+    ],
+    lineStatuses: { type: mongoose.Schema.Types.Mixed, default: {} },
+    receptionLaquageNote: { type: String, default: '' },
+    receptionCoordNote: { type: String, default: '' },
+    receptionLaquageQty: { type: Number, default: null },
+    receptionCoordQty: { type: Number, default: null },
+  },
+  { _id: false }
+);
+
+const laquageAccSchema = new mongoose.Schema(
+  {
+    projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, unique: true },
+    lots: [laquageAccLotSchema],
+    history: [laquageHistoryEntrySchema],
+  },
+  {
+    timestamps: true,
+    toJSON: {
+      transform: (doc, ret) => {
+        ret.id = ret._id;
+        delete ret._id;
+        delete ret.__v;
+        ret.status = deriveLaquageRecordStatus(ret.lots || []);
+        return ret;
+      },
+    },
+  }
+);
+const LaquageAccessoires = mongoose.model('LaquageAccessoires', laquageAccSchema);
+
+// ==================== LAQUAGE HELPERS ====================
+
+/**
+ * Derive the overall record status from all lots.
+ * Rules:
+ *  - If any lot is draft → 'has_draft'  (Barreman can still edit)
+ *  - If all lots are received_coord → 'received_coord'
+ *  - Otherwise → the "worst" (least advanced) lot status
+ */
+function deriveLaquageRecordStatus(lots) {
+  if (!lots || lots.length === 0) return 'draft';
+  const order = LOT_STATUSES;
+  // Find the minimum status index across all lots
+  let minIdx = order.length;
+  for (const lot of lots) {
+    const idx = order.indexOf(lot.status);
+    if (idx < minIdx) minIdx = idx;
+  }
+  return order[minIdx] ?? 'draft';
+}
+
+/**
+ * Apply an action to a specific lot within the record.
+ * Actions remain the same as before, but are scoped to a lotIndex.
+ */
+function applyLaquageAction(record, action, lotIndex, lineKey, by, extra = {}) {
+  const now = new Date();
+  record.history = record.history || [];
+
+  // Find the target lot
+  const lot = (record.lots || []).find(l => l.lotIndex === lotIndex);
+  if (!lot && action !== 'add_lot') {
+    throw new Error(`Lot ${lotIndex} not found`);
+  }
+
+  if (action === 'add_lot') {
+    // Barreman adds a new empty lot
+    const nextIdx = (record.lots || []).length;
+    record.lots = record.lots || [];
+    // For LaquageBarres vs LaquageAccessoires, the caller initialises the correct shape
+    // We just create the shell here — caller patches in the actual data arrays
+    if (!record.lots.find(l => l.lotIndex === nextIdx)) {
+      record.lots.push({ lotIndex: nextIdx, status: 'draft', lineStatuses: {} });
+    }
+    record.history.push({ action: 'add_lot', by, at: now, lotIndex: nextIdx });
+    return nextIdx;
+  }
+
+  if (action === 'send_to_laquage') {
+    lot.status = 'sent_to_laquage';
+    record.history.push({ action, by, at: now, lotIndex });
+    return;
+  }
+
+  if (action === 'receive_line_laquage') {
+    lot.lineStatuses = lot.lineStatuses || {};
+    lot.lineStatuses[lineKey] = {
+      ...(lot.lineStatuses[lineKey] || {}),
+      receivedLaquage: true,
+      receivedLaquageAt: now,
+      receivedLaquageBy: by,
+    };
+    record.markModified('lots');
+    record.history.push({
+      action: `receive_line_laquage:${lineKey}`,
+      by, at: now, lotIndex,
+      note: extra.lineLabel || '',
+    });
+    return;
+  }
+
+  if (action === 'receive_all_laquage') {
+    lot.status = 'received_laquage';
+    if (extra.note) lot.receptionLaquageNote = extra.note;
+    if (extra.partialQty != null) lot.receptionLaquageQty = extra.partialQty;
+    record.markModified('lots');
+    record.history.push({
+      action, by, at: now, lotIndex,
+      note: extra.note || '',
+      partialQty: extra.partialQty ?? null,
+    });
+    return;
+  }
+
+  if (action === 'return_to_coord') {
+    lot.status = 'returned_to_coord';
+    record.history.push({ action, by, at: now, lotIndex });
+    return;
+  }
+
+  if (action === 'receive_line_coord') {
+    lot.lineStatuses = lot.lineStatuses || {};
+    lot.lineStatuses[lineKey] = {
+      ...(lot.lineStatuses[lineKey] || {}),
+      receivedCoord: true,
+      receivedCoordAt: now,
+      receivedCoordBy: by,
+    };
+    record.markModified('lots');
+    record.history.push({
+      action: `receive_line_coord:${lineKey}`,
+      by, at: now, lotIndex,
+      note: extra.lineLabel || '',
+    });
+    return;
+  }
+
+  if (action === 'receive_all_coord') {
+    lot.status = 'received_coord';
+    if (extra.note) lot.receptionCoordNote = extra.note;
+    if (extra.partialQty != null) lot.receptionCoordQty = extra.partialQty;
+    record.markModified('lots');
+    record.history.push({
+      action, by, at: now, lotIndex,
+      note: extra.note || '',
+      partialQty: extra.partialQty ?? null,
+    });
+    return;
+  }
+
+  if (action === 'incomplete_line') {
+    lot.lineStatuses = lot.lineStatuses || {};
+    lot.lineStatuses[lineKey] = {
+      ...(lot.lineStatuses[lineKey] || {}),
+      incomplete: true,
+      incompleteAt: now,
+      incompleteBy: by,
+      incompleteNote: extra.note || '',
+      partialQty: extra.partialQty ?? null,
+    };
+    record.markModified('lots');
+    const incompleteNote = extra.lineLabel
+      ? `[${extra.lineLabel}] ${extra.note || ''}`.trim()
+      : extra.note || '';
+    record.history.push({
+      action: 'incomplete_line', by, at: now, lotIndex,
+      note: incompleteNote,
+      partialQty: extra.partialQty ?? null,
+    });
+    return;
+  }
+}
+
+// ==================== MIGRATION HELPER ====================
+// Run once to migrate old records (single-status, flat arrays) to the new lot-based structure.
+async function migrateLaquageToLots() {
+  try {
+    // Migrate LaquageBarres
+    const oldBarres = await LaquageBarres.find({ lots: { $size: 0 } }).lean();
+    // NOTE: Because we changed the schema, old records won't have 'lots'.
+    // We detect them by checking if 'lots' is undefined or empty.
+    const allBarres = await LaquageBarres.find({}).lean();
+    for (const rec of allBarres) {
+      if (!rec.lots || rec.lots.length === 0) {
+        // Migrate: wrap the flat arrays into lot 0
+        const hasContent =
+          (rec.barresBrutes?.length || 0) +
+          (rec.barresLaquees?.length || 0) +
+          (rec.morceauxBruts?.length || 0) +
+          (rec.morceauxLaques?.length || 0) > 0;
+        const lot0 = {
+          lotIndex: 0,
+          status: rec.status || 'draft',
+          barresBrutes: rec.barresBrutes || [],
+          barresLaquees: rec.barresLaquees || [],
+          morceauxBruts: rec.morceauxBruts || [],
+          morceauxLaques: rec.morceauxLaques || [],
+          lineStatuses: rec.lineStatuses || {},
+          receptionLaquageNote: '',
+          receptionCoordNote: '',
+        };
+        await LaquageBarres.findByIdAndUpdate(rec._id, {
+          $set: { lots: [lot0] },
+          $unset: {
+            barresBrutes: 1, barresLaquees: 1,
+            morceauxBruts: 1, morceauxLaques: 1,
+            status: 1, lineStatuses: 1,
+          },
+        });
+        console.log(`✅ Migrated LaquageBarres ${rec._id} → lot 0`);
+      }
+    }
+
+    // Migrate LaquageAccessoires
+    const allAcc = await LaquageAccessoires.find({}).lean();
+    for (const rec of allAcc) {
+      if (!rec.lots || rec.lots.length === 0) {
+        const lot0 = {
+          lotIndex: 0,
+          status: rec.status || 'draft',
+          accessoires: rec.accessoires || [],
+          lineStatuses: rec.lineStatuses || {},
+          receptionLaquageNote: '',
+          receptionCoordNote: '',
+        };
+        await LaquageAccessoires.findByIdAndUpdate(rec._id, {
+          $set: { lots: [lot0] },
+          $unset: { accessoires: 1, status: 1, lineStatuses: 1 },
+        });
+        console.log(`✅ Migrated LaquageAccessoires ${rec._id} → lot 0`);
+      }
+    }
+  } catch (e) {
+    console.error('Laquage migration error:', e.message);
+  }
+}
+
+// Call this in your mongoose.connect().then() callback alongside initSampleData():
+// migrateLaquageToLots();
+
+// ==================== LAQUAGE BARRES ROUTES (REPLACE EXISTING) ====================
 
 app.get('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res) => {
   try {
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) {
-      record = new LaquageBarres({ projectId: req.params.projectId, barresBrutes: [], barresLaquees: [], morceauxBruts: [], morceauxLaques: [], status: 'draft', lineStatuses: {}, history: [] });
+      // Create with a single empty lot 0
+      record = new LaquageBarres({
+        projectId: req.params.projectId,
+        lots: [
+          {
+            lotIndex: 0,
+            status: 'draft',
+            barresBrutes: [], barresLaquees: [],
+            morceauxBruts: [], morceauxLaques: [],
+            lineStatuses: {},
+          },
+        ],
+        history: [],
+      });
       await record.save();
     }
     res.json(record.toJSON());
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-app.put('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res) => {
+// Save/edit a specific lot's content (draft only, or admin)
+app.put('/api/projects/:projectId/laquage/barres/lot/:lotIndex', requireAuth, async (req, res) => {
   try {
+    const lotIdx = parseInt(req.params.lotIndex, 10);
     const { barresBrutes, barresLaquees, morceauxBruts, morceauxLaques } = req.body;
+
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
-    if (!record) record = new LaquageBarres({ projectId: req.params.projectId });
+    if (!record) return res.status(404).json({ error: 'Record not found' });
 
     const userRole = req.user?.roleId?.name || '';
     const isAdmin = userRole === 'Admin';
 
-    if (record.status !== 'draft' && !isAdmin)  // ← changed
-      return res.status(400).json({ error: 'Cannot edit after draft stage.' });
+    const lot = record.lots.find(l => l.lotIndex === lotIdx);
+    if (!lot) return res.status(404).json({ error: `Lot ${lotIdx} not found` });
 
-    if (barresBrutes !== undefined) record.barresBrutes = barresBrutes;
-    if (barresLaquees !== undefined) record.barresLaquees = barresLaquees;
-    if (morceauxBruts !== undefined) record.morceauxBruts = morceauxBruts;
-    if (morceauxLaques !== undefined) record.morceauxLaques = morceauxLaques;
-    await record.save(); res.json(record.toJSON());
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    if (lot.status !== 'draft' && !isAdmin) {
+      return res.status(400).json({ error: 'Ce lot a déjà été envoyé. Créez un nouveau lot pour ajouter des articles.' });
+    }
+
+    if (barresBrutes !== undefined) lot.barresBrutes = barresBrutes;
+    if (barresLaquees !== undefined) lot.barresLaquees = barresLaquees;
+    if (morceauxBruts !== undefined) lot.morceauxBruts = morceauxBruts;
+    if (morceauxLaques !== undefined) lot.morceauxLaques = morceauxLaques;
+
+    record.markModified('lots');
+    await record.save();
+    res.json(record.toJSON());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-app.post('/api/projects/:projectId/laquage/barres/action', requireAuth, async (req, res) => {
+// Add a new lot (Barreman can always do this if record is not fully received_coord)
+app.post('/api/projects/:projectId/laquage/barres/lot', requireAuth, async (req, res) => {
   try {
-    const { action, lineKey, by, note, partialQty, lineLabel } = req.body;
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) return res.status(404).json({ error: 'Record not found' });
-    applyLaquageAction(record, action, lineKey, by, { note, partialQty, lineLabel });
-    await record.save(); res.json(record.toJSON());
-  } catch (e) { res.status(500).json({ error: e.message }); }
+
+    const recordStatus = deriveLaquageRecordStatus(record.lots);
+    if (recordStatus === 'received_coord') {
+      return res.status(400).json({ error: 'Le processus est terminé. Impossible d\'ajouter un nouveau lot.' });
+    }
+
+    const { barresBrutes, barresLaquees, morceauxBruts, morceauxLaques, by } = req.body;
+    const nextIdx = record.lots.length;
+
+    record.lots.push({
+      lotIndex: nextIdx,
+      status: 'draft',
+      barresBrutes: barresBrutes || [],
+      barresLaquees: barresLaquees || [],
+      morceauxBruts: morceauxBruts || [],
+      morceauxLaques: morceauxLaques || [],
+      lineStatuses: {},
+    });
+
+    const displayName = by || req.user?.displayName || 'Barreman';
+    record.history.push({ action: 'add_lot', by: displayName, at: new Date(), lotIndex: nextIdx });
+
+    record.markModified('lots');
+    await record.save();
+    res.status(201).json(record.toJSON());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ==================== LAQUAGE ACCESSOIRES ROUTES ====================
+// Action on a lot (send, receive lines, receive all, return, etc.)
+app.post('/api/projects/:projectId/laquage/barres/action', requireAuth, async (req, res) => {
+  try {
+    const { action, lotIndex, lineKey, by, note, partialQty, lineLabel } = req.body;
+    const lotIdx = lotIndex != null ? parseInt(lotIndex, 10) : 0;
+
+    let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
+    if (!record) return res.status(404).json({ error: 'Record not found' });
+
+    applyLaquageAction(record, action, lotIdx, lineKey, by, { note, partialQty, lineLabel });
+    await record.save();
+    res.json(record.toJSON());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ==================== LAQUAGE ACCESSOIRES ROUTES (REPLACE EXISTING) ====================
 
 app.get('/api/projects/:projectId/laquage/accessoires', requireAuth, async (req, res) => {
   try {
     let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
     if (!record) {
-      record = new LaquageAccessoires({ projectId: req.params.projectId, accessoires: [], status: 'draft', lineStatuses: {}, history: [] });
+      record = new LaquageAccessoires({
+        projectId: req.params.projectId,
+        lots: [{ lotIndex: 0, status: 'draft', accessoires: [], lineStatuses: {} }],
+        history: [],
+      });
       await record.save();
     }
     res.json(record.toJSON());
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-app.put('/api/projects/:projectId/laquage/accessoires', requireAuth, async (req, res) => {
+app.put('/api/projects/:projectId/laquage/accessoires/lot/:lotIndex', requireAuth, async (req, res) => {
   try {
+    const lotIdx = parseInt(req.params.lotIndex, 10);
     const { accessoires } = req.body;
+
     let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
-    if (!record) record = new LaquageAccessoires({ projectId: req.params.projectId });
+    if (!record) return res.status(404).json({ error: 'Record not found' });
 
     const userRole = req.user?.roleId?.name || '';
     const isAdmin = userRole === 'Admin';
 
-    if (record.status !== 'draft' && !isAdmin)  // ← changed
-      return res.status(400).json({ error: 'Cannot edit after draft stage.' });
-    if (accessoires !== undefined) record.accessoires = accessoires;
-    await record.save(); res.json(record.toJSON());
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const lot = record.lots.find(l => l.lotIndex === lotIdx);
+    if (!lot) return res.status(404).json({ error: `Lot ${lotIdx} not found` });
+
+    if (lot.status !== 'draft' && !isAdmin) {
+      return res.status(400).json({ error: 'Ce lot a déjà été envoyé. Créez un nouveau lot pour ajouter des articles.' });
+    }
+
+    if (accessoires !== undefined) lot.accessoires = accessoires;
+    record.markModified('lots');
+    await record.save();
+    res.json(record.toJSON());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/projects/:projectId/laquage/accessoires/lot', requireAuth, async (req, res) => {
+  try {
+    let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
+    if (!record) return res.status(404).json({ error: 'Record not found' });
+
+    const recordStatus = deriveLaquageRecordStatus(record.lots);
+    if (recordStatus === 'received_coord') {
+      return res.status(400).json({ error: 'Le processus est terminé.' });
+    }
+
+    const { accessoires, by } = req.body;
+    const nextIdx = record.lots.length;
+
+    record.lots.push({
+      lotIndex: nextIdx,
+      status: 'draft',
+      accessoires: accessoires || [],
+      lineStatuses: {},
+    });
+
+    const displayName = by || req.user?.displayName || 'Barreman';
+    record.history.push({ action: 'add_lot', by: displayName, at: new Date(), lotIndex: nextIdx });
+    record.markModified('lots');
+    await record.save();
+    res.status(201).json(record.toJSON());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/api/projects/:projectId/laquage/accessoires/action', requireAuth, async (req, res) => {
   try {
-    const { action, lineKey, by, note, partialQty, lineLabel } = req.body;
+    const { action, lotIndex, lineKey, by, note, partialQty, lineLabel } = req.body;
+    const lotIdx = lotIndex != null ? parseInt(lotIndex, 10) : 0;
+
     let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
     if (!record) return res.status(404).json({ error: 'Record not found' });
-    applyLaquageAction(record, action, lineKey, by, { note, partialQty, lineLabel });
-    await record.save(); res.json(record.toJSON());
-  } catch (e) { res.status(500).json({ error: e.message }); }
+
+    applyLaquageAction(record, action, lotIdx, lineKey, by, { note, partialQty, lineLabel });
+    await record.save();
+    res.json(record.toJSON());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
+// ==================== LAQUAGE NOTIFICATION BELL (UPDATED) ====================
+// The recent-actions endpoint already works because history entries now include lotIndex.
+// Just make sure the frontend shows lotIndex in the notification label.
+// No changes needed to the /api/laquage/recent-actions endpoint.
 // ==================== LAQUAGE NOTIFICATION BELL ====================
 
 app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
@@ -2185,8 +2652,9 @@ app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
         events.push({
           action: h.action, by: h.by || '—', at: h.at,
           note: h.note || null, partialQty: h.partialQty ?? null,
+          lotIndex: h.lotIndex ?? null,
           projectId: rec.projectId, projectName: proj.name, projectRef: proj.reference || '',
-          laqType: rec._laqType,   // ← 'barres' | 'accessoires'
+          laqType: rec._laqType,
         });
       }
     }
@@ -2203,7 +2671,7 @@ app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
         || ev.action === 'incomplete_line';
       const key = isPerLine
         ? `${ev.action}::${ev.projectId?.toString()}::${new Date(ev.at).getTime()}`
-        : `${ev.action}::${ev.projectId?.toString()}`;
+        : `${ev.action}::${ev.projectId?.toString()}::${ev.lotIndex ?? ''}`;
 
       if (seen.has(key)) continue;
       seen.add(key);
