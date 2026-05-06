@@ -50,9 +50,23 @@ const LAQUAGE_META = {
   return_to_coord: { label: 'Retourné au coordinateur', color: '#8b5cf6', icon: <RotateCcw size={13} /> },
   receive_all_coord: { label: 'Tout réceptionné (Coordinateur)', color: '#16a34a', icon: <CheckCircle2 size={13} /> },
   incomplete_line: { label: 'Ligne signalée incomplète', color: '#dc2626', icon: <AlertTriangle size={13} /> },
+  receive_incomplete_line_laquage: { 
+    label: 'Ligne incomplète réceptionnée (Laquage)', 
+    color: '#3b82f6', 
+    icon: <PackageCheck size={13} /> 
+  },
+  receive_incomplete_line_coord: { 
+    label: 'Ligne incomplète réceptionnée (Coordinateur)', 
+    color: '#16a34a', 
+    icon: <PackageCheck size={13} /> 
+  },
 };
 
 function getLaquageMeta(action) {
+  if (action.startsWith('receive_line_laquage:'))
+    return { label: 'Ligne réceptionnée (Laquage)', color: '#3b82f6', icon: <PackageCheck size={13} /> };
+  if (action.startsWith('receive_line_coord:'))
+    return { label: 'Ligne réceptionnée (Coordinateur)', color: '#16a34a', icon: <CheckCircle2 size={13} /> };
   return LAQUAGE_META[action] || { label: action, color: '#9ca3af', icon: <Bell size={13} /> };
 }
 

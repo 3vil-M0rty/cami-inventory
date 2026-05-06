@@ -478,7 +478,7 @@ function deriveCompositeUnitEtat(unit, numComponents) {
   }
   if (states.every(e => e === 'livre')) return 'livre';
   if (states.every(e => e === 'pret_a_livrer' || e === 'livre')) return 'pret_a_livrer';
-  
+
   if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre')) return 'fabrique';
   if (states.every(e => e === 'non_vitre')) return 'non_vitre';
   if (states.some(e => e !== 'non_entame')) return 'en_cours';
@@ -2013,12 +2013,21 @@ function applyLaquageAction(record, action, lineKey, by, extra = {}) {
     return;
   }
   if (action === 'receive_line_laquage') {
-    record.lineStatuses = record.lineStatuses || {};
-    record.lineStatuses[lineKey] = { ...(record.lineStatuses[lineKey] || {}), receivedLaquage: true, receivedLaquageAt: now, receivedLaquageBy: by };
+    const wasIncomplete = record.lineStatuses?.[lineKey]?.incomplete;
+    record.lineStatuses[lineKey] = {
+      ...(record.lineStatuses[lineKey] || {}),
+      receivedLaquage: true,
+      receivedLaquageAt: now,
+      receivedLaquageBy: by
+    };
     record.markModified('lineStatuses');
-    record.history.push({ action: `receive_line_laquage:${lineKey}`, by, at: now });
+    const histAction = wasIncomplete
+      ? 'receive_incomplete_line_laquage'
+      : `receive_line_laquage:${lineKey}`;
+    record.history.push({ action: histAction, by, at: now, note: extra.lineLabel || '' }); // ← add lineLabel as note
     return;
   }
+
   if (action === 'receive_all_laquage') {
     record.status = 'received_laquage';
     record.history.push({ action, by, at: now });
@@ -2030,10 +2039,18 @@ function applyLaquageAction(record, action, lineKey, by, extra = {}) {
     return;
   }
   if (action === 'receive_line_coord') {
-    record.lineStatuses = record.lineStatuses || {};
-    record.lineStatuses[lineKey] = { ...(record.lineStatuses[lineKey] || {}), receivedCoord: true, receivedCoordAt: now, receivedCoordBy: by };
+    const wasIncomplete = record.lineStatuses?.[lineKey]?.incomplete;
+    record.lineStatuses[lineKey] = {
+      ...(record.lineStatuses[lineKey] || {}),
+      receivedCoord: true,
+      receivedCoordAt: now,
+      receivedCoordBy: by
+    };
     record.markModified('lineStatuses');
-    record.history.push({ action: `receive_line_coord:${lineKey}`, by, at: now });
+    const histAction = wasIncomplete
+      ? 'receive_incomplete_line_coord'
+      : `receive_line_coord:${lineKey}`;
+    record.history.push({ action: histAction, by, at: now, note: extra.lineLabel || '' }); // ← add lineLabel as note
     return;
   }
   if (action === 'receive_all_coord') {
@@ -2045,7 +2062,10 @@ function applyLaquageAction(record, action, lineKey, by, extra = {}) {
     record.lineStatuses = record.lineStatuses || {};
     record.lineStatuses[lineKey] = { ...(record.lineStatuses[lineKey] || {}), incomplete: true, incompleteAt: now, incompleteBy: by, incompleteNote: extra.note || '', partialQty: extra.partialQty ?? null };
     record.markModified('lineStatuses');
-    record.history.push({ action: 'incomplete_line', by, at: now, note: extra.note || '', partialQty: extra.partialQty ?? null });
+    const incompleteNote = extra.lineLabel
+      ? `[${extra.lineLabel}] ${extra.note || ''}`.trim()
+      : extra.note || '';
+    record.history.push({ action: 'incomplete_line', by, at: now, note: incompleteNote, partialQty: extra.partialQty ?? null });
     return;
   }
 }
@@ -2085,10 +2105,10 @@ app.put('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res)
 
 app.post('/api/projects/:projectId/laquage/barres/action', requireAuth, async (req, res) => {
   try {
-    const { action, lineKey, by, note, partialQty } = req.body;
+    const { action, lineKey, by, note, partialQty, lineLabel } = req.body;
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) return res.status(404).json({ error: 'Record not found' });
-    applyLaquageAction(record, action, lineKey, by, { note, partialQty });
+    applyLaquageAction(record, action, lineKey, by, { note, partialQty, lineLabel });
     await record.save(); res.json(record.toJSON());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2124,10 +2144,10 @@ app.put('/api/projects/:projectId/laquage/accessoires', requireAuth, async (req,
 
 app.post('/api/projects/:projectId/laquage/accessoires/action', requireAuth, async (req, res) => {
   try {
-    const { action, lineKey, by, note, partialQty } = req.body;
+    const { action, lineKey, by, note, partialQty, lineLabel } = req.body;
     let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
     if (!record) return res.status(404).json({ error: 'Record not found' });
-    applyLaquageAction(record, action, lineKey, by, { note, partialQty });
+    applyLaquageAction(record, action, lineKey, by, { note, partialQty, lineLabel });
     await record.save(); res.json(record.toJSON());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2137,7 +2157,13 @@ app.post('/api/projects/:projectId/laquage/accessoires/action', requireAuth, asy
 app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
-    const TOP_LEVEL_ACTIONS = new Set(['send_to_laquage', 'receive_all_laquage', 'return_to_coord', 'receive_all_coord', 'incomplete_line']);
+    const TOP_LEVEL_ACTIONS = new Set([
+      'send_to_laquage', 'receive_all_laquage',
+      'return_to_coord', 'receive_all_coord',
+      'incomplete_line',
+      'receive_incomplete_line_laquage',   // ← add
+      'receive_incomplete_line_coord',     // ← add
+    ]);
     const [barresRecords, accRecords, projects] = await Promise.all([
       LaquageBarres.find({}).select('projectId history').lean(),
       LaquageAccessoires.find({}).select('projectId history').lean(),
@@ -2152,7 +2178,10 @@ app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
       const proj = projMap[rec.projectId?.toString()];
       if (!proj || !proj.name) continue;
       for (const h of (rec.history || [])) {
-        if (!TOP_LEVEL_ACTIONS.has(h.action)) continue;
+        const isTopLevel = TOP_LEVEL_ACTIONS.has(h.action)
+          || h.action.startsWith('receive_line_laquage:')
+          || h.action.startsWith('receive_line_coord:');
+        if (!isTopLevel) continue;
         events.push({
           action: h.action, by: h.by || '—', at: h.at,
           note: h.note || null, partialQty: h.partialQty ?? null,
@@ -2162,14 +2191,22 @@ app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
       }
     }
     events.sort((a, b) => new Date(b.at) - new Date(a.at));
-    const seen = new Map();
+    const seen = new Set();
     const deduped = [];
     for (const ev of events) {
-      const key = `${ev.action}::${ev.projectId?.toString()}`;
-      const prevTime = seen.get(key);
-      const evTime = new Date(ev.at).getTime();
-      if (prevTime && Math.abs(evTime - prevTime) < 5000) continue;
-      seen.set(key, evTime);
+      // For top-level workflow actions (one per project), dedupe by action+project
+      // For per-line actions, dedupe by action+project+time to allow multiples
+      const isPerLine = ev.action.startsWith('receive_line_laquage:')
+        || ev.action.startsWith('receive_line_coord:')
+        || ev.action === 'receive_incomplete_line_laquage'
+        || ev.action === 'receive_incomplete_line_coord'
+        || ev.action === 'incomplete_line';
+      const key = isPerLine
+        ? `${ev.action}::${ev.projectId?.toString()}::${new Date(ev.at).getTime()}`
+        : `${ev.action}::${ev.projectId?.toString()}`;
+
+      if (seen.has(key)) continue;
+      seen.add(key);
       deduped.push(ev);
       if (deduped.length >= limit) break;
     }

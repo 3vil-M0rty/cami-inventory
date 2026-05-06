@@ -502,7 +502,8 @@ export function BarresLaquerPanel({ project, currentUser }) {
     <div className="laq-panel">
       <Toast toasts={toasts} />
       {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.action} onCancel={() => setConfirm(null)} />}
-      {incomplete && <IncompleteModal lineLabel={incomplete.lineLabel} onCancel={() => setIncomplete(null)} onConfirm={({ note, partialQty }) => transition('incomplete_line', incomplete.lKey, { note, partialQty })} />}
+      {incomplete && <IncompleteModal lineLabel={incomplete.lineLabel} onCancel={() => setIncomplete(null)} onConfirm={({ note, partialQty }) => transition('incomplete_line', incomplete.lKey, { note, partialQty, lineLabel: incomplete.lineLabel })}
+      />}
 
       {/* Header */}
       <div className="laq-panel-header">
@@ -562,8 +563,8 @@ export function BarresLaquerPanel({ project, currentUser }) {
                     <td onClick={e => e.stopPropagation()}>{imageMap[row.reference] ? <img src={imageMap[row.reference]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>}</td>
                     <td><strong>{row.reference || '—'}</strong></td>
                     <td>{row.quantiteBrute}</td>
-                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BB: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer la réception ?', () => transition('receive_line_laquage', k))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `BB: ${row.reference}` })} /></td>}
-                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BB: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer la réception ?', () => transition('receive_line_coord', k))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `BB: ${row.reference}` })} /></td>}
+                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BB: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer la réception ?', () => transition('receive_line_laquage', k, { lineLabel: `BB: ${row.reference}` }))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `BB: ${row.reference}` })} /></td>}
+                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BB: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer la réception ?', () => transition('receive_line_coord', k, { lineLabel: `BB: ${row.reference}` }))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `BB: ${row.reference}` })} /></td>}
                     {canEdit && isDraft && <td onClick={e => e.stopPropagation()}><button className="delete-btn" onClick={() => removeRow('barresBrutes', i)}><XCircle size={13} /></button></td>}
                   </tr>
                 );
@@ -601,8 +602,8 @@ export function BarresLaquerPanel({ project, currentUser }) {
                     <td><strong>{row.reference || '—'}</strong></td>
                     <td><span className="laq-ral-chip">{row.ral || '—'}</span></td>
                     <td>{row.quantiteLaquee}</td>
-                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BL: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_laquage', k))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `BL: ${row.reference}` })} /></td>}
-                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BL: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_coord', k))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `BL: ${row.reference}` })} /></td>}
+                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BL: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_laquage', k, { lineLabel: `BL: ${row.reference} RAL ${row.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `BL: ${row.reference}` })} /></td>}
+                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BL: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_coord', k, { lineLabel: `BL: ${row.reference} RAL ${row.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `BL: ${row.reference}` })} /></td>}
                     {canEdit && isDraft && <td onClick={e => e.stopPropagation()}><button className="delete-btn" onClick={() => removeRow('barresLaquees', i)}><XCircle size={13} /></button></td>}
                   </tr>
                 );
@@ -639,8 +640,8 @@ export function BarresLaquerPanel({ project, currentUser }) {
                     <td onClick={e => e.stopPropagation()}>{imageMap[row.reference] ? <img src={imageMap[row.reference]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>}</td>
                     <td><strong>{row.reference || '—'}</strong></td>
                     <td>{row.mesure || '—'}</td><td>{row.quantite}</td>
-                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`MB: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_laquage', k))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `MB: ${row.reference}` })} /></td>}
-                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`MB: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_coord', k))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `MB: ${row.reference}` })} /></td>}
+                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`MB: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_laquage', k, { lineLabel: `MB: ${row.reference} ${row.mesure}` }))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `MB: ${row.reference}` })} /></td>}
+                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`MB: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_coord', k, { lineLabel: `MB: ${row.reference} ${row.mesure}` }))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `MB: ${row.reference}` })} /></td>}
                     {canEdit && isDraft && <td onClick={e => e.stopPropagation()}><button className="delete-btn" onClick={() => removeRow('morceauxBruts', i)}><XCircle size={13} /></button></td>}
                   </tr>
                 );
@@ -690,8 +691,8 @@ export function BarresLaquerPanel({ project, currentUser }) {
                       {isFirst && <td rowSpan={rs} style={{ verticalAlign: 'middle' }}><strong>{row.reference || '—'}</strong></td>}
                       <td><span className="laq-ral-chip">{lg.ral || '—'}</span></td>
                       <td>{lg.mesure || '—'}</td><td>{lg.quantite}</td>
-                      {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`ML: ${row.reference} ${lg.ral}`} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_laquage', k))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `ML: ${row.reference} ${lg.ral}` })} /></td>}
-                      {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`ML: ${row.reference} ${lg.ral}`} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_coord', k))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `ML: ${row.reference} ${lg.ral}` })} /></td>}
+                      {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`ML: ${row.reference} ${lg.ral}`} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_laquage', k, { lineLabel: `ML: ${row.reference} RAL ${lg.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `ML: ${row.reference} ${lg.ral}` })} /></td>}
+                      {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`ML: ${row.reference} ${lg.ral}`} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_coord', k, { lineLabel: `ML: ${row.reference} RAL ${lg.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: `ML: ${row.reference} ${lg.ral}` })} /></td>}
                       {canEdit && isDraft && isFirst && <td rowSpan={rs} style={{ verticalAlign: 'middle', textAlign: 'center' }} onClick={e => e.stopPropagation()}><button className="delete-btn" onClick={() => setRecord(p => ({ ...p, morceauxLaques: p.morceauxLaques.filter((_, idx) => idx !== i) }))}><XCircle size={13} /></button></td>}
                     </tr>
                   );
@@ -835,7 +836,8 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
     <div className="laq-panel">
       <Toast toasts={toasts} />
       {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.action} onCancel={() => setConfirm(null)} />}
-      {incomplete && <IncompleteModal lineLabel={incomplete.lineLabel} onCancel={() => setIncomplete(null)} onConfirm={({ note, partialQty }) => transition('incomplete_line', incomplete.lKey, { note, partialQty })} />}
+      {incomplete && <IncompleteModal lineLabel={incomplete.lineLabel} onCancel={() => setIncomplete(null)} onConfirm={({ note, partialQty }) => transition('incomplete_line', incomplete.lKey, { note, partialQty, lineLabel: incomplete.lineLabel })}
+      />}
 
       <div className="laq-panel-header">
         <div className="laq-panel-title"><span>🔩</span><h3>Accessoires à Laquer</h3><StatusBadge status={status} /></div>
@@ -889,8 +891,8 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
                     <td onClick={e => e.stopPropagation()}>{imageMap[acc.designation] ? <img src={imageMap[acc.designation]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>}</td>
                     <td><strong>{acc.designation || '—'}</strong></td>
                     <td>{acc.quantite}</td><td>{acc.notes || '—'}</td>
-                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={acc.designation} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_laquage', k))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: acc.designation })} /></td>}
-                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={acc.designation} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_coord', k))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: acc.designation })} /></td>}
+                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={acc.designation} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_laquage', k, { lineLabel: acc.designation }))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: acc.designation })} /></td>}
+                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={acc.designation} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_coord', k, { lineLabel: acc.designation }))} onIncomplete={() => setIncomplete({ lKey: k, lineLabel: acc.designation })} /></td>}
                     {canEdit && isDraft && <td onClick={e => e.stopPropagation()}><button className="delete-btn" onClick={() => setRecord(p => ({ ...p, accessoires: p.accessoires.filter((_, idx) => idx !== i) }))}><XCircle size={13} /></button></td>}
                   </tr>
                 );
