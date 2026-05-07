@@ -13,38 +13,66 @@ function isTgalu(project) {
   return name.includes('infinite') || name.includes('tgalu');
 }
 
-export default function AluminiumTab({ categoryKey }) {
-  const { projects, loading, addProject, updateProject, deleteProject, loadProjects } = useProjects();
+export default function AluminiumTab({
+  categoryKey,
+  statusFilter,
+}) {
+  const {
+    projects,
+    loading,
+    addProject,
+    updateProject,
+    deleteProject,
+    loadProjects
+  } = useProjects();
+
   const { t, currentLanguage } = useLanguage();
   const { companies, selectedCompany } = useCompany();
   const { user } = useAuth();
 
-  const [searchTerm, setSearchTerm]         = useState('');
-  const [showForm, setShowForm]             = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showForm, setShowForm] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
-  const [openProjectId, setOpenProjectId]   = useState(null);
+  const [openProjectId, setOpenProjectId] = useState(null);
 
   const isAdmin = user?.role === 'Admin';
 
   const filteredProjects = projects.filter(p => {
-    // Only aluminium tab projects (default for existing projects with no tab field)
+    // ── Tab filter ─────────────────────────
     const matchTab = !p.tab || p.tab === 'aluminium';
 
+    // ── Company filter ─────────────────────
     const matchCompany =
       !selectedCompany ||
       p.companyId?.id === selectedCompany ||
       p.companyId?._id === selectedCompany;
 
+    // ── Category filter ────────────────────
     const matchCategory =
-      categoryKey === 'tgalu' ? isTgalu(p) : !isTgalu(p);
+      categoryKey === 'tgalu'
+        ? isTgalu(p)
+        : !isTgalu(p);
 
+    // ── Status filter ──────────────────────
+    const matchStatus =
+      !statusFilter ||
+      statusFilter === 'all' ||
+      p.status === statusFilter;
+
+    // ── Search filter ──────────────────────
     const matchSearch =
       !searchTerm ||
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.ralCode.toLowerCase().includes(searchTerm.toLowerCase());
+      p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.reference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.ralCode?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    return matchTab && matchCompany && matchCategory && matchSearch;
+    return (
+      matchTab &&
+      matchCompany &&
+      matchCategory &&
+      matchStatus &&
+      matchSearch
+    );
   });
 
   const handleDelete = async id => {
@@ -53,19 +81,27 @@ export default function AluminiumTab({ categoryKey }) {
   };
 
   const handleSave = async formData => {
-    if (editingProject) await updateProject(editingProject.id, formData);
-    else                await addProject(formData);
+    if (editingProject) {
+      await updateProject(editingProject.id, formData);
+    } else {
+      await addProject(formData);
+    }
+
     setShowForm(false);
     setEditingProject(null);
   };
 
   if (openProjectId) {
     const project = projects.find(p => p.id === openProjectId);
+
     if (project) {
       return (
         <ProjectDetail
           project={project}
-          onBack={() => { setOpenProjectId(null); loadProjects(); }}
+          onBack={() => {
+            setOpenProjectId(null);
+            loadProjects();
+          }}
         />
       );
     }
@@ -75,9 +111,15 @@ export default function AluminiumTab({ categoryKey }) {
     <div className="projects-page">
       <div className="projects-page__header">
         <div className="projects-page__header-left">
-          <h2 className="projects-page__title">{t('projectsTitle')}</h2>
-          <span className="projects-page__count">{filteredProjects.length}</span>
+          <h2 className="projects-page__title">
+            {t('projectsTitle')}
+          </h2>
+
+          <span className="projects-page__count">
+            {filteredProjects.length}
+          </span>
         </div>
+
         <div className="projects-page__header-right">
           <input
             type="text"
@@ -86,9 +128,15 @@ export default function AluminiumTab({ categoryKey }) {
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
+
           {isAdmin && (
-            <button className="add-item-btn"
-              onClick={() => { setEditingProject(null); setShowForm(true); }}>
+            <button
+              className="add-item-btn"
+              onClick={() => {
+                setEditingProject(null);
+                setShowForm(true);
+              }}
+            >
               + {t('addProject')}
             </button>
           )}
@@ -96,9 +144,13 @@ export default function AluminiumTab({ categoryKey }) {
       </div>
 
       {loading ? (
-        <div className="loading">{t('loading')}</div>
+        <div className="loading">
+          {t('loading')}
+        </div>
       ) : filteredProjects.length === 0 ? (
-        <div className="no-items">{t('noProjects')}</div>
+        <div className="no-items">
+          {t('noProjects')}
+        </div>
       ) : (
         <div className="projects-grid">
           {filteredProjects.map(project => (
@@ -106,8 +158,11 @@ export default function AluminiumTab({ categoryKey }) {
               key={project.id}
               project={project}
               t={t}
-              onOpen={()  => setOpenProjectId(project.id)}
-              onEdit={()  => { setEditingProject(project); setShowForm(true); }}
+              onOpen={() => setOpenProjectId(project.id)}
+              onEdit={() => {
+                setEditingProject(project);
+                setShowForm(true);
+              }}
               onDelete={() => handleDelete(project.id)}
             />
           ))}
@@ -121,7 +176,10 @@ export default function AluminiumTab({ categoryKey }) {
           companies={companies}
           tab="aluminium"
           t={t}
-          onClose={() => { setShowForm(false); setEditingProject(null); }}
+          onClose={() => {
+            setShowForm(false);
+            setEditingProject(null);
+          }}
           onSave={handleSave}
         />
       )}

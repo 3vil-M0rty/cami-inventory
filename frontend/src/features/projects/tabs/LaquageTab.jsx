@@ -15,16 +15,27 @@ function isTgalu(project) {
 
 const CAN_ADD = new Set(['Admin', 'Laquage']);
 
-export default function LaquageTab({ categoryKey }) {
-  const { projects, loading, addProject, updateProject, deleteProject, loadProjects } = useProjects();
+export default function LaquageTab({
+  categoryKey,
+  statusFilter,
+}) {
+  const {
+    projects,
+    loading,
+    addProject,
+    updateProject,
+    deleteProject,
+    loadProjects
+  } = useProjects();
+
   const { t, currentLanguage } = useLanguage();
   const { companies, selectedCompany } = useCompany();
   const { user } = useAuth();
 
-  const [searchTerm, setSearchTerm]         = useState('');
-  const [showForm, setShowForm]             = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showForm, setShowForm] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
-  const [openProjectId, setOpenProjectId]   = useState(null);
+  const [openProjectId, setOpenProjectId] = useState(null);
 
   const canAdd = CAN_ADD.has(user?.role);
 
@@ -37,15 +48,28 @@ export default function LaquageTab({ categoryKey }) {
       p.companyId?._id === selectedCompany;
 
     const matchCategory =
-      categoryKey === 'tgalu' ? isTgalu(p) : !isTgalu(p);
+      categoryKey === 'tgalu'
+        ? isTgalu(p)
+        : !isTgalu(p);
+
+    const matchStatus =
+      !statusFilter ||
+      statusFilter === 'all' ||
+      p.status === statusFilter;
 
     const matchSearch =
       !searchTerm ||
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.ralCode.toLowerCase().includes(searchTerm.toLowerCase());
+      p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.reference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.ralCode?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    return matchTab && matchCompany && matchCategory && matchSearch;
+    return (
+      matchTab &&
+      matchCompany &&
+      matchCategory &&
+      matchStatus &&
+      matchSearch
+    );
   });
 
   const handleDelete = async id => {
@@ -55,18 +79,23 @@ export default function LaquageTab({ categoryKey }) {
 
   const handleSave = async formData => {
     if (editingProject) await updateProject(editingProject.id, formData);
-    else                await addProject(formData);
+    else await addProject(formData);
+
     setShowForm(false);
     setEditingProject(null);
   };
 
   if (openProjectId) {
     const project = projects.find(p => p.id === openProjectId);
+
     if (project) {
       return (
         <ProjectDetail
           project={project}
-          onBack={() => { setOpenProjectId(null); loadProjects(); }}
+          onBack={() => {
+            setOpenProjectId(null);
+            loadProjects();
+          }}
         />
       );
     }
@@ -77,8 +106,12 @@ export default function LaquageTab({ categoryKey }) {
       <div className="projects-page__header">
         <div className="projects-page__header-left">
           <h2 className="projects-page__title">Laquage</h2>
-          <span className="projects-page__count">{filteredProjects.length}</span>
+
+          <span className="projects-page__count">
+            {filteredProjects.length}
+          </span>
         </div>
+
         <div className="projects-page__header-right">
           <input
             type="text"
@@ -87,9 +120,15 @@ export default function LaquageTab({ categoryKey }) {
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
+
           {canAdd && (
-            <button className="add-item-btn"
-              onClick={() => { setEditingProject(null); setShowForm(true); }}>
+            <button
+              className="add-item-btn"
+              onClick={() => {
+                setEditingProject(null);
+                setShowForm(true);
+              }}
+            >
               + {t('addProject')}
             </button>
           )}
@@ -99,7 +138,9 @@ export default function LaquageTab({ categoryKey }) {
       {loading ? (
         <div className="loading">{t('loading')}</div>
       ) : filteredProjects.length === 0 ? (
-        <div className="no-items">Aucun projet laquage pour le moment</div>
+        <div className="no-items">
+          Aucun projet laquage pour le moment
+        </div>
       ) : (
         <div className="projects-grid">
           {filteredProjects.map(project => (
@@ -107,8 +148,11 @@ export default function LaquageTab({ categoryKey }) {
               key={project.id}
               project={project}
               t={t}
-              onOpen={()  => setOpenProjectId(project.id)}
-              onEdit={()  => { setEditingProject(project); setShowForm(true); }}
+              onOpen={() => setOpenProjectId(project.id)}
+              onEdit={() => {
+                setEditingProject(project);
+                setShowForm(true);
+              }}
               onDelete={() => handleDelete(project.id)}
             />
           ))}
@@ -122,7 +166,10 @@ export default function LaquageTab({ categoryKey }) {
           companies={companies}
           tab="laquage"
           t={t}
-          onClose={() => { setShowForm(false); setEditingProject(null); }}
+          onClose={() => {
+            setShowForm(false);
+            setEditingProject(null);
+          }}
           onSave={handleSave}
         />
       )}

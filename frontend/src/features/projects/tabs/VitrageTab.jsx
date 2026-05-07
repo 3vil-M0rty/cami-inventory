@@ -15,16 +15,27 @@ function isTgalu(project) {
 
 const CAN_ADD = new Set(['Admin', 'Coordinateur-vitrage']);
 
-export default function VitrageTab({ categoryKey }) {
-  const { projects, loading, addProject, updateProject, deleteProject, loadProjects } = useProjects();
+export default function VitrageTab({
+  categoryKey,
+  statusFilter,
+}) {
+  const {
+    projects,
+    loading,
+    addProject,
+    updateProject,
+    deleteProject,
+    loadProjects
+  } = useProjects();
+
   const { t, currentLanguage } = useLanguage();
   const { companies, selectedCompany } = useCompany();
   const { user } = useAuth();
 
-  const [searchTerm, setSearchTerm]         = useState('');
-  const [showForm, setShowForm]             = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showForm, setShowForm] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
-  const [openProjectId, setOpenProjectId]   = useState(null);
+  const [openProjectId, setOpenProjectId] = useState(null);
 
   const canAdd = CAN_ADD.has(user?.role);
 
@@ -37,15 +48,28 @@ export default function VitrageTab({ categoryKey }) {
       p.companyId?._id === selectedCompany;
 
     const matchCategory =
-      categoryKey === 'tgalu' ? isTgalu(p) : !isTgalu(p);
+      categoryKey === 'tgalu'
+        ? isTgalu(p)
+        : !isTgalu(p);
+
+    const matchStatus =
+      !statusFilter ||
+      statusFilter === 'all' ||
+      p.status === statusFilter;
 
     const matchSearch =
       !searchTerm ||
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.ralCode.toLowerCase().includes(searchTerm.toLowerCase());
+      p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.reference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.ralCode?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    return matchTab && matchCompany && matchCategory && matchSearch;
+    return (
+      matchTab &&
+      matchCompany &&
+      matchCategory &&
+      matchStatus &&
+      matchSearch
+    );
   });
 
   const handleDelete = async id => {
@@ -55,18 +79,23 @@ export default function VitrageTab({ categoryKey }) {
 
   const handleSave = async formData => {
     if (editingProject) await updateProject(editingProject.id, formData);
-    else                await addProject(formData);
+    else await addProject(formData);
+
     setShowForm(false);
     setEditingProject(null);
   };
 
   if (openProjectId) {
     const project = projects.find(p => p.id === openProjectId);
+
     if (project) {
       return (
         <ProjectDetail
           project={project}
-          onBack={() => { setOpenProjectId(null); loadProjects(); }}
+          onBack={() => {
+            setOpenProjectId(null);
+            loadProjects();
+          }}
         />
       );
     }
@@ -77,8 +106,11 @@ export default function VitrageTab({ categoryKey }) {
       <div className="projects-page__header">
         <div className="projects-page__header-left">
           <h2 className="projects-page__title">Vitrage</h2>
-          <span className="projects-page__count">{filteredProjects.length}</span>
+          <span className="projects-page__count">
+            {filteredProjects.length}
+          </span>
         </div>
+
         <div className="projects-page__header-right">
           <input
             type="text"
@@ -87,9 +119,15 @@ export default function VitrageTab({ categoryKey }) {
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
+
           {canAdd && (
-            <button className="add-item-btn"
-              onClick={() => { setEditingProject(null); setShowForm(true); }}>
+            <button
+              className="add-item-btn"
+              onClick={() => {
+                setEditingProject(null);
+                setShowForm(true);
+              }}
+            >
               + {t('addProject')}
             </button>
           )}
@@ -99,7 +137,9 @@ export default function VitrageTab({ categoryKey }) {
       {loading ? (
         <div className="loading">{t('loading')}</div>
       ) : filteredProjects.length === 0 ? (
-        <div className="no-items">Aucun projet vitrage pour le moment</div>
+        <div className="no-items">
+          Aucun projet vitrage pour le moment
+        </div>
       ) : (
         <div className="projects-grid">
           {filteredProjects.map(project => (
@@ -107,8 +147,11 @@ export default function VitrageTab({ categoryKey }) {
               key={project.id}
               project={project}
               t={t}
-              onOpen={()  => setOpenProjectId(project.id)}
-              onEdit={()  => { setEditingProject(project); setShowForm(true); }}
+              onOpen={() => setOpenProjectId(project.id)}
+              onEdit={() => {
+                setEditingProject(project);
+                setShowForm(true);
+              }}
               onDelete={() => handleDelete(project.id)}
             />
           ))}
@@ -122,7 +165,10 @@ export default function VitrageTab({ categoryKey }) {
           companies={companies}
           tab="vitrage"
           t={t}
-          onClose={() => { setShowForm(false); setEditingProject(null); }}
+          onClose={() => {
+            setShowForm(false);
+            setEditingProject(null);
+          }}
           onSave={handleSave}
         />
       )}

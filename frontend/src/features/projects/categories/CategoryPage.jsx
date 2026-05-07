@@ -6,13 +6,18 @@ import VitrageTab from '../tabs/VitrageTab';
 
 const TABS = [
   { key: 'aluminium', label: 'Aluminium', Component: AluminiumTab },
-  { key: 'laquage',   label: 'Laquage',   Component: LaquageTab   },
-  { key: 'vitrage',   label: 'Vitrage',   Component: VitrageTab   },
+  { key: 'laquage', label: 'Laquage', Component: LaquageTab },
+  { key: 'vitrage', label: 'Vitrage', Component: VitrageTab },
 ];
 
-export default function CategoryPage({ categoryKey }) {
+export default function CategoryPage({
+  categoryKey,
+  statusFilter,
+}) {
   const [activeTab, setActiveTab] = useState('aluminium');
-  const ActiveComponent = TABS.find(t => t.key === activeTab)?.Component || AluminiumTab;
+
+  const ActiveComponent =
+    TABS.find(t => t.key === activeTab)?.Component || AluminiumTab;
 
   return (
     <div className="category-page">
@@ -20,15 +25,21 @@ export default function CategoryPage({ categoryKey }) {
         {TABS.map(tab => (
           <button
             key={tab.key}
-            className={`category-page__tab ${activeTab === tab.key ? 'active' : ''}`}
+            className={`category-page__tab ${
+              activeTab === tab.key ? 'active' : ''
+            }`}
             onClick={() => setActiveTab(tab.key)}
           >
             {tab.label}
           </button>
         ))}
       </div>
+
       <div className="category-page__content">
-        <ActiveComponent categoryKey={categoryKey} />
+        <ActiveComponent
+          categoryKey={categoryKey}
+          statusFilter={statusFilter}
+        />
       </div>
     </div>
   );
