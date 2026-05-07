@@ -2,7 +2,7 @@
    PROJECTS PAGE — mobile-first, all breakpoints
    ============================================================ */
 
-.projects-page { max-width:var(--page-max);margin:0 auto;padding:var(--page-pad); }
+.projects-page { max-width:var(--page-max);margin:0 auto;padding:var(--page-pad); background-color: transparent; }
 
 /* ── Header card ── */
 .projects-page__header {
@@ -195,3 +195,134 @@
   color: var(--text-3);
   font-weight: 500;
 }
+
+/* ProjectsPage.css — additions for the new category shell */
+/* Keep your existing ProjectsPage.css and append these rules at the bottom. */
+
+/* ── Top-level category tab bar ────────────────────────────────────────────── */
+.projects-page-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.projects-page-shell__categories {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 24px;
+  border-bottom: 2px solid #e5e7eb;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.projects-category-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px 12px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -2px;
+  white-space: nowrap;
+}
+
+.projects-category-tab:hover {
+  color: #1a1a1a;
+}
+
+.projects-category-tab.active {
+  color: var(--category-color, #1a1a1a);
+  border-bottom-color: var(--category-color, #1a1a1a);
+}
+
+.projects-category-tab__logo {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
+.projects-category-tab--add {
+  color: #9ca3af;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+.projects-category-tab--add:hover {
+  color: #3b82f6;
+}
+
+.projects-page-shell__body {
+  flex: 1;
+  overflow: auto;
+}
+
+/* ── Sub-tab bar (Aluminium | Laquage | Vitrage) ───────────────────────────── */
+.category-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.category-page__tabs {
+  display: flex;
+  gap: 2px;
+  padding: 12px 24px 0;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.category-page__tab {
+  padding: 8px 18px 10px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+  border-radius: 6px 6px 0 0;
+}
+
+.category-page__tab:hover {
+  color: #374151;
+  background: #f3f4f6;
+}
+
+.category-page__tab.active {
+  color: #1a1a1a;
+  border-bottom-color: #1a1a1a;
+  background: #fff;
+}
+
+.category-page__content {
+  flex: 1;
+  overflow: auto;
+  background: transparent;
+}
+
+/* ── Laquage status pills ───────────────────────────────────────────────────── */
+.laquage-status-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.laquage-status-pill--draft             { background: #9ca3af; }
+.laquage-status-pill--sent_to_laquage   { background: #f59e0b; }
+.laquage-status-pill--received_laquage  { background: #3b82f6; }
+.laquage-status-pill--returned_to_coord { background: #a855f7; }
+.laquage-status-pill--received_coord    { background: #16a34a; }

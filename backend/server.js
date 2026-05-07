@@ -270,7 +270,9 @@ const projectSchema = new mongoose.Schema({
   date: { type: Date, required: true },
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', default: null },
+  tab: { type: String, enum: ['aluminium', 'laquage', 'vitrage'], default: 'aluminium' },
   chassis: [chassisSchema],
+
   usedBars: [{ itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true }, quantity: { type: Number, required: true, min: 0.01 } }]
 }, {
   timestamps: true,
@@ -1188,13 +1190,32 @@ app.get('/api/projects/:id', async (req, res) => {
 });
 app.post('/api/projects', async (req, res) => {
   try {
-    const p = new Project({ name: req.body.name, reference: req.body.reference, ralCode: req.body.ralCode, ralColor: req.body.ralColor || '#ffffff', date: req.body.date, companyId: req.body.companyId || null, clientId: req.body.clientId || null });
+    const p = new Project({
+      name: req.body.name,
+      reference: req.body.reference,
+      ralCode: req.body.ralCode,
+      ralColor: req.body.ralColor || '#ffffff',
+      date: req.body.date,
+      companyId: req.body.companyId || null,
+      clientId: req.body.clientId || null,
+      tab: req.body.tab || 'aluminium',        // ← ADD THIS
+    });
     await p.save(); res.status(201).json(p.toJSON());
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
 app.put('/api/projects/:id', async (req, res) => {
   try {
-    const p = await Project.findByIdAndUpdate(req.params.id, { name: req.body.name, reference: req.body.reference, ralCode: req.body.ralCode, ralColor: req.body.ralColor, date: req.body.date, companyId: req.body.companyId || null, clientId: req.body.clientId || null }, { new: true, runValidators: true }).populate('usedBars.itemId').populate('companyId').populate('clientId');
+    const p = await Project.findByIdAndUpdate(req.params.id, {
+      name: req.body.name,
+      reference: req.body.reference,
+      ralCode: req.body.ralCode,
+      ralColor: req.body.ralColor,
+      date: req.body.date,
+      companyId: req.body.companyId || null,
+      clientId: req.body.clientId || null,
+      tab: req.body.tab || 'aluminium',        // ← ADD THIS
+    }, { new: true, runValidators: true })
+    .populate('usedBars.itemId').populate('companyId').populate('clientId');
     if (!p) return res.status(404).json({ error: 'Not found' });
     res.json(p.toJSON());
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
@@ -2658,6 +2679,7 @@ app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
         });
       }
     }
+    
     events.sort((a, b) => new Date(b.at) - new Date(a.at));
     const seen = new Set();
     const deduped = [];

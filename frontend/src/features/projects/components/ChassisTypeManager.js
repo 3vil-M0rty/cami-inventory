@@ -5,6 +5,7 @@ import {
   fetchChassisTypes, createChassisType, updateChassisType, deleteChassisType
 } from './ChassisTypesConfig';
 import './ChassisTypeManager.css';
+import { useAuth } from '../../../context/AuthContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -20,10 +21,10 @@ const EMPTY_NEW_ACC = { label: '', unit: 'UN', quantity: 1, formula: '', itemId:
 // ─── Inventory Autocomplete Input ─────────────────────────────────────────────
 function InventoryAutocompleteInput({ value, onChange, onSelect, placeholder, categories }) {
   const [suggestions, setSuggestions] = useState([]);
-  const [open, setOpen]               = useState(false);
-  const [loading, setLoading]         = useState(false);
-  const debounceRef                   = useRef(null);
-  const wrapRef                       = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const debounceRef = useRef(null);
+  const wrapRef = useRef(null);
 
   useEffect(() => {
     const handleClick = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
@@ -61,8 +62,8 @@ function InventoryAutocompleteInput({ value, onChange, onSelect, placeholder, ca
 
   const handleSelect = (item) => {
     const label = item.designation?.fr || item.designation || '';
-    const unit  = item.unit || '';
-    const id    = item.id || item._id;
+    const unit = item.unit || '';
+    const id = item.id || item._id;
     onSelect({ label, unit, itemId: id });
     setSuggestions([]);
     setOpen(false);
@@ -112,9 +113,9 @@ function InventoryAutocompleteInput({ value, onChange, onSelect, placeholder, ca
             {suggestions.length} résultat{suggestions.length > 1 ? 's' : ''} trouvé{suggestions.length > 1 ? 's' : ''}
           </div>
           {suggestions.map(item => {
-            const id    = item.id || item._id;
+            const id = item.id || item._id;
             const label = item.designation?.fr || item.designation || id;
-            const unit  = item.unit || '';
+            const unit = item.unit || '';
             return (
               <div
                 key={id}
@@ -139,11 +140,11 @@ function InventoryAutocompleteInput({ value, onChange, onSelect, placeholder, ca
 
 // ─── Accessory Editor ─────────────────────────────────────────────────────────
 function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
-  const [linked, setLinked]   = useState([]);
+  const [linked, setLinked] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving]   = useState(false);
-  const [error, setError]     = useState('');
-  const [newAcc, setNewAcc]   = useState(EMPTY_NEW_ACC);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [newAcc, setNewAcc] = useState(EMPTY_NEW_ACC);
 
   useEffect(() => {
     const load = async () => {
@@ -179,12 +180,12 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
     if (!newAcc.label.trim()) return setError('Le nom de l\'accessoire est requis');
     setError('');
     const acc = {
-      itemId:   newAcc.itemId || `manual_${Date.now()}`,
-      label:    newAcc.label.trim(),
-      unit:     newAcc.unit || 'UN',
+      itemId: newAcc.itemId || `manual_${Date.now()}`,
+      label: newAcc.label.trim(),
+      unit: newAcc.unit || 'UN',
       quantity: newAcc.mode === 'fixed' ? (parseFloat(newAcc.quantity) || 1) : 0,
-      formula:  newAcc.mode === 'formula' ? newAcc.formula.trim() : '',
-      mode:     newAcc.mode,
+      formula: newAcc.mode === 'formula' ? newAcc.formula.trim() : '',
+      mode: newAcc.mode,
     };
     setLinked(prev => [...prev, acc]);
     setNewAcc(EMPTY_NEW_ACC);
@@ -493,6 +494,9 @@ function ChassisTypeManager({ onClose }) {
   };
 
   const handleCancel = () => { setForm(EMPTY_FORM); setEditingId(null); setError(''); };
+  const { user } = useAuth();
+  const userRole = user?.role;
+  const adminOnly = userRole === 'Admin';
 
   return (
     <>
@@ -520,12 +524,15 @@ function ChassisTypeManager({ onClose }) {
                 <label>Nom (Anglais)</label>
                 <input type="text" value={form.en} onChange={e => setF('en', e.target.value)} placeholder="ex: Door 2 leaves" />
               </div>
-              <div className="form-group ct-manager__composite-toggle">
-                <label>
-                  <input type="checkbox" checked={form.composite} onChange={e => setF('composite', e.target.checked)} />
-                  &nbsp; Chassis composé (dormant + vantaux)
-                </label>
-              </div>
+              {adminOnly && (
+                <div className="form-group ct-manager__composite-toggle">
+                  <label>
+                    <input type="checkbox" checked={form.composite} onChange={e => setF('composite', e.target.checked)} />
+                    &nbsp; Chassis composé (dormant + vantaux)
+                  </label>
+                </div>
+
+              )}
               {form.composite && (
                 <div className="form-group">
                   <label>Nombre de vantaux</label>
@@ -548,48 +555,51 @@ function ChassisTypeManager({ onClose }) {
           </form>
 
           {/* List */}
-          <div className="ct-manager__list">
-            <h3>Types existants ({types.length})</h3>
-            {loading ? <div className="ct-manager__loading">Chargement…</div> : (
-              <table className="ct-manager__table">
-                <thead>
-                  <tr>
-                    <th>Nom (FR)</th>
-                    <th>Identifiant</th>
-                    <th>Composé</th>
-                    <th>Vantaux</th>
-                    <th>Accessoires</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {types.map(ct => (
-                    <tr key={ct._id || ct.id} className={editingId === (ct._id || ct.id) ? 'ct-manager__row--editing' : ''}>
-                      <td><strong>{ct.fr}</strong></td>
-                      <td><code className="ct-manager__code">{ct.value}</code></td>
-                      <td>{ct.composite ? <span className="ct-badge ct-badge--composite">Oui</span> : <span className="ct-badge">Non</span>}</td>
-                      <td>{ct.composite ? ct.vantaux : '—'}</td>
-                      <td>
-                        <button
-                          className="ct-acc-btn"
-                          onClick={() => setAccEditor({ id: ct._id || ct.id, name: ct.fr })}
-                          title="Configurer les accessoires"
-                        >
-                          🔧 {ct.accessoryCount > 0 ? `${ct.accessoryCount}` : ''}
-                        </button>
-                      </td>
-                      <td>
-                        <div className="ct-manager__actions">
-                          <button className="edit-btn" onClick={() => handleEdit(ct)}>✏️</button>
-                          <button className="delete-btn" onClick={() => handleDelete(ct)}>🗑</button>
-                        </div>
-                      </td>
+          {adminOnly && (
+            <div className="ct-manager__list">
+              <h3>Types existants ({types.length})</h3>
+              {loading ? <div className="ct-manager__loading">Chargement…</div> : (
+                <table className="ct-manager__table">
+                  <thead>
+                    <tr>
+                      <th>Nom (FR)</th>
+                      <th>Identifiant</th>
+                      <th>Composé</th>
+                      <th>Vantaux</th>
+                      <th>Accessoires</th>
+                      <th>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+                  </thead>
+                  <tbody>
+                    {types.map(ct => (
+                      <tr key={ct._id || ct.id} className={editingId === (ct._id || ct.id) ? 'ct-manager__row--editing' : ''}>
+                        <td><strong>{ct.fr}</strong></td>
+                        <td><code className="ct-manager__code">{ct.value}</code></td>
+                        <td>{ct.composite ? <span className="ct-badge ct-badge--composite">Oui</span> : <span className="ct-badge">Non</span>}</td>
+                        <td>{ct.composite ? ct.vantaux : '—'}</td>
+                        <td>
+                          <button
+                            className="ct-acc-btn"
+                            onClick={() => setAccEditor({ id: ct._id || ct.id, name: ct.fr })}
+                            title="Configurer les accessoires"
+                          >
+                            🔧 {ct.accessoryCount > 0 ? `${ct.accessoryCount}` : ''}
+                          </button>
+                        </td>
+                        <td>
+                          <div className="ct-manager__actions">
+                            <button className="edit-btn" onClick={() => handleEdit(ct)}>✏️</button>
+                            <button className="delete-btn" onClick={() => handleDelete(ct)}>🗑</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
         </div>
       </div>
 

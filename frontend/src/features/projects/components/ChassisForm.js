@@ -140,7 +140,7 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal chassis-form-modal" onClick={e=>e.stopPropagation()}>
         <div className="chassis-form__header">
-          <h2>{isEdit ? t('chassisTitleEdit') : t('chassisTitleAdd')}</h2>
+          <h2>{isEdit ? t('edit') : t('add')}</h2>
           <button className="chassis-form__close" onClick={onClose}>×</button>
         </div>
         <form onSubmit={handleSubmit} className="chassis-form">

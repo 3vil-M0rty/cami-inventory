@@ -10,7 +10,7 @@ import LabelPrint, { buildLabelHTML } from './LabelPrint';
 import { exportProjectPDF, exportBarsPDF } from '../utils/pdfExport';
 import { fetchChassisTypes, buildChassisLabels, CHASSIS_LABELS as STATIC_LABELS } from './ChassisTypesConfig';
 import { BarresLaquerPanel, AccessoiresLaquerPanel } from './LaquagePanel';
-import { StepBack, CircleDashed, PlusCircle } from 'lucide-react';
+import { StepBack, CircleDashed, PlusCircle, ShipWheel } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import './ProjectDetail.css';
 
@@ -20,8 +20,38 @@ const ETAT_COLORS = {
   fabrique: '#3b82f6', livre: '#16a34a', pret_a_livrer: 'rgb(255, 0, 0)',
 };
 const STATUS_COLORS = { en_cours: '#f59e0b', fabrique: '#3b82f6', cloture: '#16a34a', pret_a_livrer: 'rgb(255, 0, 0)', non_vitre: '#a855f7' };
-
 const REMPLISSAGE_TYPES = ['Verre', 'MDF', 'Tôle', 'Panneau sandwich', 'Autre'];
+
+// ─── TAB CONFIG ───────────────────────────────────────────────────────────────
+// stateRoles : who can SEE a dropdown (vs read-only badge)
+// adminRoles : who can change to any état (including livre)
+// limitedRoles: who can change état but NOT to livre
+// logistiqueRoles: who can only toggle between pret_a_livrer and livre
+// etats: full list of étates for this tab
+const TAB_CONFIG = {
+  aluminium: {
+    stateRoles: ['Admin', 'Coordinateur', 'LOGISTIQUE'],
+    tableRoles: ['Admin', 'Coordinateur'],
+    etats: ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'pret_a_livrer', 'livre'],
+  },
+  laquage: {
+    // Admin: all états | Laquage: all except livre | LOGISTIQUE: pret_a_livrer <-> livre only
+    stateRoles: ['Admin', 'Laquage', 'LOGISTIQUE'],
+    tableRoles: ['Admin', 'Laquage'],
+    etats: ['non_entame', 'en_cours', 'fabrique', 'pret_a_livrer', 'livre'],
+  },
+  vitrage: {
+    // Admin: all états | Coordinateur-vitrage: all except livre | LOGISTIQUE: pret_a_livrer <-> livre only
+    stateRoles: ['Admin', 'Coordinateur-vitrage', 'LOGISTIQUE'],
+    tableRoles: ['Admin', 'Coordinateur-vitrage'],
+    etats: ['non_entame', 'en_cours', 'pret_a_livrer', 'fabrique', 'livre'],
+  },
+};
+
+function getTabConfig(project) {
+  return TAB_CONFIG[project?.tab || 'aluminium'] || TAB_CONFIG.aluminium;
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 const BACKEND_URL = process.env.REACT_APP_API_URL
@@ -43,16 +73,9 @@ function deriveCompositeEtat(unit, components) {
   if (!n) return unit.etat || 'non_entame';
   const states = components.map((comp, i) => getComponentEtat(unit, i, comp));
   const allowed = ['non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
-
-  if (
-    states.every(e => allowed.includes(e)) &&
-    states.some(e => e === 'non_vitre')
-  ) {
-    return 'non_vitre';
-  }
+  if (states.every(e => allowed.includes(e)) && states.some(e => e === 'non_vitre')) return 'non_vitre';
   if (states.every(e => e === 'livre')) return 'livre';
   if (states.every(e => e === 'pret_a_livrer')) return 'pret_a_livrer';
-  
   if (states.every(e => e === 'fabrique' || e === 'pret_a_livrer' || e === 'livre')) return 'fabrique';
   if (states.some(e => e !== 'non_entame')) return 'en_cours';
   return 'non_entame';
@@ -91,19 +114,61 @@ function computeChassisAccessories(chassis) {
     return { itemId: acc.itemId || acc._id?.toString() || '', label: acc.label, unit: acc.unit || '', quantity: qty };
   }).filter(a => a.quantity > 0);
 }
-function getAllowedEtats(userRole, currentEtat) {
-  if (userRole === 'Coordinateur') return ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'pret_a_livrer'];
-  if (userRole === 'LOGISTIQUE') {
-    if (currentEtat === 'pret_a_livrer' || currentEtat === 'livre') return ['pret_a_livrer', 'livre'];
-    return [currentEtat];
-  }
-  return ETAT_OPTIONS;
+
+// ─── Permission helpers ───────────────────────────────────────────────────────
+
+/**
+ * Returns true if this role can see a dropdown (vs read-only badge) for this project tab.
+ */
+function canSeeEtatDropdown(userRole, project) {
+  const cfg = getTabConfig(project);
+  return cfg.stateRoles.includes(userRole);
 }
+
+/**
+ * Returns the list of état options that this role may choose from,
+ * given the current état and the project tab.
+ *
+ * Rules:
+ *   Admin            → all étates for this tab
+ *   Laquage          → all except 'livre'           (laquage tab)
+ *   Coordinateur-vitrage → all except 'livre'       (vitrage tab)
+ *   LOGISTIQUE       → only ['pret_a_livrer','livre'] when current is one of those; else [currentEtat]
+ *   Coordinateur     → all except 'livre'           (aluminium tab)
+ */
+function getAllowedEtats(userRole, currentEtat, project) {
+  const cfg = getTabConfig(project);
+  const allEtats = cfg.etats;
+
+  if (userRole === 'Admin') return allEtats;
+
+  if (userRole === 'LOGISTIQUE') {
+    if (currentEtat === 'pret_a_livrer' || currentEtat === 'livre') {
+      return ['pret_a_livrer', 'livre'];
+    }
+    return [currentEtat]; // read-only effectively — only their current state
+  }
+
+  // Laquage, Coordinateur-vitrage, Coordinateur → all except 'livre'
+  return allEtats.filter(e => e !== 'livre');
+}
+
+/**
+ * Returns true when the select should be disabled entirely.
+ */
 function isEtatSelectDisabled(userRole, currentEtat, isSaving) {
   if (isSaving) return true;
-  if (userRole === 'LOGISTIQUE') return currentEtat !== 'livre' && currentEtat !== 'pret_a_livrer';
+  // LOGISTIQUE can only act when état is already pret_a_livrer or livre
+  if (userRole === 'LOGISTIQUE') {
+    return currentEtat !== 'pret_a_livrer' && currentEtat !== 'livre';
+  }
+  // Non-admin roles cannot change a delivered item
+  if (userRole !== 'Admin') return currentEtat === 'livre';
   return false;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function evalFormula(formula, L, H) {
   if (!formula || !formula.trim()) return null;
   try {
@@ -133,73 +198,46 @@ function RemplissageBadge({ chassis, unitIndex, compIndex = null, onClick }) {
   const bg = cnt === 0 ? '#f3f4f6' : (rdy === cnt ? '#dcfce7' : '#fef9c3');
   const color = cnt === 0 ? '#6b7280' : (rdy === cnt ? '#16a34a' : '#92400e');
   return (
-    <button
-      title="Gérer les remplissages"
-      onClick={onClick}
-      style={{
-        fontSize: 13, background: bg, border: '1px solid #e5e7eb',
-        borderRadius: 5, padding: '2px 8px', cursor: 'pointer',
-        color, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4,
-      }}
-    >
+    <button title="Gérer les remplissages" onClick={onClick} style={{
+      fontSize: 13, background: bg, border: '1px solid #e5e7eb',
+      borderRadius: 5, padding: '2px 8px', cursor: 'pointer',
+      color, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4,
+    }}>
       <PlusCircle size={14} />
       {cnt === 0 ? '' : `${rdy}/${cnt}`}
     </button>
   );
 }
 
-// ─── Remplissage Atelier Table Cell ──────────────────────────────────────────
-// Shows a compact select for the atelier table of all remplissages belonging to
-// a given unit+compIndex. Selecting a value bulk-patches all of them at once.
-// Styled with a blue tint to visually distinguish from the chassis atelier col.
 function RemplissageAtelierCell({ chassis, unitIndex, compIndex = null, project, atelierTableOptions, onPatched }) {
   const chId = chassis._id || chassis.id;
   const relevant = (chassis.remplissages || []).filter(r =>
     (r.unitIndex ?? 0) === unitIndex &&
     (compIndex !== null ? r.compIndex === compIndex : r.compIndex == null)
   );
-
-  // Derive current value: if all same table → show it; mixed → show ''
   const tables = [...new Set(relevant.map(r => r.atelierTable || ''))];
   const currentTable = tables.length === 1 ? tables[0] : '';
-
   const [saving, setSaving] = useState(false);
 
-  if (relevant.length === 0) {
-    return <span style={{ color: '#cbd5e1', fontSize: 11 }}>—</span>;
-  }
+  if (relevant.length === 0) return <span style={{ color: '#cbd5e1', fontSize: 11 }}>—</span>;
 
   const handleChange = async (newTable) => {
     setSaving(true);
     try {
-      await Promise.all(
-        relevant.map(r =>
-          axios.patch(
-            `${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${r._id || r.id}`,
-            { atelierTable: newTable }
-          )
-        )
-      );
+      await Promise.all(relevant.map(r =>
+        axios.patch(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${r._id || r.id}`, { atelierTable: newTable })
+      ));
       if (onPatched) onPatched();
-    } catch (e) {
-      console.error('Remplissage atelierTable patch failed', e);
-    } finally {
-      setSaving(false);
-    }
+    } catch (e) { console.error('Remplissage atelierTable patch failed', e); }
+    finally { setSaving(false); }
   };
 
   return (
     <select
       className={`etat-select atelier-select${saving ? ' atelier-select--saving' : ''}`}
-      value={currentTable}
-      disabled={saving}
+      value={currentTable} disabled={saving}
       onChange={e => handleChange(e.target.value)}
-      style={{
-        borderLeft: '3px solid #3b82f6',
-        background: currentTable ? '#eff6ff' : undefined,
-        fontSize: 11,
-        minWidth: 90,
-      }}
+      style={{ borderLeft: '3px solid #3b82f6', background: currentTable ? '#eff6ff' : undefined, fontSize: 11, minWidth: 90 }}
       title={`Table vitrage — ${relevant.length} remplissage(s)`}
     >
       <option value="">——</option>
@@ -258,8 +296,7 @@ function generateBLHtml(bl, project, logoBase64 = '') {
     const note = unitNotes[u.unitLabel] || u.notes || '';
     const rowClass = u.isRemplissage ? 'row-sub row-remp' : (u.isComponent ? 'row-sub' : (i % 2 === 0 ? 'row-even' : 'row-odd'));
     const m2Display = u.m2 != null ? u.m2 + ' m²' : '—';
-    return `
-    <tr class="${rowClass}">
+    return `<tr class="${rowClass}">
       <td class="td-c">${i + 1}</td>
       <td><strong>${u.unitLabel}</strong></td>
       <td>${u.chassisType || '—'}</td>
@@ -271,65 +308,42 @@ function generateBLHtml(bl, project, logoBase64 = '') {
   }).join('');
   const closeScript = '<' + '/script>';
   return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <title>${bl.blId}</title>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:16px 20px}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:20px;margin-bottom:24px;border-bottom:3px solid ${companyColor}}
-    .header-left{display:flex;align-items:flex-start;gap:14px}
-    .company-name{font-size:18px;font-weight:800;color:${companyColor};margin-bottom:3px}
-    .company-info{font-size:11px;color:#555;line-height:1.75}
-    .doc-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#999;margin-bottom:5px}
-    .bl-num{font-size:26px;font-weight:900;color:#1a1a1a;letter-spacing:-.5px}
-    .date-label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#999;margin-top:10px;margin-bottom:3px}
-    .date-val{font-size:22px;font-weight:800;color:${companyColor}}
-    .info-row{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
-    .info-card{flex:1;min-width:110px;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb}
-    .info-card__label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#999;margin-bottom:4px}
-    .info-card__val{font-size:14px;font-weight:700;color:#1a1a1a;display:flex;align-items:center;gap:6px}
-    .client-block{padding:12px 16px;border:1px solid #e5e7eb;border-left:4px solid ${companyColor};border-radius:8px;margin-bottom:18px;background:#f9fafb}
-    .block-label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#999;margin-bottom:4px}
-    .client-name{font-size:15px;font-weight:700}
-    .client-detail{font-size:12px;color:#555;margin-top:2px}
-    table{width:100%;border-collapse:collapse;margin-bottom:24px}
-    thead tr{background:${companyColor};color:#fff}
-    th{padding:10px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
-    .th-c{text-align:center}
-    td{padding:10px 12px;font-size:12.5px;border-bottom:1px solid #f0f0f0}
-    .td-c{text-align:center}
-    .row-even{background:#fff}
-    .row-odd{background:#f9fafb}
-    .row-sub{background:#f3f4f6;color:#555;font-size:12px}
-    .row-remp{background:#eff6ff;color:#1e40af;font-size:11.5px}
-    .sig-row{display:flex;justify-content:space-between;margin-top:48px;gap:24px}
-    .sig-box{flex:1;border-top:1.5px solid #1a1a1a;padding-top:8px;font-size:11px;color:#555;text-align:center}
-    .footer{margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#aaa;text-align:center;line-height:1.7}
-    @media print{
-      *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-      body{padding:6mm 8mm}
-      @page{size:A4;margin:6mm 8mm 14mm 8mm;@bottom-center{content:"Page " counter(page) " / " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#aaa;}}
-    }
-    .bl-page-footer{margin-top:10px;padding-top:8px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center}
-  </style>
-</head>
-<body>
+<html lang="fr"><head><meta charset="utf-8"><title>${bl.blId}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:16px 20px}
+.header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:20px;margin-bottom:24px;border-bottom:3px solid ${companyColor}}
+.header-left{display:flex;align-items:flex-start;gap:14px}
+.company-name{font-size:18px;font-weight:800;color:${companyColor};margin-bottom:3px}
+.company-info{font-size:11px;color:#555;line-height:1.75}
+.doc-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#999;margin-bottom:5px}
+.bl-num{font-size:26px;font-weight:900;color:#1a1a1a;letter-spacing:-.5px}
+.date-label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#999;margin-top:10px;margin-bottom:3px}
+.date-val{font-size:22px;font-weight:800;color:${companyColor}}
+.info-row{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+.info-card{flex:1;min-width:110px;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb}
+.info-card__label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#999;margin-bottom:4px}
+.info-card__val{font-size:14px;font-weight:700;color:#1a1a1a;display:flex;align-items:center;gap:6px}
+.client-block{padding:12px 16px;border:1px solid #e5e7eb;border-left:4px solid ${companyColor};border-radius:8px;margin-bottom:18px;background:#f9fafb}
+.block-label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#999;margin-bottom:4px}
+.client-name{font-size:15px;font-weight:700}
+.client-detail{font-size:12px;color:#555;margin-top:2px}
+table{width:100%;border-collapse:collapse;margin-bottom:24px}
+thead tr{background:${companyColor};color:#fff}
+th{padding:10px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.th-c{text-align:center}
+td{padding:10px 12px;font-size:12.5px;border-bottom:1px solid #f0f0f0}
+.td-c{text-align:center}
+.row-even{background:#fff}.row-odd{background:#f9fafb}.row-sub{background:#f3f4f6;color:#555;font-size:12px}.row-remp{background:#eff6ff;color:#1e40af;font-size:11.5px}
+.sig-row{display:flex;justify-content:space-between;margin-top:48px;gap:24px}
+.sig-box{flex:1;border-top:1.5px solid #1a1a1a;padding-top:8px;font-size:11px;color:#555;text-align:center}
+.footer{margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#aaa;text-align:center;line-height:1.7}
+@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:6mm 8mm}@page{size:A4;margin:6mm 8mm 14mm 8mm}}
+.bl-page-footer{margin-top:10px;padding-top:8px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center}
+</style></head><body>
 <div class="header">
-  <div class="header-left">
-    ${logoBlock}
-    <div>
-      <div class="company-name">${companyName}</div>
-      <div class="company-info">${coLines}</div>
-    </div>
-  </div>
-  <div style="text-align:right">
-    <div class="doc-label">Bon de Livraison</div>
-    <div class="bl-num">${bl.blId}</div>
-    <div class="date-label">Date de livraison</div>
-    <div class="date-val">${new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR')}</div>
-  </div>
+  <div class="header-left">${logoBlock}<div><div class="company-name">${companyName}</div><div class="company-info">${coLines}</div></div></div>
+  <div style="text-align:right"><div class="doc-label">Bon de Livraison</div><div class="bl-num">${bl.blId}</div><div class="date-label">Date de livraison</div><div class="date-val">${new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR')}</div></div>
 </div>
 <div class="info-row">
   <div class="info-card"><div class="info-card__label">Projet</div><div class="info-card__val">${project.name}</div></div>
@@ -340,66 +354,23 @@ function generateBLHtml(bl, project, logoBase64 = '') {
   <div class="info-card"><div class="info-card__label">Transport</div><div class="info-card__val">${bl.transport || '—'}</div></div>
 </div>
 ${clientBlock}
-<table>
-  <thead>
-    <tr>
-      <th class="th-c" style="width:36px">#</th>
-      <th>Repère</th>
-      <th>Désignation</th>
-      <th class="th-c">Dimension</th>
-      <th class="th-c">m²</th>
-      <th class="th-c">Date livraison</th>
-      <th>Notes</th>
-    </tr>
-  </thead>
-  <tbody>${rows}</tbody>
-</table>
-<div class="sig-row">
-  <div class="sig-box">Signature livreur</div>
-  <div class="sig-box">Signature réceptionnaire</div>
-</div>
-<div class="bl-page-footer">
-  <div class="footer" style="border:none;padding:0;margin:0;text-align:center;width:100%">${[companyName, companyAddr, companyPhone ? 'Tél : ' + companyPhone : '', companyRC ? 'RC : ' + companyRC : '', companyICE ? 'ICE : ' + companyICE : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')}</div>
-</div>
-<script>
-  window.onload = () => {
-    const images = document.querySelectorAll('img');
-    if (images.length === 0) { window.print(); return; }
-    let loaded = 0;
-    const tryPrint = () => { loaded++; if (loaded >= images.length) window.print(); };
-    images.forEach(img => {
-      if (img.complete) { tryPrint(); }
-      else { img.onload = tryPrint; img.onerror = tryPrint; }
-    });
-  };
-${closeScript}
-</body>
-</html>`;
+<table><thead><tr><th class="th-c" style="width:36px">#</th><th>Repère</th><th>Désignation</th><th class="th-c">Dimension</th><th class="th-c">m²</th><th class="th-c">Date livraison</th><th>Notes</th></tr></thead>
+<tbody>${rows}</tbody></table>
+<div class="sig-row"><div class="sig-box">Signature livreur</div><div class="sig-box">Signature réceptionnaire</div></div>
+<div class="bl-page-footer"><div class="footer" style="border:none;padding:0;margin:0;text-align:center;width:100%">${[companyName, companyAddr, companyPhone ? 'Tél : ' + companyPhone : '', companyRC ? 'RC : ' + companyRC : '', companyICE ? 'ICE : ' + companyICE : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')}</div></div>
+<script>window.onload=()=>{const images=document.querySelectorAll('img');if(images.length===0){window.print();return;}let loaded=0;const tryPrint=()=>{loaded++;if(loaded>=images.length)window.print();};images.forEach(img=>{if(img.complete){tryPrint();}else{img.onload=tryPrint;img.onerror=tryPrint;}});};${closeScript}
+</body></html>`;
 }
 
 // ─── Styled Excel Export ──────────────────────────────────────────────────────
 function exportBLExcel(bl, project) {
   const co = resolveCompany(project);
   const companyColor = co.color || '#1a1a1a';
-  const hexToArgb = (hex) => {
-    const h = hex.replace('#', '');
-    return 'FF' + (h.length === 3 ? h.split('').map(c => c + c).join('') : h).toUpperCase();
-  };
+  const hexToArgb = (hex) => { const h = hex.replace('#', ''); return 'FF' + (h.length === 3 ? h.split('').map(c => c + c).join('') : h).toUpperCase(); };
   const headerArgb = hexToArgb(companyColor);
-  const lightBg = 'FFF9FAFB';
-  const borderColor = 'FFE5E7EB';
-
-  const wb = XLSX.utils.book_new();
-  const ws = {};
-  const merges = [];
-  let row = 1;
-
-  const setCell = (col, r, value, s) => {
-    const addr = XLSX.utils.encode_cell({ c: col, r: r - 1 });
-    ws[addr] = { v: value, t: typeof value === 'number' ? 'n' : 's' };
-    if (s) ws[addr].s = s;
-  };
-
+  const lightBg = 'FFF9FAFB'; const borderColor = 'FFE5E7EB';
+  const wb = XLSX.utils.book_new(); const ws = {}; const merges = []; let row = 1;
+  const setCell = (col, r, value, s) => { const addr = XLSX.utils.encode_cell({ c: col, r: r - 1 }); ws[addr] = { v: value, t: typeof value === 'number' ? 'n' : 's' }; if (s) ws[addr].s = s; };
   const S = {
     companyName: { font: { bold: true, sz: 16, color: { rgb: headerArgb } }, alignment: { horizontal: 'left', vertical: 'center' } },
     blLabel: { font: { sz: 9, color: { rgb: 'FF9CA3AF' }, italic: true }, alignment: { horizontal: 'right', vertical: 'center' } },
@@ -421,92 +392,44 @@ function exportBLExcel(bl, project) {
     sigBox: { font: { sz: 11, color: { rgb: 'FF555555' } }, border: { top: { style: 'medium', color: { rgb: 'FF1A1A1A' } } }, alignment: { horizontal: 'center' } },
     footer: { font: { sz: 9, color: { rgb: 'FFAAAAAA' } }, alignment: { horizontal: 'center' } },
   };
-
-  // HEADER
-  setCell(0, row, co.name || '', S.companyName);
-  merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
-  setCell(4, row, 'Bon de Livraison', S.blLabel);
-  setCell(5, row, bl.blId || '', S.blId);
-  merges.push({ s: { r: row - 1, c: 4 }, e: { r: row - 1, c: 6 } });
-  row++;
-  setCell(0, row, co.address || '', S.subtext);
-  merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
+  setCell(0, row, co.name || '', S.companyName); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
+  setCell(4, row, 'Bon de Livraison', S.blLabel); setCell(5, row, bl.blId || '', S.blId); merges.push({ s: { r: row - 1, c: 4 }, e: { r: row - 1, c: 6 } }); row++;
+  setCell(0, row, co.address || '', S.subtext); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
   setCell(4, row, 'Date de livraison', S.dateLabel);
   const delivDate = bl.deliveryDate ? new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR') : '';
-  setCell(5, row, delivDate, S.dateVal);
-  row++;
+  setCell(5, row, delivDate, S.dateVal); row++;
   const phoneEmail = [co.phone ? 'Tél : ' + co.phone : '', co.email || ''].filter(Boolean).join('   ·   ');
-  setCell(0, row, phoneEmail, S.subtext);
-  merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
-  row++;
-  row++;
-
-  // INFO CARDS
-  const cards = [
-    ['PROJET', project.name], ['RÉFÉRENCE', project.reference], ['RAL', project.ralCode],
-    ['PIÈCES LIVRÉES', bl.units.length], ['LOCALISATION', bl.localisation || '—'], ['TRANSPORT', bl.transport || '—'],
-  ];
+  setCell(0, row, phoneEmail, S.subtext); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } }); row++; row++;
+  const cards = [['PROJET', project.name], ['RÉFÉRENCE', project.reference], ['RAL', project.ralCode], ['PIÈCES LIVRÉES', bl.units.length], ['LOCALISATION', bl.localisation || '—'], ['TRANSPORT', bl.transport || '—']];
   [[0, 1, 2], [3, 4, 5]].forEach(idxs => {
-    idxs.forEach((ci, pos) => { setCell(pos * 2, row, cards[ci][0], S.cardLabel); setCell(pos * 2 + 1, row, '', S.cardLabel); });
-    row++;
-    idxs.forEach((ci, pos) => { setCell(pos * 2, row, cards[ci][1], S.cardValue); setCell(pos * 2 + 1, row, '', S.cardValue); });
-    row++;
+    idxs.forEach((ci, pos) => { setCell(pos * 2, row, cards[ci][0], S.cardLabel); setCell(pos * 2 + 1, row, '', S.cardLabel); }); row++;
+    idxs.forEach((ci, pos) => { setCell(pos * 2, row, cards[ci][1], S.cardValue); setCell(pos * 2 + 1, row, '', S.cardValue); }); row++;
   });
-
-  // CLIENT BLOCK
   const clientName = project.clientId?.name || '';
   if (clientName) {
-    row++;
-    setCell(0, row, 'DESTINATAIRE', S.clientLabel);
-    merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
-    row++;
-    setCell(0, row, clientName, S.clientName);
-    merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
-    row++;
+    row++; setCell(0, row, 'DESTINATAIRE', S.clientLabel); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } }); row++;
+    setCell(0, row, clientName, S.clientName); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } }); row++;
     const addr = [project.clientId?.address, project.clientId?.city].filter(Boolean).join(', ');
     if (addr) { setCell(0, row, addr, S.clientSub); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } }); row++; }
   }
   row++;
-
-  // TABLE HEADER
-  ['#', 'Repère', 'Désignation', 'Dimension', 'm²', 'Date livraison', 'Notes'].forEach((h, i) => {
-    setCell(i, row, h, i === 0 || i === 3 || i === 4 || i === 5 ? S.th : S.thLeft);
-  });
-  row++;
-
-  // TABLE ROWS
+  ['#', 'Repère', 'Désignation', 'Dimension', 'm²', 'Date livraison', 'Notes'].forEach((h, i) => { setCell(i, row, h, i === 0 || i === 3 || i === 4 || i === 5 ? S.th : S.thLeft); }); row++;
   const unitNotes = bl.unitNotes || {};
   bl.units.forEach((u, idx) => {
-    const base = idx % 2 === 0 ? S.tdEven : S.tdOdd;
-    const note = unitNotes[u.unitLabel] || u.notes || '';
-    setCell(0, row, idx + 1, S.tdCenter(base));
-    setCell(1, row, u.unitLabel, S.tdBold(base));
-    setCell(2, row, u.chassisType || '', base);
-    setCell(3, row, u.dimension, S.tdCenter(base));
-    setCell(4, row, u.m2 != null ? u.m2 : '', S.tdCenter(base));
-    setCell(5, row, u.deliveryDate ? fmtDate(u.deliveryDate) : '', S.tdCenter(base));
-    setCell(6, row, note || '', base);
-    row++;
+    const base = idx % 2 === 0 ? S.tdEven : S.tdOdd; const note = unitNotes[u.unitLabel] || u.notes || '';
+    setCell(0, row, idx + 1, S.tdCenter(base)); setCell(1, row, u.unitLabel, S.tdBold(base)); setCell(2, row, u.chassisType || '', base);
+    setCell(3, row, u.dimension, S.tdCenter(base)); setCell(4, row, u.m2 != null ? u.m2 : '', S.tdCenter(base));
+    setCell(5, row, u.deliveryDate ? fmtDate(u.deliveryDate) : '', S.tdCenter(base)); setCell(6, row, note || '', base); row++;
   });
-
   row += 2;
-  setCell(0, row, 'Signature livreur', S.sigBox);
-  merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 2 } });
-  setCell(3, row, 'Signature réceptionnaire', S.sigBox);
-  merges.push({ s: { r: row - 1, c: 3 }, e: { r: row - 1, c: 6 } });
-  row++;
-  row++;
+  setCell(0, row, 'Signature livreur', S.sigBox); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 2 } });
+  setCell(3, row, 'Signature réceptionnaire', S.sigBox); merges.push({ s: { r: row - 1, c: 3 }, e: { r: row - 1, c: 6 } }); row++; row++;
   const footerParts = [co.name, co.address, co.phone ? 'Tél : ' + co.phone : '', co.rc ? 'RC : ' + co.rc : '', co.ice ? 'ICE : ' + co.ice : ''].filter(Boolean);
-  setCell(0, row, footerParts.join('  ·  '), S.footer);
-  merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
-
+  setCell(0, row, footerParts.join('  ·  '), S.footer); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
   ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row, c: 6 } });
-  ws['!merges'] = merges;
-  ws['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 26 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 30 }];
+  ws['!merges'] = merges; ws['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 26 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 30 }];
   ws['!rows'] = [{ hpt: 28 }, { hpt: 18 }, { hpt: 16 }];
-
-  XLSX.utils.book_append_sheet(wb, ws, 'BL');
-  XLSX.writeFile(wb, `${bl.blId || 'BL'}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, 'BL'); XLSX.writeFile(wb, `${bl.blId || 'BL'}.xlsx`);
 }
 
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
@@ -515,13 +438,11 @@ function ProgressBar({ chassis, t }) {
   const counts = { non_entame: 0, en_cours: 0, non_vitre: 0, fabrique: 0, livre: 0, pret_a_livrer: 0 };
   let total = 0;
   for (const ch of chassis) {
-    const qty = ch.quantity || 1;
-    const isComp = (ch.components || []).length > 0;
+    const qty = ch.quantity || 1; const isComp = (ch.components || []).length > 0;
     for (let i = 0; i < qty; i++) {
       const unit = getUnit(ch, i);
       const etat = isComp ? deriveCompositeEtat(unit, ch.components) : (unit.etat || 'non_entame');
-      counts[etat] = (counts[etat] || 0) + 1;
-      total++;
+      counts[etat] = (counts[etat] || 0) + 1; total++;
     }
   }
   const pct = k => total === 0 ? 0 : Math.round(counts[k] / total * 100);
@@ -529,9 +450,7 @@ function ProgressBar({ chassis, t }) {
     <div className="progress-section">
       <div className="progress-bar">
         {ETAT_OPTIONS.filter(e => counts[e] > 0).map(e => (
-          <div key={e} className="progress-bar__segment"
-            style={{ width: `${pct(e)}%`, backgroundColor: ETAT_COLORS[e] }}
-            title={`${t('etat_' + e)}: ${counts[e]}`} />
+          <div key={e} className="progress-bar__segment" style={{ width: `${pct(e)}%`, backgroundColor: ETAT_COLORS[e] }} title={`${t('etat_' + e)}: ${counts[e]}`} />
         ))}
       </div>
       <div className="progress-legend">
@@ -647,7 +566,6 @@ function BLExportModal({ bl, project, t, onClose }) {
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [savingMeta, setSavingMeta] = useState(false);
   const [loadingPdf, setLoadingPdf] = useState(false);
-
   const co = resolveCompany(project);
   const deliveryDate = bl.deliveryDate;
 
@@ -657,9 +575,7 @@ function BLExportModal({ bl, project, t, onClose }) {
       setLoadingMeta(true);
       const meta = await loadBLMetadata(project.id, deliveryDate);
       if (!cancelled) {
-        setBlId(meta.blId || '');
-        setLocalisation(meta.localisation || '');
-        setTransport(meta.transport || '');
+        setBlId(meta.blId || ''); setLocalisation(meta.localisation || ''); setTransport(meta.transport || '');
         const merged = {};
         bl.units.forEach(u => { merged[u.unitLabel] = (meta.unitNotes || {})[u.unitLabel] || ''; });
         setUnitNotes(merged);
@@ -670,44 +586,24 @@ function BLExportModal({ bl, project, t, onClose }) {
   }, [bl, deliveryDate, project.id]);
 
   const buildEnrichedBL = () => ({ ...bl, blId: blId.trim() || bl.blId, localisation, transport, unitNotes });
-
-  const handleSaveMeta = async () => {
-    setSavingMeta(true);
-    await saveBLMetadata(project.id, deliveryDate, { blId: blId.trim(), localisation, transport, unitNotes });
-    setSavingMeta(false);
-  };
-
+  const handleSaveMeta = async () => { setSavingMeta(true); await saveBLMetadata(project.id, deliveryDate, { blId: blId.trim(), localisation, transport, unitNotes }); setSavingMeta(false); };
   const handlePdf = async () => {
-    await handleSaveMeta();
-    setLoadingPdf(true);
+    await handleSaveMeta(); setLoadingPdf(true);
     try {
-      const logoUrl = resolveLogoUrl(co.logo || '');
-      const logoBase64 = await fetchLogoBase64(logoUrl);
+      const logoUrl = resolveLogoUrl(co.logo || ''); const logoBase64 = await fetchLogoBase64(logoUrl);
       const html = generateBLHtml(buildEnrichedBL(), project, logoBase64);
-      const w = window.open('', '_blank');
-      if (w) { w.document.write(html); w.document.close(); }
+      const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
     } finally { setLoadingPdf(false); }
     onClose();
   };
-
-  const handleExcel = async () => {
-    await handleSaveMeta();
-    exportBLExcel(buildEnrichedBL(), project);
-    onClose();
-  };
-
+  const handleExcel = async () => { await handleSaveMeta(); exportBLExcel(buildEnrichedBL(), project); onClose(); };
   const updateUnitNote = (label, val) => setUnitNotes(prev => ({ ...prev, [label]: val }));
 
-  if (loadingMeta) {
-    return (
-      <div className="modal-overlay">
-        <div className="modal" style={{ maxWidth: 420, textAlign: 'center', padding: 32 }}>
-          <div style={{ fontSize: 28, marginBottom: 12 }}>⏳</div>
-          <p style={{ color: '#6b7280' }}>Chargement des données sauvegardées…</p>
-        </div>
-      </div>
-    );
-  }
+  if (loadingMeta) return (
+    <div className="modal-overlay"><div className="modal" style={{ maxWidth: 420, textAlign: 'center', padding: 32 }}>
+      <div style={{ fontSize: 28, marginBottom: 12 }}>⏳</div><p style={{ color: '#6b7280' }}>Chargement des données sauvegardées…</p>
+    </div></div>
+  );
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -738,9 +634,7 @@ function BLExportModal({ bl, project, t, onClose }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {bl.units.map(u => (
                 <div key={u.unitLabel} style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, padding: '5px 9px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {u.unitLabel}
-                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, padding: '5px 9px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.unitLabel}</span>
                   <input type="text" value={unitNotes[u.unitLabel] || ''} onChange={e => updateUnitNote(u.unitLabel, e.target.value)} placeholder="Note pour cette pièce…" style={{ fontSize: 12, padding: '5px 10px' }} />
                 </div>
               ))}
@@ -749,15 +643,9 @@ function BLExportModal({ bl, project, t, onClose }) {
         )}
         <div className="modal-actions" style={{ marginTop: 8, gap: 8 }}>
           <button onClick={onClose}>{t('cancel')}</button>
-          <button onClick={handleSaveMeta} disabled={savingMeta} title="Sauvegarder sans exporter" style={{ background: '#6b7280', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
-            {savingMeta ? '⏳' : '💾'}
-          </button>
-          <button onClick={handleExcel} title="Exporter Excel" style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            📊 Excel
-          </button>
-          <button className="primary" onClick={handlePdf} disabled={loadingPdf} title="Imprimer PDF" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {loadingPdf ? '⏳' : '🖨'} PDF
-          </button>
+          <button onClick={handleSaveMeta} disabled={savingMeta} title="Sauvegarder sans exporter" style={{ background: '#6b7280', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>{savingMeta ? '⏳' : '💾'}</button>
+          <button onClick={handleExcel} title="Exporter Excel" style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>📊 Excel</button>
+          <button className="primary" onClick={handlePdf} disabled={loadingPdf} title="Imprimer PDF" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{loadingPdf ? '⏳' : '🖨'} PDF</button>
         </div>
       </div>
     </div>
@@ -790,12 +678,9 @@ function BLPanel({ project, t, language }) {
   );
 
   const co = resolveCompany(project);
-
   return (
     <div className="bl-panel">
-      <div className="bl-panel__header">
-        <h3>{t('blHistory')} <span className="tab-count">{bls.length}</span></h3>
-      </div>
+      <div className="bl-panel__header"><h3>{t('blHistory')} <span className="tab-count">{bls.length}</span></h3></div>
       <div className="bl-list">
         {bls.map(bl => (
           <div key={bl.deliveryDate} className="bl-card">
@@ -811,22 +696,15 @@ function BLPanel({ project, t, language }) {
                 </span>
               </div>
               <div className="bl-card__actions">
-                <button className="bl-print-btn" title="Exporter" style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }}
-                  onClick={e => { e.stopPropagation(); setBlExportModal({ bl }); }}>📊</button>
-                <button className="bl-print-btn" title="Imprimer PDF" style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }}
-                  onClick={e => { e.stopPropagation(); setBlExportModal({ bl }); }}>🖨</button>
+                <button className="bl-print-btn" title="Exporter" style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }} onClick={e => { e.stopPropagation(); setBlExportModal({ bl }); }}>📊</button>
+                <button className="bl-print-btn" title="Imprimer PDF" style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }} onClick={e => { e.stopPropagation(); setBlExportModal({ bl }); }}>🖨</button>
                 <span className="bl-card__toggle">{openBL === bl.deliveryDate ? '▲' : '▼'}</span>
               </div>
             </div>
             {openBL === bl.deliveryDate && (
               <div className="bl-card__body">
                 <table className="bl-table">
-                  <thead>
-                    <tr>
-                      <th>{t('repere')}</th><th>{t('type')}</th>
-                      <th>{t('dimension')}</th><th style={{ textAlign: 'center' }}>m²</th><th>{t('blDate')}</th><th>{t('unitNotes')}</th>
-                    </tr>
-                  </thead>
+                  <thead><tr><th>{t('repere')}</th><th>{t('type')}</th><th>{t('dimension')}</th><th style={{ textAlign: 'center' }}>m²</th><th>{t('blDate')}</th><th>{t('unitNotes')}</th></tr></thead>
                   <tbody>
                     {bl.units.map((u, i) => (
                       <tr key={i} className={u.isComponent ? 'bl-row--component' : (u.isRemplissage ? 'bl-row--remplissage' : '')}>
@@ -845,9 +723,7 @@ function BLPanel({ project, t, language }) {
           </div>
         ))}
       </div>
-      {blExportModal && (
-        <BLExportModal bl={blExportModal.bl} project={project} t={t} onClose={() => setBlExportModal(null)} />
-      )}
+      {blExportModal && <BLExportModal bl={blExportModal.bl} project={project} t={t} onClose={() => setBlExportModal(null)} />}
     </div>
   );
 }
@@ -864,8 +740,7 @@ function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
   const wrapRef = React.useRef(null);
   React.useEffect(() => {
     const h = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
+    document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h);
   }, []);
   const search = (q) => {
     clearTimeout(debounceRef.current);
@@ -879,11 +754,7 @@ function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
     }, 250);
   };
   const handleChange = (e) => { onChange(e.target.value); search(e.target.value); };
-  const handleSelect = (item) => {
-    const label = item.designation?.fr || item.designation || '';
-    onSelect({ label, unit: item.unit || '', itemId: item.id || item._id });
-    setSuggestions([]); setOpen(false);
-  };
+  const handleSelect = (item) => { const label = item.designation?.fr || item.designation || ''; onSelect({ label, unit: item.unit || '', itemId: item.id || item._id }); setSuggestions([]); setOpen(false); };
   return (
     <div ref={wrapRef} style={{ position: 'relative', width: '100%' }}>
       <div style={{ position: 'relative' }}>
@@ -891,8 +762,7 @@ function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
         <input className="ct-acc-search-input"
           onFocus={e => { e.target.style.borderColor = '#1a1a1a'; e.target.style.boxShadow = '0 0 0 3px rgba(26,26,26,0.08)'; if (value.length >= 2 && suggestions.length > 0) setOpen(true); }}
           onBlur={e => { e.target.style.borderColor = '#d1d5db'; e.target.style.boxShadow = 'none'; }}
-          value={value} onChange={handleChange}
-          placeholder={placeholder || 'Nom ou recherche inventaire…'} autoComplete="off" />
+          value={value} onChange={handleChange} placeholder={placeholder || 'Nom ou recherche inventaire…'} autoComplete="off" />
         {busy ? <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#555' }}>⏳</span>
           : value && <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#9ca3af', cursor: 'pointer' }} onMouseDown={() => { onChange(''); setSuggestions([]); setOpen(false); }}>✕</span>}
       </div>
@@ -900,12 +770,10 @@ function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
         <div className="ct-acc-dropdown">
           <div className="ct-acc-dropdown__header">{suggestions.length} résultat{suggestions.length > 1 ? 's' : ''}</div>
           {suggestions.map(item => {
-            const id = item.id || item._id;
-            const label = item.designation?.fr || item.designation || id;
+            const id = item.id || item._id; const label = item.designation?.fr || item.designation || id;
             return (
               <div key={id} onMouseDown={() => handleSelect(item)} className="ct-acc-dropdown__item"
-                onMouseEnter={e => { e.currentTarget.style.background = '#f5f5f5'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
+                onMouseEnter={e => { e.currentTarget.style.background = '#f5f5f5'; }} onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>📦</span><span>{label}</span></span>
                 {item.unit && <span className="ct-acc-dropdown__unit">{item.unit}</span>}
               </div>
@@ -918,14 +786,10 @@ function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
 }
 
 function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
-  const chId = chassis._id || chassis.id;
-  const L = chassis.largeur || 0; const H = chassis.hauteur || 0;
-  const [accessories, setAccessories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [newAcc, setNewAcc] = useState(EMPTY_ACC);
-  const [loadingDefaults, setLoadingDefaults] = useState(false);
+  const chId = chassis._id || chassis.id; const L = chassis.largeur || 0; const H = chassis.hauteur || 0;
+  const [accessories, setAccessories] = useState([]); const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false); const [error, setError] = useState('');
+  const [newAcc, setNewAcc] = useState(EMPTY_ACC); const [loadingDefaults, setLoadingDefaults] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -935,30 +799,26 @@ function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
         const saved = res.data || [];
         setAccessories(saved.map(a => { const hf = a.formula && a.formula.trim() !== ''; return { ...a, quantity: hf ? 0 : (a.quantity || 1), formula: hf ? a.formula.trim() : '', mode: hf ? 'formula' : 'fixed' }; }));
         if (saved.length === 0 && chassis.type) await loadDefaults(true);
-      } catch { setAccessories([]); }
-      finally { setLoading(false); }
+      } catch { setAccessories([]); } finally { setLoading(false); }
     };
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chId, project.id]);
 
   const loadDefaults = async (silent = false) => {
-    if (!chassis.type) return;
-    setLoadingDefaults(true);
+    if (!chassis.type) return; setLoadingDefaults(true);
     try {
       const res = await axios.get(`${API_URL}/chassis-type-defaults/${encodeURIComponent(chassis.type)}`);
       const defaults = res.data || [];
       if (defaults.length > 0) setAccessories(defaults.map(d => { const hf = d.formula && d.formula.trim() !== ''; return { itemId: d.itemId || '', label: d.label, unit: d.unit || 'UN', quantity: hf ? 0 : (d.quantity || 1), formula: hf ? d.formula.trim() : '', mode: hf ? 'formula' : 'fixed' }; }));
       else if (!silent) setError('Aucun accessoire par défaut configuré pour ce type de châssis.');
-    } catch { if (!silent) setError('Erreur lors du chargement des défauts.'); }
-    finally { setLoadingDefaults(false); }
+    } catch { if (!silent) setError('Erreur lors du chargement des défauts.'); } finally { setLoadingDefaults(false); }
   };
 
   const update = (idx, key, val) => setAccessories(prev => prev.map((a, i) => i === idx ? { ...a, [key]: val } : a));
   const setMode = (idx, mode) => setAccessories(prev => prev.map((a, i) => i === idx ? { ...a, mode, formula: mode === 'fixed' ? '' : a.formula } : a));
   const addAcc = () => {
-    if (!newAcc.label.trim()) return setError("Le nom de l'accessoire est requis");
-    setError('');
+    if (!newAcc.label.trim()) return setError("Le nom de l'accessoire est requis"); setError('');
     setAccessories(prev => [...prev, { itemId: newAcc.itemId || `manual_${Date.now()}`, label: newAcc.label.trim(), unit: newAcc.unit || 'UN', quantity: newAcc.mode === 'fixed' ? (parseFloat(newAcc.quantity) || 1) : 0, formula: newAcc.mode === 'formula' ? newAcc.formula.trim() : '', mode: newAcc.mode }]);
     setNewAcc(EMPTY_ACC);
   };
@@ -974,16 +834,14 @@ function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
         for (let i = 0; i < qty; i++) { const unit = (chassis.units || []).find(u => u.unitIndex === i); const tbl = unit?.atelierTable || ''; if (tbl) tableGroups[tbl] = (tableGroups[tbl] || 0) + 1; }
         await Promise.allSettled(Object.entries(tableGroups).map(async ([tableName, unitCount]) => {
           try {
-            const tblRes = await axios.get(`${API_URL}/atelier-tables`);
-            const found = (tblRes.data || []).find(t => t.name === tableName);
+            const tblRes = await axios.get(`${API_URL}/atelier-tables`); const found = (tblRes.data || []).find(t => t.name === tableName);
             if (!found) return;
             await axios.post(`${API_URL}/table-stock/deduct-chassis`, { tableId: found.id, tableName, projectId: project.id, projectName: project.name, chassisRef: chassis.repere, accessories: computedAccs.map(a => ({ ...a, quantity: a.quantity * unitCount })) });
           } catch { }
         }));
       }
       onSaved && onSaved(); onClose();
-    } catch (e) { setError(e.response?.data?.error || 'Erreur lors de la sauvegarde'); }
-    finally { setSaving(false); }
+    } catch (e) { setError(e.response?.data?.error || 'Erreur lors de la sauvegarde'); } finally { setSaving(false); }
   };
   const preview = (acc) => {
     if (acc.mode === 'formula' && acc.formula) { const val = evalFormula(acc.formula, L, H); return val !== null ? <span className="proj-acc-preview-cell">{val} {acc.unit}</span> : <span className="proj-acc-preview-cell proj-acc-preview-cell--invalid">⚠ invalide</span>; }
@@ -1093,27 +951,14 @@ function buildRemplissageLabelHTML(remplissages, chassis, project, compLabel, ty
   const ralHex = project.ralColor || '#cccccc';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
   const unitSuffix = (idx) => chassis.quantity > 1 ? ` #${Number(idx) + 1}` : '';
-
   const pages = remplissages.map(r => {
     const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
-    const repere = compLabel
-      ? `${chassis.repere}${unitSuffix(r.unitIndex ?? 0)} — ${compLabel}`
-      : `${chassis.repere}${unitSuffix(r.unitIndex ?? 0)}`;
+    const repere = compLabel ? `${chassis.repere}${unitSuffix(r.unitIndex ?? 0)} — ${compLabel}` : `${chassis.repere}${unitSuffix(r.unitIndex ?? 0)}`;
     const parentLine = `<div class="parent-ref">${typeLabel}</div>`;
-
     return `<div class="page"><div class="label">
-    <div class="lh">
-      <span class="brand">CAMI ALUMINIUM</span>
-      <span class="swatch"></span>
-    </div>
-    <div class="row">
-      <span class="f"><span class="k">Projet</span><span class="v">${project.name}</span></span>
-      <span class="f"><span class="k">Réf.</span><span class="v">${project.reference}</span></span>
-    </div>
-    <div class="row">
-      <span class="f"><span class="k">RAL</span><span class="v">${project.ralCode}</span></span>
-      <span class="f"><span class="k">Date</span><span class="v">${dateStr}</span></span>
-    </div>
+    <div class="lh"><span class="brand">CAMI ALUMINIUM</span><span class="swatch"></span></div>
+    <div class="row"><span class="f"><span class="k">Projet</span><span class="v">${project.name}</span></span><span class="f"><span class="k">Réf.</span><span class="v">${project.reference}</span></span></div>
+    <div class="row"><span class="f"><span class="k">RAL</span><span class="v">${project.ralCode}</span></span><span class="f"><span class="k">Date</span><span class="v">${dateStr}</span></span></div>
     <div class="div"></div>
     <div class="grid">
       <div class="cell"><span class="k">Repère</span><span class="repere">${repere}${parentLine}</span></div>
@@ -1122,70 +967,9 @@ function buildRemplissageLabelHTML(remplissages, chassis, project, compLabel, ty
     </div>
   </div></div>`;
   }).join('\n');
-
   const closeScript = '<' + '/script>';
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<title> </title>
-<style>
-  @page {
-    size: 9.5cm 5.5cm;
-    margin: 0mm;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body {
-    width: 9.5cm;
-    height: 5.5cm;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #fff;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-  @media print {
-    html, body { margin: 0 !important; padding: 0 !important; }
-    .page { page-break-after: always; page-break-inside: avoid; }
-    .page:last-child { page-break-after: avoid; }
-  }
-  .page { width: 9.5cm; height: 5.5cm; overflow: hidden; display: block; }
-  .label {
-    width: 9.5cm; height: 5.5cm; padding: 3mm 4mm;
-    display: flex; flex-direction: column; gap: 1.2mm; overflow: hidden;
-  }
-  .lh    { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #1a1a1a; padding-bottom: 1.2mm; }
-  .brand { font-size: 8.5pt; font-weight: 900; color: #1a1a1a; letter-spacing: 0.05em; text-transform: uppercase; }
-  .swatch { width: 10mm; height: 5mm; border-radius: 2px; border: 1px solid #ccc; background-color: ${ralHex}; flex-shrink: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .row   { display: flex; gap: 6mm; }
-  .f     { display: flex; gap: 2px; align-items: baseline; }
-  .k     { font-size: 5.5pt; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; margin-right: 2px; }
-  .v     { font-size: 6.5pt; font-weight: 500; color: #1a1a1a; }
-  .remp-type { font-size: 7pt !important; font-weight: 700 !important; }
-  .div   { border-top: 1px dashed #ccc; margin: 0; flex-shrink: 0; }
-  .grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5mm 2mm; flex: 1; min-height: 0; }
-  .cell  { display: flex; flex-direction: column; gap: 0mm; }
-  .full  { grid-column: 1 / -1; }
-  .repere { font-size: 12pt; font-weight: 900; color: #1a1a1a; letter-spacing: -0.02em; line-height: 1; }
-  .dim   { font-size: 9.5pt; font-weight: 700; color: #1a1a1a; line-height: 1.1; }
-  .parent-ref { font-size: 6pt; font-weight: 600; color: #555; margin-top: 1mm; line-height: 1.2; }
-</style>
-</head>
-<body>
-${pages}
-<script>
-  document.title = ' ';
-  window.onload = function() {
-    window.focus();
-    window.print();
-    setTimeout(function(){ window.close(); }, 1000);
-  };
-${closeScript}
-</body>
-</html>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title> </title><style>@page{size:9.5cm 5.5cm;margin:0mm}*{margin:0;padding:0;box-sizing:border-box}html,body{width:9.5cm;height:5.5cm;margin:0!important;padding:0!important;background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}@media print{html,body{margin:0!important;padding:0!important}.page{page-break-after:always;page-break-inside:avoid}.page:last-child{page-break-after:avoid}}.page{width:9.5cm;height:5.5cm;overflow:hidden;display:block}.label{width:9.5cm;height:5.5cm;padding:3mm 4mm;display:flex;flex-direction:column;gap:1.2mm;overflow:hidden}.lh{display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #1a1a1a;padding-bottom:1.2mm}.brand{font-size:8.5pt;font-weight:900;color:#1a1a1a;letter-spacing:0.05em;text-transform:uppercase}.swatch{width:10mm;height:5mm;border-radius:2px;border:1px solid #ccc;background-color:${ralHex};flex-shrink:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.row{display:flex;gap:6mm}.f{display:flex;gap:2px;align-items:baseline}.k{font-size:5.5pt;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;margin-right:2px}.v{font-size:6.5pt;font-weight:500;color:#1a1a1a}.remp-type{font-size:7pt!important;font-weight:700!important}.div{border-top:1px dashed #ccc;margin:0;flex-shrink:0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:0.5mm 2mm;flex:1;min-height:0}.cell{display:flex;flex-direction:column;gap:0mm}.full{grid-column:1/-1}.repere{font-size:12pt;font-weight:900;color:#1a1a1a;letter-spacing:-0.02em;line-height:1}.dim{font-size:9.5pt;font-weight:700;color:#1a1a1a;line-height:1.1}.parent-ref{font-size:6pt;font-weight:600;color:#555;margin-top:1mm;line-height:1.2}</style></head><body>${pages}<script>document.title=' ';window.onload=function(){window.focus();window.print();setTimeout(function(){window.close();},1000);};${closeScript}</body></html>`;
 }
-
 
 const EMPTY_REMP = { type: 'Verre', sousType: '', largeur: '', hauteur: '', etat: 'non_entame' };
 
@@ -1198,18 +982,21 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
   const [newRemp, setNewRemp] = React.useState(EMPTY_REMP);
   const [error, setError] = React.useState('');
   const [delivDateModal, setDelivDateModal] = React.useState(null);
-
   const [editingRemp, setEditingRemp] = React.useState(null);
 
   const { t } = useLanguage();
   const { user } = useAuth();
   const userRole = user?.role;
-  const adminThing = userRole === 'Admin';
-  const stateThing = userRole === 'Admin' || ['LOGISTIQUE', 'Coordinateur'].includes(userRole);
+  const adminThing =
+    userRole === 'Admin' ||
+    (userRole === 'Laquage' && project?.tab === 'laquage') ||
+    (userRole === 'Coordinateur-vitrage' && project?.tab === 'vitrage');
+  const adminVerre = userRole === 'Admin' || userRole === 'Coordinateur-vitrage';
+  const stateThingVitrage = userRole === 'Admin' || ['LOGISTIQUE', 'Coordinateur-vitrage'].includes(userRole);
 
   const REMP_ETAT_OPTIONS = ['non_entame', 'en_cours', 'fabrique', 'pret_a_livrer', 'livre'];
   function getRemplissageAllowedEtats(role, currentEtat) {
-    if (role === 'Coordinateur') return ['non_entame', 'en_cours', 'fabrique', 'pret_a_livrer'];
+    if (role === 'Coordinateur-vitrage') return ['non_entame', 'en_cours', 'fabrique', 'pret_a_livrer'];
     if (role === 'LOGISTIQUE') {
       if (currentEtat === 'pret_a_livrer' || currentEtat === 'livre') return ['pret_a_livrer', 'livre'];
       return [currentEtat];
@@ -1218,9 +1005,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
   }
 
   const comp = compIndex !== null ? (chassis.components || [])[compIndex] : null;
-  const compLabel = comp
-    ? (comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${compIndex}`))
-    : null;
+  const compLabel = comp ? (comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${compIndex}`)) : null;
   const compDimL = comp?.largeur || chassis.largeur;
   const compDimH = comp?.hauteur || chassis.hauteur;
 
@@ -1232,8 +1017,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
         if (compIndex !== null) url += `&compIndex=${compIndex}`;
         const res = await axios.get(url);
         setRemplissages(res.data || []);
-      } catch { setRemplissages([]); }
-      finally { setLoading(false); }
+      } catch { setRemplissages([]); } finally { setLoading(false); }
     })();
   }, [chId, project.id, unitIndex, compIndex]);
 
@@ -1241,11 +1025,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
     if (!newRemp.largeur || !newRemp.hauteur) return setError('Largeur et hauteur sont requises');
     setError('');
     try {
-      const body = {
-        ...newRemp,
-        unitIndex,
-        ...(compIndex !== null ? { compIndex } : {}),
-      };
+      const body = { ...newRemp, unitIndex, ...(compIndex !== null ? { compIndex } : {}) };
       const res = await axios.post(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages`, body);
       setRemplissages(prev => [...prev, res.data]);
       setNewRemp(EMPTY_REMP);
@@ -1268,8 +1048,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
       const res = await axios.patch(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${id}`, patch);
       setRemplissages(prev => prev.map(r => (r._id || r.id) === id ? res.data : r));
       if (onSaved) onSaved();
-    } catch (e) { setError(e.response?.data?.error || 'Erreur mise à jour'); }
-    finally { setSaving(null); }
+    } catch (e) { setError(e.response?.data?.error || 'Erreur mise à jour'); } finally { setSaving(null); }
   };
 
   const saveEdit = async () => {
@@ -1277,12 +1056,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
     const { id, type, sousType, largeur, hauteur } = editingRemp;
     if (!largeur || !hauteur) return setError('Largeur et hauteur sont requises');
     setError('');
-    await patchRemp(id, {
-      type,
-      sousType,
-      largeur: Number(largeur),
-      hauteur: Number(hauteur),
-    });
+    await patchRemp(id, { type, sousType, largeur: Number(largeur), hauteur: Number(hauteur) });
     setEditingRemp(null);
   };
 
@@ -1293,17 +1067,11 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
   };
 
   const handleDeliveryConfirm = (date) => {
-    const { id, etat } = delivDateModal;
-    setDelivDateModal(null);
+    const { id, etat } = delivDateModal; setDelivDateModal(null);
     patchRemp(id, { etat, deliveryDate: date });
   };
 
-  const calcM2 = (l, h) => {
-    const lv = parseFloat(l), hv = parseFloat(h);
-    if (!lv || !hv) return '—';
-    return ((lv * hv) / 1e6).toFixed(2) + ' m²';
-  };
-
+  const calcM2 = (l, h) => { const lv = parseFloat(l), hv = parseFloat(h); if (!lv || !hv) return '—'; return ((lv * hv) / 1e6).toFixed(2) + ' m²'; };
   const unitSuffix = chassis.quantity > 1 ? ` #${unitIndex + 1}` : '';
 
   return (
@@ -1312,14 +1080,8 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
         <div className="ct-manager__header">
           <h2>
             {t('remplissage')} — {t('repere')} : {chassis.repere}{unitSuffix}
-            {compLabel && (
-              <span style={{ fontWeight: 400, fontSize: 13, color: '#6b7280', marginLeft: 4 }}>
-                — {compLabel}
-              </span>
-            )}
-            <span style={{ fontWeight: 400, fontSize: 13, color: '#6b7280', marginLeft: 8 }}>
-              ({compDimL}×{compDimH} mm)
-            </span>
+            {compLabel && <span style={{ fontWeight: 400, fontSize: 13, color: '#6b7280', marginLeft: 4 }}>— {compLabel}</span>}
+            <span style={{ fontWeight: 400, fontSize: 13, color: '#6b7280', marginLeft: 8 }}>({compDimL}×{compDimH} mm)</span>
           </h2>
           <button className="chassis-form__close" onClick={onClose}>×</button>
         </div>
@@ -1330,12 +1092,9 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
               <table className="proj-acc-table" style={{ marginBottom: 20 }}>
                 <thead>
                   <tr>
-                    <th>{t('type')}</th>
-                    <th>{t('subtype')}</th>
-                    <th style={{ width: 80 }}>L (mm)</th>
-                    <th style={{ width: 80 }}>H (mm)</th>
-                    <th style={{ width: 90 }}>m²</th>
-                    <th style={{ width: 120 }}>{t('status')}</th>
+                    <th>{t('type')}</th><th>{t('subtype')}</th>
+                    <th style={{ width: 80 }}>L (mm)</th><th style={{ width: 80 }}>H (mm)</th>
+                    <th style={{ width: 90 }}>m²</th><th style={{ width: 120 }}>{t('status')}</th>
                     <th style={{ width: 120 }}>{t('blDate')}</th>
                     {adminThing && <th style={{ width: 40 }}></th>}
                     {adminThing && <th style={{ width: 40 }}></th>}
@@ -1344,137 +1103,58 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                 </thead>
                 <tbody>
                   {remplissages.map(r => {
-                    const id = r._id || r.id;
-                    const isSaving = saving === id;
-                    const isEditing = editingRemp?.id === id;
-
+                    const id = r._id || r.id; const isSaving = saving === id; const isEditing = editingRemp?.id === id;
                     return (
                       <tr key={id} style={{ opacity: isSaving ? 0.6 : 1, background: isEditing ? '#f0f9ff' : undefined }}>
+                        <td>{isEditing ? <select value={editingRemp.type} onChange={e => setEditingRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>{REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}</select> : <strong>{r.type}</strong>}</td>
+                        <td>{isEditing ? <input type="text" value={editingRemp.sousType} onChange={e => setEditingRemp(p => ({ ...p, sousType: e.target.value }))} placeholder="Sous-type…" style={{ width: '100%' }} /> : (r.sousType || <span style={{ color: '#9ca3af' }}>—</span>)}</td>
+                        <td style={{ textAlign: 'center' }}>{isEditing ? <input type="number" min="1" value={editingRemp.largeur} onChange={e => setEditingRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" style={{ width: 70 }} /> : r.largeur}</td>
+                        <td style={{ textAlign: 'center' }}>{isEditing ? <input type="number" min="1" value={editingRemp.hauteur} onChange={e => setEditingRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" style={{ width: 70 }} /> : r.hauteur}</td>
+                        <td style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>{calcM2(isEditing ? editingRemp.largeur : r.largeur, isEditing ? editingRemp.hauteur : r.hauteur)}</td>
                         <td>
-                          {isEditing ? (
-                            <select value={editingRemp.type} onChange={e => setEditingRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>
-                              {REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}
-                            </select>
-                          ) : <strong>{r.type}</strong>}
-                        </td>
-                        <td>
-                          {isEditing ? (
-                            <input type="text" value={editingRemp.sousType} onChange={e => setEditingRemp(p => ({ ...p, sousType: e.target.value }))} placeholder="Sous-type…" style={{ width: '100%' }} />
-                          ) : (r.sousType || <span style={{ color: '#9ca3af' }}>—</span>)}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          {isEditing ? (
-                            <input type="number" min="1" value={editingRemp.largeur} onChange={e => setEditingRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" style={{ width: 70 }} />
-                          ) : r.largeur}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          {isEditing ? (
-                            <input type="number" min="1" value={editingRemp.hauteur} onChange={e => setEditingRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" style={{ width: 70 }} />
-                          ) : r.hauteur}
-                        </td>
-                        <td style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>
-                          {calcM2(isEditing ? editingRemp.largeur : r.largeur, isEditing ? editingRemp.hauteur : r.hauteur)}
-                        </td>
-                        <td>
-                          {stateThing ? (
+                          {stateThingVitrage ? (
                             <select value={r.etat} disabled={isSaving || isEditing || isEtatSelectDisabled(userRole, r.etat, isSaving)} onChange={e => handleEtatChange(r, e.target.value)} style={{ borderLeft: `3px solid ${ETAT_COLORS[r.etat]}`, borderRadius: 4, padding: '3px 6px', fontSize: 12, width: '100%' }}>
-                              {getRemplissageAllowedEtats(userRole, r.etat).map(opt => (
-                                <option key={opt} value={opt}>{t('etat_' + opt)}</option>
-                              ))}
+                              {getRemplissageAllowedEtats(userRole, r.etat).map(opt => <option key={opt} value={opt}>{t('etat_' + opt)}</option>)}
                             </select>
                           ) : (
-                            <span className="etat-badge" style={{ background: ETAT_COLORS[r.etat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>
-                              {t(`etat_${r.etat}`)}
-                            </span>
+                            <span className="etat-badge" style={{ background: ETAT_COLORS[r.etat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>{t(`etat_${r.etat}`)}</span>
                           )}
                         </td>
                         <td style={{ textAlign: 'center', fontSize: 12 }}>
                           {r.etat === 'livre' && r.deliveryDate
-                            ? <button className="date-btn" style={{ fontSize: 11 }} onClick={() => setDelivDateModal({ id, etat: 'livre', current: toDateInput(r.deliveryDate) })}>
-                              📅 {fmtDate(r.deliveryDate)}
-                            </button>
+                            ? <button className="date-btn" style={{ fontSize: 11 }} onClick={() => setDelivDateModal({ id, etat: 'livre', current: toDateInput(r.deliveryDate) })}>📅 {fmtDate(r.deliveryDate)}</button>
                             : <span style={{ color: '#9ca3af' }}>—</span>}
                         </td>
-                        {adminThing && (
-                          <td>
-                            {isEditing ? (
-                              <div style={{ display: 'flex', gap: 4 }}>
-                                <button className="ct-config-btn" title="Enregistrer" style={{ fontSize: 11, padding: '2px 7px' }} onClick={saveEdit} disabled={isSaving}>💾</button>
-                                <button className="delete-btn" title="Annuler" style={{ fontSize: 11, padding: '2px 7px' }} onClick={() => setEditingRemp(null)}>✕</button>
-                              </div>
-                            ) : (
-                              <button className="edit-btn" title="Modifier" disabled={isSaving} onClick={() => setEditingRemp({ id, type: r.type, sousType: r.sousType || '', largeur: r.largeur, hauteur: r.hauteur })}>✏️</button>
-                            )}
-                          </td>
-                        )}
-                        {adminThing && (
-                          <td>
-                            <button className="print-btn" title="Imprimer étiquette" disabled={isEditing} onClick={() => {
-                              const tl = chassisLabels[chassis.type]?.[language] || chassisLabels[chassis.type]?.fr || chassis.type;
-                              const html = buildRemplissageLabelHTML([r], chassis, project, compLabel, tl);
-                              const w = window.open('', '_blank');
-                              if (w) { w.document.write(html); w.document.close(); }
-                            }}>🏷</button>
-                          </td>
-                        )}
-                        {adminThing && (
-                          <td>
-                            <button className="delete-btn" onClick={() => deleteRemp(id)} disabled={isSaving || isEditing}>✕</button>
-                          </td>
-                        )}
+                        {adminThing && <td>{isEditing ? <div style={{ display: 'flex', gap: 4 }}><button className="ct-config-btn" style={{ fontSize: 11, padding: '2px 7px' }} onClick={saveEdit} disabled={isSaving}>💾</button><button className="delete-btn" style={{ fontSize: 11, padding: '2px 7px' }} onClick={() => setEditingRemp(null)}>✕</button></div> : <button className="edit-btn" disabled={isSaving} onClick={() => setEditingRemp({ id, type: r.type, sousType: r.sousType || '', largeur: r.largeur, hauteur: r.hauteur })}>✏️</button>}</td>}
+                        {adminThing && <td><button className="print-btn" disabled={isEditing} onClick={() => { const tl = chassisLabels[chassis.type]?.[language] || chassisLabels[chassis.type]?.fr || chassis.type; const html = buildRemplissageLabelHTML([r], chassis, project, compLabel, tl); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🏷</button></td>}
+                        {adminThing && <td><button className="delete-btn" onClick={() => deleteRemp(id)} disabled={isSaving || isEditing}>✕</button></td>}
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            ) : (
-              <div className="proj-acc-empty" style={{ marginBottom: 20 }}>{t('noData')}</div>
-            )}
+            ) : <div className="proj-acc-empty" style={{ marginBottom: 20 }}>{t('noData')}</div>}
 
-            {adminThing && (
+            {adminVerre && (
               <div className="proj-acc-add-form">
                 <div className="proj-acc-add-form__title">➕ {t('add_infill')}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 80px auto', gap: 10, alignItems: 'flex-end' }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>{t('type')}</label>
-                    <select value={newRemp.type} onChange={e => setNewRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>
-                      {REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}
-                    </select>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>{t('subtype')}</label>
-                    <input type="text" value={newRemp.sousType} onChange={e => setNewRemp(p => ({ ...p, sousType: e.target.value }))} placeholder={t('subtype_placeholder')} style={{ width: '100%' }} />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>{t('width_mm')}</label>
-                    <input type="number" min="1" value={newRemp.largeur} onChange={e => setNewRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>{t('height_mm')}</label>
-                    <input type="number" min="1" value={newRemp.hauteur} onChange={e => setNewRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" />
-                  </div>
-                  <div>
-                    <button type="button" className="ct-config-btn" style={{ marginTop: 22 }} onClick={addRemp}>{t('add')}</button>
-                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}><label>{t('type')}</label><select value={newRemp.type} onChange={e => setNewRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>{REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}</select></div>
+                  <div className="form-group" style={{ marginBottom: 0 }}><label>{t('subtype')}</label><input type="text" value={newRemp.sousType} onChange={e => setNewRemp(p => ({ ...p, sousType: e.target.value }))} placeholder={t('subtype_placeholder')} style={{ width: '100%' }} /></div>
+                  <div className="form-group" style={{ marginBottom: 0 }}><label>{t('width_mm')}</label><input type="number" min="1" value={newRemp.largeur} onChange={e => setNewRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" /></div>
+                  <div className="form-group" style={{ marginBottom: 0 }}><label>{t('height_mm')}</label><input type="number" min="1" value={newRemp.hauteur} onChange={e => setNewRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" /></div>
+                  <div><button type="button" className="ct-config-btn" style={{ marginTop: 22 }} onClick={addRemp}>{t('add')}</button></div>
                 </div>
-                {newRemp.largeur && newRemp.hauteur && (
-                  <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
-                    {t('surface')} <strong>{calcM2(newRemp.largeur, newRemp.hauteur)}</strong>
-                  </div>
-                )}
+                {newRemp.largeur && newRemp.hauteur && <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>{t('surface')} <strong>{calcM2(newRemp.largeur, newRemp.hauteur)}</strong></div>}
               </div>
             )}
           </>
         )}
-
         {delivDateModal && (
           <div className="modal-overlay" onClick={() => setDelivDateModal(null)}>
             <div className="modal" style={{ maxWidth: 320 }} onClick={e => e.stopPropagation()}>
               <h3 style={{ marginBottom: 16 }}>📅 Date de livraison</h3>
-              <div className="form-group">
-                <label>Date</label>
-                <input type="date" defaultValue={delivDateModal.current || new Date().toISOString().split('T')[0]} id="remp-date-input" />
-              </div>
+              <div className="form-group"><label>Date</label><input type="date" defaultValue={delivDateModal.current || new Date().toISOString().split('T')[0]} id="remp-date-input" /></div>
               <div className="modal-actions">
                 <button onClick={() => setDelivDateModal(null)}>Annuler</button>
                 <button className="primary" onClick={() => handleDeliveryConfirm(document.getElementById('remp-date-input').value)}>Confirmer</button>
@@ -1510,12 +1190,44 @@ function ProjectDetail({ project, onBack, currentUser }) {
   const statusColor = STATUS_COLORS[project.status] || '#9ca3af';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
+  const { user } = useAuth();
+  const userRole = user?.role;
+
+  // ── Derived permission flags ────────────────────────────────────────────────
+  const tabCfg = getTabConfig(project);
+  const projectTab = project?.tab || 'aluminium';
+
+  // Can add/edit/delete chassis, manage types, print labels
+  const adminThing =
+    userRole === 'Admin' ||
+    (userRole === 'Laquage' && projectTab === 'laquage') ||
+    (userRole === 'Coordinateur-vitrage' && projectTab === 'vitrage');
+
+  // Admin-only actions (accessories editor, chassis print sheet)
+  const adminOnly = userRole === 'Admin';
+
+  // Can see the état dropdown (vs read-only badge) — per TAB_CONFIG.stateRoles
+  const stateThing = canSeeEtatDropdown(userRole, project);
+
+  // Can assign atelier table (aluminium tab only)
+  const canEditAtelierTable = tabCfg.tableRoles.includes(userRole);
+
+  // Can assign vitrage/remplissage table
+  const canEditRemplissageTable = tabCfg.tableRoles.includes(userRole);
+
+  // Can see/manage remplissages
+  const adminVerre = userRole === 'Admin' || userRole === 'Coordinateur-vitrage';
+
+  // Atelier table column: only show for aluminium tab
+  const showAtelierCols = projectTab === 'aluminium';
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
   useEffect(() => { fetchChassisTypes().then(types => setChassisLabels(buildChassisLabels(types))).catch(() => { }); }, [showTypeManager]);
   useEffect(() => {
     const init = {};
     for (const ch of project.chassis || []) {
-      const qty = ch.quantity || 1; const chId = ch._id || ch.id;
-      const isComposite = (ch.components || []).length > 0;
+      const qty = ch.quantity || 1; const chId = ch._id || ch.id; const isComposite = (ch.components || []).length > 0;
       for (let i = 0; i < qty; i++) {
         const unit = getUnit(ch, i); const key = `${chId}-${i}`;
         if (!isComposite) { if (unit.atelierTable) init[key] = unit.atelierTable; }
@@ -1543,8 +1255,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
           if (found) { const accessories = computeChassisAccessories(ch); if (accessories.length > 0) await axios.post(`${API_URL}/table-stock/deduct-chassis`, { tableId: found.id, tableName: newTable, projectId: project.id, projectName: project.name, chassisRef: ch.repere, accessories }); }
         } catch { }
       }
-    } catch (e) { console.error('Atelier table save failed', e); }
-    finally { setSavingTableKey(null); }
+    } catch (e) { console.error('Atelier table save failed', e); } finally { setSavingTableKey(null); }
   }, [project, refreshProject, atelierTables]);
 
   const rows = (project.chassis || []).flatMap(ch => {
@@ -1584,7 +1295,9 @@ function ProjectDetail({ project, onBack, currentUser }) {
 
   const [ATELIER_TABLES, setAtelierTableOptions] = useState([]);
   useEffect(() => {
-    axios.get(`${API_URL}/atelier-tables/names`).then(res => setAtelierTableOptions((res.data || []).slice().sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' })))).catch(() => setAtelierTableOptions(['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 6', 'Table 7', 'Table 8']));
+    axios.get(`${API_URL}/atelier-tables/names`)
+      .then(res => setAtelierTableOptions((res.data || []).slice().sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))))
+      .catch(() => setAtelierTableOptions(['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 6', 'Table 7', 'Table 8']));
   }, []);
 
   const startBatchPrint = () => {
@@ -1600,15 +1313,6 @@ function ProjectDetail({ project, onBack, currentUser }) {
   };
 
   const totalDisplayRows = (project.chassis || []).reduce((acc, ch) => acc + (ch.quantity || 1), 0);
-  const { user } = useAuth();
-  const userRole = user?.role;
-  const adminThing = userRole === 'Admin';
-  const coordinateurThing = userRole === 'Admin' || userRole === 'Coordinateur';
-  const magThing = userRole === 'Admin' || userRole === 'Magasinier';
-  const stateThing = userRole === 'Admin' || ['LOGISTIQUE', 'Coordinateur'].includes(userRole);
-
-  // Same permission as atelierTables column — coordinateurThing
-  const canEditRemplissageTable = coordinateurThing;
 
   const detailTabs = [
     { key: 'chassis', label: t('tabChassis'), count: totalDisplayRows },
@@ -1617,8 +1321,59 @@ function ProjectDetail({ project, onBack, currentUser }) {
     { key: 'barres_laquer', label: t('BarresaLaquer'), count: null },
     { key: 'accessoires_laquer', label: t('AccessoiresaLaquer'), count: null },
   ];
-  const ROLE_TAB_ACCESS = { Laquage: ['barres_laquer', 'accessoires_laquer', 'bars'], BARREMAN: ['barres_laquer'], Coordinateur: ['chassis', 'barres_laquer', 'accessoires_laquer'], Magasinier: ['bars', 'accessoires_laquer'], LOGISTIQUE: ['chassis', 'bl'] };
+  const ROLE_TAB_ACCESS = {
+    Laquage: ['barres_laquer', 'accessoires_laquer', 'bars'],
+    BARREMAN: ['barres_laquer'],
+    Coordinateur: ['chassis', 'barres_laquer', 'accessoires_laquer'],
+    Magasinier: ['bars', 'accessoires_laquer'],
+    LOGISTIQUE: ['chassis', 'bl'],
+    'Coordinateur-vitrage': ['chassis', 'bl'],
+  };
   const visibleTabs = adminThing ? detailTabs : detailTabs.filter(sc => (ROLE_TAB_ACCESS[userRole] || []).includes(sc.key));
+
+  // ─── État cell renderer — used for both unit and component rows ──────────────
+  /**
+   * Renders the état cell:
+   * - If the role CAN see a dropdown → show select (possibly disabled)
+   * - Otherwise → show a read-only colored badge
+   */
+  const renderEtatCell = (etat, isSaving, onChangeHandler) => {
+    if (stateThing) {
+      const allowedEtats = getAllowedEtats(userRole, etat, project);
+      // If current etat is not in allowed list (edge case), show it anyway so the value isn't lost
+      const displayEtat = allowedEtats.includes(etat) ? etat : etat;
+      const disabled = isEtatSelectDisabled(userRole, etat, isSaving);
+      return (
+        <td data-label="État">
+          <select
+            className={`etat-select etat-select--${displayEtat}`}
+            value={displayEtat}
+            disabled={disabled}
+            onChange={e => onChangeHandler(e.target.value)}
+            style={{ borderLeftColor: ETAT_COLORS[displayEtat] }}
+          >
+            {/* Always include current etat in options so value is shown */}
+            {allowedEtats.includes(etat)
+              ? allowedEtats.map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)
+              : [<option key={etat} value={etat}>{t(`etat_${etat}`)}</option>, ...allowedEtats.map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)]
+            }
+          </select>
+        </td>
+      );
+    }
+    // Read-only badge for everyone else
+    return (
+      <td data-label="État">
+        <span
+          className="etat-badge"
+          style={{ background: ETAT_COLORS[etat] || '#9ca3af', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap', display: 'inline-block' }}
+        >
+          {t(`etat_${etat}`)}
+        </span>
+      </td>
+    );
+  };
+  // ─────────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="project-detail">
@@ -1633,6 +1388,15 @@ function ProjectDetail({ project, onBack, currentUser }) {
               <span>{t('ral')} <strong>{project.ralCode}</strong></span>
               <span>{t('date')}: <strong>{dateStr}</strong></span>
               <span className="project-detail__status" style={{ backgroundColor: statusColor }}>{t(`status_${project.status}`) || project.status}</span>
+              {project.tab && project.tab !== 'aluminium' && (
+                <span style={{
+                  fontSize: 11, padding: '2px 8px', borderRadius: 99, fontWeight: 700,
+                  background: project.tab === 'laquage' ? '#fef3c7' : '#ede9fe',
+                  color: project.tab === 'laquage' ? '#92400e' : '#5b21b6',
+                }}>
+                  {project.tab === 'laquage' ? '🎨 Laquage' : '🪟 Vitrage'}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -1658,88 +1422,36 @@ function ProjectDetail({ project, onBack, currentUser }) {
         <div className="project-detail__panel">
           <div className="panel-toolbar">
             {adminThing && <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>+ {t('addChassis')}</button>}
-            {magThing && <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}>⚙️ {t('chassisTypeConfig')}</button>}
-            {rows.length > 0 && adminThing && (
+            {adminThing && <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}><ShipWheel size={15} /></button>}
+            {rows.length > 0 && adminVerre && (
               <div className="selection-toolbar">
-                <button className="select-btn" onClick={toggleAll}>{selectedKeys.size === allSelectableKeys.length ? t('deselectAll') : t('selectAll')}</button>
-                {selectedKeys.size > 0 && <button className="print-selected-btn" onClick={startBatchPrint}>🖨 {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})</button>}
+                {adminThing && (
+                  <button className="select-btn" onClick={toggleAll}>{selectedKeys.size === allSelectableKeys.length ? t('deselectAll') : t('selectAll')}</button>
+                )}
+                {selectedKeys.size > 0 && adminThing && <button className="print-selected-btn" onClick={startBatchPrint}>🖨 {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})</button>}
                 {(() => {
-                  const allRemp = (project.chassis || []).flatMap(ch => {
-                    const numComps = (ch.components || []).length;
-                    return (ch.remplissages || []).map(r => ({ r, ch, numComps }));
-                  });
+                  const allRemp = (project.chassis || []).flatMap(ch => { const numComps = (ch.components || []).length; return (ch.remplissages || []).map(r => ({ r, ch, numComps })); });
                   if (allRemp.length === 0) return null;
                   return (
-                    <button
-                      className="print-selected-btn"
-                      style={{ background: '#6366f1' }}
-                      onClick={() => {
-                        const byChassisId = {};
-                        allRemp.forEach(({ r, ch, numComps }) => {
-                          const cid = (ch._id || ch.id).toString();
-                          if (!byChassisId[cid]) byChassisId[cid] = { ch, numComps, remps: [] };
-                          byChassisId[cid].remps.push(r);
+                    <button className="print-selected-btn" style={{ background: '#6366f1' }} onClick={() => {
+                      const byChassisId = {};
+                      allRemp.forEach(({ r, ch, numComps }) => { const cid = (ch._id || ch.id).toString(); if (!byChassisId[cid]) byChassisId[cid] = { ch, numComps, remps: [] }; byChassisId[cid].remps.push(r); });
+                      const ralHex = project.ralColor || '#cccccc';
+                      const dateStr2 = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
+                      const unitSuffix2 = (ch, idx) => (ch.quantity || 1) > 1 ? ` #${Number(idx) + 1}` : '';
+                      const allPages = Object.values(byChassisId).flatMap(({ ch, remps }) => {
+                        const tl = chassisLabels[ch.type]?.[language] || chassisLabels[ch.type]?.fr || ch.type;
+                        return remps.map(r => {
+                          const compLabel2 = r.compIndex != null ? (() => { const comp = (ch.components || [])[r.compIndex]; return comp ? (comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${r.compIndex}`)) : null; })() : null;
+                          const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+                          const repere = compLabel2 ? `${ch.repere}${unitSuffix2(ch, r.unitIndex ?? 0)} — ${compLabel2}` : `${ch.repere}${unitSuffix2(ch, r.unitIndex ?? 0)}`;
+                          return `<div class="page"><div class="label"><div class="lh"><span class="brand">CAMI ALUMINIUM</span><span class="swatch"></span></div><div class="row"><span class="f"><span class="k">Projet</span><span class="v">${project.name}</span></span><span class="f"><span class="k">Réf.</span><span class="v">${project.reference}</span></span></div><div class="row"><span class="f"><span class="k">RAL</span><span class="v">${project.ralCode}</span></span><span class="f"><span class="k">Date</span><span class="v">${dateStr2}</span></span></div><div class="div"></div><div class="grid"><div class="cell"><span class="k">Repère</span><span class="repere">${repere}<div class="parent-ref">${tl}</div></span></div><div class="cell"><span class="k">Remplissage</span><span class="v remp-type">${rLabel}</span></div><div class="cell full"><span class="k">Dimensions</span><span class="dim">${r.largeur} × ${r.hauteur} mm</span></div></div></div></div>`;
                         });
-                        const ralHex = project.ralColor || '#cccccc';
-                        const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
-                        const unitSuffix = (ch, idx) => (ch.quantity || 1) > 1 ? ` #${Number(idx) + 1}` : '';
-                        const allPages = Object.values(byChassisId).flatMap(({ ch, numComps, remps }) => {
-                          const tl = chassisLabels[ch.type]?.[language] || chassisLabels[ch.type]?.fr || ch.type;
-                          return remps.map(r => {
-                            const compLabel = r.compIndex != null
-                              ? (() => { const comp = (ch.components || [])[r.compIndex]; return comp ? (comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${r.compIndex}`)) : null; })()
-                              : null;
-                            const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
-                            const repere = compLabel
-                              ? `${ch.repere}${unitSuffix(ch, r.unitIndex ?? 0)} — ${compLabel}`
-                              : `${ch.repere}${unitSuffix(ch, r.unitIndex ?? 0)}`;
-                            return `<div class="page"><div class="label">
-    <div class="lh"><span class="brand">CAMI ALUMINIUM</span><span class="swatch"></span></div>
-    <div class="row">
-      <span class="f"><span class="k">Projet</span><span class="v">${project.name}</span></span>
-      <span class="f"><span class="k">Réf.</span><span class="v">${project.reference}</span></span>
-    </div>
-    <div class="row">
-      <span class="f"><span class="k">RAL</span><span class="v">${project.ralCode}</span></span>
-      <span class="f"><span class="k">Date</span><span class="v">${dateStr}</span></span>
-    </div>
-    <div class="div"></div>
-    <div class="grid">
-      <div class="cell"><span class="k">Repère</span><span class="repere">${repere}<div class="parent-ref">${tl}</div></span></div>
-      <div class="cell"><span class="k">Remplissage</span><span class="v remp-type">${rLabel}</span></div>
-      <div class="cell full"><span class="k">Dimensions</span><span class="dim">${r.largeur} × ${r.hauteur} mm</span></div>
-    </div>
-  </div></div>`;
-                          });
-                        }).join('\n');
-                        const closeScript = '<' + '/script>';
-                        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title> </title><style>
-  @page{size:9.5cm 5.5cm;margin:0mm}
-  *{margin:0;padding:0;box-sizing:border-box}
-  html,body{width:9.5cm;height:5.5cm;margin:0!important;padding:0!important;background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  @media print{html,body{margin:0!important;padding:0!important}.page{page-break-after:always;page-break-inside:avoid}.page:last-child{page-break-after:avoid}}
-  .page{width:9.5cm;height:5.5cm;overflow:hidden;display:block}
-  .label{width:9.5cm;height:5.5cm;padding:3mm 4mm;display:flex;flex-direction:column;gap:1.2mm;overflow:hidden}
-  .lh{display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #1a1a1a;padding-bottom:1.2mm}
-  .brand{font-size:8.5pt;font-weight:900;color:#1a1a1a;letter-spacing:.05em;text-transform:uppercase}
-  .swatch{width:10mm;height:5mm;border-radius:2px;border:1px solid #ccc;background-color:${ralHex};flex-shrink:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .row{display:flex;gap:6mm}
-  .f{display:flex;gap:2px;align-items:baseline}
-  .k{font-size:5.5pt;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;margin-right:2px}
-  .v{font-size:6.5pt;font-weight:500;color:#1a1a1a}
-  .remp-type{font-size:7pt!important;font-weight:700!important}
-  .div{border-top:1px dashed #ccc;margin:0;flex-shrink:0}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:.5mm 2mm;flex:1;min-height:0}
-  .cell{display:flex;flex-direction:column;gap:0mm}
-  .full{grid-column:1/-1}
-  .repere{font-size:12pt;font-weight:900;color:#1a1a1a;letter-spacing:-.02em;line-height:1}
-  .dim{font-size:9.5pt;font-weight:700;color:#1a1a1a;line-height:1.1}
-  .parent-ref{font-size:6pt;font-weight:600;color:#555;margin-top:1mm;line-height:1.2}
-</style></head><body>${allPages}<script>document.title=' ';window.onload=function(){window.focus();window.print();setTimeout(function(){window.close();},1000)};${closeScript}</body></html>`;
-                        const w = window.open('', '_blank');
-                        if (w) { w.document.write(html); w.document.close(); }
-                      }}
-                    >
+                      }).join('\n');
+                      const closeScript = '<' + '/script>';
+                      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title> </title><style>@page{size:9.5cm 5.5cm;margin:0mm}*{margin:0;padding:0;box-sizing:border-box}html,body{width:9.5cm;height:5.5cm;margin:0!important;padding:0!important;background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}@media print{html,body{margin:0!important;padding:0!important}.page{page-break-after:always;page-break-inside:avoid}.page:last-child{page-break-after:avoid}}.page{width:9.5cm;height:5.5cm;overflow:hidden;display:block}.label{width:9.5cm;height:5.5cm;padding:3mm 4mm;display:flex;flex-direction:column;gap:1.2mm;overflow:hidden}.lh{display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #1a1a1a;padding-bottom:1.2mm}.brand{font-size:8.5pt;font-weight:900;color:#1a1a1a;letter-spacing:.05em;text-transform:uppercase}.swatch{width:10mm;height:5mm;border-radius:2px;border:1px solid #ccc;background-color:${ralHex};flex-shrink:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.row{display:flex;gap:6mm}.f{display:flex;gap:2px;align-items:baseline}.k{font-size:5.5pt;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;margin-right:2px}.v{font-size:6.5pt;font-weight:500;color:#1a1a1a}.remp-type{font-size:7pt!important;font-weight:700!important}.div{border-top:1px dashed #ccc;margin:0;flex-shrink:0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:.5mm 2mm;flex:1;min-height:0}.cell{display:flex;flex-direction:column;gap:0mm}.full{grid-column:1/-1}.repere{font-size:12pt;font-weight:900;color:#1a1a1a;letter-spacing:-.02em;line-height:1}.dim{font-size:9.5pt;font-weight:700;color:#1a1a1a;line-height:1.1}.parent-ref{font-size:6pt;font-weight:600;color:#555;margin-top:1mm;line-height:1.2}</style></head><body>${allPages}<script>document.title=' ';window.onload=function(){window.focus();window.print();setTimeout(function(){window.close();},1000)};${closeScript}</body></html>`;
+                      const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
+                    }}>
                       🏷 Étiquettes remplissages ({allRemp.length})
                     </button>
                   );
@@ -1747,6 +1459,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
               </div>
             )}
           </div>
+
           {!project.chassis?.length ? <div className="no-items">{t('noChassis')}</div> : (
             <div className="chassis-table-wrapper">
               <table className="chassis-table">
@@ -1759,27 +1472,25 @@ function ProjectDetail({ project, onBack, currentUser }) {
                     <th>{t('hauteur')} (mm)</th>
                     <th>{t('dimension')}</th>
                     <th>m²</th>
-                    <th>{t('remplissage')}</th>
+                    {/* Remplissage col: aluminium tab only */}
+                    {showAtelierCols && <th>{t('remplissage')}</th>}
                     <th>{t('etat')}</th>
                     <th>{t('deliveryDate')}</th>
-                    {/* Chassis atelier table — grey-left-border */}
-                    <th className="atelier-table-col">Table atelier</th>
-                    {/* Remplissage atelier table — blue-left-border, always shown but editable only for coordinateurThing */}
-                    <th className="atelier-table-col" style={{ color: '#3b82f6' }}>
-                      Table vitrage
-                    </th>
+                    {/* Atelier / Vitrage cols: aluminium tab only */}
+                    {showAtelierCols && <th className="atelier-table-col">Table atelier</th>}
+                    {showAtelierCols && <th className="atelier-table-col" style={{ color: '#3b82f6' }}>Table vitrage</th>}
                     <th>{t('actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map(row => {
-                    // ── GROUP HEAD (composite parent) ────────────────────────
+
+                    // ── GROUP HEAD ──────────────────────────────────────────
                     if (row.kind === 'groupHead') {
                       const { ch, chId, unitIndex, label, derivedEtat } = row; const rowKey = row.rowKey;
                       const chM2 = ch.largeur && ch.hauteur ? ((ch.largeur * ch.hauteur) / 1e6).toFixed(2) : '—';
                       const allCompsRemp = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex !== null);
-                      const allCompsCnt = allCompsRemp.length;
-                      const allCompsRdy = allCompsRemp.filter(r => REMP_DONE_ETATS.has(r.etat)).length;
+                      const allCompsCnt = allCompsRemp.length; const allCompsRdy = allCompsRemp.filter(r => REMP_DONE_ETATS.has(r.etat)).length;
                       return (
                         <tr key={rowKey} className="chassis-row chassis-row--group-head">
                           {adminThing && <td className="chassis-row__check" />}
@@ -1788,43 +1499,35 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           <td data-label="L (mm)">{ch.largeur}</td><td data-label="H (mm)">{ch.hauteur}</td>
                           <td data-label="Dimension" className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
                           <td data-label="m²" style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{chM2} m²</td>
-                          <td data-label="Remplissage">
-                            {allCompsCnt > 0
-                              ? <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: allCompsRdy === allCompsCnt ? '#dcfce7' : '#fef9c3', color: allCompsRdy === allCompsCnt ? '#16a34a' : '#92400e', fontWeight: 600 }}>
-                                {allCompsRdy}/{allCompsCnt} prêt{allCompsCnt > 1 ? 's' : ''}
-                              </span>
-                              : <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>}
-                          </td>
+                          {showAtelierCols && (
+                            <td data-label="Remplissage">
+                              {allCompsCnt > 0
+                                ? <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: allCompsRdy === allCompsCnt ? '#dcfce7' : '#fef9c3', color: allCompsRdy === allCompsCnt ? '#16a34a' : '#92400e', fontWeight: 600 }}>{allCompsRdy}/{allCompsCnt} prêt{allCompsCnt > 1 ? 's' : ''}</span>
+                                : <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>}
+                            </td>
+                          )}
+                          {/* Group head: always show read-only derived état badge */}
                           <td data-label="État">
-                            <span className="etat-badge" style={{ background: ETAT_COLORS[derivedEtat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap' }}>
-                              {t(`etat_${derivedEtat}`)}
-                            </span>
+                            <span className="etat-badge" style={{ background: ETAT_COLORS[derivedEtat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap' }}>{t(`etat_${derivedEtat}`)}</span>
                           </td>
                           <td data-label="Date"><span className="date-placeholder">—</span></td>
-                          {/* Chassis atelier table — group head: no assignment (components handle it) */}
-                          <td data-label="Atelier" className="atelier-table-col">
-                            <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>
-                          </td>
-                          {/* Remplissage atelier table — group head: no direct remplissages (components have them) */}
-                          <td data-label="Vitrage" className="atelier-table-col">
-                            <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>
-                          </td>
-                          {adminThing && <td data-label=""><div className="chassis-row__actions">
+                          {showAtelierCols && <td data-label="Atelier" className="atelier-table-col"><span style={{ color: '#9ca3af', fontSize: 11 }}>—</span></td>}
+                          {showAtelierCols && <td data-label="Vitrage" className="atelier-table-col"><span style={{ color: '#9ca3af', fontSize: 11 }}>—</span></td>}
+                          <td data-label="">{adminThing && <div className="chassis-row__actions">
                             <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, _originalId: chId }); setShowChassisForm(true); }}>✏️</button>
-                            <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>
-                            <button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>
-                            <button className="print-btn" onClick={() => { const toPrint = ch.components.map((comp, ci) => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; return { ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }; }); const html = buildLabelHTML(toPrint, project, chassisLabels, language); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🏷</button>
+                            {adminOnly && <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>}
+                            {adminOnly && (<button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>)}
+                            {adminOnly && (<button className="print-btn" onClick={() => { const toPrint = ch.components.map((comp, ci) => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; return { ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }; }); const html = buildLabelHTML(toPrint, project, chassisLabels, language); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🏷</button>)}
                             <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}>🗑</button>
-                          </div></td>}
+                          </div>}</td>
                         </tr>
                       );
                     }
 
                     // ── COMPONENT ROW ───────────────────────────────────────
                     if (row.kind === 'component') {
-                      const { ch, chId, unitIndex, comp, ci, rowKey, groupKey, label, etat } = row;
-                      const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey);
-                      const isSavingTable = savingTableKey === rowKey;
+                      const { ch, chId, unitIndex, comp, ci, rowKey, label, etat } = row;
+                      const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey); const isSavingTable = savingTableKey === rowKey;
                       const compM2 = comp.largeur && comp.hauteur ? ((comp.largeur * comp.hauteur) / 1e6).toFixed(2) : '—';
                       return (
                         <tr key={rowKey} className={`component-row${isSelected ? ' component-row--selected' : ''}${isSaving ? ' component-row--saving' : ''}`}>
@@ -1834,59 +1537,37 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           <td data-label="L (mm)">{comp.largeur || '—'}</td><td data-label="H (mm)">{comp.hauteur || '—'}</td>
                           <td data-label="Dimension" className="dim-cell">{comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}</td>
                           <td data-label="m²" style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{compM2 !== '—' ? compM2 + ' m²' : '—'}</td>
-                          <td data-label="Remplissage">
-                            <RemplissageBadge
-                              chassis={ch}
-                              unitIndex={unitIndex}
-                              compIndex={ci}
-                              onClick={() => setRemplissageEditor({ ch, unitIndex, compIndex: ci })}
-                            />
-                          </td>
-                          {stateThing && <td data-label="État">
-                            <select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleComponentEtatChange(ch, unitIndex, ci, e.target.value, rowKey)}>
-                              {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
-                            </select>
-                          </td>}
+                          {showAtelierCols && (
+                            <td data-label="Remplissage">
+                              <RemplissageBadge chassis={ch} unitIndex={unitIndex} compIndex={ci} onClick={() => setRemplissageEditor({ ch, unitIndex, compIndex: ci })} />
+                            </td>
+                          )}
+                          {/* État cell */}
+                          {renderEtatCell(etat, isSaving, (newEtat) => handleComponentEtatChange(ch, unitIndex, ci, newEtat, rowKey))}
                           <td data-label="Date"><span className="date-placeholder">—</span></td>
-                          {/* Chassis atelier table — per component, saved independently */}
-                          <td data-label="Atelier" className="atelier-table-col">
-                            {coordinateurThing ? (
-                              <select
-                                className={`etat-select etat-select--livre atelier-select${isSavingTable ? ' atelier-select--saving' : ''}`}
-                                value={atelierTables[rowKey] || ''}
-                                disabled={isSavingTable}
-                                onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey, ci)}
-                              >
-                                <option value="">——</option>
-                                {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
-                              </select>
-                            ) : (
-                              <span className="etat-select etat-select--livre atelier-select">
-                                {atelierTables[rowKey] || <span style={{ color: '#9ca3af' }}>—</span>}
-                              </span>
-                            )}
-                          </td>
-                          {/* Remplissage atelier table — per component */}
-                          <td data-label="Vitrage" className="atelier-table-col">
-                            {canEditRemplissageTable ? (
-                              <RemplissageAtelierCell
-                                chassis={ch}
-                                unitIndex={unitIndex}
-                                compIndex={ci}
-                                project={project}
-                                atelierTableOptions={ATELIER_TABLES}
-                                onPatched={() => { if (refreshProject) refreshProject(project.id); }}
-                              />
-                            ) : (
-                              <span style={{ fontSize: 11, color: '#6b7280' }}>
-                                {(() => {
-                                  const relevant = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex === ci && r.atelierTable);
-                                  const tables = [...new Set(relevant.map(r => r.atelierTable))];
-                                  return tables.length ? tables.join(', ') : <span style={{ color: '#cbd5e1' }}>—</span>;
-                                })()}
-                              </span>
-                            )}
-                          </td>
+                          {showAtelierCols && (
+                            <td data-label="Atelier" className="atelier-table-col">
+                              {canEditAtelierTable ? (
+                                <select className={`etat-select etat-select--livre atelier-select${isSavingTable ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={isSavingTable} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey, ci)}>
+                                  <option value="">——</option>
+                                  {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
+                                </select>
+                              ) : (
+                                <span className="etat-select etat-select--livre atelier-select">{atelierTables[rowKey] || <span style={{ color: '#9ca3af' }}>—</span>}</span>
+                              )}
+                            </td>
+                          )}
+                          {showAtelierCols && (
+                            <td data-label="Vitrage" className="atelier-table-col">
+                              {canEditRemplissageTable ? (
+                                <RemplissageAtelierCell chassis={ch} unitIndex={unitIndex} compIndex={ci} project={project} atelierTableOptions={ATELIER_TABLES} onPatched={() => { if (refreshProject) refreshProject(project.id); }} />
+                              ) : (
+                                <span style={{ fontSize: 11, color: '#6b7280' }}>
+                                  {(() => { const relevant = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex === ci && r.atelierTable); const tables = [...new Set(relevant.map(r => r.atelierTable))]; return tables.length ? tables.join(', ') : <span style={{ color: '#cbd5e1' }}>—</span>; })()}
+                                </span>
+                              )}
+                            </td>
+                          )}
                           <td data-label="">{adminThing && <div className="chassis-row__actions">
                             <button className="print-btn" onClick={() => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; setPrintingChassis({ ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }); }}>🏷</button>
                           </div>}</td>
@@ -1894,7 +1575,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                       );
                     }
 
-                    // ── SIMPLE UNIT ROW ──────────────────────────────────────
+                    // ── SIMPLE UNIT ROW ─────────────────────────────────────
                     const { ch, chId, unitIndex, unit, rowKey, label, etat } = row;
                     const isSaving = savingKey === rowKey; const isSelected = selectedKeys.has(rowKey);
                     const unitM2 = ch.largeur && ch.hauteur ? ((ch.largeur * ch.hauteur) / 1e6).toFixed(2) : '—';
@@ -1906,55 +1587,50 @@ function ProjectDetail({ project, onBack, currentUser }) {
                         <td data-label="L (mm)">{ch.largeur}</td><td data-label="H (mm)">{ch.hauteur}</td>
                         <td data-label="Dimension" className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
                         <td data-label="m²" style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{unitM2} m²</td>
-                        <td data-label="Remplissage">
-                          <RemplissageBadge
-                            chassis={ch}
-                            unitIndex={unitIndex}
-                            compIndex={null}
-                            onClick={() => setRemplissageEditor({ ch, unitIndex, compIndex: null })}
-                          />
-                        </td>
-                        {stateThing && <td data-label="État">
-                          <select className={`etat-select etat-select--${etat}`} value={etat} disabled={isEtatSelectDisabled(userRole, etat, isSaving)} onChange={e => handleUnitEtatChange(ch, unitIndex, e.target.value, rowKey)} style={{ borderLeftColor: ETAT_COLORS[etat] }}>
-                            {getAllowedEtats(userRole, etat).map(opt => <option key={opt} value={opt}>{t(`etat_${opt}`)}</option>)}
-                          </select>
-                        </td>}
+                        {showAtelierCols && (
+                          <td data-label="Remplissage">
+                            <RemplissageBadge chassis={ch} unitIndex={unitIndex} compIndex={null} onClick={() => setRemplissageEditor({ ch, unitIndex, compIndex: null })} />
+                          </td>
+                        )}
+                        {/* État cell */}
+                        {renderEtatCell(etat, isSaving, (newEtat) => handleUnitEtatChange(ch, unitIndex, newEtat, rowKey))}
                         <td data-label="Date" className="delivery-date-cell">
-                          {etat === 'livre' ? <button className="date-btn" onClick={() => setDeliveryModal({ kind: 'unit', chId, unitIndex, rowKey, currentDate: toDateInput(unit.deliveryDate) })}>📅 {unit.deliveryDate ? fmtDate(unit.deliveryDate) : 'Définir'}</button> : <span className="date-placeholder">—</span>}
+                          {etat === 'livre'
+                            ? (userRole === 'Admin' || userRole === 'LOGISTIQUE')
+                              ? <button className="date-btn" onClick={() => setDeliveryModal({ kind: 'unit', chId, unitIndex, rowKey, currentDate: toDateInput(unit.deliveryDate) })}>📅 {unit.deliveryDate ? fmtDate(unit.deliveryDate) : 'Définir'}</button>
+                              : <span className="date-placeholder">📅 {unit.deliveryDate ? fmtDate(unit.deliveryDate) : '—'}</span>
+                            : <span className="date-placeholder">—</span>}
                         </td>
-                        {/* Chassis atelier table */}
-                        {stateThing && <td data-label="Atelier" className="atelier-table-col">
-                          <select className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={savingTableKey === rowKey} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}>
-                            <option value="">——</option>
-                            {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
-                          </select>
-                        </td>}
-                        {/* Remplissage atelier table — blue tint */}
-                        <td data-label="Vitrage" className="atelier-table-col">
-                          {canEditRemplissageTable ? (
-                            <RemplissageAtelierCell
-                              chassis={ch}
-                              unitIndex={unitIndex}
-                              compIndex={null}
-                              project={project}
-                              atelierTableOptions={ATELIER_TABLES}
-                              onPatched={() => { if (refreshProject) refreshProject(project.id); }}
-                            />
-                          ) : (
-                            <span style={{ fontSize: 11, color: '#6b7280' }}>
-                              {(() => {
-                                const relevant = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex == null && r.atelierTable);
-                                const tables = [...new Set(relevant.map(r => r.atelierTable))];
-                                return tables.length ? tables.join(', ') : <span style={{ color: '#cbd5e1' }}>—</span>;
-                              })()}
-                            </span>
-                          )}
-                        </td>
+                        {showAtelierCols && (
+                          <td data-label="Atelier" className="atelier-table-col">
+                            {canEditAtelierTable ? (
+                              <select className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={savingTableKey === rowKey} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}>
+                                <option value="">——</option>
+                                {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
+                              </select>
+                            ) : (
+                              <span style={{ fontSize: 11, color: '#6b7280' }}>
+                                {atelierTables[rowKey] || <span style={{ color: '#9ca3af' }}>—</span>}
+                              </span>
+                            )}
+                          </td>
+                        )}
+                        {showAtelierCols && (
+                          <td data-label="Vitrage" className="atelier-table-col">
+                            {canEditRemplissageTable ? (
+                              <RemplissageAtelierCell chassis={ch} unitIndex={unitIndex} compIndex={null} project={project} atelierTableOptions={ATELIER_TABLES} onPatched={() => { if (refreshProject) refreshProject(project.id); }} />
+                            ) : (
+                              <span style={{ fontSize: 11, color: '#6b7280' }}>
+                                {(() => { const relevant = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex == null && r.atelierTable); const tables = [...new Set(relevant.map(r => r.atelierTable))]; return tables.length ? tables.join(', ') : <span style={{ color: '#cbd5e1' }}>—</span>; })()}
+                              </span>
+                            )}
+                          </td>
+                        )}
                         <td data-label="">{adminThing && <div className="chassis-row__actions">
                           <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, quantity: 1, etat, _originalId: chId, _unitIndex: unitIndex, _totalQty: ch.quantity ?? 1 }); setShowChassisForm(true); }}>✏️</button>
-                          <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>
-                          <button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>
-                          <button className="print-btn" onClick={() => setPrintingChassis({ ...ch, _printRowIndex: unitIndex })}>🏷</button>
+                          {adminOnly && <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>}
+                          {adminOnly && (<button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>)}
+                          {adminOnly && (<button className="print-btn" onClick={() => setPrintingChassis({ ...ch, _printRowIndex: unitIndex })}>🏷</button>)}
                           <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}>🗑</button>
                         </div>}</td>
                       </tr>

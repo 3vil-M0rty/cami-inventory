@@ -138,7 +138,7 @@ function IncompleteModal({ lineLabel, onConfirm, onCancel }) {
   );
 }
 
-/* ── Reception note modal (for "Réceptionner TOUT") ─────────── */
+/* ── Reception note modal ────────────────────────────────────── */
 function ReceptionNoteModal({ title, onConfirm, onCancel }) {
   const [note, setNote] = useState('');
   const [qty, setQty] = useState('');
@@ -359,7 +359,6 @@ function printPDF(record, project, type, selectedKeys, imageMap, lotIndex) {
   const date = new Date().toLocaleDateString('fr-FR');
   const cs = '<' + '/script>';
 
-  // Which lots to print
   const lots = lotIndex != null
     ? (record.lots || []).filter(l => l.lotIndex === lotIndex)
     : (record.lots || []);
@@ -435,6 +434,35 @@ ${histRows ? `<h2>Historique des actions</h2><table><thead><tr><th>Action</th><t
   if (w) { w.document.write(html); w.document.close(); }
 }
 
+/* ─── Shared "Add new lot" banner ────────────────────────────── */
+function AddLotBanner({ canEdit, addingLot, onAdd }) {
+  if (!canEdit) return null;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+      background: '#f0f4ff', border: '1.5px dashed #3b5bdb', borderRadius: 10, margin: '8px 0',
+    }}>
+      <Plus size={16} style={{ color: '#3b5bdb', flexShrink: 0 }} />
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#3b5bdb' }}>Ajouter un nouveau lot</div>
+        <div style={{ fontSize: 12, color: '#666' }}>
+          Créez un nouveau lot pour envoyer des articles supplémentaires au laquage.
+        </div>
+      </div>
+      <button
+        onClick={onAdd}
+        disabled={addingLot}
+        style={{
+          padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+          background: '#3b5bdb', color: '#fff', border: 'none', cursor: 'pointer',
+          opacity: addingLot ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4,
+        }}>
+        <Plus size={12} /> Nouveau lot
+      </button>
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════════
    BARRES PANEL
    ═══════════════════════════════════════════════════════════════ */
@@ -458,8 +486,8 @@ export function BarresLaquerPanel({ project, currentUser }) {
   const [error, setError] = useState('');
   const [confirm, setConfirm] = useState(null);
   const [incomplete, setIncomplete] = useState(null);
-  const [receptionNote, setReceptionNote] = useState(null); // { lotIndex, action, title }
-  const [activeLotIdx, setActiveLotIdx] = useState(0); // which lot tab is open
+  const [receptionNote, setReceptionNote] = useState(null);
+  const [activeLotIdx, setActiveLotIdx] = useState(0);
   const [selected, setSelected] = useState(new Set());
   const [imageMap, setImageMap] = useState({});
   const [addingLot, setAddingLot] = useState(false);
@@ -499,7 +527,6 @@ export function BarresLaquerPanel({ project, currentUser }) {
       const res = await axios.get(`${API_URL}/projects/${project.id}/laquage/barres`);
       setRecord(res.data);
       await loadImages(res.data);
-      // Open the last lot by default
       const lots = res.data.lots || [];
       if (lots.length > 0) setActiveLotIdx(lots[lots.length - 1].lotIndex);
     } catch {
@@ -509,7 +536,6 @@ export function BarresLaquerPanel({ project, currentUser }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Current active lot object
   const activeLot = (record?.lots || []).find(l => l.lotIndex === activeLotIdx) || (record?.lots || [])[0];
 
   const saveLot = async () => {
@@ -537,10 +563,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
     try {
       const res = await axios.post(
         `${API_URL}/projects/${project.id}/laquage/barres/lot`,
-        {
-          barresBrutes: [], barresLaquees: [], morceauxBruts: [], morceauxLaques: [],
-          by: displayName,
-        }
+        { barresBrutes: [], barresLaquees: [], morceauxBruts: [], morceauxLaques: [], by: displayName }
       );
       setRecord(res.data);
       const newLots = res.data.lots || [];
@@ -579,7 +602,6 @@ export function BarresLaquerPanel({ project, currentUser }) {
   const ask = (msg, fn) => setConfirm({ message: msg, action: fn });
   const capImg = (ref, item) => { if (item?.image) setImageMap(m => ({ ...m, [ref]: item.image })); };
 
-  // Update local lot data (before save)
   const updateLotData = (key, value) => {
     if (!activeLot) return;
     setRecord(p => ({
@@ -624,8 +646,6 @@ export function BarresLaquerPanel({ project, currentUser }) {
 
   const lots = record.lots || [];
   const history = record.history || [];
-  const recordStatus = record.status || 'draft';
-  const isDone = recordStatus === 'received_coord';
 
   // Per-lot derived state
   const lot = activeLot || {};
@@ -657,8 +677,11 @@ export function BarresLaquerPanel({ project, currentUser }) {
     style: { cursor: isRowLocked(k) ? 'default' : 'pointer' },
   });
 
-  // Can barreman add a new lot?
-  const canAddLot = canEdit && !isDone && lots.every(l => l.status !== 'draft');
+  // ── FIX: canAddLot — always allow adding a new lot as long as there
+  // is no existing draft lot (one draft at a time). The old "!isDone"
+  // check was blocking lot creation once any lot reached received_coord.
+  const hasDraftLot = lots.some(l => l.status === 'draft');
+  const canAddLot = canEdit && !hasDraftLot;
 
   return (
     <div className="laq-panel">
@@ -981,29 +1004,9 @@ export function BarresLaquerPanel({ project, currentUser }) {
         </div>
       </div>
 
-      {/* Add new lot prompt for barreman when all existing lots are sent */}
-      {canEdit && !isDone && lots.length > 0 && lots.every(l => l.status !== 'draft') && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-          background: '#f0f4ff', border: '1.5px dashed #3b5bdb', borderRadius: 10, margin: '8px 0',
-        }}>
-          <Plus size={16} style={{ color: '#3b5bdb', flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#3b5bdb' }}>Ajouter d'autres articles ?</div>
-            <div style={{ fontSize: 12, color: '#666' }}>Tous les lots ont été envoyés. Créez un nouveau lot pour envoyer des articles supplémentaires.</div>
-          </div>
-          <button
-            onClick={addNewLot}
-            disabled={addingLot}
-            style={{
-              padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-              background: '#3b5bdb', color: '#fff', border: 'none', cursor: 'pointer',
-              opacity: addingLot ? 0.5 : 1,
-            }}>
-            <Plus size={12} style={{ marginRight: 4 }} />
-            Nouveau lot
-          </button>
-        </div>
+      {/* Add new lot banner — shown whenever there is no existing draft lot */}
+      {canAddLot && (
+        <AddLotBanner canEdit={canEdit} addingLot={addingLot} onAdd={addNewLot} />
       )}
 
       <HistoryLog history={history} />
@@ -1012,7 +1015,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ACCESSOIRES PANEL  (same lot logic, accessoires data shape)
+   ACCESSOIRES PANEL
    ═══════════════════════════════════════════════════════════════ */
 export function AccessoiresLaquerPanel({ project, currentUser }) {
   const { user: authUser } = useAuth();
@@ -1143,8 +1146,6 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
 
   const lots = record.lots || [];
   const history = record.history || [];
-  const recordStatus = record.status || 'draft';
-  const isDone = recordStatus === 'received_coord';
 
   const lot = activeLot || {};
   const lotStatus = lot.status || 'draft';
@@ -1166,7 +1167,9 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
     style: { cursor: isRowLocked(k) ? 'default' : 'pointer' },
   });
 
-  const canAddLot = canEdit && !isDone && lots.every(l => l.status !== 'draft');
+  // ── FIX: same logic — only block if there's already a draft lot open
+  const hasDraftLot = lots.some(l => l.status === 'draft');
+  const canAddLot = canEdit && !hasDraftLot;
 
   return (
     <div className="laq-panel">
@@ -1302,18 +1305,9 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
         </div>
       </div>
 
-      {canEdit && !isDone && lots.length > 0 && lots.every(l => l.status !== 'draft') && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#f0f4ff', border: '1.5px dashed #3b5bdb', borderRadius: 10, margin: '8px 0' }}>
-          <Plus size={16} style={{ color: '#3b5bdb', flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#3b5bdb' }}>Ajouter d'autres articles ?</div>
-            <div style={{ fontSize: 12, color: '#666' }}>Créez un nouveau lot pour envoyer des articles supplémentaires.</div>
-          </div>
-          <button onClick={addNewLot} disabled={addingLot}
-            style={{ padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: '#3b5bdb', color: '#fff', border: 'none', cursor: 'pointer', opacity: addingLot ? 0.5 : 1 }}>
-            <Plus size={12} style={{ marginRight: 4 }} /> Nouveau lot
-          </button>
-        </div>
+      {/* Add new lot banner — shown whenever there is no existing draft lot */}
+      {canAddLot && (
+        <AddLotBanner canEdit={canEdit} addingLot={addingLot} onAdd={addNewLot} />
       )}
 
       <HistoryLog history={history} />
