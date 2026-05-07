@@ -15,11 +15,11 @@ const ROLE_LAQUAGE = 'Laquage';
 const ROLE_COORDINATEUR = 'Coordinateur';
 
 const LOT_STATUSES = {
-  draft:            { label: 'Brouillon',              color: '#9ca3af' },
-  sent_to_laquage:  { label: 'Envoyé au laquage',      color: '#f59e0b' },
-  received_laquage: { label: 'Reçu au laquage',        color: '#3b82f6' },
-  returned_to_coord:{ label: 'Retourné au coordinateur', color: '#8b5cf6' },
-  received_coord:   { label: 'Reçu par coordinateur',  color: '#16a34a' },
+  draft: { label: 'Brouillon', color: '#9ca3af' },
+  sent_to_laquage: { label: 'Envoyé au laquage', color: '#f59e0b' },
+  received_laquage: { label: 'Reçu au laquage', color: '#3b82f6' },
+  returned_to_coord: { label: 'Retourné au coordinateur', color: '#8b5cf6' },
+  received_coord: { label: 'Reçu par coordinateur', color: '#16a34a' },
 };
 
 function fmtDT(d) {
@@ -353,7 +353,7 @@ function RowActions({ lKey, lineLabel, lineStatuses, side, onConfirm, onIncomple
 }
 
 /* ── PDF printer ─────────────────────────────────────────────── */
-function printPDF(record, project, type, selectedKeys, imageMap, lotIndex) {
+/* function printPDF(record, project, type, selectedKeys, imageMap, lotIndex) {
   const isBarres = type === 'barres';
   const title = isBarres ? 'Barres à Laquer' : 'Accessoires à Laquer';
   const date = new Date().toLocaleDateString('fr-FR');
@@ -425,6 +425,93 @@ function printPDF(record, project, type, selectedKeys, imageMap, lotIndex) {
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;padding:28px 36px}h1{font-size:18px;font-weight:800;margin-bottom:12px}h2{font-size:14px;font-weight:700;margin:24px 0 10px;padding-bottom:6px;border-bottom:2px solid #1a1a1a}.meta{display:flex;gap:16px;font-size:12px;color:#555;margin-bottom:20px;flex-wrap:wrap}table{width:100%;border-collapse:collapse;margin-bottom:20px}thead tr{background:#1a1a1a;color:#fff}th{padding:9px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em}td{padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:12.5px;vertical-align:middle}tr:nth-child(even) td{background:#f9fafb}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm 16mm}@page{size:A4;margin:0}}</style>
 </head><body>
 <h1>🎨 ${title}</h1>
+<div class="meta"><span>Projet : <strong>${project.name}</strong></span><span>Réf : <strong>${project.reference}</strong></span><span>RAL : <strong>${project.ralCode}</strong></span><span>Date : <strong>${date}</strong></span><span>Lots : <strong>${lots.length}</strong></span></div>
+<table><thead>${thead}</thead><tbody>${allRows.join('') || '<tr><td colspan="7" style="text-align:center;color:#aaa">Aucune ligne</td></tr>'}</tbody></table>
+${histRows ? `<h2>Historique des actions</h2><table><thead><tr><th>Action</th><th>Par</th><th>Date / Heure</th><th>Remarque</th><th>Qté reçue</th><th>Lot</th></tr></thead><tbody>${histRows}</tbody></table>` : ''}
+<script>window.onload=()=>window.print();${cs}</body></html>`;
+
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(html); w.document.close(); }
+} */
+
+/* ── PDF printer ─────────────────────────────────────────────── */
+function printPDF(record, project, type, selectedKeys, imageMap, lotIndex, lotOnly = false) {
+  const isBarres = type === 'barres';
+  const title = isBarres ? 'Barres à Laquer' : 'Accessoires à Laquer';
+  const date = new Date().toLocaleDateString('fr-FR');
+  const cs = '<' + '/script>';
+
+  const lots = lotOnly && lotIndex != null
+    ? (record.lots || []).filter(l => l.lotIndex === lotIndex)
+    : (record.lots || []);
+
+  const imgCell = ref => {
+    const src = imageMap && imageMap[ref];
+    return src
+      ? `<td style="width:60px;padding:6px"><img src="${src}" style="width:52px;height:42px;object-fit:contain;border-radius:4px"/></td>`
+      : `<td style="width:60px;padding:6px;color:#ccc;font-size:11px">—</td>`;
+  };
+
+  let allRows = [];
+  for (const lot of lots) {
+    const lotLabel = `<tr><td colspan="7" style="background:#f0f4ff;color:#3b5bdb;font-weight:700;padding:8px 12px;font-size:12px">Lot ${lot.lotIndex + 1} — ${LOT_STATUSES[lot.status]?.label || ''}</td></tr>`;
+    allRows.push(lotLabel);
+
+    if (isBarres) {
+      (lot.barresBrutes || []).forEach((r, i) => {
+        const k = `bb-${i}`;
+        if (selectedKeys.size > 0 && !selectedKeys.has(`${lot.lotIndex}-${k}`)) return;
+        allRows.push(`<tr>${imgCell(r.reference)}<td>Barre Brute</td><td>${r.reference || '—'}</td><td>${r.quantiteBrute || 0}</td><td>—</td><td>—</td><td>—</td></tr>`);
+      });
+      (lot.barresLaquees || []).forEach((r, i) => {
+        const k = `bl-${i}`;
+        if (selectedKeys.size > 0 && !selectedKeys.has(`${lot.lotIndex}-${k}`)) return;
+        allRows.push(`<tr>${imgCell(r.reference)}<td>Barre Laquée</td><td>${r.reference || '—'}</td><td>—</td><td>${r.ral || '—'}</td><td>${r.quantiteLaquee || 0}</td><td>—</td></tr>`);
+      });
+      (lot.morceauxBruts || []).forEach((r, i) => {
+        const k = `mb-${i}`;
+        if (selectedKeys.size > 0 && !selectedKeys.has(`${lot.lotIndex}-${k}`)) return;
+        allRows.push(`<tr>${imgCell(r.reference)}<td>Morceau Brut</td><td>${r.reference || '—'}</td><td>—</td><td>—</td><td>—</td><td>${r.mesure || '—'} × ${r.quantite || 0}</td></tr>`);
+      });
+      (lot.morceauxLaques || []).forEach((r, i) => {
+        (r.lignes || []).forEach((l, li) => {
+          const k = `ml-${i}-${li}`;
+          if (selectedKeys.size > 0 && !selectedKeys.has(`${lot.lotIndex}-${k}`)) return;
+          allRows.push(`<tr>${imgCell(r.reference)}<td>Morceau Laqué</td><td>${r.reference || '—'}</td><td>—</td><td>${l.ral || '—'}</td><td>${l.quantite || 0}</td><td>${l.mesure || '—'}</td></tr>`);
+        });
+      });
+      if (lot.receptionLaquageNote) {
+        allRows.push(`<tr><td colspan="7" style="color:#3b82f6;font-size:11px;padding:4px 12px">📝 Note Laquage: ${lot.receptionLaquageNote}${lot.receptionLaquageQty != null ? ` (Qté reçue: ${lot.receptionLaquageQty})` : ''}</td></tr>`);
+      }
+      if (lot.receptionCoordNote) {
+        allRows.push(`<tr><td colspan="7" style="color:#16a34a;font-size:11px;padding:4px 12px">📝 Note Coord: ${lot.receptionCoordNote}${lot.receptionCoordQty != null ? ` (Qté reçue: ${lot.receptionCoordQty})` : ''}</td></tr>`);
+      }
+    } else {
+      (lot.accessoires || []).forEach((a, i) => {
+        const k = `acc-${i}`;
+        if (selectedKeys.size > 0 && !selectedKeys.has(`${lot.lotIndex}-${k}`)) return;
+        allRows.push(`<tr>${imgCell(a.designation)}<td>${a.designation || '—'}</td><td>${a.quantite || 0}</td><td>${a.notes || '—'}</td></tr>`);
+      });
+    }
+  }
+
+  const thead = isBarres
+    ? '<tr><th>Image</th><th>Type</th><th>Référence</th><th>Qté Brutes</th><th>RAL</th><th>Qté Laquées</th><th>Mesure/Qté</th></tr>'
+    : '<tr><th>Image</th><th>Désignation</th><th>Quantité</th><th>Notes</th></tr>';
+
+  // Global PDF includes full history; per-lot PDF filters history by lotIndex
+  const historyEntries = lotOnly ? [] : (record.history || []);
+
+  const histRows = historyEntries.map(h =>
+    `<tr><td>${h.action}</td><td>${h.by || '—'}</td><td>${h.at ? new Date(h.at).toLocaleString('fr-FR') : '—'}</td><td>${h.note || '—'}</td><td>${h.partialQty != null ? h.partialQty : '—'}</td><td>${h.lotIndex != null ? `Lot ${h.lotIndex + 1}` : '—'}</td></tr>`
+  ).join('');
+  
+  const lotLabel = lotOnly && lotIndex != null ? ` — Lot ${lotIndex + 1}` : ` — Tous les lots (${lots.length})`;
+
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>${title}${lotLabel}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;padding:28px 36px}h1{font-size:18px;font-weight:800;margin-bottom:12px}h2{font-size:14px;font-weight:700;margin:24px 0 10px;padding-bottom:6px;border-bottom:2px solid #1a1a1a}.meta{display:flex;gap:16px;font-size:12px;color:#555;margin-bottom:20px;flex-wrap:wrap}table{width:100%;border-collapse:collapse;margin-bottom:20px}thead tr{background:#1a1a1a;color:#fff}th{padding:9px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em}td{padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:12.5px;vertical-align:middle}tr:nth-child(even) td{background:#f9fafb}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm 16mm}@page{size:A4;margin:0}}</style>
+</head><body>
+<h1>🎨 ${title}${lotLabel}</h1>
 <div class="meta"><span>Projet : <strong>${project.name}</strong></span><span>Réf : <strong>${project.reference}</strong></span><span>RAL : <strong>${project.ralCode}</strong></span><span>Date : <strong>${date}</strong></span><span>Lots : <strong>${lots.length}</strong></span></div>
 <table><thead>${thead}</thead><tbody>${allRows.join('') || '<tr><td colspan="7" style="text-align:center;color:#aaa">Aucune ligne</td></tr>'}</tbody></table>
 ${histRows ? `<h2>Historique des actions</h2><table><thead><tr><th>Action</th><th>Par</th><th>Date / Heure</th><th>Remarque</th><th>Qté reçue</th><th>Lot</th></tr></thead><tbody>${histRows}</tbody></table>` : ''}
@@ -718,9 +805,27 @@ export function BarresLaquerPanel({ project, currentUser }) {
               <Save size={14} /> {saving ? '…' : ''}
             </button>
           )}
-          <button className="laq-print-btn" onClick={() => printPDF(record, project, 'barres', selected, imageMap, null)}>
-            <Printer size={14} /> {selected.size > 0 ? `Imprimer (${selected.size})` : ''}
-          </button>
+          {/* Per-lot PDF — visible to all */}
+          {activeLot && (
+            <button
+              className="laq-print-btn"
+              title={`Imprimer Lot ${activeLot.lotIndex + 1}`}
+              onClick={() => printPDF(record, project, 'barres', selected, imageMap, activeLot.lotIndex, true)}
+            >
+              <Printer size={14} /> Lot {activeLot.lotIndex + 1}
+            </button>
+          )}
+          {/* Global PDF — admin only */}
+          {isAdmin && (
+            <button
+              className="laq-print-btn"
+              style={{ background: '#1a1a1a', color: '#fff' }}
+              title="PDF global — tous les lots"
+              onClick={() => printPDF(record, project, 'barres', new Set(), imageMap, null, false)}
+            >
+              <Printer size={14} /> Global
+            </button>
+          )}
         </div>
       </div>
 
@@ -1187,10 +1292,32 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
       <div className="laq-panel-header">
         <div className="laq-panel-title"><span>🔩</span><h3>Accessoires à Laquer</h3><StatusBadge status={lotStatus} /></div>
         <div className="laq-panel-actions">
-          {canEdit && isDraft && <button className="laq-save-btn" disabled={saving} onClick={saveLot}><Save size={14} /></button>}
-          <button className="laq-print-btn" onClick={() => printPDF(record, project, 'accessoires', selected, imageMap, null)}>
-            <Printer size={14} /> {selected.size > 0 ? `Imprimer (${selected.size})` : ''}
-          </button>
+          {canEdit && isDraft && (
+            <button className="laq-save-btn" disabled={saving} onClick={saveLot}>
+              <Save size={14} />
+            </button>
+          )}
+          {/* Per-lot PDF — visible to all */}
+          {activeLot && (
+            <button
+              className="laq-print-btn"
+              title={`Imprimer Lot ${activeLot.lotIndex + 1}`}
+              onClick={() => printPDF(record, project, 'accessoires', selected, imageMap, activeLot.lotIndex, true)}
+            >
+              <Printer size={14} /> Lot {activeLot.lotIndex + 1}
+            </button>
+          )}
+          {/* Global PDF — admin only */}
+          {isAdmin && (
+            <button
+              className="laq-print-btn"
+              style={{ background: '#1a1a1a', color: '#fff' }}
+              title="PDF global — tous les lots"
+              onClick={() => printPDF(record, project, 'accessoires', new Set(), imageMap, null, false)}
+            >
+              <Printer size={14} /> Global
+            </button>
+          )}
         </div>
       </div>
 
