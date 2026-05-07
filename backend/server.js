@@ -1215,7 +1215,7 @@ app.put('/api/projects/:id', async (req, res) => {
       clientId: req.body.clientId || null,
       tab: req.body.tab || 'aluminium',        // ← ADD THIS
     }, { new: true, runValidators: true })
-    .populate('usedBars.itemId').populate('companyId').populate('clientId');
+      .populate('usedBars.itemId').populate('companyId').populate('clientId');
     if (!p) return res.status(404).json({ error: 'Not found' });
     res.json(p.toJSON());
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
@@ -2498,9 +2498,9 @@ app.post('/api/projects/:projectId/laquage/barres/lot', requireAuth, async (req,
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) return res.status(404).json({ error: 'Record not found' });
 
-    const recordStatus = deriveLaquageRecordStatus(record.lots);
-    if (recordStatus === 'received_coord') {
-      return res.status(400).json({ error: 'Le processus est terminé. Impossible d\'ajouter un nouveau lot.' });
+    const hasDraftLot = record.lots.some(l => l.status === 'draft');
+    if (hasDraftLot) {
+      return res.status(400).json({ error: 'Un lot en brouillon existe déjà. Finalisez-le avant d\'en créer un nouveau.' });
     }
 
     const { barresBrutes, barresLaquees, morceauxBruts, morceauxLaques, by } = req.body;
@@ -2595,11 +2595,10 @@ app.post('/api/projects/:projectId/laquage/accessoires/lot', requireAuth, async 
     let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
     if (!record) return res.status(404).json({ error: 'Record not found' });
 
-    const recordStatus = deriveLaquageRecordStatus(record.lots);
-    if (recordStatus === 'received_coord') {
-      return res.status(400).json({ error: 'Le processus est terminé.' });
+    const hasDraftLot = record.lots.some(l => l.status === 'draft');
+    if (hasDraftLot) {
+      return res.status(400).json({ error: 'Un lot en brouillon existe déjà. Finalisez-le avant d\'en créer un nouveau.' });
     }
-
     const { accessoires, by } = req.body;
     const nextIdx = record.lots.length;
 
@@ -2679,7 +2678,7 @@ app.get('/api/laquage/recent-actions', requireAuth, async (req, res) => {
         });
       }
     }
-    
+
     events.sort((a, b) => new Date(b.at) - new Date(a.at));
     const seen = new Set();
     const deduped = [];
