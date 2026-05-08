@@ -8,6 +8,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import { useAuth } from '../../context/AuthContext';
 import NotifBell from '../../features/laquage/LaquageNotifBell';
+import FourStatus from '../../features/laquage/FourStatus';
 import ChangePasswordModal from '../../features/admin/ChangePasswordModal';
 
 import './Header.css';
@@ -134,7 +135,9 @@ const Header = ({ activePage, onNavigate }) => {
           <div className="hdr__controls desktop-only">
             <div className="hdr__companies">{companyPills}</div>
             {langPicker}
+            <FourStatus/>
             <NotifBell />
+
             <div className="hdr__user" ref={userMenuRef}>
               
               <button className="hdr__user-btn" onClick={() => setShowUserMenu(v => !v)}>
@@ -150,6 +153,7 @@ const Header = ({ activePage, onNavigate }) => {
           {/* Mobile top-bar controls */}
           <div className="hdr__controls mobile-only" style={{ gap: 8 }}>
             {langPicker}
+            <FourStatus/>
             <NotifBell />
             <div className="hdr__user" ref={userMenuRef}>
               <button className="hdr__user-btn" onClick={() => setShowUserMenu(v => !v)}>

@@ -347,6 +347,23 @@ const chantierSchema = new mongoose.Schema({
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const Chantier = mongoose.model('Chantier', chantierSchema);
 
+// ==================== FOUR STATUS SCHEMA ====================
+const fourStatusSchema = new mongoose.Schema({
+  isOn: { type: Boolean, default: false },
+  changedBy: { type: String, default: '' },
+  changedAt: { type: Date, default: Date.now },
+}, {
+  timestamps: true,
+  toJSON: {
+    transform: (doc, ret) => {
+      ret.id = ret._id;
+      delete ret._id;
+      delete ret.__v;
+      return ret;
+    }
+  }
+});
+const FourStatus = mongoose.model('FourStatus', fourStatusSchema);
 
 // ==================== BL METADATA ====================
 
@@ -678,6 +695,98 @@ app.delete('/api/companies/:id', async (req, res) => {
     if (!c) return res.status(404).json({ error: 'Not found' });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==================== FOUR STATUS ROUTES ====================
+
+// GET — anyone authenticated can read the status
+app.get('/api/four-status', requireAuth, async (req, res) => {
+  try {
+    let doc = await FourStatus.findOne({});
+    if (!doc) {
+      doc = await FourStatus.create({ isOn: false });
+    }
+    res.json(doc.toJSON());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT — only Laquage role (or Admin) can toggle
+app.put('/api/four-status', requireAuth, async (req, res) => {
+  try {
+    const userRole = req.user?.roleId?.name || '';
+    const isAdmin  = userRole === 'Admin';
+    const canToggle = isAdmin || userRole === 'Laquage';
+
+    if (!canToggle) {
+      return res.status(403).json({
+        error: 'Seul le rôle Laquage peut modifier l\'état du four.'
+      });
+    }
+
+    const { isOn } = req.body;
+    const displayName = req.user?.displayName || req.user?.username || userRole;
+
+    let doc = await FourStatus.findOne({});
+    if (!doc) {
+      doc = await FourStatus.create({ isOn: !!isOn, changedBy: displayName, changedAt: new Date() });
+    } else {
+      doc.isOn      = !!isOn;
+      doc.changedBy = displayName;
+      doc.changedAt = new Date();
+      await doc.save();
+    }
+
+    res.json(doc.toJSON());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});// ==================== FOUR STATUS ROUTES ====================
+
+// GET — anyone authenticated can read the status
+app.get('/api/four-status', requireAuth, async (req, res) => {
+  try {
+    let doc = await FourStatus.findOne({});
+    if (!doc) {
+      doc = await FourStatus.create({ isOn: false });
+    }
+    res.json(doc.toJSON());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT — only Laquage role (or Admin) can toggle
+app.put('/api/four-status', requireAuth, async (req, res) => {
+  try {
+    const userRole = req.user?.roleId?.name || '';
+    const isAdmin  = userRole === 'Admin';
+    const canToggle = isAdmin || userRole === 'Laquage';
+
+    if (!canToggle) {
+      return res.status(403).json({
+        error: 'Seul le rôle Laquage peut modifier l\'état du four.'
+      });
+    }
+
+    const { isOn } = req.body;
+    const displayName = req.user?.displayName || req.user?.username || userRole;
+
+    let doc = await FourStatus.findOne({});
+    if (!doc) {
+      doc = await FourStatus.create({ isOn: !!isOn, changedBy: displayName, changedAt: new Date() });
+    } else {
+      doc.isOn      = !!isOn;
+      doc.changedBy = displayName;
+      doc.changedAt = new Date();
+      await doc.save();
+    }
+
+    res.json(doc.toJSON());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ==================== AUTH MIDDLEWARE ====================
@@ -2276,7 +2385,7 @@ function applyLaquageAction(record, action, lotIndex, lineKey, by, extra = {}) {
     return;
   }
 
-  if (action === 'receive_line_laquage') {
+   if (action === 'receive_line_laquage') {
     lot.lineStatuses = lot.lineStatuses || {};
     lot.lineStatuses[lineKey] = {
       ...(lot.lineStatuses[lineKey] || {}),
@@ -2290,6 +2399,25 @@ function applyLaquageAction(record, action, lotIndex, lineKey, by, extra = {}) {
       by, at: now, lotIndex,
       note: extra.lineLabel || '',
     });
+
+    // ── AUTO-ADVANCE: if all lines are now received, promote lot to received_laquage ──
+    if (extra.allLineKeys && extra.allLineKeys.length > 0) {
+      const allDone = extra.allLineKeys.every(k => {
+        if (k === lineKey) return true; // just marked
+        return lot.lineStatuses[k]?.receivedLaquage;
+      });
+      if (allDone && lot.status === 'sent_to_laquage') {
+        lot.status = 'received_laquage';
+        if (extra.note) lot.receptionLaquageNote = extra.note;
+        if (extra.partialQty != null) lot.receptionLaquageQty = extra.partialQty;
+        record.markModified('lots');
+        record.history.push({
+          action: 'receive_all_laquage',
+          by, at: now, lotIndex,
+          note: '(auto — toutes les lignes réceptionnées)',
+        });
+      }
+    }
     return;
   }
 
@@ -2326,6 +2454,25 @@ function applyLaquageAction(record, action, lotIndex, lineKey, by, extra = {}) {
       by, at: now, lotIndex,
       note: extra.lineLabel || '',
     });
+
+    // ── AUTO-ADVANCE: if all lines are now received by coord, promote lot ──
+    if (extra.allLineKeys && extra.allLineKeys.length > 0) {
+      const allDone = extra.allLineKeys.every(k => {
+        if (k === lineKey) return true; // just marked
+        return lot.lineStatuses[k]?.receivedCoord;
+      });
+      if (allDone && lot.status === 'returned_to_coord') {
+        lot.status = 'received_coord';
+        if (extra.note) lot.receptionCoordNote = extra.note;
+        if (extra.partialQty != null) lot.receptionCoordQty = extra.partialQty;
+        record.markModified('lots');
+        record.history.push({
+          action: 'receive_all_coord',
+          by, at: now, lotIndex,
+          note: '(auto — toutes les lignes réceptionnées)',
+        });
+      }
+    }
     return;
   }
 
@@ -2536,7 +2683,19 @@ app.post('/api/projects/:projectId/laquage/barres/action', requireAuth, async (r
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) return res.status(404).json({ error: 'Record not found' });
 
-    applyLaquageAction(record, action, lotIdx, lineKey, by, { note, partialQty, lineLabel });
+    // Compute all line keys for auto-advance check
+    let allLineKeys = [];
+    const lot = record.lots.find(l => l.lotIndex === lotIdx);
+    if (lot) {
+      (lot.barresBrutes || []).forEach((_, i) => allLineKeys.push(`bb-${i}`));
+      (lot.barresLaquees || []).forEach((_, i) => allLineKeys.push(`bl-${i}`));
+      (lot.morceauxBruts || []).forEach((_, i) => allLineKeys.push(`mb-${i}`));
+      (lot.morceauxLaques || []).forEach((r, i) =>
+        (r.lignes || [{}]).forEach((_, li) => allLineKeys.push(`ml-${i}-${li}`))
+      );
+    }
+
+    applyLaquageAction(record, action, lotIdx, lineKey, by, { note, partialQty, lineLabel, allLineKeys });
     await record.save();
     res.json(record.toJSON());
   } catch (e) {
@@ -2627,7 +2786,14 @@ app.post('/api/projects/:projectId/laquage/accessoires/action', requireAuth, asy
     let record = await LaquageAccessoires.findOne({ projectId: req.params.projectId });
     if (!record) return res.status(404).json({ error: 'Record not found' });
 
-    applyLaquageAction(record, action, lotIdx, lineKey, by, { note, partialQty, lineLabel });
+    // Compute all line keys for auto-advance check
+    let allLineKeys = [];
+    const lot = record.lots.find(l => l.lotIndex === lotIdx);
+    if (lot) {
+      (lot.accessoires || []).forEach((_, i) => allLineKeys.push(`acc-${i}`));
+    }
+
+    applyLaquageAction(record, action, lotIdx, lineKey, by, { note, partialQty, lineLabel, allLineKeys });
     await record.save();
     res.json(record.toJSON());
   } catch (e) {
