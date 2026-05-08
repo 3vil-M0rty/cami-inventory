@@ -1510,7 +1510,32 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           <td data-label="État">
                             <span className="etat-badge" style={{ background: ETAT_COLORS[derivedEtat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap' }}>{t(`etat_${derivedEtat}`)}</span>
                           </td>
-                          <td data-label="Date"><span className="date-placeholder">—</span></td>
+                          <td data-label="Date" className="delivery-date-cell">
+                            {(() => {
+                              const unit = row.unit;
+                              const compDates = (ch.components || []).map((_, ci) => {
+                                const cs = (row.unit.componentStates || []).find(c => c.compIndex === ci);
+                                return cs?.deliveryDate ? new Date(cs.deliveryDate) : null;
+                              }).filter(Boolean);
+                              if (compDates.length === 0) return <span className="date-placeholder">—</span>;
+                              const lastDate = new Date(Math.max(...compDates.map(d => d.getTime())));
+                              const allLivres = ch.components.every((_, ci) => {
+                                const cs = (row.unit.componentStates || []).find(c => c.compIndex === ci);
+                                return cs?.etat === 'livre';
+                              });
+                              return (
+                                <span className="date-placeholder" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  {allLivres ? '📅' : '🕐'}
+                                  <span style={{ color: allLivres ? '#16a34a' : '#f59e0b', fontWeight: 600 }}>
+                                    {fmtDate(lastDate)}
+                                  </span>
+                                  {!allLivres && (
+                                    <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 2 }}>(partiel)</span>
+                                  )}
+                                </span>
+                              );
+                            })()}
+                          </td>
                           {showAtelierCols && <td data-label="Atelier" className="atelier-table-col"><span style={{ color: '#9ca3af', fontSize: 11 }}>—</span></td>}
                           {showAtelierCols && <td data-label="Vitrage" className="atelier-table-col"><span style={{ color: '#9ca3af', fontSize: 11 }}>—</span></td>}
                           <td data-label="">{adminThing && <div className="chassis-row__actions">
@@ -1544,7 +1569,21 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           )}
                           {/* État cell */}
                           {renderEtatCell(etat, isSaving, (newEtat) => handleComponentEtatChange(ch, unitIndex, ci, newEtat, rowKey))}
-                          <td data-label="Date"><span className="date-placeholder">—</span></td>
+                          <td data-label="Date" className="delivery-date-cell">
+                            {(() => {
+                              const cs = (row.unit.componentStates || []).find(c => c.compIndex === ci);
+                              const compEtat = cs?.etat || 'non_entame';
+                              const compDate = cs?.deliveryDate;
+                              if (compEtat === 'livre') {
+                                return (userRole === 'Admin' || userRole === 'LOGISTIQUE')
+                                  ? <button className="date-btn" onClick={() => setDeliveryModal({ kind: 'component', chId, unitIndex, ci, rowKey, currentDate: toDateInput(compDate) })}>
+                                    📅 {compDate ? fmtDate(compDate) : 'Définir'}
+                                  </button>
+                                  : <span className="date-placeholder">📅 {compDate ? fmtDate(compDate) : '—'}</span>;
+                              }
+                              return <span className="date-placeholder">—</span>;
+                            })()}
+                          </td>
                           {showAtelierCols && (
                             <td data-label="Atelier" className="atelier-table-col">
                               {canEditAtelierTable ? (
