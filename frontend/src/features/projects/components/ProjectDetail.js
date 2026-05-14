@@ -1096,9 +1096,9 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                     <th style={{ width: 80 }}>L (mm)</th><th style={{ width: 80 }}>H (mm)</th>
                     <th style={{ width: 90 }}>m²</th><th style={{ width: 120 }}>{t('status')}</th>
                     <th style={{ width: 120 }}>{t('blDate')}</th>
-                    {adminThing && <th style={{ width: 40 }}></th>}
-                    {adminThing && <th style={{ width: 40 }}></th>}
-                    {adminThing && <th style={{ width: 40 }}></th>}
+                    {adminVerre && <th style={{ width: 40 }}></th>}
+                    {adminVerre && <th style={{ width: 40 }}></th>}
+                    {adminVerre && <th style={{ width: 40 }}></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1125,9 +1125,9 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                             ? <button className="date-btn" style={{ fontSize: 11 }} onClick={() => setDelivDateModal({ id, etat: 'livre', current: toDateInput(r.deliveryDate) })}>📅 {fmtDate(r.deliveryDate)}</button>
                             : <span style={{ color: '#9ca3af' }}>—</span>}
                         </td>
-                        {adminThing && <td>{isEditing ? <div style={{ display: 'flex', gap: 4 }}><button className="ct-config-btn" style={{ fontSize: 11, padding: '2px 7px' }} onClick={saveEdit} disabled={isSaving}>💾</button><button className="delete-btn" style={{ fontSize: 11, padding: '2px 7px' }} onClick={() => setEditingRemp(null)}>✕</button></div> : <button className="edit-btn" disabled={isSaving} onClick={() => setEditingRemp({ id, type: r.type, sousType: r.sousType || '', largeur: r.largeur, hauteur: r.hauteur })}>✏️</button>}</td>}
-                        {adminThing && <td><button className="print-btn" disabled={isEditing} onClick={() => { const tl = chassisLabels[chassis.type]?.[language] || chassisLabels[chassis.type]?.fr || chassis.type; const html = buildRemplissageLabelHTML([r], chassis, project, compLabel, tl); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🏷</button></td>}
-                        {adminThing && <td><button className="delete-btn" onClick={() => deleteRemp(id)} disabled={isSaving || isEditing}>✕</button></td>}
+                        {adminVerre && <td>{isEditing ? <div style={{ display: 'flex', gap: 4 }}><button className="ct-config-btn" style={{ fontSize: 11, padding: '2px 7px' }} onClick={saveEdit} disabled={isSaving}>💾</button><button className="delete-btn" style={{ fontSize: 11, padding: '2px 7px' }} onClick={() => setEditingRemp(null)}>✕</button></div> : <button className="edit-btn" disabled={isSaving} onClick={() => setEditingRemp({ id, type: r.type, sousType: r.sousType || '', largeur: r.largeur, hauteur: r.hauteur })}>✏️</button>}</td>}
+                        {adminVerre && <td><button className="print-btn" disabled={isEditing} onClick={() => { const tl = chassisLabels[chassis.type]?.[language] || chassisLabels[chassis.type]?.fr || chassis.type; const html = buildRemplissageLabelHTML([r], chassis, project, compLabel, tl); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🏷</button></td>}
+                        {adminVerre && <td><button className="delete-btn" onClick={() => deleteRemp(id)} disabled={isSaving || isEditing}>✕</button></td>}
                       </tr>
                     );
                   })}
@@ -1330,6 +1330,8 @@ function ProjectDetail({ project, onBack, currentUser }) {
     'Coordinateur-vitrage': ['chassis', 'bl'],
   };
   const visibleTabs = adminThing ? detailTabs : detailTabs.filter(sc => (ROLE_TAB_ACCESS[userRole] || []).includes(sc.key));
+
+  const vitrgAdmin = user?.role === 'admin' || user?.role === 'Coordinateur-vitrage';
 
   // ─── État cell renderer — used for both unit and component rows ──────────────
   /**
