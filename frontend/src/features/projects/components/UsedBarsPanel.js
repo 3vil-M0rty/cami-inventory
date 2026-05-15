@@ -53,7 +53,7 @@ function MovementModal({ item, projectId, onClose, language }) {
         // Keep project_use (consumption) AND project_return (deletion restore) for this project
         const filtered = res.data.filter(
           m => (m.type === 'project_use' || m.type === 'project_return') &&
-               m.projectId === projectId
+            m.projectId === projectId
         );
         // Attach signed quantity: project_use = negative (consumed), project_return = positive (restored)
         const signed = filtered.map(m => ({
@@ -175,15 +175,16 @@ function UsedBarsPanel({ project }) {
   const userRole = user?.role;
   const adminThing = userRole === 'Admin';
   const magaThing = userRole == 'Magasinier' || userRole == 'Admin';
+  const delConsPer = userRole == 'Coordinateur-vitrage' || userRole == 'Admin' || userRole == 'Magasinier' || userRole == 'Laquage';
 
   const ROLE_SUPER_CAT_ACCESS = {
     Laquage: ['poudre'],
     BARREMAN: ['aluminium'],
     Coordinateur: [],
+    'Coordinateur-vitrage': ['verre'],
     Magasinier: ['accessoires'],
     LOGISTIQUE: [],
   };
-
   const visibleSuperCats = adminThing
     ? SUPER_CATS
     : SUPER_CATS.filter(sc => (ROLE_SUPER_CAT_ACCESS[userRole] || []).includes(sc.key));
@@ -412,7 +413,7 @@ function UsedBarsPanel({ project }) {
                       </button>
                     </td>
                     <td>
-                      {magaThing && (
+                      {delConsPer && (
                         <button className="ubp__remove-btn" title={t('delete')} onClick={() => handleRemove(item.id || item._id)}>
                           <Trash2 size={15} />
                         </button>
