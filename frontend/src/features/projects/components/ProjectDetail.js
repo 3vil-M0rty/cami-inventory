@@ -993,6 +993,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
     (userRole === 'Coordinateur-vitrage' && project?.tab === 'vitrage');
   const adminVerre = userRole === 'Admin' || userRole === 'Coordinateur-vitrage';
   const stateThingVitrage = userRole === 'Admin' || ['LOGISTIQUE', 'Coordinateur-vitrage'].includes(userRole);
+  const stateThingCor = userRole === 'Admin' || ['LOGISTIQUE', 'Coordinateur'].includes(userRole);
 
   const REMP_ETAT_OPTIONS = ['non_entame', 'en_cours', 'fabrique', 'pret_a_livrer', 'livre'];
   function getRemplissageAllowedEtats(role, currentEtat) {
@@ -1587,7 +1588,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
     );
   };
   // ─────────────────────────────────────────────────────────────────────────────
-
+  const stateThingCor = userRole === 'Admin' || ['LOGISTIQUE', 'Coordinateur'].includes(userRole);
   return (
     <div className="project-detail">
       <button className="btn-back" onClick={onBack}><StepBack size={15} />{t('backToProjects')}</button>
@@ -1636,9 +1637,9 @@ function ProjectDetail({ project, onBack, currentUser }) {
           <div className="panel-toolbar">
             {adminThing && <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>+ {t('addChassis')}</button>}
             {adminThing && <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}><ShipWheel size={15} /></button>}
-            {rows.length > 0 && adminVerre && (
+            {rows.length > 0 && (adminThing || stateThing) && (
               <div className="selection-toolbar">
-                {adminThing && (
+                {(adminThing || stateThing) && (
                   <button className="select-btn" onClick={toggleAll}>{selectedKeys.size === allSelectableKeys.length ? t('deselectAll') : t('selectAll')}</button>
                 )}
 
@@ -1728,8 +1729,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
               <table className="chassis-table">
                 <thead>
                   <tr>
-                    {adminThing && <th style={{ width: 40 }}><input type="checkbox" checked={allSelectableKeys.length > 0 && selectedKeys.size === allSelectableKeys.length} onChange={toggleAll} /></th>}
-                    <th>{t('repere')}</th>
+                    {(adminThing || stateThing) && <th style={{ width: 40 }}><input type="checkbox" checked={allSelectableKeys.length > 0 && selectedKeys.size === allSelectableKeys.length} onChange={toggleAll} /></th>}                    <th>{t('repere')}</th>
                     <th>{t('type')}</th>
                     <th>{t('largeur')} (mm)</th>
                     <th>{t('hauteur')} (mm)</th>
@@ -1756,7 +1756,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                       const allCompsCnt = allCompsRemp.length; const allCompsRdy = allCompsRemp.filter(r => REMP_DONE_ETATS.has(r.etat)).length;
                       return (
                         <tr key={rowKey} className="chassis-row chassis-row--group-head">
-                          {adminThing && <td className="chassis-row__check" />}
+                          {(adminThing || stateThing) && <td className="chassis-row__check" />}
                           <td data-label="Repère"><strong>{label}</strong><span className="composite-badge" title="Composite">⊞</span></td>
                           <td data-label="Type">{chassisLabels[ch.type]?.[language] || ch.type}</td>
                           <td data-label="L (mm)">{ch.largeur}</td><td data-label="H (mm)">{ch.hauteur}</td>
@@ -1819,8 +1819,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                       const compM2 = comp.largeur && comp.hauteur ? ((comp.largeur * comp.hauteur) / 1e6).toFixed(2) : '—';
                       return (
                         <tr key={rowKey} className={`component-row${isSelected ? ' component-row--selected' : ''}${isSaving ? ' component-row--saving' : ''}`}>
-                          {adminThing && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}
-                          <td data-label="Repère" className="component-indent">↳ <strong>{label}</strong></td>
+                          {(adminThing || stateThing) && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}                          <td data-label="Repère" className="component-indent">↳ <strong>{label}</strong></td>
                           <td data-label="Type" className="component-role">{comp.role === 'dormant' ? t('dormant') : t('vantail')}</td>
                           <td data-label="L (mm)">{comp.largeur || '—'}</td><td data-label="H (mm)">{comp.hauteur || '—'}</td>
                           <td data-label="Dimension" className="dim-cell">{comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}</td>
@@ -1883,8 +1882,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
                     const unitM2 = ch.largeur && ch.hauteur ? ((ch.largeur * ch.hauteur) / 1e6).toFixed(2) : '—';
                     return (
                       <tr key={rowKey} className={`chassis-row${isSelected ? ' chassis-row--selected' : ''}${isSaving ? ' chassis-row--saving' : ''}`}>
-                        {adminThing && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}
-                        <td data-label="Repère"><strong>{label}</strong></td>
+                        {(adminThing || stateThing) && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}                        <td data-label="Repère"><strong>{label}</strong></td>
                         <td data-label="Type">{chassisLabels[ch.type]?.[language] || ch.type}</td>
                         <td data-label="L (mm)">{ch.largeur}</td><td data-label="H (mm)">{ch.hauteur}</td>
                         <td data-label="Dimension" className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
