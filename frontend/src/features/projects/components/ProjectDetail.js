@@ -971,7 +971,7 @@ function buildRemplissageLabelHTML(remplissages, chassis, project, compLabel, ty
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title> </title><style>@page{size:9.5cm 5.5cm;margin:0mm}*{margin:0;padding:0;box-sizing:border-box}html,body{width:9.5cm;height:5.5cm;margin:0!important;padding:0!important;background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}@media print{html,body{margin:0!important;padding:0!important}.page{page-break-after:always;page-break-inside:avoid}.page:last-child{page-break-after:avoid}}.page{width:9.5cm;height:5.5cm;overflow:hidden;display:block}.label{width:9.5cm;height:5.5cm;padding:3mm 4mm;display:flex;flex-direction:column;gap:1.2mm;overflow:hidden}.lh{display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #1a1a1a;padding-bottom:1.2mm}.brand{font-size:8.5pt;font-weight:900;color:#1a1a1a;letter-spacing:0.05em;text-transform:uppercase}.swatch{width:10mm;height:5mm;border-radius:2px;border:1px solid #ccc;background-color:${ralHex};flex-shrink:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.row{display:flex;gap:6mm}.f{display:flex;gap:2px;align-items:baseline}.k{font-size:5.5pt;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;margin-right:2px}.v{font-size:6.5pt;font-weight:500;color:#1a1a1a}.remp-type{font-size:7pt!important;font-weight:700!important}.div{border-top:1px dashed #ccc;margin:0;flex-shrink:0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:0.5mm 2mm;flex:1;min-height:0}.cell{display:flex;flex-direction:column;gap:0mm}.full{grid-column:1/-1}.repere{font-size:12pt;font-weight:900;color:#1a1a1a;letter-spacing:-0.02em;line-height:1}.dim{font-size:9.5pt;font-weight:700;color:#1a1a1a;line-height:1.1}.parent-ref{font-size:6pt;font-weight:600;color:#555;margin-top:1mm;line-height:1.2}</style></head><body>${pages}<script>document.title=' ';window.onload=function(){window.focus();window.print();setTimeout(function(){window.close();},1000);};${closeScript}</body></html>`;
 }
 
-const EMPTY_REMP = { type: 'Verre', sousType: '', largeur: '', hauteur: '', etat: 'non_entame' };
+const EMPTY_REMP = { type: 'Verre', sousType: '', largeur: '', hauteur: '', etat: 'non_entame', quantity: 1 };
 
 // ─── Remplissage Modal ────────────────────────────────────────────────────────
 function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, onClose, onSaved, chassisLabels = {}, language = 'fr' }) {
@@ -1024,11 +1024,16 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
 
   const addRemp = async () => {
     if (!newRemp.largeur || !newRemp.hauteur) return setError('Largeur et hauteur sont requises');
+    const qty = Math.max(1, parseInt(newRemp.quantity) || 1);
     setError('');
     try {
-      const body = { ...newRemp, unitIndex, ...(compIndex !== null ? { compIndex } : {}) };
-      const res = await axios.post(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages`, body);
-      setRemplissages(prev => [...prev, res.data]);
+      const created = [];
+      for (let i = 0; i < qty; i++) {
+        const body = { type: newRemp.type, sousType: newRemp.sousType, largeur: newRemp.largeur, hauteur: newRemp.hauteur, etat: newRemp.etat, unitIndex, ...(compIndex !== null ? { compIndex } : {}) };
+        const res = await axios.post(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages`, body);
+        created.push(res.data);
+      }
+      setRemplissages(prev => [...prev, ...created]);
       setNewRemp(EMPTY_REMP);
       if (onSaved) onSaved();
     } catch (e) { setError(e.response?.data?.error || 'Erreur ajout'); }
@@ -1139,11 +1144,12 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
             {adminVerre && (
               <div className="proj-acc-add-form">
                 <div className="proj-acc-add-form__title">➕ {t('add_infill')}</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 80px auto', gap: 10, alignItems: 'flex-end' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 80px 70px auto', gap: 10, alignItems: 'flex-end' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}><label>{t('type')}</label><select value={newRemp.type} onChange={e => setNewRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>{REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}</select></div>
                   <div className="form-group" style={{ marginBottom: 0 }}><label>{t('subtype')}</label><input type="text" value={newRemp.sousType} onChange={e => setNewRemp(p => ({ ...p, sousType: e.target.value }))} placeholder={t('subtype_placeholder')} style={{ width: '100%' }} /></div>
                   <div className="form-group" style={{ marginBottom: 0 }}><label>{t('width_mm')}</label><input type="number" min="1" value={newRemp.largeur} onChange={e => setNewRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" /></div>
                   <div className="form-group" style={{ marginBottom: 0 }}><label>{t('height_mm')}</label><input type="number" min="1" value={newRemp.hauteur} onChange={e => setNewRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" /></div>
+                  <div className="form-group" style={{ marginBottom: 0 }}><label>Qté</label><input type="number" min="1" max="50" value={newRemp.quantity} onChange={e => setNewRemp(p => ({ ...p, quantity: e.target.value }))} className="ct-acc-qty-input" /></div>
                   <div><button type="button" className="ct-config-btn" style={{ marginTop: 22 }} onClick={addRemp}>{t('add')}</button></div>
                 </div>
                 {newRemp.largeur && newRemp.hauteur && <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>{t('surface')} <strong>{calcM2(newRemp.largeur, newRemp.hauteur)}</strong></div>}
