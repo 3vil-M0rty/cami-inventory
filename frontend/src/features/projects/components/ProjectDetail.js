@@ -1646,7 +1646,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
           <div className="panel-toolbar">
             {adminThing && <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>+ {t('addChassis')}</button>}
             {adminThing && <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}><ShipWheel size={15} /></button>}
-            {rows.length > 0 && (adminThing || stateThing) && (
+            {rows.length > 0 && (adminThing || stateThing || adminVerre) && (
               <div className="selection-toolbar">
                 {(adminThing || stateThing) && (
                   <button className="select-btn" onClick={toggleAll}>
@@ -1740,7 +1740,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
               <table className="chassis-table">
                 <thead>
                   <tr>
-{(adminThing || stateThing) && <th style={{ width: 40 }}><input type="checkbox" checked={logistiqueSelectableKeys.length > 0 && logistiqueSelectableKeys.every(k => selectedKeys.has(k))} onChange={toggleAll} /></th>}                    <th>{t('type')}</th>
+                    {(adminThing || stateThing) && <th style={{ width: 40 }}><input type="checkbox" checked={logistiqueSelectableKeys.length > 0 && logistiqueSelectableKeys.every(k => selectedKeys.has(k))} onChange={toggleAll} /></th>}                    <th>{t('type')}</th>
                     <th>{t('largeur')} (mm)</th>
                     <th>{t('hauteur')} (mm)</th>
                     <th>{t('dimension')}</th>
