@@ -1167,6 +1167,171 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
   );
 }
 
+function BulkRemplissageModal({ project, onClose, onSaved }) {
+  const { t } = useLanguage();
+  const { user } = useAuth();
+  const userRole = user?.role;
+  const isLogistique = userRole === 'LOGISTIQUE';
+  const isVitrage = userRole === 'Admin' || userRole === 'Coordinateur-vitrage';
+
+  // Collect all remplissages across all chassis
+  const allRemplissages = (project.chassis || []).flatMap(ch =>
+    (ch.remplissages || []).map(r => ({ r, ch, chId: ch._id || ch.id }))
+  );
+
+  // LOGISTIQUE: only pret_a_livrer selectable; Vitrage/Admin: all
+  const selectableRemplissages = isLogistique
+    ? allRemplissages.filter(({ r }) => r.etat === 'pret_a_livrer')
+    : allRemplissages;
+
+  const [selected, setSelected] = useState(new Set(selectableRemplissages.map((_, i) => i)));
+  const [targetEtat, setTargetEtat] = useState(isLogistique ? 'livre' : 'fabrique');
+  const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const etatOptions = isLogistique
+    ? ['pret_a_livrer', 'livre']
+    : ['non_entame', 'en_cours', 'fabrique', 'pret_a_livrer'];
+
+  const toggleAll = () =>
+    setSelected(selected.size === selectableRemplissages.length
+      ? new Set()
+      : new Set(selectableRemplissages.map((_, i) => i)));
+
+  const toggleOne = (i) => {
+    const n = new Set(selected);
+    n.has(i) ? n.delete(i) : n.add(i);
+    setSelected(n);
+  };
+
+  const handleApply = async () => {
+    if (!selected.size) return;
+    setSaving(true); setError('');
+    try {
+      const toUpdate = [...selected].map(i => selectableRemplissages[i]);
+      await Promise.all(toUpdate.map(({ r, ch, chId }) => {
+        const id = r._id || r.id;
+        const patch = { etat: targetEtat };
+        if (targetEtat === 'livre') patch.deliveryDate = deliveryDate;
+        return axios.patch(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${id}`, patch);
+      }));
+      if (onSaved) onSaved();
+      onClose();
+    } catch (e) { setError(e.response?.data?.error || 'Erreur lors de la mise à jour'); }
+    finally { setSaving(false); }
+  };
+
+  const REMP_ETAT_COLORS = {
+    non_entame: '#9ca3af', en_cours: '#f59e0b', fabrique: '#3b82f6',
+    pret_a_livrer: 'rgb(255,0,0)', livre: '#16a34a',
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 600, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div className="ct-manager__header">
+          <h2>🏷 Changer l'état des remplissages en lot</h2>
+          <button className="chassis-form__close" onClick={onClose}>×</button>
+        </div>
+        {error && <div className="ct-manager__error">{error}</div>}
+
+        {selectableRemplissages.length === 0 ? (
+          <div className="proj-acc-empty">
+            {isLogistique
+              ? 'Aucun remplissage en état "Prêt à livrer" disponible.'
+              : 'Aucun remplissage dans ce projet.'}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+              <label style={{ fontWeight: 600, fontSize: 13 }}>Nouvel état :</label>
+              <select
+                value={targetEtat}
+                onChange={e => setTargetEtat(e.target.value)}
+                style={{ borderLeft: `3px solid ${REMP_ETAT_COLORS[targetEtat]}`, borderRadius: 4, padding: '4px 8px', fontSize: 13 }}
+              >
+                {etatOptions.map(opt => (
+                  <option key={opt} value={opt}>{t('etat_' + opt)}</option>
+                ))}
+              </select>
+              {targetEtat === 'livre' && (
+                <input
+                  type="date"
+                  value={deliveryDate}
+                  onChange={e => setDeliveryDate(e.target.value)}
+                  style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #d1d5db', fontSize: 13 }}
+                />
+              )}
+            </div>
+
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ fontSize: 12, color: '#6b7280', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox"
+                  checked={selected.size === selectableRemplissages.length}
+                  onChange={toggleAll}
+                />
+                Tout sélectionner ({selectableRemplissages.length})
+              </label>
+            </div>
+
+            <table className="proj-acc-table" style={{ marginBottom: 16 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 36 }}></th>
+                  <th>Repère</th>
+                  <th>Type</th>
+                  <th>Dimensions</th>
+                  <th>État actuel</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectableRemplissages.map(({ r, ch }, i) => {
+                  const unitSuffix = (ch.quantity || 1) > 1 ? ` #${(r.unitIndex ?? 0) + 1}` : '';
+                  const comp = r.compIndex != null ? (ch.components || [])[r.compIndex] : null;
+                  const compLabel = comp ? (comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${r.compIndex}`)) : null;
+                  const repere = compLabel
+                    ? `${ch.repere}${unitSuffix} — ${compLabel}`
+                    : `${ch.repere}${unitSuffix}`;
+                  const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+                  return (
+                    <tr key={r._id || r.id} style={{ opacity: selected.has(i) ? 1 : 0.45 }}>
+                      <td><input type="checkbox" checked={selected.has(i)} onChange={() => toggleOne(i)} /></td>
+                      <td><strong>{repere}</strong></td>
+                      <td>{rLabel}</td>
+                      <td style={{ textAlign: 'center', fontSize: 12 }}>{r.largeur}×{r.hauteur} mm</td>
+                      <td>
+                        <span style={{
+                          background: REMP_ETAT_COLORS[r.etat] || '#9ca3af',
+                          color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600
+                        }}>
+                          {t('etat_' + r.etat)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        <div className="modal-actions">
+          <button onClick={onClose}>{t('cancel')}</button>
+          {selectableRemplissages.length > 0 && (
+            <button
+              className="primary"
+              onClick={handleApply}
+              disabled={saving || !selected.size}
+            >
+              {saving ? '⏳ En cours…' : `✅ Appliquer (${selected.size} remplissage${selected.size > 1 ? 's' : ''})`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 // ─── ProjectDetail ────────────────────────────────────────────────────────────
 function ProjectDetail({ project, onBack, currentUser }) {
   const { deleteChassis, updateChassis, updateUnit, updateComponent, refreshProject } = useProjects();
@@ -1185,6 +1350,8 @@ function ProjectDetail({ project, onBack, currentUser }) {
   const [savingKey, setSavingKey] = useState(null);
   const [atelierTables, setAtelierTables] = useState({});
   const [savingTableKey, setSavingTableKey] = useState(null);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [showBulkRemplissageModal, setShowBulkRemplissageModal] = useState(false);
 
   const language = currentLanguage;
   const statusColor = STATUS_COLORS[project.status] || '#9ca3af';
@@ -1280,17 +1447,61 @@ function ProjectDetail({ project, onBack, currentUser }) {
     if (newEtat === 'livre') { setDeliveryModal({ kind: 'component', chId: ch._id || ch.id, unitIndex, ci, rowKey, currentDate: null }); return; }
     setSavingKey(rowKey); await updateComponent(project.id, ch._id || ch.id, unitIndex, ci, { etat: newEtat }); if (refreshProject) await refreshProject(project.id); setSavingKey(null);
   };
+
   const handleDeliveryConfirm = async (deliveryDate) => {
-    const m = deliveryModal; setDeliveryModal(null); setSavingKey(m.rowKey);
+    const m = deliveryModal; setDeliveryModal(null);
+    if (m.kind === 'bulk') {
+      setBulkSaving(true);
+      for (const row of rows) {
+        if (!selectedKeys.has(row.rowKey)) continue;
+        try {
+          if (row.kind === 'unit') {
+            await updateUnit(project.id, row.ch._id || row.ch.id, row.unitIndex, { etat: 'livre', deliveryDate });
+          } else if (row.kind === 'component') {
+            await updateComponent(project.id, row.ch._id || row.ch.id, row.unitIndex, row.ci, { etat: 'livre', deliveryDate });
+          }
+        } catch (e) { console.error('Bulk livre failed for', row.rowKey, e); }
+      }
+      if (refreshProject) await refreshProject(project.id);
+      setBulkSaving(false);
+      setSelectedKeys(new Set());
+      return;
+    }
+    setSavingKey(m.rowKey);
     if (m.kind === 'unit') await updateUnit(project.id, m.chId, m.unitIndex, { etat: 'livre', deliveryDate });
     else await updateComponent(project.id, m.chId, m.unitIndex, m.ci, { etat: 'livre', deliveryDate });
     if (refreshProject) await refreshProject(project.id); setSavingKey(null);
   };
+
   const handleDeleteUnit = async (ch, unitIndex) => {
     const chId = ch._id || ch.id; const qty = ch.quantity ?? 1;
     if (qty <= 1) { if (!window.confirm(t('deleteChassisConfirm'))) return; await deleteChassis(project.id, chId); }
     else { if (!window.confirm(`Supprimer l'unité #${unitIndex + 1} ?`)) return; await updateChassis(project.id, chId, { quantity: qty - 1 }); }
     if (refreshProject) await refreshProject(project.id);
+  };
+
+  const handleBulkEtatChange = async (newEtat) => {
+    if (!selectedKeys.size) return;
+    // If changing to 'livre', open delivery date modal for first item then apply to all
+    if (newEtat === 'livre') {
+      // We'll handle via a single date prompt reusing DeliveryDateModal
+      setDeliveryModal({ kind: 'bulk', rowKey: '__bulk__', currentDate: new Date().toISOString().split('T')[0] });
+      return;
+    }
+    setBulkSaving(true);
+    for (const row of rows) {
+      if (!selectedKeys.has(row.rowKey)) continue;
+      try {
+        if (row.kind === 'unit') {
+          await updateUnit(project.id, row.ch._id || row.ch.id, row.unitIndex, { etat: newEtat });
+        } else if (row.kind === 'component') {
+          await updateComponent(project.id, row.ch._id || row.ch.id, row.unitIndex, row.ci, { etat: newEtat });
+        }
+      } catch (e) { console.error('Bulk état change failed for', row.rowKey, e); }
+    }
+    if (refreshProject) await refreshProject(project.id);
+    setBulkSaving(false);
+    setSelectedKeys(new Set());
   };
 
   const [ATELIER_TABLES, setAtelierTableOptions] = useState([]);
@@ -1430,7 +1641,42 @@ function ProjectDetail({ project, onBack, currentUser }) {
                 {adminThing && (
                   <button className="select-btn" onClick={toggleAll}>{selectedKeys.size === allSelectableKeys.length ? t('deselectAll') : t('selectAll')}</button>
                 )}
+
                 {selectedKeys.size > 0 && adminThing && <button className="print-selected-btn" onClick={startBatchPrint}>🖨 {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})</button>}
+                {selectedKeys.size > 0 && stateThing && (() => {
+                  // Determine which états the current user can bulk-set
+                  // Use a sample etat to compute allowed (LOGISTIQUE is restricted to pret_a_livrer rows)
+                  // For LOGISTIQUE: only show if at least one selected row is pret_a_livrer
+                  const selectedRows = rows.filter(r => selectedKeys.has(r.rowKey) && (r.kind === 'unit' || r.kind === 'component'));
+                  const canActLogistique = userRole === 'LOGISTIQUE' && selectedRows.some(r => r.etat === 'pret_a_livrer');
+                  const canActOther = userRole !== 'LOGISTIQUE';
+                  if (!canActLogistique && !canActOther) return null;
+                  // Compute allowed états: intersection across all selected rows for this role
+                  const sampleEtat = selectedRows[0]?.etat || 'non_entame';
+                  const allowed = getAllowedEtats(userRole, sampleEtat, project);
+                  const bulkEtats = userRole === 'LOGISTIQUE' ? ['livre'] : allowed.filter(e => e !== 'livre' || userRole === 'Admin');
+                  return (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, padding: '3px 10px' }}>
+                      <span style={{ fontSize: 12, color: '#0369a1', fontWeight: 600 }}>
+                        Changer état ({selectedKeys.size}) :
+                      </span>
+                      {bulkEtats.map(opt => (
+                        <button
+                          key={opt}
+                          disabled={bulkSaving}
+                          onClick={() => handleBulkEtatChange(opt)}
+                          style={{
+                            fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 5, border: 'none',
+                            background: ETAT_COLORS[opt], color: '#fff', cursor: 'pointer', opacity: bulkSaving ? 0.6 : 1,
+                          }}
+                        >
+                          {t('etat_' + opt)}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+
                 {(() => {
                   const allRemp = (project.chassis || []).flatMap(ch => { const numComps = (ch.components || []).length; return (ch.remplissages || []).map(r => ({ r, ch, numComps })); });
                   if (allRemp.length === 0) return null;
@@ -1457,7 +1703,22 @@ function ProjectDetail({ project, onBack, currentUser }) {
                       🏷 Étiquettes remplissages ({allRemp.length})
                     </button>
                   );
+
                 })()}
+                {/* Bulk remplissage état button — only for Coordinateur-vitrage, Admin, LOGISTIQUE */}
+                {
+                  (userRole === 'Admin' || userRole === 'Coordinateur-vitrage' ||
+                    (userRole === 'LOGISTIQUE' && (project.chassis || []).some(ch => (ch.remplissages || []).some(r => r.etat === 'pret_a_livrer')))
+                  ) && (project.chassis || []).some(ch => (ch.remplissages || []).length > 0) && (
+                    <button
+                      className="print-selected-btn"
+                      style={{ background: '#0891b2' }}
+                      onClick={() => setShowBulkRemplissageModal(true)}
+                    >
+                      🪟 États remplissages en lot
+                    </button>
+                  )
+                }
               </div>
             )}
           </div>
@@ -1707,6 +1968,13 @@ function ProjectDetail({ project, onBack, currentUser }) {
         />
       )}
       {showAccExport && <AccessoriesExportModal project={project} chassisLabels={chassisLabels} language={language} t={t} onClose={() => setShowAccExport(false)} />}
+      {showBulkRemplissageModal && (
+        <BulkRemplissageModal
+          project={project}
+          onClose={() => setShowBulkRemplissageModal(false)}
+          onSaved={() => { if (refreshProject) refreshProject(project.id); }}
+        />
+      )}
     </div>
   );
 }
