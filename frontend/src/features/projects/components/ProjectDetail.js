@@ -1437,8 +1437,17 @@ function ProjectDetail({ project, onBack, currentUser }) {
   }).flat();
 
   const allSelectableKeys = rows.filter(r => r.kind === 'unit' || r.kind === 'component').map(r => r.rowKey);
+
+  const logistiqueSelectableKeys = userRole === 'LOGISTIQUE'
+    ? rows.filter(r => (r.kind === 'unit' || r.kind === 'component') && r.etat === 'pret_a_livrer').map(r => r.rowKey)
+    : allSelectableKeys;
+
   const toggleKey = key => setSelectedKeys(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
-  const toggleAll = () => setSelectedKeys(selectedKeys.size === allSelectableKeys.length ? new Set() : new Set(allSelectableKeys));
+  const toggleAll = () => setSelectedKeys(
+    selectedKeys.size === logistiqueSelectableKeys.length && logistiqueSelectableKeys.every(k => selectedKeys.has(k))
+      ? new Set()
+      : new Set(logistiqueSelectableKeys)
+  );
 
   const handleUnitEtatChange = async (ch, unitIndex, newEtat, rowKey) => {
     if (newEtat === 'livre') { setDeliveryModal({ kind: 'unit', chId: ch._id || ch.id, unitIndex, rowKey, currentDate: toDateInput(getUnit(ch, unitIndex).deliveryDate) }); return; }
@@ -1640,7 +1649,9 @@ function ProjectDetail({ project, onBack, currentUser }) {
             {rows.length > 0 && (adminThing || stateThing) && (
               <div className="selection-toolbar">
                 {(adminThing || stateThing) && (
-                  <button className="select-btn" onClick={toggleAll}>{selectedKeys.size === allSelectableKeys.length ? t('deselectAll') : t('selectAll')}</button>
+                  <button className="select-btn" onClick={toggleAll}>
+                    {logistiqueSelectableKeys.length > 0 && logistiqueSelectableKeys.every(k => selectedKeys.has(k)) ? t('deselectAll') : t('selectAll')}
+                  </button>
                 )}
 
                 {selectedKeys.size > 0 && adminThing && <button className="print-selected-btn" onClick={startBatchPrint}>🖨 {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})</button>}
@@ -1729,8 +1740,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
               <table className="chassis-table">
                 <thead>
                   <tr>
-                    {(adminThing || stateThing) && <th style={{ width: 40 }}><input type="checkbox" checked={allSelectableKeys.length > 0 && selectedKeys.size === allSelectableKeys.length} onChange={toggleAll} /></th>}                    <th>{t('repere')}</th>
-                    <th>{t('type')}</th>
+{(adminThing || stateThing) && <th style={{ width: 40 }}><input type="checkbox" checked={logistiqueSelectableKeys.length > 0 && logistiqueSelectableKeys.every(k => selectedKeys.has(k))} onChange={toggleAll} /></th>}                    <th>{t('type')}</th>
                     <th>{t('largeur')} (mm)</th>
                     <th>{t('hauteur')} (mm)</th>
                     <th>{t('dimension')}</th>
