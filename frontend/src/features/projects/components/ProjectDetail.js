@@ -1746,7 +1746,9 @@ function ProjectDetail({ project, onBack, currentUser }) {
               <table className="chassis-table">
                 <thead>
                   <tr>
-                    {(adminThing || stateThing) && <th style={{ width: 40 }}><input type="checkbox" checked={logistiqueSelectableKeys.length > 0 && logistiqueSelectableKeys.every(k => selectedKeys.has(k))} onChange={toggleAll} /></th>}                    <th>{t('type')}</th>
+                    {(adminThing || stateThing) && <th style={{ width: 40 }}><input type="checkbox" checked={logistiqueSelectableKeys.length > 0 && logistiqueSelectableKeys.every(k => selectedKeys.has(k))} onChange={toggleAll} /></th>}                    
+                    <th>{t('repere')}</th>
+                    <th>{t('type')}</th>
                     <th>{t('largeur')} (mm)</th>
                     <th>{t('hauteur')} (mm)</th>
                     <th>{t('dimension')}</th>
