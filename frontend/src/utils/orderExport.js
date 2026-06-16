@@ -1,335 +1,165 @@
+// src/utils/orderExport.js
+// Requires: npm i jspdf jspdf-autotable xlsx
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-const STATUS_LABELS = {
-  en_attente: { fr: 'En attente', en: 'Pending',   it: 'In attesa'  },
-  partielle:  { fr: 'Partielle',  en: 'Partial',   it: 'Parziale'   },
-  recue:      { fr: 'Reçue',      en: 'Received',  it: 'Ricevuta'   },
-  annulee:    { fr: 'Annulée',    en: 'Cancelled', it: 'Annullata'  },
+const L = {
+  bc:        { fr: 'BON DE COMMANDE', it: 'ORDINE D\'ACQUISTO', en: 'PURCHASE ORDER' },
+  supplier:  { fr: 'Fournisseur',     it: 'Fornitore',          en: 'Supplier' },
+  date:      { fr: 'Date',            it: 'Data',               en: 'Date' },
+  expected:  { fr: 'Livraison prévue',it: 'Consegna prevista',  en: 'Expected delivery' },
+  codeInt:   { fr: 'Code interne',    it: 'Cod. interno',       en: 'Internal code' },
+  codeFour:  { fr: 'Code fourn.',     it: 'Cod. fornitore',     en: 'Supplier code' },
+  desig:     { fr: 'Désignation',     it: 'Designazione',       en: 'Designation' },
+  qty:       { fr: 'Qté',             it: 'Q.tà',               en: 'Qty' },
+  pu:        { fr: 'P.U. HT',         it: 'P.U.',               en: 'Unit price' },
+  total:     { fr: 'Total HT',        it: 'Totale',             en: 'Total' },
+  totalHT:   { fr: 'Total HT',        it: 'Totale imponibile',  en: 'Subtotal' },
+  tva:       { fr: 'TVA',             it: 'IVA',                en: 'VAT' },
+  totalTTC:  { fr: 'Total TTC',       it: 'Totale IVA incl.',   en: 'Total incl. VAT' },
+  notes:     { fr: 'Notes',           it: 'Note',               en: 'Notes' },
+  draft:     { fr: 'BROUILLON — non envoyé', it: 'BOZZA', en: 'DRAFT' },
 };
+const tr = (k, lang) => (L[k]?.[lang] || L[k]?.fr || k);
 
-function statusLabel(status, lang) {
-  return STATUS_LABELS[status]?.[lang] || STATUS_LABELS[status]?.fr || status;
+const money = (n) => (Number(n) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
+
+function supplierCodeFor(item, supplierId) {
+  if (!item || !supplierId) return '';
+  const sid = (supplierId.id || supplierId._id || supplierId).toString();
+  const hit = (item.supplierCodes || []).find(sc => (sc.supplierId?._id || sc.supplierId)?.toString() === sid);
+  return hit?.code || '';
 }
 
-function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('fr-FR');
-}
+export async function exportOrderPDF(order, lang = 'fr', company = null) {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const accent = company?.color || '#1a1a1a';
+  const supplier = order.supplierId || null;
+  let y = 14;
 
-function runAutoTable(doc, options) {
-  if (typeof doc.autoTable === 'function') {
-    doc.autoTable(options);
-  } else {
-    autoTable(doc, options);
+  // Logo (optional, must be a data URL or same-origin to render reliably)
+  if (company?.logo) {
+    try { doc.addImage(company.logo, 'PNG', 14, y, 26, 16); } catch (_) {}
   }
-}
+  // Company block (right)
+  doc.setFont('helvetica', 'bold').setFontSize(13).setTextColor(accent);
+  doc.text(company?.name || '', pageW - 14, y + 4, { align: 'right' });
+  doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(90);
+  const compLines = [company?.address, company?.phone, company?.email,
+    [company?.ice && `ICE: ${company.ice}`, company?.rc && `RC: ${company.rc}`].filter(Boolean).join('   ')].filter(Boolean);
+  compLines.forEach((t, i) => doc.text(String(t), pageW - 14, y + 9 + i * 4, { align: 'right' }));
 
-/**
- * Clean URLs that have BBCode or markdown artifacts appended.
- * e.g. "https://i.ibb.co/x.jpg[/img][/url]" → "https://i.ibb.co/x.jpg"
- */
-function cleanUrl(url) {
-  if (!url) return null;
-  // Strip everything from the first non-URL character after the extension
-  return url.replace(/[\[\]<>"\s].*$/, '').trim() || null;
-}
+  // Title + number
+  y += 26;
+  doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(20);
+  doc.text(tr('bc', lang), 14, y);
+  doc.setFontSize(12).setTextColor(accent);
+  doc.text(order.status === 'brouillon' ? tr('draft', lang) : `N° ${order.number || order.reference || ''}`, 14, y + 6);
 
-/**
- * Load a remote image via an <img> element (avoids CORS fetch restrictions)
- * and return a base64 data-URL, or null on failure.
- */
-function toBase64(url) {
-  const clean = cleanUrl(url);
-  if (!clean) return Promise.resolve(null);
-  return new Promise(resolve => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous'; // request CORS headers when available
-    const canvas = document.createElement('canvas');
-    img.onload = () => {
-      try {
-        canvas.width  = img.naturalWidth  || 80;
-        canvas.height = img.naturalHeight || 80;
-        canvas.getContext('2d').drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/jpeg', 0.85));
-      } catch {
-        // Canvas tainted (CORS denied) — resolve null, fallback to default
-        resolve(null);
-      }
-    };
-    img.onerror = () => resolve(null);
-    // Short timeout so a broken image doesn't stall the whole export
-    setTimeout(() => resolve(null), 6000);
-    img.src = clean;
+  // Meta + supplier
+  y += 14;
+  doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(60);
+  doc.text(`${tr('date', lang)}: ${fmtDate(order.orderDate)}`, 14, y);
+  if (order.expectedDate) doc.text(`${tr('expected', lang)}: ${fmtDate(order.expectedDate)}`, 14, y + 4.5);
+
+  doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(30);
+  doc.text(`${tr('supplier', lang)}:`, pageW / 2, y);
+  doc.setFont('helvetica', 'normal').setTextColor(60);
+  const supLines = [
+    supplier?.name || order.supplier || '—',
+    supplier?.code && `Code: ${supplier.code}`,
+    supplier?.address, supplier?.phone,
+    [supplier?.ice && `ICE: ${supplier.ice}`, supplier?.rc && `RC: ${supplier.rc}`].filter(Boolean).join('   '),
+  ].filter(Boolean);
+  supLines.forEach((t, i) => doc.text(String(t), pageW / 2, y + 4.5 + i * 4.2));
+  y += 6 + supLines.length * 4.2;
+
+  // Lines table
+  const lines = order.lines || [];
+  const body = lines.map(l => {
+    const it = l.itemId || {};
+    const lineTotal = (l.quantityOrdered || 0) * (l.unitPrice || 0);
+    return [
+      it.codeInterne || '',
+      supplierCodeFor(it, supplier),
+      (it.designation?.[lang] || it.designation?.fr || 'Article') + (l.note ? `\n${l.note}` : ''),
+      String(l.quantityOrdered || 0),
+      money(l.unitPrice),
+      money(lineTotal),
+    ];
   });
+  const totalHT = lines.reduce((s, l) => s + (l.quantityOrdered || 0) * (l.unitPrice || 0), 0);
+  const tvaRate = order.tva != null ? Number(order.tva) : 20;
+  const tvaAmt = totalHT * tvaRate / 100;
+  const ttc = totalHT + tvaAmt;
+
+  autoTable(doc, {
+    startY: y + 4,
+    head: [[tr('codeInt', lang), tr('codeFour', lang), tr('desig', lang), tr('qty', lang), tr('pu', lang), tr('total', lang)]],
+    body,
+    theme: 'striped',
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: accent, textColor: 255, fontSize: 8 },
+    columnStyles: {
+      0: { cellWidth: 24 }, 1: { cellWidth: 24 }, 3: { halign: 'center', cellWidth: 14 },
+      4: { halign: 'right', cellWidth: 24 }, 5: { halign: 'right', cellWidth: 26 },
+    },
+    margin: { left: 14, right: 14 },
+  });
+
+  // Totals
+  let ty = doc.lastAutoTable.finalY + 6;
+  const labelX = pageW - 70, valX = pageW - 14;
+  doc.setFontSize(9).setTextColor(60).setFont('helvetica', 'normal');
+  const row = (label, val, bold = false) => {
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.text(label, labelX, ty);
+    doc.text(`${money(val)} MAD`, valX, ty, { align: 'right' });
+    ty += 5.5;
+  };
+  row(tr('totalHT', lang), totalHT);
+  row(`${tr('tva', lang)} (${tvaRate}%)`, tvaAmt);
+  doc.setDrawColor(200).line(labelX, ty - 2, valX, ty - 2);
+  doc.setTextColor(accent);
+  row(tr('totalTTC', lang), ttc, true);
+
+  if (order.notes) {
+    ty += 4;
+    doc.setFont('helvetica', 'bold').setTextColor(40).text(`${tr('notes', lang)}:`, 14, ty);
+    doc.setFont('helvetica', 'normal').setTextColor(80);
+    doc.text(doc.splitTextToSize(order.notes, pageW - 28), 14, ty + 5);
+  }
+
+  doc.save(`${tr('bc', lang)}_${order.number || order.reference || 'brouillon'}.pdf`);
 }
 
-/**
- * Tiny inline SVG used when an item has no image.
- * Matches the 📦 placeholder already used in InventoryPage.
- */
-const DEFAULT_IMG = 'data:image/svg+xml;base64,' + btoa(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">' +
-  '<rect width="80" height="80" rx="10" fill="#f3f4f6"/>' +
-  '<rect x="20" y="28" width="40" height="30" rx="3" fill="#d1d5db"/>' +
-  '<rect x="20" y="28" width="40" height="10" rx="3" fill="#9ca3af"/>' +
-  '<rect x="34" y="28" width="12" height="10" fill="#6b7280"/>' +
-  '</svg>'
-);
-
-// ── Excel export ──────────────────────────────────────────────────────────────
-
-/**
- * Export all visible orders to a single .xlsx file.
- * One row per order line, with order metadata repeated on each row.
- */
 export function exportOrdersExcel(orders, lang = 'fr') {
-  const wb = XLSX.utils.book_new();
-
   const rows = [];
-  orders.forEach(order => {
-    (order.lines || []).forEach(line => {
-      const designation = line.itemId?.designation?.[lang]
-                       || line.itemId?.designation?.fr
-                       || '—';
+  (orders || []).forEach(o => {
+    (o.lines || []).forEach(l => {
+      const it = l.itemId || {};
       rows.push({
-        'Référence':       order.reference,
-        'Société':         order.companyId?.name || '—',
-        'Fournisseur':     order.supplier        || '—',
-        'Date commande':   fmtDate(order.orderDate),
-        'Date prévue':     fmtDate(order.expectedDate),
-        'Statut':          statusLabel(order.status, lang),
-        'Article':         designation,
-        'Qté commandée':   line.quantityOrdered,
-        'Qté reçue':       line.quantityReceived || 0,
-        'Prix unitaire':   line.unitPrice        || 0,
-        'Total ligne':     +((line.quantityOrdered * (line.unitPrice || 0)).toFixed(2)),
-        'Note article':    line.note             || '',
-        'Notes commande':  order.notes           || '',
+        'N° BC': o.number || '',
+        'Statut': o.status,
+        'Société': o.companyId?.name || '',
+        'Fournisseur': o.supplierId?.name || o.supplier || '',
+        'Date': fmtDate(o.orderDate),
+        'Code interne': it.codeInterne || '',
+        'Code fournisseur': supplierCodeFor(it, o.supplierId),
+        'Désignation': it.designation?.[lang] || it.designation?.fr || '',
+        'Qté commandée': l.quantityOrdered,
+        'Qté reçue': l.quantityReceived || 0,
+        'P.U. HT': l.unitPrice || 0,
+        'Total HT': (l.quantityOrdered || 0) * (l.unitPrice || 0),
       });
     });
   });
-
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [16, 14, 18, 14, 14, 12, 32, 14, 10, 13, 12, 22, 22].map(w => ({ wch: w }));
+  ws['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 20 }, { wch: 11 }, { wch: 14 }, { wch: 16 }, { wch: 36 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
+  const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Commandes');
   XLSX.writeFile(wb, `commandes_${new Date().toISOString().split('T')[0]}.xlsx`);
-}
-
-// ── PDF export (single order) ─────────────────────────────────────────────────
-
-/**
- * Generate and download a PDF for a single order.
- *
- * @param {object} order   - full order object (lines populated with itemId)
- * @param {string} lang    - 'fr' | 'en' | 'it'
- * @param {object} company - company object { name, address, email, phone, logo }
- */
-export async function exportOrderPDF(order, lang = 'fr', company = null) {
-  const doc  = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const pageW  = doc.internal.pageSize.getWidth();
-  const pageH  = doc.internal.pageSize.getHeight();
-  const margin = 14;
-  const lines  = order.lines || [];
-
-  // ── Pre-fetch all product images in parallel ──────────────────────────────
-  const images = await Promise.all(
-    lines.map(async line => {
-      const b64 = await toBase64(line.itemId?.image);
-      return b64 || DEFAULT_IMG;
-    })
-  );
-
-  // Company logo
-  let logoB64 = null;
-  if (company?.logo) logoB64 = await toBase64(company.logo);
-
-  // ── Header band ───────────────────────────────────────────────────────────
-  doc.setFillColor(10, 10, 10);
-  doc.rect(0, 0, pageW, 30, 'F');
-
-  const logoW = 22, logoH = 18;
-  let textX = margin;
-  if (logoB64) {
-    try {
-      doc.addImage(logoB64, margin, 5, logoW, logoH);
-      textX = margin + logoW + 4;
-    } catch { /* skip */ }
-  }
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(15);
-  doc.setFont('helvetica', 'bold');
-  doc.text(company?.name || 'Commande', textX, 14);
-
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  if (company?.address) doc.text(company.address, textX, 20);
-  if (company?.phone || company?.email) {
-    doc.text([company?.phone, company?.email].filter(Boolean).join('  •  '), textX, 26);
-  }
-
-  // Order ref top-right
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text(order.reference, pageW - margin, 13, { align: 'right' });
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  const docLabel = { fr: 'Bon de commande', en: 'Purchase Order', it: 'Ordine d\'acquisto' }[lang] || 'Bon de commande';
-  doc.text(docLabel, pageW - margin, 20, { align: 'right' });
-
-  let y = 38;
-  doc.setTextColor(20, 20, 20);
-
-  // ── Info block (two columns) ───────────────────────────────────────────────
-  const L = {
-    fr: { supplier: 'Fournisseur', ordered: 'Date commande', expected: 'Date prévue', status: 'Statut', society: 'Société', notes: 'Notes' },
-    en: { supplier: 'Supplier',    ordered: 'Order date',    expected: 'Expected date', status: 'Status', society: 'Company', notes: 'Notes' },
-    it: { supplier: 'Fornitore',   ordered: 'Data ordine',   expected: 'Data prevista', status: 'Stato',  society: 'Società', notes: 'Note' },
-  }[lang] || {};
-
-  const colMid = pageW / 2 + 4;
-  const infoLeft = [
-    [L.supplier, order.supplier || '—'],
-    [L.ordered,  fmtDate(order.orderDate)],
-    [L.expected, fmtDate(order.expectedDate)],
-  ];
-  const infoRight = [
-    [L.society, order.companyId?.name || company?.name || '—'],
-    [L.status,  statusLabel(order.status, lang)],
-  ];
-
-  doc.setFontSize(9);
-  infoLeft.forEach(([label, value], i) => {
-    doc.setFont('helvetica', 'bold');   doc.text(label + ' :', margin, y + i * 6);
-    doc.setFont('helvetica', 'normal'); doc.text(value,        margin + 36, y + i * 6);
-  });
-  infoRight.forEach(([label, value], i) => {
-    doc.setFont('helvetica', 'bold');   doc.text(label + ' :', colMid,      y + i * 6);
-    doc.setFont('helvetica', 'normal'); doc.text(value,        colMid + 26, y + i * 6);
-  });
-
-  y += Math.max(infoLeft.length, infoRight.length) * 6 + 4;
-
-  if (order.notes) {
-    doc.setFont('helvetica', 'bold');   doc.text(L.notes + ' :', margin, y);
-    doc.setFont('helvetica', 'normal'); doc.text(order.notes, margin + 14, y);
-    y += 6;
-  }
-
-  // ── Divider ───────────────────────────────────────────────────────────────
-  doc.setDrawColor(220, 220, 220);
-  doc.line(margin, y, pageW - margin, y);
-  y += 5;
-
-  // ── Articles table with images ────────────────────────────────────────────
-  const IMG = 14; // image cell size in mm
-
-  const colHeaders = {
-    fr: ['', 'Désignation', 'Qté cmd.', 'Qté reçue', 'Prix unit.', 'Total', 'Note'],
-    en: ['', 'Designation', 'Qty ord.', 'Qty recv.', 'Unit price', 'Total', 'Note'],
-    it: ['', 'Designazione','Qtà ord.', 'Qtà ric.',  'Prezzo u.',  'Totale','Nota'],
-  }[lang] || [];
-
-  runAutoTable(doc, {
-    startY: y,
-    margin: { left: margin, right: margin },
-    head: [colHeaders],
-    body: lines.map(line => [
-      '',   // image — drawn in didDrawCell
-      line.itemId?.designation?.[lang] || line.itemId?.designation?.fr || '—',
-      line.quantityOrdered,
-      line.quantityReceived || 0,
-      (line.unitPrice || 0).toFixed(2) + ' MAD',
-      (line.quantityOrdered * (line.unitPrice || 0)).toFixed(2) + ' MAD',
-      line.note || '',
-    ]),
-    columnStyles: {
-      0: { cellWidth: IMG + 4, cellPadding: 1 },
-      1: { cellWidth: 52 },
-      2: { halign: 'center', cellWidth: 20 },
-      3: { halign: 'center', cellWidth: 20 },
-      4: { halign: 'right',  cellWidth: 22 },
-      5: { halign: 'right',  cellWidth: 22 },
-      6: { cellWidth: 28, fontSize: 7 },
-    },
-    headStyles: {
-      fillColor: [10, 10, 10], textColor: 255,
-      fontStyle: 'bold', fontSize: 8,
-    },
-    bodyStyles: { fontSize: 8, minCellHeight: IMG + 4 },
-    alternateRowStyles: { fillColor: [247, 248, 250] },
-
-    // Draw product image inside image cell
-    didDrawCell(data) {
-      if (data.section === 'body' && data.column.index === 0) {
-        const img = images[data.row.index];
-        if (img) {
-          try {
-            doc.addImage(img, data.cell.x + 1, data.cell.y + 1, IMG, IMG);
-          } catch { /* corrupt image — skip */ }
-        }
-      }
-    },
-
-    // Colour received rows green
-    didParseCell(data) {
-      if (data.section === 'body') {
-        const line   = lines[data.row.index];
-        const recv   = line?.quantityReceived || 0;
-        const ordered = line?.quantityOrdered  || 1;
-        if (recv >= ordered) data.cell.styles.textColor = [22, 163, 74];
-      }
-    },
-  });
-
-  y = (doc.lastAutoTable?.finalY || y + 40) + 8;
-
-  // ── Totals block ──────────────────────────────────────────────────────────
-  const totalOrdered  = lines.reduce((s, l) => s + (l.quantityOrdered || 0), 0);
-  const totalReceived = lines.reduce((s, l) => s + (l.quantityReceived || 0), 0);
-  const totalHT       = lines.reduce((s, l) => s + (l.quantityOrdered * (l.unitPrice || 0)), 0);
-  const progress      = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
-
-  const totLabel = {
-    fr: { art: 'Articles', recv: 'Réceptionnés', prog: 'Progression', ht: 'Total HT' },
-    en: { art: 'Items', recv: 'Received', prog: 'Progress', ht: 'Total excl. tax' },
-    it: { art: 'Articoli', recv: 'Ricevuti', prog: 'Progresso', ht: 'Totale IVA escl.' },
-  }[lang] || {};
-
-  if (y > pageH - 40) { doc.addPage(); y = margin; }
-
-  doc.setDrawColor(220, 220, 220);
-  doc.line(margin, y, pageW - margin, y);
-  y += 5;
-
-  const totRows = [
-    [totLabel.art,  `${lines.length}`],
-    [totLabel.recv, `${totalReceived} / ${totalOrdered} (${progress}%)`],
-    [totLabel.ht,   `${totalHT.toFixed(2)} MAD`],
-  ];
-  doc.setFontSize(9);
-  totRows.forEach(([label, value]) => {
-    doc.setFont('helvetica', 'bold');   doc.text(label + ' :', pageW - margin - 70, y);
-    doc.setFont('helvetica', 'normal'); doc.text(value,         pageW - margin,     y, { align: 'right' });
-    y += 6;
-  });
-
-  // ── Footer (all pages) ────────────────────────────────────────────────────
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(7);
-    doc.setTextColor(160);
-    doc.text(
-      `${company?.name || ''} — ${order.reference} — ${fmtDate(order.orderDate)} — ${i}/${pageCount}`,
-      margin,
-      pageH - 6
-    );
-  }
-
-  doc.save(`commande_${order.reference.replace(/\s+/g, '_')}.pdf`);
 }

@@ -493,3 +493,30 @@
 .super-cat-settings-btn:hover {
   border: 1px solid var(--success);
 }
+
+
+/* Append to OrdersPage.css */
+
+.btn-send {
+  padding:6px 16px;background:var(--success,#16a34a);color:#fff;border:none;
+  border-radius:var(--r,8px);font-size:12px;font-weight:700;cursor:pointer;
+  white-space:nowrap;transition:opacity .15s;
+}
+.btn-send:hover { opacity:.88; }
+.btn-send:disabled { opacity:.5;cursor:not-allowed; }
+
+.btn-cancel-order {
+  padding:6px 14px;background:var(--surface,#fff);border:1.5px solid var(--border,#e5e7eb);
+  border-radius:var(--r,8px);font-size:12px;font-weight:600;cursor:pointer;color:#92400e;
+}
+.btn-cancel-order:hover { background:#fffbeb;border-color:#fde68a; }
+
+.bc-lock {
+  display:inline-flex;align-items:center;gap:5px;padding:6px 12px;
+  font-size:12px;font-weight:600;color:#6b7280;background:#f3f4f6;
+  border:1.5px solid #e5e7eb;border-radius:var(--r,8px);
+}
+.bc-draft-tag {
+  display:inline-block;font-size:10px;font-weight:700;color:#374151;
+  background:#f3f4f6;border:1px solid #e5e7eb;padding:2px 8px;border-radius:999px;margin-left:8px;
+}

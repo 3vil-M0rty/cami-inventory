@@ -4,16 +4,17 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import './OrdersPage.css';
 import { exportOrdersExcel, exportOrderPDF } from '../../utils/orderExport';
-import { Search, FileText,FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package } from 'lucide-react';
+import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const STATUS_COLORS = {
-  en_attente: { bg: '#fef3c7', text: '#92400e', label: { fr: 'En attente', en: 'Pending', it: 'In attesa' } },
-  partielle: { bg: '#dbeafe', text: '#1e40af', label: { fr: 'Partielle', en: 'Partial', it: 'Parziale' } },
-  recue: { bg: '#dcfce7', text: '#166534', label: { fr: 'Reçue', en: 'Received', it: 'Ricevuta' } },
-  annulee: { bg: '#fee2e2', text: '#991b1b', label: { fr: 'Annulée', en: 'Cancelled', it: 'Annullata' } },
+  brouillon: { bg: '#f3f4f6', text: '#374151', label: { fr: 'Brouillon', en: 'Draft',     it: 'Bozza' } },
+  envoye:    { bg: '#e0e7ff', text: '#3730a3', label: { fr: 'Envoyé',    en: 'Sent',      it: 'Inviato' } },
+  partielle: { bg: '#dbeafe', text: '#1e40af', label: { fr: 'Partielle', en: 'Partial',   it: 'Parziale' } },
+  recue:     { bg: '#dcfce7', text: '#166534', label: { fr: 'Reçue',     en: 'Received',  it: 'Ricevuta' } },
+  annulee:   { bg: '#fee2e2', text: '#991b1b', label: { fr: 'Annulée',   en: 'Cancelled', it: 'Annullata' } },
 };
 
 export default function OrdersPage() {
@@ -21,6 +22,7 @@ export default function OrdersPage() {
   const { companies, selectedCompany } = useCompany();
   const [orders, setOrders] = useState([]);
   const [items, setItems] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editOrder, setEditOrder] = useState(null);
@@ -30,15 +32,22 @@ export default function OrdersPage() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [exportingPdf, setExportingPdf] = useState(null);
+  const [sendingId, setSendingId] = useState(null);
 
   // ── Purchase requests (admin → ACHAT) ─────────────────────────────
   const { can } = useAuth();
   const isAdmin = can('admin.view');
-  const isAchat = can('orders.receive') || can('orders.edit') || isAdmin;
+  const canReceive = can('orders.receive') || isAdmin;
   const [purchaseRequests, setPurchaseRequests] = useState([]);
   const [prLoading, setPrLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'requests'
   const [markingId, setMarkingId] = useState(null);
+
+  // who may touch THIS order
+  const canEditOrder   = (o) => o.status === 'brouillon' ? can('orders.edit') : isAdmin;
+  const canDeleteOrder = (o) => o.status === 'brouillon' ? (can('orders.delete') || isAdmin) : isAdmin;
+  const canSendOrder   = (o) => o.status === 'brouillon' && can('orders.edit');
+  const canCancelOrder = (o) => (o.status === 'envoye' || o.status === 'partielle') && isAdmin;
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -52,6 +61,13 @@ export default function OrdersPage() {
     try {
       const res = await axios.get(`${API_URL}/inventory`);
       setItems(res.data);
+    } catch (e) { console.error(e); }
+  }, []);
+
+  const fetchSuppliers = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_URL}/fournisseurs`);
+      setSuppliers(res.data || []);
     } catch (e) { console.error(e); }
   }, []);
 
@@ -81,7 +97,7 @@ export default function OrdersPage() {
     } catch (e) { console.error(e); } finally { setDeletingPrId(null); }
   };
 
-  useEffect(() => { fetchOrders(); fetchItems(); fetchPurchaseRequests(); }, [fetchOrders, fetchItems, fetchPurchaseRequests]);
+  useEffect(() => { fetchOrders(); fetchItems(); fetchSuppliers(); fetchPurchaseRequests(); }, [fetchOrders, fetchItems, fetchSuppliers, fetchPurchaseRequests]);
 
   // Keep selectedOrder in sync after a re-fetch
   useEffect(() => {
@@ -93,9 +109,29 @@ export default function OrdersPage() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Supprimer cette commande ?')) return;
-    await axios.delete(`${API_URL}/orders/${id}`);
-    if (selectedOrder?.id === id) setSelectedOrder(null);
-    fetchOrders();
+    try {
+      await axios.delete(`${API_URL}/orders/${id}`);
+      if (selectedOrder?.id === id) setSelectedOrder(null);
+      fetchOrders();
+    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+  };
+
+  const handleSend = async (order) => {
+    if (!window.confirm('Envoyer le bon de commande au fournisseur ?\nUn numéro sera attribué et il ne pourra plus être modifié par le service achat.')) return;
+    setSendingId(order.id);
+    try {
+      await axios.post(`${API_URL}/orders/${order.id}/send`);
+      await fetchOrders();
+    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+    finally { setSendingId(null); }
+  };
+
+  const handleCancel = async (order) => {
+    if (!window.confirm('Annuler ce bon de commande ?')) return;
+    try {
+      await axios.post(`${API_URL}/orders/${order.id}/cancel`);
+      await fetchOrders();
+    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
   };
 
   const handleReceive = async () => {
@@ -120,7 +156,9 @@ export default function OrdersPage() {
     if (!searchTerm.trim()) return true;
     const tokens = searchTerm.toLowerCase().split(/\s+/).filter(Boolean);
     const haystack = [
+      order.number,
       order.reference,
+      order.supplierId?.name,
       order.supplier,
       order.notes,
       ...(order.lines || []).map(l =>
@@ -138,7 +176,8 @@ export default function OrdersPage() {
 
   const stats = {
     total: orders.length,
-    enAttente: orders.filter(o => o.status === 'en_attente').length,
+    brouillon: orders.filter(o => o.status === 'brouillon').length,
+    envoye: orders.filter(o => o.status === 'envoye').length,
     partielle: orders.filter(o => o.status === 'partielle').length,
     recue: orders.filter(o => o.status === 'recue').length,
   };
@@ -152,13 +191,19 @@ export default function OrdersPage() {
     finally { setExportingPdf(null); }
   };
 
+  const orderTitle = (o) => o.number || o.reference || (o.status === 'brouillon' ? 'Brouillon' : '—');
+
   // ── Detail view ──────────────────────────────────────────────────
   if (selectedOrder) {
     const order = selectedOrder;
-    const st = STATUS_COLORS[order.status] || STATUS_COLORS.en_attente;
+    const st = STATUS_COLORS[order.status] || STATUS_COLORS.brouillon;
+    const locked = order.status !== 'brouillon';
     const totalOrdered = (order.lines || []).reduce((s, l) => s + l.quantityOrdered, 0);
     const totalReceived = (order.lines || []).reduce((s, l) => s + (l.quantityReceived || 0), 0);
     const progress = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
+    const totalHT = (order.lines || []).reduce((s, l) => s + (l.quantityOrdered || 0) * (l.unitPrice || 0), 0);
+    const tvaRate = order.tva != null ? Number(order.tva) : 20;
+    const ttc = totalHT * (1 + tvaRate / 100);
 
     return (
       <div className="orders-page">
@@ -177,27 +222,50 @@ export default function OrdersPage() {
             >
               {exportingPdf === order.id ? <LoaderCircle size={15} /> : <FileText size={15} />}
             </button>
-            <button className="btn-edit" title={t('edit')} onClick={() => { setEditOrder(order); setShowForm(true); }}>
-              <Pencil size={15} />
-            </button>
-            <button className="btn-delete" title={t('delete')} onClick={() => handleDelete(order.id)}>
-              <Trash2 size={15} />
-            </button>
+
+            {canSendOrder(order) && (
+              <button className="btn-send" onClick={() => handleSend(order)} disabled={sendingId === order.id}>
+                {sendingId === order.id ? <LoaderCircle size={15} /> : <Send size={14} />} Envoyer
+              </button>
+            )}
+
+            {canEditOrder(order) ? (
+              <button className="btn-edit" title={t('edit')} onClick={() => { setEditOrder(order); setShowForm(true); }}>
+                <Pencil size={15} />
+              </button>
+            ) : locked && (
+              <span className="bc-lock" title="Verrouillé — admin uniquement"><Lock size={13} /> Verrouillé</span>
+            )}
+
+            {canCancelOrder(order) && (
+              <button className="btn-cancel-order" onClick={() => handleCancel(order)}><Ban size={14} /> Annuler</button>
+            )}
+
+            {canDeleteOrder(order) && (
+              <button className="btn-delete" title={t('delete')} onClick={() => handleDelete(order.id)}>
+                <Trash2 size={15} />
+              </button>
+            )}
           </div>
         </div>
 
         <div className="order-detail-header">
           <div>
-            <h1 className="order-detail-ref">{order.reference}</h1>
+            <h1 className="order-detail-ref">{orderTitle(order)}</h1>
             <div className="order-detail-meta">
               {order.companyId && <span className="order-company-badge">{order.companyId.name}</span>}
-              {order.supplier && <span className="order-supplier">— {order.supplier}</span>}
+              {(order.supplierId?.name || order.supplier) && <span className="order-supplier">— {order.supplierId?.name || order.supplier}</span>}
               <span className="order-date" style={{ marginLeft: 8 }}>
                 <Calendar size={15} /> {new Date(order.orderDate).toLocaleDateString('fr-FR')}
               </span>
               {order.expectedDate && (
                 <span className="order-date">
                   <CalendarClock size={15} /> {new Date(order.expectedDate).toLocaleDateString('fr-FR')}
+                </span>
+              )}
+              {order.sentAt && (
+                <span className="order-date">
+                  <Send size={13} /> {new Date(order.sentAt).toLocaleDateString('fr-FR')}{order.sentBy ? ` · ${order.sentBy}` : ''}
                 </span>
               )}
             </div>
@@ -212,7 +280,7 @@ export default function OrdersPage() {
             <div className="order-progress-fill" style={{ width: `${progress}%` }} />
           </div>
           <div className="order-progress-label">
-            {totalReceived} / {totalOrdered}{t('articlesRecues')}({progress}%)
+            {totalReceived} / {totalOrdered}{t('articlesRecues') || ' articles reçus '}({progress}%)
           </div>
         </div>
 
@@ -229,6 +297,8 @@ export default function OrdersPage() {
             const received = line.quantityReceived || 0;
             const isComplete = received >= line.quantityOrdered;
             const linePct = line.quantityOrdered > 0 ? Math.round((received / line.quantityOrdered) * 100) : 0;
+            const supId = (order.supplierId?.id || order.supplierId?._id || '').toString();
+            const codeFour = (item?.supplierCodes || []).find(sc => (sc.supplierId?._id || sc.supplierId)?.toString() === supId)?.code;
             return (
               <div key={idx} className={`order-detail-line ${isComplete ? 'line-complete' : ''}`}>
                 <div className="detail-line-image">
@@ -241,13 +311,17 @@ export default function OrdersPage() {
                   <div className="detail-line-name">
                     {item?.designation?.[lang] || item?.designation?.fr || 'Article supprimé'}
                   </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '2px 0' }}>
+                    {item?.codeInterne && <span className="detail-line-code">Int: {item.codeInterne}</span>}
+                    {codeFour && <span className="detail-line-code">Fourn: {codeFour}</span>}
+                  </div>
                   {item?.categoryId && (
                     <span className="detail-line-cat" style={{ background: item.categoryId.color }}>
                       {item.categoryId.name?.[lang] || item.categoryId.name?.fr}
                     </span>
                   )}
                   {line.unitPrice > 0 && (
-                    <span className="detail-line-price">{line.unitPrice.toFixed(2)} €/u</span>
+                    <span className="detail-line-price">{line.unitPrice.toFixed(2)} /u</span>
                   )}
                   {line.note && <p className="detail-line-note">📝 {line.note}</p>}
                 </div>
@@ -260,7 +334,7 @@ export default function OrdersPage() {
                     {isComplete && <span className="line-check"> ✓</span>}
                   </div>
                 </div>
-                {!isComplete && order.status !== 'annulee' && (
+                {!isComplete && canReceive && order.status !== 'annulee' && order.status !== 'brouillon' && (
                   <button className="btn-receive" onClick={() => openReceive(order, line)}>
                     Réceptionner
                   </button>
@@ -268,6 +342,13 @@ export default function OrdersPage() {
               </div>
             );
           })}
+        </div>
+
+        {/* Totals */}
+        <div className="order-detail-totals">
+          <div><span>Total HT</span><strong>{totalHT.toFixed(2)}</strong></div>
+          <div><span>TVA ({tvaRate}%)</span><strong>{(totalHT * tvaRate / 100).toFixed(2)}</strong></div>
+          <div className="order-detail-totals__ttc"><span>Total TTC</span><strong>{ttc.toFixed(2)}</strong></div>
         </div>
 
         {receiveModal && (
@@ -286,6 +367,8 @@ export default function OrdersPage() {
             order={editOrder}
             items={items}
             companies={companies}
+            suppliers={suppliers}
+            onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
             lang={lang}
             onClose={() => { setShowForm(false); setEditOrder(null); }}
             onSave={() => { setShowForm(false); setEditOrder(null); fetchOrders(); }}
@@ -334,9 +417,6 @@ export default function OrdersPage() {
         </div>
       </header>
 
-      {/* ── Tab switcher ─────────────────────────────────────────── */}
-
-
       {/* ── Tab content ──────────────────────────────────────────── */}
       {activeTab === 'requests' ? (
         <PurchaseRequestsPanel
@@ -355,7 +435,8 @@ export default function OrdersPage() {
           <div className="orders-stats">
             {[
               { label: 'Total', value: stats.total, color: '#6b7280' },
-              { label: 'En attente', value: stats.enAttente, color: '#d97706' },
+              { label: 'Brouillons', value: stats.brouillon, color: '#6b7280' },
+              { label: 'Envoyés', value: stats.envoye, color: '#4f46e5' },
               { label: 'Partielles', value: stats.partielle, color: '#2563eb' },
               { label: 'Reçues', value: stats.recue, color: '#16a34a' },
             ].map(s => (
@@ -369,12 +450,12 @@ export default function OrdersPage() {
           <div className="orders-controls">
             <input
               className="search-input"
-              placeholder="Rechercher (référence, fournisseur, article, notes…)"
+              placeholder="Rechercher (n° BC, fournisseur, article, notes…)"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
             <div className="filter-tabs">
-              {['all', 'en_attente', 'partielle', 'recue', 'annulee'].map(s => (
+              {['all', 'brouillon', 'envoye', 'partielle', 'recue', 'annulee'].map(s => (
                 <button
                   key={s}
                   className={`filter-tab ${filterStatus === s ? 'active' : ''}`}
@@ -396,7 +477,7 @@ export default function OrdersPage() {
           ) : (
             <div className="orders-list">
               {filteredOrders.map(order => {
-                const st = STATUS_COLORS[order.status] || STATUS_COLORS.en_attente;
+                const st = STATUS_COLORS[order.status] || STATUS_COLORS.brouillon;
                 const totalOrdered = (order.lines || []).reduce((s, l) => s + l.quantityOrdered, 0);
                 const totalReceived = (order.lines || []).reduce((s, l) => s + (l.quantityReceived || 0), 0);
                 const progress = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
@@ -408,9 +489,10 @@ export default function OrdersPage() {
                   >
                     <div className="order-card-header">
                       <div className="order-card-title">
-                        <h3>{order.reference}</h3>
+                        <h3>{orderTitle(order)}</h3>
+                        {order.status === 'brouillon' && <span className="bc-draft-tag">Brouillon</span>}
                         {order.companyId && <span className="order-company-badge">{order.companyId.name}</span>}
-                        {order.supplier && <span className="order-supplier">— {order.supplier}</span>}
+                        {(order.supplierId?.name || order.supplier) && <span className="order-supplier">— {order.supplierId?.name || order.supplier}</span>}
                       </div>
                       <div className="order-card-meta">
                         <span className="status-badge" style={{ background: st.bg, color: st.text }}>
@@ -463,6 +545,8 @@ export default function OrdersPage() {
           order={editOrder}
           items={items}
           companies={companies}
+          suppliers={suppliers}
+          onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
           lang={lang}
           onClose={() => { setShowForm(false); setEditOrder(null); }}
           onSave={() => { setShowForm(false); setEditOrder(null); fetchOrders(); }}
@@ -526,9 +610,57 @@ function ReceiveModal({ receiveModal, receiveQty, lang, setReceiveQty, onConfirm
   );
 }
 
+/* ── Supplier (Fournisseur) Modal ──────────────────────────────── */
+function SupplierModal({ onClose, onSaved }) {
+  const [form, setForm] = useState({ name: '', code: '', contact: '', phone: '', email: '', address: '', city: '', ice: '', rc: '', notes: '' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) { setError('Le nom est requis'); return; }
+    setSaving(true); setError('');
+    try {
+      const r = await axios.post(`${API_URL}/fournisseurs`, form);
+      onSaved(r.data);
+    } catch (err) { setError(err.response?.data?.error || 'Erreur'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1100 }}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <h2 style={{ marginBottom: 14 }}>Nouveau fournisseur</h2>
+        <form onSubmit={submit}>
+          <div className="form-grid-2">
+            <div className="form-group"><label>Nom *</label><input value={form.name} onChange={set('name')} autoFocus /></div>
+            <div className="form-group"><label>Code fournisseur</label><input value={form.code} onChange={set('code')} /></div>
+            <div className="form-group"><label>Contact</label><input value={form.contact} onChange={set('contact')} /></div>
+            <div className="form-group"><label>Téléphone</label><input value={form.phone} onChange={set('phone')} /></div>
+            <div className="form-group"><label>Email</label><input type="email" value={form.email} onChange={set('email')} /></div>
+            <div className="form-group"><label>Ville</label><input value={form.city} onChange={set('city')} /></div>
+            <div className="form-group"><label>ICE</label><input value={form.ice} onChange={set('ice')} /></div>
+            <div className="form-group"><label>RC</label><input value={form.rc} onChange={set('rc')} /></div>
+          </div>
+          <div className="form-group"><label>Adresse</label><input value={form.address} onChange={set('address')} /></div>
+          <div className="form-group"><label>Notes</label><textarea rows={2} value={form.notes} onChange={set('notes')} /></div>
+          {error && <div className="form-error">{error}</div>}
+          <div className="modal-actions">
+            <button type="button" onClick={onClose}>Annuler</button>
+            <button type="submit" className="primary" disabled={saving}>{saving ? '…' : 'Créer le fournisseur'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ── Order Form ─────────────────────────────────────────────────── */
-function OrderForm({ order, items, companies, lang, onClose, onSave }) {
+function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, onClose, onSave }) {
+  const { t } = useLanguage();
   const today = new Date().toISOString().split('T')[0];
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
 
   // Build super-categories and category maps from items list
   const superCatMap = {};
@@ -547,23 +679,27 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
   const superCats = Object.values(superCatMap);
 
   const [form, setForm] = useState(order ? {
-    reference: order.reference,
+    reference: order.reference || '',
     companyId: order.companyId?.id || order.companyId?._id || '',
-    supplier: order.supplier || '',
+    supplierId: order.supplierId?.id || order.supplierId?._id || '',
     orderDate: order.orderDate?.split('T')[0] || today,
     expectedDate: order.expectedDate?.split('T')[0] || '',
     notes: order.notes || '',
+    tva: order.tva != null ? order.tva : 20,
     status: order.status,
     lines: (order.lines || []).map(l => ({
+      _id: l._id || l.id,
       itemId: l.itemId?.id || l.itemId?._id || l.itemId,
       quantityOrdered: l.quantityOrdered,
       unitPrice: l.unitPrice || 0,
       note: l.note || '',
     })),
   } : {
-    reference: '', companyId: companies[0]?.id || '', supplier: '',
-    orderDate: today, expectedDate: '', notes: '', status: 'en_attente', lines: [],
+    reference: '', companyId: companies[0]?.id || '', supplierId: '',
+    orderDate: today, expectedDate: '', notes: '', tva: 20, status: 'brouillon', lines: [],
   });
+
+  const isLocked = order && order.status !== 'brouillon'; // admin-only edit beyond draft
 
   // Per-line search/filter state — pre-populate one entry per existing line when editing
   const [lineFilters, setLineFilters] = useState(
@@ -586,7 +722,6 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
   const updateLineFilter = (idx, field, val) =>
     setLineFilters(f => f.map((lf, i) => i === idx ? { ...lf, [field]: val } : lf));
 
-  // Filter items for a specific line based on its search/supercat/category filters
   const getFilteredItems = (idx) => {
     const lf = lineFilters[idx] || { search: '', superCat: '', category: '' };
     return items.filter(it => {
@@ -598,7 +733,8 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
       if (lf.search) {
         const tokens = lf.search.toLowerCase().split(/\s+/).filter(Boolean);
         const name = (it.designation?.[lang] || it.designation?.fr || '').toLowerCase();
-        if (!tokens.every(tok => name.includes(tok))) return false;
+        const code = (it.codeInterne || '').toLowerCase();
+        if (!tokens.every(tok => name.includes(tok) || code.includes(tok))) return false;
       }
       return true;
     });
@@ -616,11 +752,16 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
       onSave();
     } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
   };
-  const {t} = useLanguage();
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal xlarge" onClick={e => e.stopPropagation()}>
-        <h2>{order ? 'Modifier la commande' : t('orderNew')}</h2>
+        <h2>{order ? `Modifier ${order.number || 'le brouillon'}` : t('orderNew')}</h2>
+        {isLocked && (
+          <div className="order-detail-notes" style={{ marginBottom: 14 }}>
+            ⚠️ Bon de commande déjà envoyé — modification réservée à l'administrateur.
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <div className="form-grid-2">
             <div className="form-group">
@@ -631,12 +772,20 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
               </select>
             </div>
             <div className="form-group">
-              <label>Référence *</label>
-              <input required type="text" value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} />
+              <label>Référence interne</label>
+              <input type="text" placeholder="(facultatif)" value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} />
             </div>
             <div className="form-group">
               <label>Fournisseur</label>
-              <input type="text" value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select value={form.supplierId} onChange={e => setForm(f => ({ ...f, supplierId: e.target.value }))} style={{ flex: 1 }}>
+                  <option value="">— Choisir —</option>
+                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ''}</option>)}
+                </select>
+                <button type="button" className="btn-add-line" onClick={() => setShowSupplierModal(true)} title="Ajouter un fournisseur">
+                  <Plus size={14} />
+                </button>
+              </div>
             </div>
             <div className="form-group">
               <label>Date de commande *</label>
@@ -646,17 +795,10 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
               <label>Date prévue de livraison</label>
               <input type="date" value={form.expectedDate} onChange={e => setForm(f => ({ ...f, expectedDate: e.target.value }))} />
             </div>
-            {order && (
-              <div className="form-group">
-                <label>Statut</label>
-                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
-                  <option value="en_attente">En attente</option>
-                  <option value="partielle">Partielle</option>
-                  <option value="recue">Reçue</option>
-                  <option value="annulee">Annulée</option>
-                </select>
-              </div>
-            )}
+            <div className="form-group">
+              <label>TVA (%)</label>
+              <input type="number" min={0} step="0.1" value={form.tva} onChange={e => setForm(f => ({ ...f, tva: Number(e.target.value) }))} />
+            </div>
           </div>
 
           <div className="form-group">
@@ -684,7 +826,6 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
 
               return (
                 <div key={idx} className="order-line-form order-line-form--rich">
-                  {/* Search & filter row */}
                   <div className="order-line-filters">
                     <select
                       className="line-filter-select"
@@ -713,13 +854,12 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
                     <input
                       className="line-filter-search"
                       type="text"
-                      placeholder="Rechercher un article…"
+                      placeholder="Rechercher (nom ou code interne)…"
                       value={lf.search}
                       onChange={e => updateLineFilter(idx, 'search', e.target.value)}
                     />
                   </div>
 
-                  {/* Article selector with image preview */}
                   <div className="order-line-main">
                     <div className="line-item-selector">
                       {selectedItem?.image && (
@@ -739,7 +879,7 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
                           )}
                           {filteredForLine.map(it => (
                             <option key={it.id} value={it.id}>
-                              {it.designation?.[lang] || it.designation?.fr}
+                              {it.codeInterne ? `[${it.codeInterne}] ` : ''}{it.designation?.[lang] || it.designation?.fr}
                             </option>
                           ))}
                         </select>
@@ -787,14 +927,22 @@ function OrderForm({ order, items, companies, lang, onClose, onSave }) {
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Annuler</button>
             <button type="submit" className="primary">
-              {order ? 'Mettre à jour' : 'Créer la commande'}
+              {order ? 'Mettre à jour' : 'Créer le brouillon'}
             </button>
           </div>
         </form>
+
+        {showSupplierModal && (
+          <SupplierModal
+            onClose={() => setShowSupplierModal(false)}
+            onSaved={(s) => { onSupplierAdded(s); setForm(f => ({ ...f, supplierId: s.id })); setShowSupplierModal(false); }}
+          />
+        )}
       </div>
     </div>
   );
 }
+
 /* ── Purchase Requests Panel ──────────────────────────────────────────────
    Shown on the "Demandes admin" tab.
    ACHAT role sees all pending requests, can mark them as "commandé".
@@ -825,7 +973,6 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
 
   return (
     <div className="pr-panel">
-      {/* Header bar */}
       <div className="pr-panel__header">
         <div className="pr-panel__title">
           <ShoppingCart size={16} />
@@ -855,7 +1002,6 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
         </div>
       </div>
 
-      {/* Empty state */}
       {visible.length === 0 ? (
         <div className="pr-empty">
           <ShoppingCart size={36} strokeWidth={1} style={{ color: '#ccc' }} />
@@ -880,34 +1026,27 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
             <tbody>
               {visible.map(req => (
                 <tr key={req.id || req._id} className={`pr-row pr-row--${req.status}`}>
-                  {/* Image */}
                   <td>
                     {req.itemImage
                       ? <img src={req.itemImage} alt={req.itemName} style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 6, border: '1px solid #e8e8e8', background: '#fff' }} />
                       : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>
                     }
                   </td>
-                  {/* Item name */}
                   <td>
                     <strong style={{ fontSize: 13 }}>{req.itemName || '—'}</strong>
                   </td>
-                  {/* Quantity */}
                   <td>
                     <span style={{ fontWeight: 700, fontSize: 15 }}>{req.quantity}</span>
                   </td>
-                  {/* Note */}
                   <td>
                     <span style={{ fontSize: 12, color: '#555' }}>{req.note || <span style={{ color: '#ccc' }}>—</span>}</span>
                   </td>
-                  {/* Requested by */}
                   <td>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>{req.requestedBy || 'Admin'}</span>
                   </td>
-                  {/* Date */}
                   <td>
                     <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>{fmtDate(req.createdAt)}</span>
                   </td>
-                  {/* Status badge */}
                   <td>
                     {req.status === 'pending' ? (
                       <span className="pr-status pr-status--pending">
@@ -920,7 +1059,6 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
                       </span>
                     )}
                   </td>
-                  {/* Action */}
                   <td>
                     {req.status === 'pending' ? (
                       <button
@@ -938,7 +1076,6 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
                       <span style={{ fontSize: 11, color: '#aaa' }}>Traité</span>
                     )}
                   </td>
-                  {/* Delete — admin only */}
                   {isAdmin && (
                     <td style={{ textAlign: 'center' }}>
                       <button

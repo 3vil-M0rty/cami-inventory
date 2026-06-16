@@ -5,7 +5,7 @@ import {
   Layers, GlassWater, Wrench, FlaskConical, Settings, Paintbrush, MirrorRectangular,
   Search, AlertTriangle, Plus, Minus, Pencil, Trash2,
   FileDown, PackagePlus, Package, ChevronRight, Tag,
-  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet,
+  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
@@ -77,6 +77,14 @@ function InventoryPage() {
   const [addInNote, setAddInNote] = useState('');
   const [showSuperCatMgr, setShowSuperCatMgr] = useState(false);
   const [orderRequestModal, setOrderRequestModal] = useState(null);
+
+  const [suppliers, setSuppliers] = useState([]);
+
+  useEffect(() => {
+    axios.get(`${API_URL}/fournisseurs`)
+      .then(r => setSuppliers(r.data || []))
+      .catch(() => setSuppliers([]));
+  }, []);
 
   const isPoudre = activeSuperCat === 'poudre';
 
@@ -236,6 +244,7 @@ function InventoryPage() {
   const userRole = user?.role;
   const adminThing = userRole === 'Admin';
   const magThing = userRole === 'Admin' || userRole === 'Magasinier';
+
   if (!activeSuperCat) {
     return (
       <div className="inv-loading-screen">
@@ -314,9 +323,7 @@ function InventoryPage() {
 
       {/* ── Controls ── */}
       <div className="controls">
-        <div className="controls__top">
-
-        </div>
+        <div className="controls__top"></div>
         <div className="filter-buttons">
           <button
             className={`filter-btn ${filter === 'all' && selectedCategory === 'all' ? 'active' : ''}`}
@@ -416,6 +423,7 @@ function InventoryPage() {
           language={language}
           categories={categories}
           item={editingItem}
+          suppliers={suppliers}
           superCategory={activeSuperCat}
           isPoudre={isPoudre}
           t={t}
@@ -485,20 +493,48 @@ function InventoryPage() {
   );
 }
 
+/* ── Image Preview Modal ────────────────────────────────────── */
+function ImagePreviewModal({ src, alt, onClose }) {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div className="modal-overlay image-preview-overlay" onClick={onClose}>
+      <div className="image-preview-modal" onClick={e => e.stopPropagation()}>
+        <button className="image-preview-close" onClick={onClose}>
+          <XCircle size={22} strokeWidth={2} />
+        </button>
+        <img src={src} alt={alt} className="image-preview-img" />
+      </div>
+    </div>
+  );
+}
+
 /* ── Item Card ──────────────────────────────────────────────── */
 function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit, onDelete, onOrderRequest, getStockStatus, t }) {
   const status = getStockStatus(item);
   const formatQty = (val) => isPoudre ? fmt(val) : Math.floor(val);
   const { user } = useAuth();
-  const userRole = user?.role;
-  const adminThing = userRole === 'Admin';
+  const [previewImage, setPreviewImage] = useState(null);
+
   return (
     <div className={`item-card ${status.className}`}>
-      <div className="item-image">
+      <div
+        className={`item-image${item.image ? ' item-image--zoomable' : ''}`}
+        onClick={() => item.image && setPreviewImage(item.image)}
+      >
         {item.image
           ? <img src={item.image} alt={item.designation[language]} />
           : <div className="no-image"><Package size={32} strokeWidth={1} /></div>
         }
+        {item.image && (
+          <div className="image-zoom-overlay">
+            <ZoomIn size={18} strokeWidth={2} />
+          </div>
+        )}
         {item.categoryId && (
           <div className="item-category-badge" style={{ backgroundColor: item.categoryId.color }}>
             {item.categoryId.name[language]}
@@ -558,9 +594,6 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
           )}
         </div>
 
-
-
-
         {(onEdit || onDelete) && (
           <div className="item-actions">
             {onEdit && (
@@ -578,6 +611,14 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
           </div>
         )}
       </div>
+
+      {previewImage && (
+        <ImagePreviewModal
+          src={previewImage}
+          alt={item.designation[language] || item.designation.fr}
+          onClose={() => setPreviewImage(null)}
+        />
+      )}
     </div>
   );
 }
@@ -637,11 +678,7 @@ function QuantityModal({ title, item, language, isPoudre, qty, note, onQtyChange
   );
 }
 
-/* ── Order Request Modal (admin only) ──────────────────────────────
-   Sends a purchase request — does NOT touch inventory stock.
-   ACHAT role sees it in Orders page and marks it as ordered.
-   Admin gets a bell notification when ACHAT processes it.
-────────────────────────────────────────────────────────────────── */
+/* ── Order Request Modal ──────────────────────────────────── */
 function OrderRequestModal({ item, language, t, onClose, onSent }) {
   const [qty, setQty] = useState('');
   const [note, setNote] = useState('');
@@ -780,10 +817,61 @@ function CategoryModal({ language, superCategory, category, t, onClose, onSave }
 }
 
 /* ── Item Modal ────────────────────────────────────────────── */
-function ItemModal({ language, categories, item, superCategory, isPoudre, t, onClose, onSave }) {
+/* ── Supplier Codes Editor (one code per supplier) ─────────── */
+function SupplierCodesEditor({ suppliers, value, onChange }) {
+  const rows = value || [];
+  const used = new Set(rows.map(r => r.supplierId));
+  const add = () => onChange([...rows, { supplierId: '', code: '' }]);
+  const upd = (i, k, v) => onChange(rows.map((r, idx) => idx === i ? { ...r, [k]: v } : r));
+  const del = (i) => onChange(rows.filter((_, idx) => idx !== i));
+
+  return (
+    <div className="form-group">
+      <label>Codes fournisseurs</label>
+      {suppliers.length === 0 && (
+        <p style={{ fontSize: 11, color: '#b45309', margin: '2px 0 6px' }}>
+          Aucun fournisseur disponible (rôle sans accès aux commandes ?).
+        </p>
+      )}
+      {rows.length === 0 && (
+        <p style={{ fontSize: 12, color: '#888', margin: '2px 0 6px' }}>
+          Aucun code. Ajoutez un code par fournisseur.
+        </p>
+      )}
+      {rows.map((r, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+          <select value={r.supplierId} onChange={e => upd(i, 'supplierId', e.target.value)} style={{ flex: 1 }} required>
+            <option value="">— Fournisseur —</option>
+            {suppliers.map(s => (
+              <option key={s.id} value={s.id} disabled={used.has(s.id) && r.supplierId !== s.id}>{s.name}</option>
+            ))}
+          </select>
+          <input
+            placeholder="Code chez ce fournisseur"
+            value={r.code}
+            onChange={e => upd(i, 'code', e.target.value)}
+            style={{ flex: 1 }}
+          />
+          <button type="button" className="btn-remove-line" onClick={() => del(i)}>×</button>
+        </div>
+      ))}
+      <button type="button" className="btn-add-line" onClick={add} style={{ marginTop: 4 }}>
+        + Ajouter un code fournisseur
+      </button>
+    </div>
+  );
+}
+
+/* ── Item Modal ────────────────────────────────────────────── */
+function ItemModal({ language, categories, suppliers = [], item, superCategory, isPoudre, t, onClose, onSave }) {
   const [formData, setFormData] = useState(item ? {
     image: item.image || '',
     designation: { ...item.designation },
+    codeInterne: item.codeInterne || '',
+    supplierCodes: (item.supplierCodes || []).map(sc => ({
+      supplierId: sc.supplierId?._id || sc.supplierId?.id || sc.supplierId || '',
+      code: sc.code || '',
+    })),
     quantity: item.quantity,
     orderedQuantity: item.orderedQuantity || 0,
     threshold: item.threshold,
@@ -791,6 +879,7 @@ function ItemModal({ language, categories, item, superCategory, isPoudre, t, onC
     superCategory: item.superCategory || superCategory,
   } : {
     image: '', designation: { it: '', fr: '', en: '' },
+    codeInterne: '', supplierCodes: [],
     quantity: 0, orderedQuantity: 0, threshold: 0, categoryId: '', superCategory,
   });
 
@@ -798,9 +887,13 @@ function ItemModal({ language, categories, item, superCategory, isPoudre, t, onC
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const payload = {
+      ...formData,
+      supplierCodes: (formData.supplierCodes || []).filter(s => s.supplierId),
+    };
     try {
-      if (item) await axios.put(`${API_URL}/inventory/${item.id}`, formData);
-      else await axios.post(`${API_URL}/inventory`, formData);
+      if (item) await axios.put(`${API_URL}/inventory/${item.id}`, payload);
+      else await axios.post(`${API_URL}/inventory`, payload);
       onSave();
     } catch { alert('Erreur lors de la sauvegarde'); }
   };
@@ -816,6 +909,18 @@ function ItemModal({ language, categories, item, superCategory, isPoudre, t, onC
           <div className="form-group"><label>Désignation (Français)</label><input type="text" required value={formData.designation.fr} onChange={e => setFormData({ ...formData, designation: { ...formData.designation, fr: e.target.value } })} /></div>
           <div className="form-group"><label>Designazione (Italiano)</label><input type="text" required value={formData.designation.it} onChange={e => setFormData({ ...formData, designation: { ...formData.designation, it: e.target.value } })} /></div>
           <div className="form-group"><label>Designation (English)</label><input type="text" required value={formData.designation.en} onChange={e => setFormData({ ...formData, designation: { ...formData.designation, en: e.target.value } })} /></div>
+
+          <div className="form-group">
+            <label>Code interne</label>
+            <input type="text" placeholder="ex: ALU-6063-5025" value={formData.codeInterne} onChange={e => setFormData({ ...formData, codeInterne: e.target.value })} />
+          </div>
+
+          <SupplierCodesEditor
+            suppliers={suppliers}
+            value={formData.supplierCodes}
+            onChange={(v) => setFormData({ ...formData, supplierCodes: v })}
+          />
+
           <div className="form-group">
             <label>{t('categoryLabel')}</label>
             <select value={formData.categoryId} onChange={e => setFormData({ ...formData, categoryId: e.target.value })}>

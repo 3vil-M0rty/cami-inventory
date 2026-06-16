@@ -27,8 +27,53 @@ app.use((req, res, next) => {
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aluminum-inventory';
 
 mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => { console.log('✅ MongoDB connected'); initSampleData(); migrateExistingData(); migrateLaquageToLots(); })
+  .then(() => { console.log('✅ MongoDB connected'); initSampleData(); migrateExistingData(); migrateLaquageToLots(); fixStuckLaquageLots(); })
   .catch(err => { console.error('❌ MongoDB error:', err); process.exit(1); });
+
+
+
+async function fixStuckLaquageLots() {
+  const now = new Date();
+
+  function barresLineKeys(lot) {
+    const keys = [];
+    (lot.barresBrutes || []).forEach((_, i) => keys.push(`bb-${i}`));
+    (lot.barresLaquees || []).forEach((_, i) => keys.push(`bl-${i}`));
+    (lot.morceauxBruts || []).forEach((_, i) => keys.push(`mb-${i}`));
+    (lot.morceauxLaques || []).forEach((r, i) =>
+      (r.lignes || [{}]).forEach((_, li) => keys.push(`ml-${i}-${li}`))
+    );
+    return keys;
+  }
+
+  for (const record of await LaquageBarres.find({})) {
+    let changed = false;
+    for (const lot of record.lots || []) {
+      const keys = barresLineKeys(lot);
+      if (!keys.length) continue;
+      if (lot.status === 'sent_to_laquage' && keys.every(k => lot.lineStatuses?.[k]?.receivedLaquage)) {
+        lot.status = 'received_laquage';
+        record.history.push({ action: 'receive_all_laquage', by: 'system-fix', at: now, lotIndex: lot.lotIndex, note: '(auto-fix)' });
+        changed = true;
+      }
+    }
+    if (changed) { record.markModified('lots'); await record.save(); console.log('✅ Fixed stuck barres lot for project', record.projectId); }
+  }
+
+  for (const record of await LaquageAccessoires.find({})) {
+    let changed = false;
+    for (const lot of record.lots || []) {
+      const keys = (lot.accessoires || []).map((_, i) => `acc-${i}`);
+      if (!keys.length) continue;
+      if (lot.status === 'sent_to_laquage' && keys.every(k => lot.lineStatuses?.[k]?.receivedLaquage)) {
+        lot.status = 'received_laquage';
+        record.history.push({ action: 'receive_all_laquage', by: 'system-fix', at: now, lotIndex: lot.lotIndex, note: '(auto-fix)' });
+        changed = true;
+      }
+    }
+    if (changed) { record.markModified('lots'); await record.save(); console.log('✅ Fixed stuck accessoires lot for project', record.projectId); }
+  }
+}
 
 // ==================== SCHEMAS ====================
 
@@ -40,6 +85,13 @@ const companySchema = new mongoose.Schema({
   logo: { type: String, default: '' },
   rc: { type: String, default: '' },
   ice: { type: String, default: '' },
+  bcConfig: {
+    start: { type: Number, default: 1 },     // first number admin wants, e.g. 260574
+    next: { type: Number, default: null },   // managed automatically (= start until first send)
+    prefix: { type: String, default: '' },     // optional, e.g. "BC-"
+    suffix: { type: String, default: '' },     // optional, e.g. "/2026"
+    padding: { type: Number, default: 0 },      // zero-pad width, 0 = none
+  },
   color: { type: String, default: '#1a1a1a' }
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const Company = mongoose.model('Company', companySchema);
@@ -109,6 +161,11 @@ const itemSchema = new mongoose.Schema({
   orderedQuantity: { type: Number, min: 0, default: 0 },
   threshold: { type: Number, required: true, min: 0, default: 0 },
   categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', default: null },
+  codeInterne: { type: String, default: '' },
+  supplierCodes: [{
+    supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Fournisseur', required: true },
+    code: { type: String, default: '' },
+  }],
   superCategory: { type: String, default: 'aluminium' }
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 const Item = mongoose.model('Item', itemSchema);
@@ -126,23 +183,30 @@ const stockMovementSchema = new mongoose.Schema({
 const StockMovement = mongoose.model('StockMovement', stockMovementSchema);
 
 const orderLineSchema = new mongoose.Schema({
-  itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
-  quantityOrdered: { type: Number, required: true, min: 1 },
+  itemId:           { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
+  quantityOrdered:  { type: Number, required: true, min: 1 },
   quantityReceived: { type: Number, default: 0, min: 0 },
-  unitPrice: { type: Number, default: 0 },
-  note: { type: String, default: '' }
+  unitPrice:        { type: Number, default: 0 },
+  note:             { type: String, default: '' },
 }, { _id: true });
-
+ 
 const orderSchema = new mongoose.Schema({
-  reference: { type: String, required: true, trim: true },
-  companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
-  supplier: { type: String, default: '' },
-  orderDate: { type: Date, required: true },
+  number:       { type: String, default: '' },   // BC number, assigned ONLY on send
+  reference:    { type: String, default: '', trim: true }, // optional free-text ref
+  companyId:    { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
+  supplierId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Fournisseur', default: null },
+  supplier:     { type: String, default: '' },    // denormalised supplier name (display/legacy)
+  orderDate:    { type: Date, required: true },
   expectedDate: { type: Date, default: null },
-  status: { type: String, enum: ['en_attente', 'partielle', 'recue', 'annulee'], default: 'en_attente' },
-  lines: [orderLineSchema],
-  notes: { type: String, default: '' }
+  // brouillon = draft (editable/deletable by achat) ; envoye = sent (locked for achat)
+  status:       { type: String, enum: ['brouillon', 'envoye', 'partielle', 'recue', 'annulee'], default: 'brouillon' },
+  lines:        [orderLineSchema],
+  tva:          { type: Number, default: 20 },
+  notes:        { type: String, default: '' },
+  sentAt:       { type: Date, default: null },
+  sentBy:       { type: String, default: '' },
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
+orderSchema.index({ companyId: 1, number: 1 });
 const Order = mongoose.model('Order', orderSchema);
 
 const clientSchema = new mongoose.Schema({
@@ -388,6 +452,23 @@ const blMetadataSchema = new mongoose.Schema({
 blMetadataSchema.index({ projectId: 1, deliveryDate: 1 }, { unique: true });
 const BLMetadata = mongoose.model('BLMetadata', blMetadataSchema);
 
+
+const fournisseurSchema = new mongoose.Schema({
+  name:    { type: String, required: true, trim: true },
+  code:    { type: String, default: '' },       // your code for this supplier
+  contact: { type: String, default: '' },
+  phone:   { type: String, default: '' },
+  email:   { type: String, default: '' },
+  address: { type: String, default: '' },
+  city:    { type: String, default: '' },
+  ice:     { type: String, default: '' },
+  rc:      { type: String, default: '' },
+  notes:   { type: String, default: '' },
+}, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
+const Fournisseur = mongoose.model('Fournisseur', fournisseurSchema);
+ 
+
+
 app.get('/api/projects/:projectId/bl-metadata/:deliveryDate', async (req, res) => {
   try {
     const meta = await BLMetadata.findOne({
@@ -427,6 +508,36 @@ app.put('/api/projects/:projectId/bl-metadata/:deliveryDate', async (req, res) =
   }
 });
 
+
+async function assignBcNumber(companyId) {
+  if (!companyId) throw new Error('Société requise pour générer le numéro de bon de commande');
+  // Atomic pipeline update: next = (next ?? start ?? 1) + 1. {new:false} returns the PRE-update doc.
+  const before = await Company.findByIdAndUpdate(
+    companyId,
+    [{ $set: { 'bcConfig.next': { $add: [{ $ifNull: ['$bcConfig.next', { $ifNull: ['$bcConfig.start', 1] }] }, 1] } } }],
+    { new: false }
+  );
+  if (!before) throw new Error('Société introuvable');
+  const cfg = before.bcConfig || {};
+  const seq = (cfg.next != null) ? cfg.next : (cfg.start != null ? cfg.start : 1);
+  const padded = cfg.padding ? String(seq).padStart(cfg.padding, '0') : String(seq);
+  return `${cfg.prefix || ''}${padded}${cfg.suffix || ''}`;
+}
+ 
+const isAdmin = (req) => (req.permissions || []).includes('admin.view');
+ 
+// A sent (or beyond) order can only be mutated by an admin.
+function canMutateOrder(req, order) {
+  if (order.status === 'brouillon') return true;
+  return isAdmin(req);
+}
+
+function sanitizeSupplierCodes(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .filter(s => s && s.supplierId)
+    .map(s => ({ supplierId: s.supplierId, code: (s.code || '').trim() }));
+}
 // ==================== STATUS COMPUTATION ====================
 
 function computeProjectStatus(chassis) {
@@ -716,7 +827,7 @@ app.get('/api/four-status', requireAuth, async (req, res) => {
 app.put('/api/four-status', requireAuth, async (req, res) => {
   try {
     const userRole = req.user?.roleId?.name || '';
-    const isAdmin  = userRole === 'Admin';
+    const isAdmin = userRole === 'Admin';
     const canToggle = isAdmin || userRole === 'Laquage';
 
     if (!canToggle) {
@@ -732,7 +843,7 @@ app.put('/api/four-status', requireAuth, async (req, res) => {
     if (!doc) {
       doc = await FourStatus.create({ isOn: !!isOn, changedBy: displayName, changedAt: new Date() });
     } else {
-      doc.isOn      = !!isOn;
+      doc.isOn = !!isOn;
       doc.changedBy = displayName;
       doc.changedAt = new Date();
       await doc.save();
@@ -761,7 +872,7 @@ app.get('/api/four-status', requireAuth, async (req, res) => {
 app.put('/api/four-status', requireAuth, async (req, res) => {
   try {
     const userRole = req.user?.roleId?.name || '';
-    const isAdmin  = userRole === 'Admin';
+    const isAdmin = userRole === 'Admin';
     const canToggle = isAdmin || userRole === 'Laquage';
 
     if (!canToggle) {
@@ -777,7 +888,7 @@ app.put('/api/four-status', requireAuth, async (req, res) => {
     if (!doc) {
       doc = await FourStatus.create({ isOn: !!isOn, changedBy: displayName, changedAt: new Date() });
     } else {
-      doc.isOn      = !!isOn;
+      doc.isOn = !!isOn;
       doc.changedBy = displayName;
       doc.changedAt = new Date();
       await doc.save();
@@ -1043,6 +1154,13 @@ app.delete('/api/categories/:id', async (req, res) => {
 });
 
 // ==================== INVENTORY ROUTES ====================
+// ── helper: keep only valid {supplierId, code} pairs ──
+function sanitizeSupplierCodes(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .filter(s => s && s.supplierId)
+    .map(s => ({ supplierId: s.supplierId, code: (s.code || '').trim() }));
+}
 
 function applyScFilter(filter, allowedSC) {
   if (allowedSC === null) return true;
@@ -1087,6 +1205,7 @@ app.get('/api/inventory/search', optionalAuth, async (req, res) => {
       { 'designation.it': { $regex: req.query.q, $options: 'i' } },
       { 'designation.fr': { $regex: req.query.q, $options: 'i' } },
       { 'designation.en': { $regex: req.query.q, $options: 'i' } },
+      { codeInterne: { $regex: req.query.q, $options: 'i' } },
     ];
     res.json(await Item.find(filter).populate('categoryId').sort({ createdAt: -1 }));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1105,7 +1224,17 @@ app.post('/api/inventory', optionalAuth, async (req, res) => {
   try {
     const sc = req.body.superCategory || 'aluminium';
     if (!canEditSC(req.permissions, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
-    const item = new Item({ image: req.body.image || '', designation: req.body.designation, quantity: Number(req.body.quantity) || 0, orderedQuantity: Number(req.body.orderedQuantity) || 0, threshold: Number(req.body.threshold) || 0, categoryId: req.body.categoryId || null, superCategory: sc });
+    const item = new Item({
+      image: req.body.image || '',
+      designation: req.body.designation,
+      quantity: Number(req.body.quantity) || 0,
+      orderedQuantity: Number(req.body.orderedQuantity) || 0,
+      threshold: Number(req.body.threshold) || 0,
+      categoryId: req.body.categoryId || null,
+      superCategory: sc,
+      codeInterne: req.body.codeInterne || '',
+      supplierCodes: sanitizeSupplierCodes(req.body.supplierCodes),
+    });
     await item.save(); await item.populate('categoryId');
     res.status(201).json(item);
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
@@ -1114,7 +1243,17 @@ app.put('/api/inventory/:id', optionalAuth, async (req, res) => {
   try {
     const sc = req.body.superCategory || 'aluminium';
     if (!canEditSC(req.permissions, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
-    const item = await Item.findByIdAndUpdate(req.params.id, { image: req.body.image, designation: req.body.designation, quantity: Number(req.body.quantity) || 0, orderedQuantity: Number(req.body.orderedQuantity) || 0, threshold: Number(req.body.threshold) || 0, categoryId: req.body.categoryId || null, superCategory: sc }, { new: true, runValidators: true }).populate('categoryId');
+    const item = await Item.findByIdAndUpdate(req.params.id, {
+      image: req.body.image,
+      designation: req.body.designation,
+      quantity: Number(req.body.quantity) || 0,
+      orderedQuantity: Number(req.body.orderedQuantity) || 0,
+      threshold: Number(req.body.threshold) || 0,
+      categoryId: req.body.categoryId || null,
+      superCategory: sc,
+      codeInterne: req.body.codeInterne || '',
+      supplierCodes: sanitizeSupplierCodes(req.body.supplierCodes),
+    }, { new: true, runValidators: true }).populate('categoryId');
     if (!item) return res.status(404).json({ error: 'Not found' });
     res.json(item);
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
@@ -1144,73 +1283,199 @@ app.delete('/api/inventory/:id', optionalAuth, async (req, res) => {
     res.json({ success: true, id: req.params.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 // ==================== ORDER ROUTES ====================
-app.get('/api/orders', async (req, res) => {
-  try { res.json(await Order.find().populate('lines.itemId').populate('companyId').sort({ createdAt: -1 })); }
+
+const populateOrder = (q) => q
+  .populate({ path: 'lines.itemId', populate: { path: 'categoryId' } })
+  .populate('companyId').populate('supplierId');
+ 
+app.get('/api/orders', requireAuth, requirePermission('orders.view'), async (req, res) => {
+  try { res.json(await populateOrder(Order.find()).sort({ createdAt: -1 })); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/orders/:id', async (req, res) => {
+ 
+app.get('/api/orders/:id', requireAuth, requirePermission('orders.view'), async (req, res) => {
   try {
-    const o = await Order.findById(req.params.id).populate('lines.itemId').populate('companyId');
+    const o = await populateOrder(Order.findById(req.params.id));
     if (!o) return res.status(404).json({ error: 'Not found' });
     res.json(o);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/orders', async (req, res) => {
+ 
+// Create — always starts as a DRAFT. No number, no orderedQuantity impact yet.
+app.post('/api/orders', requireAuth, requirePermission('orders.edit'), async (req, res) => {
   try {
-    const o = new Order({ reference: req.body.reference, companyId: req.body.companyId || null, supplier: req.body.supplier || '', orderDate: req.body.orderDate, expectedDate: req.body.expectedDate || null, notes: req.body.notes || '', lines: (req.body.lines || []).map(l => ({ itemId: l.itemId, quantityOrdered: Number(l.quantityOrdered) || 1, quantityReceived: 0, unitPrice: Number(l.unitPrice) || 0, note: l.note || '' })) });
-    for (const line of o.lines) await Item.findByIdAndUpdate(line.itemId, { $inc: { orderedQuantity: line.quantityOrdered } });
-    await o.save(); await o.populate('lines.itemId'); await o.populate('companyId');
-    res.status(201).json(o);
+    let supplierName = req.body.supplier || '';
+    if (req.body.supplierId) {
+      const f = await Fournisseur.findById(req.body.supplierId);
+      if (f) supplierName = f.name;
+    }
+    const o = new Order({
+      reference: req.body.reference || '',
+      companyId: req.body.companyId || null,
+      supplierId: req.body.supplierId || null,
+      supplier: supplierName,
+      orderDate: req.body.orderDate,
+      expectedDate: req.body.expectedDate || null,
+      tva: req.body.tva != null ? Number(req.body.tva) : 20,
+      notes: req.body.notes || '',
+      status: 'brouillon',
+      lines: (req.body.lines || []).map(l => ({
+        itemId: l.itemId, quantityOrdered: Number(l.quantityOrdered) || 1,
+        quantityReceived: 0, unitPrice: Number(l.unitPrice) || 0, note: l.note || '',
+      })),
+    });
+    await o.save();
+    res.status(201).json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
-app.put('/api/orders/:id', async (req, res) => {
+ 
+// Edit — drafts: anyone with orders.edit. Sent/beyond: ADMIN ONLY.
+app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async (req, res) => {
   try {
     const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Not found' });
-    o.reference = req.body.reference; o.companyId = req.body.companyId || null; o.supplier = req.body.supplier || ''; o.orderDate = req.body.orderDate; o.expectedDate = req.body.expectedDate || null; o.notes = req.body.notes || ''; o.status = req.body.status;
-    if (Array.isArray(req.body.lines)) {
-      const oldLines = o.lines;
-      for (const oldLine of oldLines) {
-        const incoming = req.body.lines.find(l => l._id && l._id.toString() === oldLine._id.toString());
-        const oldPending = oldLine.quantityOrdered - (oldLine.quantityReceived || 0);
-        if (!incoming) { if (oldPending > 0) await Item.findByIdAndUpdate(oldLine.itemId, { $inc: { orderedQuantity: -oldPending } }); }
-        else if (Number(incoming.quantityOrdered) !== oldLine.quantityOrdered) { const newPending = Number(incoming.quantityOrdered) - (oldLine.quantityReceived || 0); const delta = newPending - oldPending; if (delta !== 0) await Item.findByIdAndUpdate(oldLine.itemId, { $inc: { orderedQuantity: delta } }); }
-      }
-      for (const incoming of req.body.lines) { if (!incoming._id) await Item.findByIdAndUpdate(incoming.itemId, { $inc: { orderedQuantity: Number(incoming.quantityOrdered) || 1 } }); }
-      o.lines = req.body.lines.map(l => { const existing = l._id ? oldLines.find(ol => ol._id.toString() === l._id.toString()) : null; return { _id: existing?._id, itemId: l.itemId, quantityOrdered: Number(l.quantityOrdered) || 1, quantityReceived: existing?.quantityReceived || 0, unitPrice: Number(l.unitPrice) || 0, note: l.note || '' }; });
+    if (!canMutateOrder(req, o))
+      return res.status(403).json({ error: 'Bon de commande déjà envoyé — seul un administrateur peut le modifier.' });
+ 
+    let supplierName = req.body.supplier || o.supplier;
+    if (req.body.supplierId !== undefined) {
+      const f = req.body.supplierId ? await Fournisseur.findById(req.body.supplierId) : null;
+      supplierName = f ? f.name : (req.body.supplier || '');
+      o.supplierId = req.body.supplierId || null;
     }
-    await o.save(); await o.populate('lines.itemId'); await o.populate('companyId');
-    res.json(o);
+    o.reference = req.body.reference ?? o.reference;
+    o.companyId = req.body.companyId || null;
+    o.supplier = supplierName;
+    o.orderDate = req.body.orderDate || o.orderDate;
+    o.expectedDate = req.body.expectedDate || null;
+    o.notes = req.body.notes || '';
+    if (req.body.tva != null) o.tva = Number(req.body.tva);
+    if (req.body.status && isAdmin(req)) o.status = req.body.status;
+ 
+    const wasSent = o.status !== 'brouillon';
+    if (Array.isArray(req.body.lines)) {
+      if (!wasSent) {
+        // Draft: no inventory was reserved yet, so just replace lines.
+        o.lines = req.body.lines.map(l => ({
+          _id: l._id || undefined, itemId: l.itemId,
+          quantityOrdered: Number(l.quantityOrdered) || 1,
+          quantityReceived: (l._id ? o.lines.id(l._id)?.quantityReceived : 0) || 0,
+          unitPrice: Number(l.unitPrice) || 0, note: l.note || '',
+        }));
+      } else {
+        // Sent order edited by admin → reconcile orderedQuantity deltas.
+        const oldLines = o.lines;
+        for (const oldLine of oldLines) {
+          const incoming = req.body.lines.find(l => l._id && l._id.toString() === oldLine._id.toString());
+          const oldPending = oldLine.quantityOrdered - (oldLine.quantityReceived || 0);
+          if (!incoming) { if (oldPending > 0) await Item.findByIdAndUpdate(oldLine.itemId, { $inc: { orderedQuantity: -oldPending } }); }
+          else if (Number(incoming.quantityOrdered) !== oldLine.quantityOrdered) {
+            const newPending = Number(incoming.quantityOrdered) - (oldLine.quantityReceived || 0);
+            const delta = newPending - oldPending;
+            if (delta !== 0) await Item.findByIdAndUpdate(oldLine.itemId, { $inc: { orderedQuantity: delta } });
+          }
+        }
+        for (const incoming of req.body.lines)
+          if (!incoming._id) await Item.findByIdAndUpdate(incoming.itemId, { $inc: { orderedQuantity: Number(incoming.quantityOrdered) || 1 } });
+        o.lines = req.body.lines.map(l => {
+          const existing = l._id ? oldLines.find(ol => ol._id.toString() === l._id.toString()) : null;
+          return { _id: existing?._id, itemId: l.itemId, quantityOrdered: Number(l.quantityOrdered) || 1,
+            quantityReceived: existing?.quantityReceived || 0, unitPrice: Number(l.unitPrice) || 0, note: l.note || '' };
+        });
+      }
+    }
+    await o.save();
+    res.json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.patch('/api/orders/:id/receive', async (req, res) => {
+ 
+// SEND to supplier — draft → envoye. Assigns BC number + reserves orderedQuantity.
+app.post('/api/orders/:id/send', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+  try {
+    const o = await Order.findById(req.params.id);
+    if (!o) return res.status(404).json({ error: 'Not found' });
+    if (o.status !== 'brouillon') return res.status(400).json({ error: 'Ce bon de commande a déjà été envoyé.' });
+    if (!o.companyId) return res.status(400).json({ error: 'Sélectionnez une société avant l\'envoi.' });
+    if (!o.lines.length) return res.status(400).json({ error: 'Impossible d\'envoyer un bon de commande vide.' });
+ 
+    o.number = await assignBcNumber(o.companyId);
+    o.status = 'envoye';
+    o.sentAt = new Date();
+    o.sentBy = req.user?.displayName || req.user?.username || '';
+    for (const line of o.lines) await Item.findByIdAndUpdate(line.itemId, { $inc: { orderedQuantity: line.quantityOrdered } });
+    await o.save();
+    res.json(await populateOrder(Order.findById(o._id)));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+ 
+// Receive — achat allowed even on sent orders (normal workflow).
+app.patch('/api/orders/:id/receive', requireAuth, requirePermission('orders.receive'), async (req, res) => {
   try {
     const { lineId, quantityReceived } = req.body;
     const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Order not found' });
+    if (o.status === 'brouillon') return res.status(400).json({ error: 'Envoyez le bon de commande avant de réceptionner.' });
+    if (o.status === 'annulee') return res.status(400).json({ error: 'Bon de commande annulé.' });
     const line = o.lines.id(lineId);
     if (!line) return res.status(404).json({ error: 'Line not found' });
     const alreadyReceived = line.quantityReceived || 0;
     const newlyReceived = Number(quantityReceived) - alreadyReceived;
-    if (newlyReceived <= 0) return res.status(400).json({ error: 'New reception quantity must be greater than already received' });
+    if (newlyReceived <= 0) return res.status(400).json({ error: 'La quantité reçue doit dépasser le déjà reçu.' });
     line.quantityReceived = Number(quantityReceived);
     const item = await Item.findById(line.itemId);
-    if (item) { item.quantity += newlyReceived; item.orderedQuantity = Math.max(0, (item.orderedQuantity || 0) - newlyReceived); await item.save(); await StockMovement.create({ itemId: item._id, type: 'order_reception', quantity: newlyReceived, balanceAfter: item.quantity, orderId: o._id, note: `Réception commande ${o.reference}` }); }
+    if (item) {
+      item.quantity += newlyReceived;
+      item.orderedQuantity = Math.max(0, (item.orderedQuantity || 0) - newlyReceived);
+      await item.save();
+      await StockMovement.create({ itemId: item._id, type: 'order_reception', quantity: newlyReceived, balanceAfter: item.quantity, orderId: o._id, note: `Réception ${o.number || o.reference}` });
+    }
     const allReceived = o.lines.every(l => l.quantityReceived >= l.quantityOrdered);
     const someReceived = o.lines.some(l => (l.quantityReceived || 0) > 0);
     if (allReceived) o.status = 'recue'; else if (someReceived) o.status = 'partielle';
-    await o.save(); await o.populate('lines.itemId'); await o.populate('companyId');
-    res.json(o);
+    await o.save();
+    res.json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/orders/:id', async (req, res) => {
+ 
+// Cancel — restores unreceived reservation. Sent order → admin only.
+app.post('/api/orders/:id/cancel', requireAuth, requirePermission('orders.edit'), async (req, res) => {
   try {
     const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Not found' });
-    for (const line of o.lines) { const notReceived = line.quantityOrdered - (line.quantityReceived || 0); if (notReceived > 0) await Item.findByIdAndUpdate(line.itemId, { $inc: { orderedQuantity: -notReceived } }); }
-    await Order.findByIdAndDelete(req.params.id); res.json({ success: true });
+    if (!canMutateOrder(req, o)) return res.status(403).json({ error: 'Bon de commande envoyé — seul un administrateur peut l\'annuler.' });
+    if (o.status !== 'brouillon') {
+      for (const line of o.lines) {
+        const pending = line.quantityOrdered - (line.quantityReceived || 0);
+        if (pending > 0) await Item.findByIdAndUpdate(line.itemId, { $inc: { orderedQuantity: -pending } });
+      }
+    }
+    o.status = 'annulee';
+    await o.save();
+    res.json(await populateOrder(Order.findById(o._id)));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+ 
+// Delete — draft: orders.delete. Sent/beyond: ADMIN ONLY (restores reservation).
+app.delete('/api/orders/:id', requireAuth, async (req, res) => {
+  try {
+    const o = await Order.findById(req.params.id);
+    if (!o) return res.status(404).json({ error: 'Not found' });
+    const draft = o.status === 'brouillon';
+    if (draft) {
+      if (!(req.permissions || []).includes('orders.delete') && !isAdmin(req))
+        return res.status(403).json({ error: 'Permission requise : orders.delete' });
+    } else if (!isAdmin(req)) {
+      return res.status(403).json({ error: 'Bon de commande envoyé — seul un administrateur peut le supprimer.' });
+    }
+    if (!draft && o.status !== 'annulee') {
+      for (const line of o.lines) {
+        const pending = line.quantityOrdered - (line.quantityReceived || 0);
+        if (pending > 0) await Item.findByIdAndUpdate(line.itemId, { $inc: { orderedQuantity: -pending } });
+      }
+    }
+    await Order.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1423,6 +1688,74 @@ app.delete('/api/projects/:id/chassis/:cid', async (req, res) => {
     res.json(await populateAndReturn(project));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+
+// rooooooooooouttttttttttes
+
+app.get('/api/fournisseurs', requireAuth, requirePermission('orders.view'), async (req, res) => {
+  try { res.json(await Fournisseur.find().sort({ name: 1 })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/fournisseurs', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+  try {
+    if (!req.body.name) return res.status(400).json({ error: 'Nom requis' });
+    const f = await Fournisseur.create(req.body);
+    res.status(201).json(f);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.put('/api/fournisseurs/:id', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+  try {
+    const f = await Fournisseur.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (!f) return res.status(404).json({ error: 'Not found' });
+    res.json(f);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/fournisseurs/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const inUse = await Order.countDocuments({ supplierId: req.params.id });
+    if (inUse > 0) return res.status(400).json({ error: `Ce fournisseur est utilisé par ${inUse} commande(s).` });
+    await Fournisseur.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+ 
+ 
+/* ─────────────────────────────────────────────────────────────────────────
+ * 8) BC NUMBERING CONFIG ROUTES (admin)  →  ADD
+ * ───────────────────────────────────────────────────────────────────────── */
+// Read every company's BC config (for the admin settings screen)
+app.get('/api/bc-config', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const companies = await Company.find().sort({ createdAt: 1 });
+    res.json(companies.map(c => ({
+      companyId: c._id, name: c.name,
+      bcConfig: c.bcConfig || { start: 1, next: null, prefix: '', suffix: '', padding: 0 },
+    })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Set a company's start number / format. Resets `next` to `start`.
+app.put('/api/bc-config/:companyId', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const { start, prefix, suffix, padding } = req.body;
+    const startN = Number(start);
+    if (!Number.isFinite(startN)) return res.status(400).json({ error: 'Numéro de départ invalide' });
+    const c = await Company.findByIdAndUpdate(
+      req.params.companyId,
+      { $set: { bcConfig: { start: startN, next: startN, prefix: prefix || '', suffix: suffix || '', padding: Number(padding) || 0 } } },
+      { new: true }
+    );
+    if (!c) return res.status(404).json({ error: 'Société introuvable' });
+    res.json({ companyId: c._id, name: c.name, bcConfig: c.bcConfig });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+ 
+
+
+
+
+// rooooooooooouttttttttttes
+
+
 
 // ==================== CHASSIS ACCESSORIES ====================
 app.get('/api/projects/:id/chassis/:cid/accessories', async (req, res) => {
@@ -2385,7 +2718,7 @@ function applyLaquageAction(record, action, lotIndex, lineKey, by, extra = {}) {
     return;
   }
 
-   if (action === 'receive_line_laquage') {
+  if (action === 'receive_line_laquage') {
     lot.lineStatuses = lot.lineStatuses || {};
     lot.lineStatuses[lineKey] = {
       ...(lot.lineStatuses[lineKey] || {}),
