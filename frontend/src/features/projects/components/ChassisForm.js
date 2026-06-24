@@ -10,7 +10,7 @@ function buildComponents(typeObj, existing = []) {
   const components = [{ role: 'dormant', repere: dormantEx.repere || 'Dormant', largeur: dormantEx.largeur || '', hauteur: dormantEx.hauteur || '', etat: dormantEx.etat || 'non_entame' }];
   for (let i = 0; i < (typeObj.vantaux || 0); i++) {
     const vEx = existing.filter(c => c.role === 'vantail')[i] || {};
-    components.push({ role: 'vantail', repere: vEx.repere || `Vantail${i+1}`, largeur: vEx.largeur || '', hauteur: vEx.hauteur || '', etat: vEx.etat || 'non_entame' });
+    components.push({ role: 'vantail', repere: vEx.repere || `Vantail${i + 1}`, largeur: vEx.largeur || '', hauteur: vEx.hauteur || '', etat: vEx.etat || 'non_entame' });
   }
   return components;
 }
@@ -18,17 +18,19 @@ function buildComponents(typeObj, existing = []) {
 // A single dimension variant row: repere, largeur, hauteur, quantity for that size
 const EMPTY_VARIANT = { repere: '', largeur: '', hauteur: '', quantity: 1 };
 
-function ChassisForm({ chassis, projectId, onClose, onSave }) {
+function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, onSave }) {
   const { addChassis, updateChassis } = useProjects();
   const { t, currentLanguage } = useLanguage();
   const lang = currentLanguage;
   const isEdit = !!chassis;
   const initialType = chassis?.type || 'fenetre_1_ouvrant';
+  const defaultKeepAsOne = chassis?.keepAsOne ?? (projectTab === 'laquage' ? true : false);
+  const [keepAsOne, setKeepAsOne] = useState(defaultKeepAsOne);
 
   const [chassisTypes, setChassisTypes] = useState(STATIC_CHASSIS_TYPES);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { fetchChassisTypes().then(setChassisTypes).catch(()=>{}); }, []);
+  useEffect(() => { fetchChassisTypes().then(setChassisTypes).catch(() => { }); }, []);
 
   const getTypeObj = (v) => chassisTypes.find(ct => ct.value === v);
 
@@ -43,12 +45,12 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
   );
 
   const [formData, setFormData] = useState({
-    type:       initialType,
-    repere:     chassis?.repere || '',
-    quantity:   chassis?.quantity ?? 1,
-    largeur:    chassis?.largeur ?? '',
-    hauteur:    chassis?.hauteur ?? '',
-    etat:       chassis?.etat || 'non_entame',
+    type: initialType,
+    repere: chassis?.repere || '',
+    quantity: chassis?.quantity ?? 1,
+    largeur: chassis?.largeur ?? '',
+    hauteur: chassis?.hauteur ?? '',
+    etat: chassis?.etat || 'non_entame',
     components: buildComponents(getTypeObj(initialType), chassis?.components || [])
   });
 
@@ -59,12 +61,12 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
   };
 
   const setComponent = (idx, key, val) => {
-    setFormData(prev => { const c=[...prev.components]; c[idx]={...c[idx],[key]:val}; return{...prev,components:c}; });
+    setFormData(prev => { const c = [...prev.components]; c[idx] = { ...c[idx], [key]: val }; return { ...prev, components: c }; });
   };
 
   // ── Variant helpers ──
   const setVariant = (idx, key, val) => {
-    setVariants(prev => { const v=[...prev]; v[idx]={...v[idx],[key]:val}; return v; });
+    setVariants(prev => { const v = [...prev]; v[idx] = { ...v[idx], [key]: val }; return v; });
   };
   const addVariant = () => setVariants(prev => [...prev, { ...EMPTY_VARIANT }]);
   const removeVariant = (idx) => setVariants(prev => prev.filter((_, i) => i !== idx));
@@ -91,31 +93,33 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
       const first = variants[0] || {};
       payload = {
         ...formData,
-        repere:    first.repere || formData.repere,
-        largeur:   parseInt(first.largeur, 10) || 0,
-        hauteur:   parseInt(first.hauteur, 10) || 0,
+        keepAsOne,
+        repere: first.repere || formData.repere,
+        largeur: parseInt(first.largeur, 10) || 0,
+        hauteur: parseInt(first.hauteur, 10) || 0,
         dimension: `${first.largeur}×${first.hauteur}`,
-        quantity:  totalQty,
-        multiDim:  true,
-        variants:  variants.map(v => ({
-          repere:  v.repere,
+        quantity: totalQty,
+        multiDim: true,
+        variants: variants.map(v => ({
+          repere: v.repere,
           largeur: parseInt(v.largeur, 10) || 0,
           hauteur: parseInt(v.hauteur, 10) || 0,
           quantity: parseInt(v.quantity, 10) || 1,
         })),
-        components: formData.components.map(c=>({...c, largeur:parseInt(c.largeur,10)||0, hauteur:parseInt(c.hauteur,10)||0}))
+        components: formData.components.map(c => ({ ...c, largeur: parseInt(c.largeur, 10) || 0, hauteur: parseInt(c.hauteur, 10) || 0 }))
       };
     } else {
       const qty = parseInt(formData.quantity, 10) || 1;
       payload = {
         ...formData,
-        quantity:  qty,
-        largeur:   parseInt(formData.largeur, 10) || 0,
-        hauteur:   parseInt(formData.hauteur, 10) || 0,
+        keepAsOne,
+        quantity: qty,
+        largeur: parseInt(formData.largeur, 10) || 0,
+        hauteur: parseInt(formData.hauteur, 10) || 0,
         dimension: `${formData.largeur}×${formData.hauteur}`,
-        multiDim:  false,
-        variants:  [],
-        components: formData.components.map(c=>({...c, largeur:parseInt(c.largeur,10)||0, hauteur:parseInt(c.hauteur,10)||0}))
+        multiDim: false,
+        variants: [],
+        components: formData.components.map(c => ({ ...c, largeur: parseInt(c.largeur, 10) || 0, hauteur: parseInt(c.hauteur, 10) || 0 }))
       };
     }
 
@@ -138,7 +142,7 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal chassis-form-modal" onClick={e=>e.stopPropagation()}>
+      <div className="modal chassis-form-modal" onClick={e => e.stopPropagation()}>
         <div className="chassis-form__header">
           <h2>{isEdit ? t('edit') : t('add')}</h2>
           <button className="chassis-form__close" onClick={onClose}>×</button>
@@ -163,9 +167,9 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
               <select
                 className="chassis-form__etat-select"
                 value={formData.etat}
-                onChange={e=>set('etat',e.target.value)}
+                onChange={e => set('etat', e.target.value)}
               >
-                {ETAT_OPTIONS.map(o=><option key={o} value={o}>{t(`etat_${o}`)}</option>)}
+                {ETAT_OPTIONS.map(o => <option key={o} value={o}>{t(`etat_${o}`)}</option>)}
               </select>
             </div>
           )}
@@ -194,19 +198,19 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
               <div className="chassis-form__fields">
                 <div className="form-group">
                   <label>{t('repere')}</label>
-                  <input type="text" required placeholder="ex: A1, F01..." value={formData.repere} onChange={e=>set('repere',e.target.value)}/>
+                  <input type="text" required placeholder="ex: A1, F01..." value={formData.repere} onChange={e => set('repere', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>{t('quantityChassis')}</label>
-                  <input type="number" required min="1" step="1" value={formData.quantity} onChange={e=>set('quantity',parseInt(e.target.value,10)||1)}/>
+                  <input type="number" required min="1" step="1" value={formData.quantity} onChange={e => set('quantity', parseInt(e.target.value, 10) || 1)} />
                 </div>
                 <div className="form-group">
                   <label>{t('largeur')} (mm)</label>
-                  <input type="number" required min="0" step="1" placeholder="ex: 1200" value={formData.largeur} onChange={e=>set('largeur',e.target.value)}/>
+                  <input type="number" required min="0" step="1" placeholder="ex: 1200" value={formData.largeur} onChange={e => set('largeur', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>{t('hauteur')} (mm)</label>
-                  <input type="number" required min="0" step="1" placeholder="ex: 2100" value={formData.hauteur} onChange={e=>set('hauteur',e.target.value)}/>
+                  <input type="number" required min="0" step="1" placeholder="ex: 2100" value={formData.hauteur} onChange={e => set('hauteur', e.target.value)} />
                 </div>
               </div>
             </div>
@@ -216,7 +220,7 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
           {multiDim && (
             <div className="chassis-form__section chassis-form__section--variants">
               <div className="chassis-variants-header">
-                <label className="chassis-form__section-label" style={{margin:0}}>Variantes de dimensions</label>
+                <label className="chassis-form__section-label" style={{ margin: 0 }}>Variantes de dimensions</label>
                 <span className="chassis-variants-total">Total : {totalQty} chassis</span>
               </div>
 
@@ -238,7 +242,7 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
                           <input
                             type="text"
                             className="chassis-variant-input"
-                            placeholder={`V${idx+1}`}
+                            placeholder={`V${idx + 1}`}
                             value={v.repere}
                             onChange={e => setVariant(idx, 'repere', e.target.value)}
                           />
@@ -301,24 +305,24 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
               <div className="composite-grid">
                 {formData.components.map((comp, idx) => (
                   <div key={idx} className="composite-card">
-                    <div className="composite-card__role">{comp.role==='dormant'?t('dormant'):`${t('vantail')} ${idx}`}</div>
+                    <div className="composite-card__role">{comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${idx}`}</div>
                     <div className="composite-card__fields">
                       <div className="form-group form-group--sm">
                         <label>{t('repere')}</label>
-                        <input type="text" value={comp.repere} onChange={e=>setComponent(idx,'repere',e.target.value)}/>
+                        <input type="text" value={comp.repere} onChange={e => setComponent(idx, 'repere', e.target.value)} />
                       </div>
                       <div className="form-group form-group--sm">
                         <label>L (mm)</label>
-                        <input type="number" min="0" step="1" value={comp.largeur} onChange={e=>setComponent(idx,'largeur',e.target.value)}/>
+                        <input type="number" min="0" step="1" value={comp.largeur} onChange={e => setComponent(idx, 'largeur', e.target.value)} />
                       </div>
                       <div className="form-group form-group--sm">
                         <label>H (mm)</label>
-                        <input type="number" min="0" step="1" value={comp.hauteur} onChange={e=>setComponent(idx,'hauteur',e.target.value)}/>
+                        <input type="number" min="0" step="1" value={comp.hauteur} onChange={e => setComponent(idx, 'hauteur', e.target.value)} />
                       </div>
                       <div className="form-group form-group--sm">
                         <label>{t('chassisEtat')}</label>
-                        <select value={comp.etat} onChange={e=>setComponent(idx,'etat',e.target.value)}>
-                          {ETAT_OPTIONS.map(o=><option key={o} value={o}>{t(`etat_${o}`)}</option>)}
+                        <select value={comp.etat} onChange={e => setComponent(idx, 'etat', e.target.value)}>
+                          {ETAT_OPTIONS.map(o => <option key={o} value={o}>{t(`etat_${o}`)}</option>)}
                         </select>
                       </div>
                     </div>
@@ -328,9 +332,44 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
             </div>
           )}
 
+          {/* Only show when qty > 1 */}
+          {formData.quantity > 1 && (
+            <div className="form-group">
+              <label>Mode d'affichage</label>
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => setKeepAsOne(false)}
+                  style={{
+                    flex: 1, padding: '7px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    border: '2px solid ' + (!keepAsOne ? '#3b82f6' : '#e5e7eb'),
+                    background: !keepAsOne ? '#eff6ff' : '#f9fafb',
+                    color: !keepAsOne ? '#1d4ed8' : '#6b7280',
+                  }}
+                >
+                  📋 Diffuser en {formData.quantity} lignes
+                  <div style={{ fontWeight: 400, fontSize: 11, marginTop: 2 }}>Une ligne par unité (défaut aluminium/vitrage)</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setKeepAsOne(true)}
+                  style={{
+                    flex: 1, padding: '7px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    border: '2px solid ' + (keepAsOne ? '#f59e0b' : '#e5e7eb'),
+                    background: keepAsOne ? '#fffbeb' : '#f9fafb',
+                    color: keepAsOne ? '#92400e' : '#6b7280',
+                  }}
+                >
+                  📦 Garder en 1 ligne (qté {formData.quantity})
+                  <div style={{ fontWeight: 400, fontSize: 11, marginTop: 2 }}>Ligne unique avec quantité (défaut laquage)</div>
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="modal-actions">
             <button type="button" onClick={onClose}>{t('cancel')}</button>
-            <button type="submit" className="primary" disabled={saving}>{saving?'...':(isEdit?t('update'):t('create'))}</button>
+            <button type="submit" className="primary" disabled={saving}>{saving ? '...' : (isEdit ? t('update') : t('create'))}</button>
           </div>
         </form>
       </div>
@@ -341,8 +380,8 @@ function ChassisForm({ chassis, projectId, onClose, onSave }) {
 
 // ── Inline search-and-select for chassis type ───────────────────────────────
 function ChassisTypeSearch({ chassisTypes, value, lang, onChange }) {
-  const [query,  setQuery]  = useState('');
-  const [open,   setOpen]   = useState(false);
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
   // Close dropdown when clicking outside

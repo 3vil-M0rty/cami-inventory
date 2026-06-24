@@ -18,15 +18,27 @@ const PROJECT_STATUS_FILTERS = [
   { key: 'non_vitre', label: 'Non vitré' },
 ];
 
+const PAGE_SIZE = 10;
+
 export default function ProjectsPage() {
   const [activeCategory, setActiveCategory] = useState('particuliers');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [limit, setLimit] = useState(PAGE_SIZE);
 
   const currentStatusLabel = useMemo(() => {
-    return (
-      PROJECT_STATUS_FILTERS.find(s => s.key === statusFilter)?.label || 'Tous'
-    );
+    return PROJECT_STATUS_FILTERS.find(s => s.key === statusFilter)?.label || 'Tous';
   }, [statusFilter]);
+
+  // Reset limit when category or filter changes
+  const handleCategoryChange = (key) => {
+    setActiveCategory(key);
+    setLimit(PAGE_SIZE);
+  };
+
+  const handleStatusChange = (key) => {
+    setStatusFilter(key);
+    setLimit(PAGE_SIZE);
+  };
 
   return (
     <div className="projects-page-shell">
@@ -35,10 +47,8 @@ export default function ProjectsPage() {
         {MAIN_CATEGORIES.map(cat => (
           <button
             key={cat.key}
-            className={`projects-category-tab ${
-              activeCategory === cat.key ? 'active' : ''
-            }`}
-            onClick={() => setActiveCategory(cat.key)}
+            className={`projects-category-tab ${activeCategory === cat.key ? 'active' : ''}`}
+            onClick={() => handleCategoryChange(cat.key)}
           >
             {cat.label}
           </button>
@@ -51,16 +61,13 @@ export default function ProjectsPage() {
           {PROJECT_STATUS_FILTERS.map(status => (
             <button
               key={status.key}
-              className={`project-status-tab ${
-                statusFilter === status.key ? 'active' : ''
-              }`}
-              onClick={() => setStatusFilter(status.key)}
+              className={`project-status-tab ${statusFilter === status.key ? 'active' : ''}`}
+              onClick={() => handleStatusChange(status.key)}
             >
               {status.label}
             </button>
           ))}
         </div>
-
         <div className="projects-page-shell__filter-label">
           État: <strong>{currentStatusLabel}</strong>
         </div>
@@ -71,6 +78,8 @@ export default function ProjectsPage() {
         <CategoryPage
           categoryKey={activeCategory}
           statusFilter={statusFilter}
+          limit={limit}
+          onLoadMore={() => setLimit(prev => prev + PAGE_SIZE)}
         />
       </div>
     </div>

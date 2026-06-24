@@ -183,28 +183,28 @@ const stockMovementSchema = new mongoose.Schema({
 const StockMovement = mongoose.model('StockMovement', stockMovementSchema);
 
 const orderLineSchema = new mongoose.Schema({
-  itemId:           { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
-  quantityOrdered:  { type: Number, required: true, min: 1 },
+  itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
+  quantityOrdered: { type: Number, required: true, min: 1 },
   quantityReceived: { type: Number, default: 0, min: 0 },
-  unitPrice:        { type: Number, default: 0 },
-  note:             { type: String, default: '' },
+  unitPrice: { type: Number, default: 0 },
+  note: { type: String, default: '' },
 }, { _id: true });
- 
+
 const orderSchema = new mongoose.Schema({
-  number:       { type: String, default: '' },   // BC number, assigned ONLY on send
-  reference:    { type: String, default: '', trim: true }, // optional free-text ref
-  companyId:    { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
-  supplierId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Fournisseur', default: null },
-  supplier:     { type: String, default: '' },    // denormalised supplier name (display/legacy)
-  orderDate:    { type: Date, required: true },
+  number: { type: String, default: '' },   // BC number, assigned ONLY on send
+  reference: { type: String, default: '', trim: true }, // optional free-text ref
+  companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
+  supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Fournisseur', default: null },
+  supplier: { type: String, default: '' },    // denormalised supplier name (display/legacy)
+  orderDate: { type: Date, required: true },
   expectedDate: { type: Date, default: null },
   // brouillon = draft (editable/deletable by achat) ; envoye = sent (locked for achat)
-  status:       { type: String, enum: ['brouillon', 'envoye', 'partielle', 'recue', 'annulee'], default: 'brouillon' },
-  lines:        [orderLineSchema],
-  tva:          { type: Number, default: 20 },
-  notes:        { type: String, default: '' },
-  sentAt:       { type: Date, default: null },
-  sentBy:       { type: String, default: '' },
+  status: { type: String, enum: ['brouillon', 'envoye', 'partielle', 'recue', 'annulee'], default: 'brouillon' },
+  lines: [orderLineSchema],
+  tva: { type: Number, default: 20 },
+  notes: { type: String, default: '' },
+  sentAt: { type: Date, default: null },
+  sentBy: { type: String, default: '' },
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 orderSchema.index({ companyId: 1, number: 1 });
 const Order = mongoose.model('Order', orderSchema);
@@ -320,6 +320,9 @@ const chassisSchema = new mongoose.Schema({
   largeur: { type: Number, required: true },
   hauteur: { type: Number, required: true },
   dimension: { type: String, default: '' },
+  keepAsOne: { type: Boolean, default: null },   // ← ADD THIS
+  multiDim: { type: Boolean, default: false },   // ← ADD THIS (already sent by ChassisForm)
+  variants: { type: mongoose.Schema.Types.Mixed, default: [] }, // ← ADD THIS (already sent)
   components: [componentSchema],
   units: [unitSchema],
   accessories: [chassisAccessorySchema],
@@ -454,19 +457,19 @@ const BLMetadata = mongoose.model('BLMetadata', blMetadataSchema);
 
 
 const fournisseurSchema = new mongoose.Schema({
-  name:    { type: String, required: true, trim: true },
-  code:    { type: String, default: '' },       // your code for this supplier
+  name: { type: String, required: true, trim: true },
+  code: { type: String, default: '' },       // your code for this supplier
   contact: { type: String, default: '' },
-  phone:   { type: String, default: '' },
-  email:   { type: String, default: '' },
+  phone: { type: String, default: '' },
+  email: { type: String, default: '' },
   address: { type: String, default: '' },
-  city:    { type: String, default: '' },
-  ice:     { type: String, default: '' },
-  rc:      { type: String, default: '' },
-  notes:   { type: String, default: '' },
+  city: { type: String, default: '' },
+  ice: { type: String, default: '' },
+  rc: { type: String, default: '' },
+  notes: { type: String, default: '' },
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const Fournisseur = mongoose.model('Fournisseur', fournisseurSchema);
- 
+
 
 
 app.get('/api/projects/:projectId/bl-metadata/:deliveryDate', async (req, res) => {
@@ -523,9 +526,9 @@ async function assignBcNumber(companyId) {
   const padded = cfg.padding ? String(seq).padStart(cfg.padding, '0') : String(seq);
   return `${cfg.prefix || ''}${padded}${cfg.suffix || ''}`;
 }
- 
+
 const isAdmin = (req) => (req.permissions || []).includes('admin.view');
- 
+
 // A sent (or beyond) order can only be mutated by an admin.
 function canMutateOrder(req, order) {
   if (order.status === 'brouillon') return true;
@@ -1288,12 +1291,12 @@ app.delete('/api/inventory/:id', optionalAuth, async (req, res) => {
 const populateOrder = (q) => q
   .populate({ path: 'lines.itemId', populate: { path: 'categoryId' } })
   .populate('companyId').populate('supplierId');
- 
+
 app.get('/api/orders', requireAuth, requirePermission('orders.view'), async (req, res) => {
   try { res.json(await populateOrder(Order.find()).sort({ createdAt: -1 })); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
- 
+
 app.get('/api/orders/:id', requireAuth, requirePermission('orders.view'), async (req, res) => {
   try {
     const o = await populateOrder(Order.findById(req.params.id));
@@ -1301,7 +1304,7 @@ app.get('/api/orders/:id', requireAuth, requirePermission('orders.view'), async 
     res.json(o);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
- 
+
 // Create — always starts as a DRAFT. No number, no orderedQuantity impact yet.
 app.post('/api/orders', requireAuth, requirePermission('orders.edit'), async (req, res) => {
   try {
@@ -1329,7 +1332,7 @@ app.post('/api/orders', requireAuth, requirePermission('orders.edit'), async (re
     res.status(201).json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
- 
+
 // Edit — drafts: anyone with orders.edit. Sent/beyond: ADMIN ONLY.
 app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async (req, res) => {
   try {
@@ -1337,7 +1340,7 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
     if (!o) return res.status(404).json({ error: 'Not found' });
     if (!canMutateOrder(req, o))
       return res.status(403).json({ error: 'Bon de commande déjà envoyé — seul un administrateur peut le modifier.' });
- 
+
     let supplierName = req.body.supplier || o.supplier;
     if (req.body.supplierId !== undefined) {
       const f = req.body.supplierId ? await Fournisseur.findById(req.body.supplierId) : null;
@@ -1352,7 +1355,7 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
     o.notes = req.body.notes || '';
     if (req.body.tva != null) o.tva = Number(req.body.tva);
     if (req.body.status && isAdmin(req)) o.status = req.body.status;
- 
+
     const wasSent = o.status !== 'brouillon';
     if (Array.isArray(req.body.lines)) {
       if (!wasSent) {
@@ -1380,8 +1383,10 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
           if (!incoming._id) await Item.findByIdAndUpdate(incoming.itemId, { $inc: { orderedQuantity: Number(incoming.quantityOrdered) || 1 } });
         o.lines = req.body.lines.map(l => {
           const existing = l._id ? oldLines.find(ol => ol._id.toString() === l._id.toString()) : null;
-          return { _id: existing?._id, itemId: l.itemId, quantityOrdered: Number(l.quantityOrdered) || 1,
-            quantityReceived: existing?.quantityReceived || 0, unitPrice: Number(l.unitPrice) || 0, note: l.note || '' };
+          return {
+            _id: existing?._id, itemId: l.itemId, quantityOrdered: Number(l.quantityOrdered) || 1,
+            quantityReceived: existing?.quantityReceived || 0, unitPrice: Number(l.unitPrice) || 0, note: l.note || ''
+          };
         });
       }
     }
@@ -1389,7 +1394,7 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
     res.json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
- 
+
 // SEND to supplier — draft → envoye. Assigns BC number + reserves orderedQuantity.
 app.post('/api/orders/:id/send', requireAuth, requirePermission('orders.edit'), async (req, res) => {
   try {
@@ -1398,7 +1403,7 @@ app.post('/api/orders/:id/send', requireAuth, requirePermission('orders.edit'), 
     if (o.status !== 'brouillon') return res.status(400).json({ error: 'Ce bon de commande a déjà été envoyé.' });
     if (!o.companyId) return res.status(400).json({ error: 'Sélectionnez une société avant l\'envoi.' });
     if (!o.lines.length) return res.status(400).json({ error: 'Impossible d\'envoyer un bon de commande vide.' });
- 
+
     o.number = await assignBcNumber(o.companyId);
     o.status = 'envoye';
     o.sentAt = new Date();
@@ -1408,7 +1413,7 @@ app.post('/api/orders/:id/send', requireAuth, requirePermission('orders.edit'), 
     res.json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
- 
+
 // Receive — achat allowed even on sent orders (normal workflow).
 app.patch('/api/orders/:id/receive', requireAuth, requirePermission('orders.receive'), async (req, res) => {
   try {
@@ -1437,7 +1442,7 @@ app.patch('/api/orders/:id/receive', requireAuth, requirePermission('orders.rece
     res.json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
- 
+
 // Cancel — restores unreceived reservation. Sent order → admin only.
 app.post('/api/orders/:id/cancel', requireAuth, requirePermission('orders.edit'), async (req, res) => {
   try {
@@ -1455,7 +1460,7 @@ app.post('/api/orders/:id/cancel', requireAuth, requirePermission('orders.edit')
     res.json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
- 
+
 // Delete — draft: orders.delete. Sent/beyond: ADMIN ONLY (restores reservation).
 app.delete('/api/orders/:id', requireAuth, async (req, res) => {
   try {
@@ -1614,7 +1619,19 @@ app.post('/api/projects/:id/chassis', async (req, res) => {
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const qty = Number(req.body.quantity) || 1;
     const units = Array.from({ length: qty }, (_, i) => ({ unitIndex: i, etat: req.body.etat || 'non_entame', deliveryDate: null, notes: '' }));
-    project.chassis.push({ type: req.body.type, repere: req.body.repere, quantity: qty, largeur: Number(req.body.largeur) || 0, hauteur: Number(req.body.hauteur) || 0, dimension: req.body.dimension || `${req.body.largeur}×${req.body.hauteur}`, components: req.body.components || [], units });
+    project.chassis.push({
+      type: req.body.type,
+      repere: req.body.repere,
+      quantity: qty,
+      largeur: Number(req.body.largeur) || 0,
+      hauteur: Number(req.body.hauteur) || 0,
+      dimension: req.body.dimension || `${req.body.largeur}×${req.body.hauteur}`,
+      keepAsOne: req.body.keepAsOne ?? null,
+      multiDim: req.body.multiDim ?? false,
+      variants: req.body.variants || [],
+      components: req.body.components || [],
+      units,
+    });
     await project.save(); res.status(201).json(await populateAndReturn(project));
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
@@ -1629,6 +1646,9 @@ app.put('/api/projects/:id/chassis/:cid', async (req, res) => {
     if (req.body.largeur !== undefined) chassis.largeur = Number(req.body.largeur);
     if (req.body.hauteur !== undefined) chassis.hauteur = Number(req.body.hauteur);
     if (req.body.dimension !== undefined) chassis.dimension = req.body.dimension;
+    if (req.body.keepAsOne !== undefined) chassis.keepAsOne = req.body.keepAsOne;
+    if (req.body.multiDim !== undefined) chassis.multiDim = req.body.multiDim;
+    if (req.body.variants !== undefined) chassis.variants = req.body.variants;
     if (req.body.components !== undefined) chassis.components = req.body.components;
     if (req.body.quantity !== undefined) {
       const newQty = Number(req.body.quantity); const oldQty = chassis.quantity; chassis.quantity = newQty;
@@ -1718,8 +1738,8 @@ app.delete('/api/fournisseurs/:id', requireAuth, requirePermission('admin.view')
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
- 
- 
+
+
 /* ─────────────────────────────────────────────────────────────────────────
  * 8) BC NUMBERING CONFIG ROUTES (admin)  →  ADD
  * ───────────────────────────────────────────────────────────────────────── */
@@ -1748,7 +1768,7 @@ app.put('/api/bc-config/:companyId', requireAuth, requirePermission('admin.view'
     res.json({ companyId: c._id, name: c.name, bcConfig: c.bcConfig });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
- 
+
 
 
 
@@ -1798,7 +1818,7 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
 
     for (const chassis of project.chassis) {
       const isComposite = (chassis.components || []).length > 0;
-      const unitSuffix = (idx) => chassis.quantity > 1 ? ` #${idx + 1}` : '';
+      const unitSuffix = (idx) => (chassis.quantity > 1 && !chassis.keepAsOne) ? ` #${idx + 1}` : '';
       const designation = typeLabel(chassis.type);
       const remplissages = chassis.remplissages || [];
 
@@ -1828,7 +1848,9 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
             ensureBL(dateKey).units.push({
               chassisId: chassis._id, chassisRepere: chassis.repere, chassisType: designation,
               dimension: chassisDim, m2: chassisM2,
-              unitIndex: unit.unitIndex, unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)}`,
+              unitIndex: unit.unitIndex, unitLabel: chassis.keepAsOne && (chassis.quantity || 1) > 1
+                ? `${chassis.repere} ×${chassis.quantity}`
+                : `${chassis.repere}${unitSuffix(unit.unitIndex)}`,
               deliveryDate: unit.deliveryDate, notes: unit.notes || autoNote, isComponent: false,
             });
 

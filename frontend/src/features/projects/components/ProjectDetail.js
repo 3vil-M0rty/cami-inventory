@@ -1433,9 +1433,17 @@ function ProjectDetail({ project, onBack, currentUser }) {
   }, [project, refreshProject, atelierTables]);
 
   const rows = (project.chassis || []).flatMap(ch => {
-    const qty = ch.quantity || 1; const chId = ch._id || ch.id; const isComposite = (ch.components || []).length > 0;
-    return Array.from({ length: qty }, (_, unitIndex) => {
-      const unit = getUnit(ch, unitIndex); const groupKey = `${chId}-${unitIndex}`; const baseLabel = qty > 1 ? `${ch.repere} #${unitIndex + 1}` : ch.repere;
+    const qty = ch.quantity || 1;
+    const chId = ch._id || ch.id;
+    const isComposite = (ch.components || []).length > 0;
+
+    // keepAsOne: laquage default, or explicitly set on chassis
+    const keepAsOne = ch.keepAsOne === true || (ch.keepAsOne == null && projectTab === 'laquage');
+
+    const iterations = keepAsOne ? 1 : qty;
+
+    return Array.from({ length: iterations }, (_, unitIndex) => {
+      const unit = getUnit(ch, unitIndex); const groupKey = `${chId}-${unitIndex}`; const baseLabel = (!keepAsOne && qty > 1) ? `${ch.repere} #${unitIndex + 1}` : ch.repere;
       if (!isComposite) return [{ kind: 'unit', ch, chId, unitIndex, unit, rowKey: groupKey, label: baseLabel, etat: unit.etat || 'non_entame' }];
       const componentRows = ch.components.map((comp, ci) => ({ kind: 'component', ch, chId, unitIndex, unit, comp, ci, rowKey: `${groupKey}-c${ci}`, groupKey, label: comp.repere || `${comp.role === 'dormant' ? 'D' : 'V'}${ci + 1}`, etat: getComponentEtat(unit, ci, comp) }));
       return [{ kind: 'groupHead', ch, chId, unitIndex, unit, rowKey: groupKey, label: baseLabel, derivedEtat: deriveCompositeEtat(unit, ch.components), componentRows }, ...componentRows];
@@ -1491,8 +1499,14 @@ function ProjectDetail({ project, onBack, currentUser }) {
 
   const handleDeleteUnit = async (ch, unitIndex) => {
     const chId = ch._id || ch.id; const qty = ch.quantity ?? 1;
-    if (qty <= 1) { if (!window.confirm(t('deleteChassisConfirm'))) return; await deleteChassis(project.id, chId); }
-    else { if (!window.confirm(`Supprimer l'unité #${unitIndex + 1} ?`)) return; await updateChassis(project.id, chId, { quantity: qty - 1 }); }
+    const keepAsOne = ch.keepAsOne === true || (ch.keepAsOne == null && projectTab === 'laquage');
+    if (qty <= 1 || keepAsOne) {
+      if (!window.confirm(t('deleteChassisConfirm'))) return;
+      await deleteChassis(project.id, chId);
+    } else {
+      if (!window.confirm(`Supprimer l'unité #${unitIndex + 1} ?`)) return;
+      await updateChassis(project.id, chId, { quantity: qty - 1 });
+    }
     if (refreshProject) await refreshProject(project.id);
   };
 
@@ -1539,7 +1553,10 @@ function ProjectDetail({ project, onBack, currentUser }) {
     const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
   };
 
-  const totalDisplayRows = (project.chassis || []).reduce((acc, ch) => acc + (ch.quantity || 1), 0);
+  const totalDisplayRows = (project.chassis || []).reduce((acc, ch) => {
+    const keepAsOne = ch.keepAsOne === true || (ch.keepAsOne == null && projectTab === 'laquage');
+    return acc + (keepAsOne ? 1 : (ch.quantity || 1));
+  }, 0);
 
   const detailTabs = [
     { key: 'chassis', label: t('tabChassis'), count: totalDisplayRows },
@@ -1746,7 +1763,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
               <table className="chassis-table">
                 <thead>
                   <tr>
-                    {(adminThing || stateThing) && <th style={{ width: 40 }}><input type="checkbox" checked={logistiqueSelectableKeys.length > 0 && logistiqueSelectableKeys.every(k => selectedKeys.has(k))} onChange={toggleAll} /></th>}                    
+                    {(adminThing || stateThing) && <th style={{ width: 40 }}><input type="checkbox" checked={logistiqueSelectableKeys.length > 0 && logistiqueSelectableKeys.every(k => selectedKeys.has(k))} onChange={toggleAll} /></th>}
                     <th>{t('repere')}</th>
                     <th>{t('type')}</th>
                     <th>{t('largeur')} (mm)</th>
@@ -1900,7 +1917,20 @@ function ProjectDetail({ project, onBack, currentUser }) {
                     const unitM2 = ch.largeur && ch.hauteur ? ((ch.largeur * ch.hauteur) / 1e6).toFixed(2) : '—';
                     return (
                       <tr key={rowKey} className={`chassis-row${isSelected ? ' chassis-row--selected' : ''}${isSaving ? ' chassis-row--saving' : ''}`}>
-                        {(adminThing || stateThing) && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}                        <td data-label="Repère"><strong>{label}</strong></td>
+                        {(adminThing || stateThing) && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}
+                        <td data-label="Repère">
+                          <strong>{label}</strong>
+                          {ch.keepAsOne && (ch.quantity || 1) > 1 && (
+                            <span style={{
+                              marginLeft: 6, fontSize: 11, fontWeight: 700,
+                              background: '#000000', color: '#ffffff',
+                              border: '1px solid #000000', borderRadius: 4,
+                              padding: '1px 6px', whiteSpace: 'nowrap',
+                            }}>
+                              ×{ch.quantity}
+                            </span>
+                          )}
+                        </td>
                         <td data-label="Type">{chassisLabels[ch.type]?.[language] || ch.type}</td>
                         <td data-label="L (mm)">{ch.largeur}</td><td data-label="H (mm)">{ch.hauteur}</td>
                         <td data-label="Dimension" className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
@@ -1945,7 +1975,17 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           </td>
                         )}
                         <td data-label="">{adminThing && <div className="chassis-row__actions">
-                          <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, quantity: 1, etat, _originalId: chId, _unitIndex: unitIndex, _totalQty: ch.quantity ?? 1 }); setShowChassisForm(true); }}>✏️</button>
+                          <button className="edit-btn" onClick={() => {
+                            const keepAsOne = ch.keepAsOne === true || (ch.keepAsOne == null && projectTab === 'laquage');
+                            setEditingChassis({
+                              ...ch,
+                              quantity: keepAsOne ? (ch.quantity ?? 1) : 1,
+                              etat,
+                              _originalId: chId,
+                              _unitIndex: unitIndex,
+                              _totalQty: ch.quantity ?? 1,
+                            }); setShowChassisForm(true);
+                          }}>✏️</button>
                           {adminOnly && <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>}
                           {adminOnly && (<button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🖨</button>)}
                           {adminOnly && (<button className="print-btn" onClick={() => setPrintingChassis({ ...ch, _printRowIndex: unitIndex })}>🏷</button>)}
@@ -1966,7 +2006,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
       {activeTab === 'barres_laquer' && <div className="project-detail__panel"><BarresLaquerPanel project={project} currentUser={currentUser} /></div>}
       {activeTab === 'accessoires_laquer' && <div className="project-detail__panel"><AccessoiresLaquerPanel project={project} currentUser={currentUser} /></div>}
 
-      {showChassisForm && <ChassisForm chassis={editingChassis} projectId={project.id} onClose={() => { setShowChassisForm(false); setEditingChassis(null); }} onSave={() => { setShowChassisForm(false); setEditingChassis(null); }} />}
+      {showChassisForm && <ChassisForm chassis={editingChassis} projectId={project.id} projectTab={projectTab} onClose={() => { setShowChassisForm(false); setEditingChassis(null); }} onSave={() => { setShowChassisForm(false); setEditingChassis(null); }} />}
       {showTypeManager && <ChassisTypeManager onClose={() => setShowTypeManager(false)} />}
       {printingChassis && <LabelPrint chassis={printingChassis} project={project} chassisLabels={chassisLabels} onClose={() => setPrintingChassis(null)} />}
       {deliveryModal && <DeliveryDateModal defaultDate={deliveryModal.currentDate} onConfirm={handleDeliveryConfirm} onCancel={() => setDeliveryModal(null)} t={t} />}
