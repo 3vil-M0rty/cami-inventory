@@ -388,11 +388,7 @@ export default function OrdersPage() {
             onClick={() => setActiveTab('orders')}
           >
             <ShoppingCart size={15} /> {t('navOrders')}
-            {purchaseRequests.filter(r => r.status === 'pending').length > 0 && activeTab !== 'requests' && (
-              <span className="orders-tab-badge">
-                {purchaseRequests.filter(r => r.status === 'pending').length}
-              </span>
-            )}
+           
           </button>
           <button
             className={`orders-tab-btn ${activeTab === 'requests' ? 'active' : ''}`}
