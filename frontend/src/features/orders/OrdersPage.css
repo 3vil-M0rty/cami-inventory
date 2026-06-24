@@ -379,7 +379,7 @@
   border-radius: 999px; padding: 0 4px;
   line-height: 1;
 }
-.orders-tab-badge--orange { background: var(--amber); }
+.orders-tab-badge--orange { background: red; }
 
 /* Purchase requests panel */
 .pr-panel {
