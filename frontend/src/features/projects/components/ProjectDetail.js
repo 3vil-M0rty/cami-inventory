@@ -292,14 +292,17 @@ function generateBLHtml(bl, project, logoBase64 = '') {
       ${clientCity ? `<div class="client-detail">${clientCity}</div>` : ''}
     </div>` : '';
   const unitNotes = bl.unitNotes || {};
+  // ─── AFTER ───
   const rows = bl.units.map((u, i) => {
     const note = unitNotes[u.unitLabel] || u.notes || '';
     const rowClass = u.isRemplissage ? 'row-sub row-remp' : (u.isComponent ? 'row-sub' : (i % 2 === 0 ? 'row-even' : 'row-odd'));
     const m2Display = u.m2 != null ? u.m2 + ' m²' : '—';
+    const qtyDisplay = u.quantity && u.quantity > 1 ? u.quantity : 1;
     return `<tr class="${rowClass}">
       <td class="td-c">${i + 1}</td>
       <td><strong>${u.unitLabel}</strong></td>
       <td>${u.chassisType || '—'}</td>
+      <td class="td-c">${qtyDisplay}</td>
       <td class="td-c">${u.dimension}</td>
       <td class="td-c" style="font-size:11px;color:#6b7280">${m2Display}</td>
       <td class="td-c">${fmtDate(u.deliveryDate)}</td>
@@ -354,8 +357,8 @@ td{padding:10px 12px;font-size:12.5px;border-bottom:1px solid #f0f0f0}
   <div class="info-card"><div class="info-card__label">Transport</div><div class="info-card__val">${bl.transport || '—'}</div></div>
 </div>
 ${clientBlock}
-<table><thead><tr><th class="th-c" style="width:36px">#</th><th>Repère</th><th>Désignation</th><th class="th-c">Dimension</th><th class="th-c">m²</th><th class="th-c">Date livraison</th><th>Notes</th></tr></thead>
-<tbody>${rows}</tbody></table>
+// ─── AFTER ───
+<table><thead><tr><th class="th-c" style="width:36px">#</th><th>Repère</th><th>Désignation</th><th class="th-c" style="width:50px">Qté</th><th class="th-c">Dimension</th><th class="th-c">m²</th><th class="th-c">Date livraison</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>
 <div class="sig-row"><div class="sig-box">Signature livreur</div><div class="sig-box">Signature réceptionnaire</div></div>
 <div class="bl-page-footer"><div class="footer" style="border:none;padding:0;margin:0;text-align:center;width:100%">${[companyName, companyAddr, companyPhone ? 'Tél : ' + companyPhone : '', companyRC ? 'RC : ' + companyRC : '', companyICE ? 'ICE : ' + companyICE : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')}</div></div>
 <script>window.onload=()=>{const images=document.querySelectorAll('img');if(images.length===0){window.print();return;}let loaded=0;const tryPrint=()=>{loaded++;if(loaded>=images.length)window.print();};images.forEach(img=>{if(img.complete){tryPrint();}else{img.onload=tryPrint;img.onerror=tryPrint;}});};${closeScript}
@@ -413,22 +416,23 @@ function exportBLExcel(bl, project) {
     if (addr) { setCell(0, row, addr, S.clientSub); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } }); row++; }
   }
   row++;
-  ['#', 'Repère', 'Désignation', 'Dimension', 'm²', 'Date livraison', 'Notes'].forEach((h, i) => { setCell(i, row, h, i === 0 || i === 3 || i === 4 || i === 5 ? S.th : S.thLeft); }); row++;
+  // ─── AFTER ───
+  ['#', 'Repère', 'Désignation', 'Qté', 'Dimension', 'm²', 'Date livraison', 'Notes'].forEach((h, i) => { setCell(i, row, h, i === 0 || i === 3 || i === 4 || i === 5 || i === 6 ? S.th : S.thLeft); }); row++;
   const unitNotes = bl.unitNotes || {};
   bl.units.forEach((u, idx) => {
     const base = idx % 2 === 0 ? S.tdEven : S.tdOdd; const note = unitNotes[u.unitLabel] || u.notes || '';
     setCell(0, row, idx + 1, S.tdCenter(base)); setCell(1, row, u.unitLabel, S.tdBold(base)); setCell(2, row, u.chassisType || '', base);
-    setCell(3, row, u.dimension, S.tdCenter(base)); setCell(4, row, u.m2 != null ? u.m2 : '', S.tdCenter(base));
-    setCell(5, row, u.deliveryDate ? fmtDate(u.deliveryDate) : '', S.tdCenter(base)); setCell(6, row, note || '', base); row++;
+    setCell(3, row, u.quantity && u.quantity > 1 ? u.quantity : 1, S.tdCenter(base));
+    setCell(4, row, u.dimension, S.tdCenter(base)); setCell(5, row, u.m2 != null ? u.m2 : '', S.tdCenter(base));
+    setCell(6, row, u.deliveryDate ? fmtDate(u.deliveryDate) : '', S.tdCenter(base)); setCell(7, row, note || '', base); row++;
   });
   row += 2;
-  setCell(0, row, 'Signature livreur', S.sigBox); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 2 } });
-  setCell(3, row, 'Signature réceptionnaire', S.sigBox); merges.push({ s: { r: row - 1, c: 3 }, e: { r: row - 1, c: 6 } }); row++; row++;
+  setCell(0, row, 'Signature livreur', S.sigBox); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
+  setCell(4, row, 'Signature réceptionnaire', S.sigBox); merges.push({ s: { r: row - 1, c: 4 }, e: { r: row - 1, c: 7 } }); row++; row++;
   const footerParts = [co.name, co.address, co.phone ? 'Tél : ' + co.phone : '', co.rc ? 'RC : ' + co.rc : '', co.ice ? 'ICE : ' + co.ice : ''].filter(Boolean);
-  setCell(0, row, footerParts.join('  ·  '), S.footer); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
-  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row, c: 6 } });
-  ws['!merges'] = merges; ws['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 26 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 30 }];
-  ws['!rows'] = [{ hpt: 28 }, { hpt: 18 }, { hpt: 16 }];
+  setCell(0, row, footerParts.join('  ·  '), S.footer); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 7 } });
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row, c: 7 } });
+  ws['!merges'] = merges; ws['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 26 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 30 }]; ws['!rows'] = [{ hpt: 28 }, { hpt: 18 }, { hpt: 16 }];
   XLSX.utils.book_append_sheet(wb, ws, 'BL'); XLSX.writeFile(wb, `${bl.blId || 'BL'}.xlsx`);
 }
 
@@ -704,12 +708,14 @@ function BLPanel({ project, t, language }) {
             {openBL === bl.deliveryDate && (
               <div className="bl-card__body">
                 <table className="bl-table">
-                  <thead><tr><th>{t('repere')}</th><th>{t('type')}</th><th>{t('dimension')}</th><th style={{ textAlign: 'center' }}>m²</th><th>{t('blDate')}</th><th>{t('unitNotes')}</th></tr></thead>
+                  // ─── AFTER ───
+                  <thead><tr><th>{t('repere')}</th><th>{t('type')}</th><th style={{ textAlign: 'center' }}>Qté</th><th>{t('dimension')}</th><th style={{ textAlign: 'center' }}>m²</th><th>{t('blDate')}</th><th>{t('unitNotes')}</th></tr></thead>
                   <tbody>
                     {bl.units.map((u, i) => (
                       <tr key={i} className={u.isComponent ? 'bl-row--component' : (u.isRemplissage ? 'bl-row--remplissage' : '')}>
                         <td data-label="Repère"><strong>{u.unitLabel}</strong></td>
                         <td data-label="Type">{u.chassisType || '—'}</td>
+                        <td data-label="Qté" style={{ textAlign: 'center' }}>{u.quantity && u.quantity > 1 ? u.quantity : 1}</td>
                         <td data-label="Dimension" className="dim-cell">{u.dimension}</td>
                         <td data-label="m²" style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>{u.m2 ? u.m2 + ' m²' : '—'}</td>
                         <td data-label="Date">{fmtDate(u.deliveryDate)}</td>
@@ -1066,11 +1072,50 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
     setEditingRemp(null);
   };
 
-  const handleEtatChange = (r, newEtat) => {
+  /* const handleEtatChange = (r, newEtat) => {
     const id = r._id || r.id;
     if (newEtat === 'livre' && !r.deliveryDate) { setDelivDateModal({ id, etat: newEtat }); return; }
     patchRemp(id, { etat: newEtat });
+  }; */
+
+  const handleEtatChange = async (ch, unitIndex, newEtat) => {
+    const chId = ch._id || ch.id;
+    const qty = ch.quantity || 1;
+
+    try {
+
+      // If quantity is grouped (not diffused)
+      if (ch.keepAsOne === true) {
+
+        await Promise.all(
+          Array.from({ length: qty }, (_, i) =>
+            axios.patch(
+              `${API_URL}/projects/${project.id}/chassis/${chId}/units/${i}`,
+              { etat: newEtat }
+            )
+          )
+        );
+
+      } else {
+
+        // Normal behavior for diffused lines
+        await axios.patch(
+          `${API_URL}/projects/${project.id}/chassis/${chId}/units/${unitIndex}`,
+          { etat: newEtat }
+        );
+
+      }
+
+      /* if (refreshProject) {
+        refreshProject(project.id);
+      } */
+
+    } catch (err) {
+      console.error(err);
+    }
   };
+
+
 
   const handleDeliveryConfirm = (date) => {
     const { id, etat } = delivDateModal; setDelivDateModal(null);
@@ -1463,9 +1508,39 @@ function ProjectDetail({ project, onBack, currentUser }) {
       : new Set(logistiqueSelectableKeys)
   );
 
+  // ─── AFTER ───
   const handleUnitEtatChange = async (ch, unitIndex, newEtat, rowKey) => {
-    if (newEtat === 'livre') { setDeliveryModal({ kind: 'unit', chId: ch._id || ch.id, unitIndex, rowKey, currentDate: toDateInput(getUnit(ch, unitIndex).deliveryDate) }); return; }
-    setSavingKey(rowKey); await updateUnit(project.id, ch._id || ch.id, unitIndex, { etat: newEtat }); if (refreshProject) await refreshProject(project.id); setSavingKey(null);
+    const chId = ch._id || ch.id;
+    const qty = ch.quantity || 1;
+    const keepAsOne = ch.keepAsOne === true || (ch.keepAsOne == null && projectTab === 'laquage');
+
+    if (newEtat === 'livre') {
+      setDeliveryModal({
+        kind: 'unit',
+        chId,
+        unitIndex,
+        rowKey,
+        currentDate: toDateInput(getUnit(ch, unitIndex).deliveryDate),
+        keepAsOne,
+        qty,
+      });
+      return;
+    }
+
+    setSavingKey(rowKey);
+    try {
+      if (keepAsOne && qty > 1) {
+        // Grouped line: propagate the état to every underlying unit
+        await Promise.all(
+          Array.from({ length: qty }, (_, i) => updateUnit(project.id, chId, i, { etat: newEtat }))
+        );
+      } else {
+        await updateUnit(project.id, chId, unitIndex, { etat: newEtat });
+      }
+    } finally {
+      if (refreshProject) await refreshProject(project.id);
+      setSavingKey(null);
+    }
   };
   const handleComponentEtatChange = async (ch, unitIndex, ci, newEtat, rowKey) => {
     if (newEtat === 'livre') { setDeliveryModal({ kind: 'component', chId: ch._id || ch.id, unitIndex, ci, rowKey, currentDate: null }); return; }
@@ -1492,9 +1567,19 @@ function ProjectDetail({ project, onBack, currentUser }) {
       return;
     }
     setSavingKey(m.rowKey);
-    if (m.kind === 'unit') await updateUnit(project.id, m.chId, m.unitIndex, { etat: 'livre', deliveryDate });
-    else await updateComponent(project.id, m.chId, m.unitIndex, m.ci, { etat: 'livre', deliveryDate });
-    if (refreshProject) await refreshProject(project.id); setSavingKey(null);
+    if (m.kind === 'unit') {
+      if (m.keepAsOne && m.qty > 1) {
+        await Promise.all(
+          Array.from({ length: m.qty }, (_, i) => updateUnit(project.id, m.chId, i, { etat: 'livre', deliveryDate }))
+        );
+      } else {
+        await updateUnit(project.id, m.chId, m.unitIndex, { etat: 'livre', deliveryDate });
+      }
+    } else {
+      await updateComponent(project.id, m.chId, m.unitIndex, m.ci, { etat: 'livre', deliveryDate });
+    }
+    if (refreshProject) await refreshProject(project.id);
+    setSavingKey(null);
   };
 
   const handleDeleteUnit = async (ch, unitIndex) => {

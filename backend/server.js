@@ -1822,14 +1822,22 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
       const designation = typeLabel(chassis.type);
       const remplissages = chassis.remplissages || [];
 
-      for (const unit of chassis.units || []) {
+      const isKeepAsOneGroup = isComposite ? false : (chassis.keepAsOne === true && (chassis.quantity || 1) > 1);
+      const groupQty = chassis.quantity || 1;
+
+      // Only iterate the representative unit (index 0) for a grouped ×N chassis;
+      // otherwise iterate every unit as before.
+      const unitsToProcess = isKeepAsOneGroup
+        ? (chassis.units || []).filter(u => u.unitIndex === 0)
+        : (chassis.units || []);
+
+      for (const unit of unitsToProcess) {
         if (!isComposite) {
-          // Only remplissages belonging to THIS specific unit (non-composite: compIndex is null)
+          const rowQty = isKeepAsOneGroup ? groupQty : 1;
           const unitRemplissages = remplissages.filter(r => (r.unitIndex ?? 0) === unit.unitIndex && r.compIndex == null);
 
           if (unit.etat === 'livre' && unit.deliveryDate) {
             const dateKey = new Date(unit.deliveryDate).toISOString().split('T')[0];
-
             const undeliveredRempLabels = unitRemplissages
               .filter(r => {
                 if (r.etat !== 'livre' || !r.deliveryDate) return true;
@@ -1837,24 +1845,25 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
                 return rDateKey !== dateKey;
               })
               .map(r => r.sousType ? `${r.type} (${r.sousType})` : r.type);
-
             const autoNote = undeliveredRempLabels.length > 0
               ? `sans remplissage (${undeliveredRempLabels.join(', ')})`
               : '';
-
             const chassisDim = chassis.dimension || `${chassis.largeur}×${chassis.hauteur}`;
-            const chassisM2 = m2(chassis.largeur, chassis.hauteur);
+            const unitM2 = m2(chassis.largeur, chassis.hauteur);
+            const chassisM2 = unitM2 != null ? parseFloat((unitM2 * rowQty).toFixed(2)) : null;
 
             ensureBL(dateKey).units.push({
               chassisId: chassis._id, chassisRepere: chassis.repere, chassisType: designation,
-              dimension: chassisDim, m2: chassisM2,
-              unitIndex: unit.unitIndex, unitLabel: chassis.keepAsOne && (chassis.quantity || 1) > 1
-                ? `${chassis.repere} ×${chassis.quantity}`
+              dimension: chassisDim, m2: chassisM2, quantity: rowQty,
+              unitIndex: unit.unitIndex,
+              unitLabel: rowQty > 1
+                ? `${chassis.repere} ×${rowQty}`
                 : `${chassis.repere}${unitSuffix(unit.unitIndex)}`,
               deliveryDate: unit.deliveryDate, notes: unit.notes || autoNote, isComponent: false,
             });
 
-            // Same-date remplissages for this unit
+            // Same-date remplissages for this unit (unchanged — remplissages are
+            // independent records and were never duplicated by the qty bug)
             for (const r of unitRemplissages) {
               if (!r.deliveryDate) continue;
               const rDateKey = new Date(r.deliveryDate).toISOString().split('T')[0];
@@ -1863,7 +1872,7 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
                 ensureBL(dateKey).units.push({
                   chassisId: chassis._id, chassisRepere: chassis.repere,
                   chassisType: `↳ Remplissage ${rLabel}`,
-                  dimension: `${r.largeur}×${r.hauteur}`, m2: m2(r.largeur, r.hauteur),
+                  dimension: `${r.largeur}×${r.hauteur}`, m2: m2(r.largeur, r.hauteur), quantity: 1,
                   unitIndex: unit.unitIndex,
                   unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${rLabel}`,
                   deliveryDate: r.deliveryDate, notes: '', isComponent: false, isRemplissage: true,
@@ -1873,7 +1882,7 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
             }
           }
 
-          // Different-date remplissages for this unit
+          // Different-date remplissages for this unit (unchanged)
           for (const r of unitRemplissages) {
             if (!r.deliveryDate || r.etat !== 'livre') continue;
             const rDateKey = new Date(r.deliveryDate).toISOString().split('T')[0];
@@ -1887,13 +1896,14 @@ app.get('/api/projects/:id/bons-livraison', async (req, res) => {
             ensureBL(rDateKey).units.push({
               chassisId: chassis._id, chassisRepere: chassis.repere,
               chassisType: `↳ Remplissage ${rLabel} (${designation})`,
-              dimension: `${r.largeur}×${r.hauteur}`, m2: m2(r.largeur, r.hauteur),
+              dimension: `${r.largeur}×${r.hauteur}`, m2: m2(r.largeur, r.hauteur), quantity: 1,
               unitIndex: unit.unitIndex,
               unitLabel: `${chassis.repere}${unitSuffix(unit.unitIndex)} — ${rLabel}`,
               deliveryDate: r.deliveryDate, notes: '', isComponent: false, isRemplissage: true,
               remplissageId: r._id,
             });
           }
+
 
         } else {
           // Composite chassis — iterate every component definition (not just delivered ones)
