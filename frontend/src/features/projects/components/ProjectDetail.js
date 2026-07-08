@@ -1555,7 +1555,17 @@ function ProjectDetail({ project, onBack, currentUser }) {
         if (!selectedKeys.has(row.rowKey)) continue;
         try {
           if (row.kind === 'unit') {
-            await updateUnit(project.id, row.ch._id || row.ch.id, row.unitIndex, { etat: 'livre', deliveryDate });
+            const qty = row.ch.quantity || 1;
+            const keepAsOne = row.ch.keepAsOne === true || (row.ch.keepAsOne == null && projectTab === 'laquage');
+            if (keepAsOne && qty > 1) {
+              await Promise.all(
+                Array.from({ length: qty }, (_, i) =>
+                  updateUnit(project.id, row.ch._id || row.ch.id, i, { etat: 'livre', deliveryDate })
+                )
+              );
+            } else {
+              await updateUnit(project.id, row.ch._id || row.ch.id, row.unitIndex, { etat: 'livre', deliveryDate });
+            }
           } else if (row.kind === 'component') {
             await updateComponent(project.id, row.ch._id || row.ch.id, row.unitIndex, row.ci, { etat: 'livre', deliveryDate });
           }
@@ -1566,16 +1576,19 @@ function ProjectDetail({ project, onBack, currentUser }) {
       setSelectedKeys(new Set());
       return;
     }
+
     setSavingKey(m.rowKey);
     if (m.kind === 'unit') {
       if (m.keepAsOne && m.qty > 1) {
         await Promise.all(
-          Array.from({ length: m.qty }, (_, i) => updateUnit(project.id, m.chId, i, { etat: 'livre', deliveryDate }))
+          Array.from({ length: m.qty }, (_, i) =>
+            updateUnit(project.id, m.chId, i, { etat: 'livre', deliveryDate })
+          )
         );
       } else {
         await updateUnit(project.id, m.chId, m.unitIndex, { etat: 'livre', deliveryDate });
       }
-    } else {
+    } else if (m.kind === 'component') {
       await updateComponent(project.id, m.chId, m.unitIndex, m.ci, { etat: 'livre', deliveryDate });
     }
     if (refreshProject) await refreshProject(project.id);
@@ -1608,7 +1621,17 @@ function ProjectDetail({ project, onBack, currentUser }) {
       if (!selectedKeys.has(row.rowKey)) continue;
       try {
         if (row.kind === 'unit') {
-          await updateUnit(project.id, row.ch._id || row.ch.id, row.unitIndex, { etat: newEtat });
+          const qty = row.ch.quantity || 1;
+          const keepAsOne = row.ch.keepAsOne === true || (row.ch.keepAsOne == null && projectTab === 'laquage');
+          if (keepAsOne && qty > 1) {
+            await Promise.all(
+              Array.from({ length: qty }, (_, i) =>
+                updateUnit(project.id, row.ch._id || row.ch.id, i, { etat: newEtat })
+              )
+            );
+          } else {
+            await updateUnit(project.id, row.ch._id || row.ch.id, row.unitIndex, { etat: newEtat });
+          }
         } else if (row.kind === 'component') {
           await updateComponent(project.id, row.ch._id || row.ch.id, row.unitIndex, row.ci, { etat: newEtat });
         }
