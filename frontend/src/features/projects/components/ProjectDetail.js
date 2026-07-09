@@ -68,6 +68,19 @@ function getComponentEtat(unit, compIdx, comp) {
   const cs = (unit.componentStates || []).find(c => c.compIndex === compIdx);
   return cs ? cs.etat : (comp.etat || 'non_entame');
 }
+
+function getGroupUnitStates(ch) {
+  const qty = ch.quantity || 1;
+  return Array.from({ length: qty }, (_, i) => getUnit(ch, i));
+}
+function getGroupEtatCounts(ch, etatList) {
+  const units = getGroupUnitStates(ch);
+  const counts = {};
+  etatList.forEach(e => { counts[e] = 0; });
+  units.forEach(u => { const e = u.etat || 'non_entame'; counts[e] = (counts[e] || 0) + 1; });
+  return counts;
+}
+
 function deriveCompositeEtat(unit, components) {
   const n = components.length;
   if (!n) return unit.etat || 'non_entame';
@@ -205,6 +218,31 @@ function RemplissageBadge({ chassis, unitIndex, compIndex = null, onClick }) {
     }}>
       <PlusCircle size={14} />
       {cnt === 0 ? '' : `${rdy}/${cnt}`}
+    </button>
+  );
+}
+
+function EtatBreakdownBadge({ ch, etatList, t, onClick }) {
+  const qty = ch.quantity || 1;
+  const counts = getGroupEtatCounts(ch, etatList);
+  const present = etatList.filter(e => counts[e] > 0);
+  return (
+    <button
+      onClick={onClick}
+      title="Cliquer pour gérer les unités individuellement"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+        border: '1px solid #e5e7eb', borderRadius: 6, padding: '3px 8px', background: '#fff',
+      }}
+    >
+      <div style={{ display: 'flex', height: 8, width: 56, borderRadius: 4, overflow: 'hidden', background: '#f3f4f6', flexShrink: 0 }}>
+        {present.map(e => (
+          <div key={e} style={{ width: `${(counts[e] / qty) * 100}%`, background: ETAT_COLORS[e] }} title={`${t('etat_' + e)}: ${counts[e]}`} />
+        ))}
+      </div>
+      <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>
+        {present.map(e => `${counts[e]} ${t('etat_' + e)}`).join(' · ')}
+      </span>
     </button>
   );
 }
@@ -484,6 +522,134 @@ function DeliveryDateModal({ defaultDate, onConfirm, onCancel, t }) {
         <div className="modal-actions">
           <button onClick={onCancel}>{t('cancel')}</button>
           <button className="primary" onClick={() => onConfirm(date)}>{t('confirm')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GroupUnitStatesModal({ chassis, project, onClose, onSaved }) {
+  const { updateUnit, refreshProject } = useProjects();
+  const { t } = useLanguage();
+  const { user } = useAuth();
+  const userRole = user?.role;
+  const chId = chassis._id || chassis.id;
+  const qty = chassis.quantity || 1;
+  const cfg = getTabConfig(project);
+  const etatList = cfg.etats;
+
+  const [units, setUnits] = useState(() =>
+    Array.from({ length: qty }, (_, i) => {
+      const u = getUnit(chassis, i);
+      return { unitIndex: i, etat: u.etat || 'non_entame', deliveryDate: toDateInput(u.deliveryDate) };
+    })
+  );
+  const [saving, setSaving] = useState(false);
+  const [bulkCount, setBulkCount] = useState(1);
+  const [bulkTarget, setBulkTarget] = useState('livre');
+  const [bulkDate, setBulkDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const counts = etatList.reduce((acc, e) => { acc[e] = units.filter(u => u.etat === e).length; return acc; }, {});
+  const updateOne = (idx, patch) => setUnits(prev => prev.map(u => u.unitIndex === idx ? { ...u, ...patch } : u));
+
+  // Moves `bulkCount` units to `bulkTarget`, taking the ones "closest" in the workflow first
+  // (e.g. prefer units already at pret_a_livrer when marking as livré)
+  const applyBulk = () => {
+    const priority = ['pret_a_livrer', 'fabrique', 'en_cours', 'non_vitre', 'non_entame'];
+    const candidates = units
+      .filter(u => u.etat !== bulkTarget)
+      .sort((a, b) => priority.indexOf(a.etat) - priority.indexOf(b.etat));
+    const toChange = new Set(candidates.slice(0, bulkCount).map(c => c.unitIndex));
+    setUnits(prev => prev.map(u => !toChange.has(u.unitIndex) ? u : {
+      ...u, etat: bulkTarget, deliveryDate: bulkTarget === 'livre' ? bulkDate : u.deliveryDate,
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await Promise.all(units.map(u =>
+        updateUnit(project.id, chId, u.unitIndex, {
+          etat: u.etat, ...(u.etat === 'livre' ? { deliveryDate: u.deliveryDate } : {}),
+        })
+      ));
+      if (refreshProject) await refreshProject(project.id);
+      if (onSaved) onSaved();
+      onClose();
+    } catch (e) { console.error('Group unit states save failed', e); }
+    finally { setSaving(false); }
+  };
+
+  const allowedFor = (currentEtat) => getAllowedEtats(userRole, currentEtat, project);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 640, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div className="ct-manager__header">
+          <h2>📦 {chassis.repere} — {qty} unités</h2>
+          <button className="chassis-form__close" onClick={onClose}>×</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16, padding: '10px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+          {etatList.map(e => (
+            <span key={e} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 3, background: ETAT_COLORS[e] }} />
+              {t('etat_' + e)}: <strong>{counts[e] || 0}</strong>
+            </span>
+          ))}
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#6b7280' }}>Total: <strong>{qty}</strong></span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginBottom: 16, flexWrap: 'wrap', padding: '10px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8 }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={{ fontSize: 11 }}>Nombre d'unités</label>
+            <input type="number" min="1" max={qty} value={bulkCount}
+              onChange={e => setBulkCount(Math.max(1, Math.min(qty, parseInt(e.target.value) || 1)))}
+              className="ct-acc-qty-input" style={{ width: 70 }} />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={{ fontSize: 11 }}>Nouvel état</label>
+            <select value={bulkTarget} onChange={e => setBulkTarget(e.target.value)}>
+              {etatList.map(e => <option key={e} value={e}>{t('etat_' + e)}</option>)}
+            </select>
+          </div>
+          {bulkTarget === 'livre' && (
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label style={{ fontSize: 11 }}>Date livraison</label>
+              <input type="date" value={bulkDate} onChange={e => setBulkDate(e.target.value)} />
+            </div>
+          )}
+          <button type="button" className="ct-config-btn" onClick={applyBulk}>Appliquer à {bulkCount}</button>
+        </div>
+
+        <table className="proj-acc-table" style={{ marginBottom: 16 }}>
+          <thead><tr><th style={{ width: 60 }}>#</th><th>État</th><th style={{ width: 150 }}>Date livraison</th></tr></thead>
+          <tbody>
+            {units.map(u => (
+              <tr key={u.unitIndex}>
+                <td>#{u.unitIndex + 1}</td>
+                <td>
+                  <select value={u.etat} style={{ borderLeft: `3px solid ${ETAT_COLORS[u.etat]}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
+                    onChange={e => updateOne(u.unitIndex, {
+                      etat: e.target.value,
+                      deliveryDate: e.target.value === 'livre' ? (u.deliveryDate || new Date().toISOString().split('T')[0]) : u.deliveryDate,
+                    })}>
+                    {allowedFor(u.etat).map(opt => <option key={opt} value={opt}>{t('etat_' + opt)}</option>)}
+                  </select>
+                </td>
+                <td>
+                  {u.etat === 'livre'
+                    ? <input type="date" value={u.deliveryDate || ''} onChange={e => updateOne(u.unitIndex, { deliveryDate: e.target.value })} />
+                    : <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="modal-actions">
+          <button onClick={onClose}>{t('cancel')}</button>
+          <button className="primary" onClick={handleSave} disabled={saving}>{saving ? '…' : '💾 Enregistrer'}</button>
         </div>
       </div>
     </div>
@@ -1404,6 +1570,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
   const [savingTableKey, setSavingTableKey] = useState(null);
   const [bulkSaving, setBulkSaving] = useState(false);
   const [showBulkRemplissageModal, setShowBulkRemplissageModal] = useState(false);
+  const [groupStatesModal, setGroupStatesModal] = useState(null);
 
   const language = currentLanguage;
   const statusColor = STATUS_COLORS[project.status] || '#9ca3af';
@@ -2049,7 +2216,18 @@ function ProjectDetail({ project, onBack, currentUser }) {
                           </td>
                         )}
                         {/* État cell */}
-                        {renderEtatCell(etat, isSaving, (newEtat) => handleUnitEtatChange(ch, unitIndex, newEtat, rowKey))}
+                        {(() => {
+                          const keepAsOne = ch.keepAsOne === true || (ch.keepAsOne == null && projectTab === 'laquage');
+                          const qtyN = ch.quantity || 1;
+                          if (keepAsOne && qtyN > 1 && (adminThing || stateThing)) {
+                            return (
+                              <td data-label="État">
+                                <EtatBreakdownBadge ch={ch} etatList={tabCfg.etats} t={t} onClick={() => setGroupStatesModal(ch)} />
+                              </td>
+                            );
+                          }
+                          return renderEtatCell(etat, isSaving, (newEtat) => handleUnitEtatChange(ch, unitIndex, newEtat, rowKey));
+                        })()}
                         <td data-label="Date" className="delivery-date-cell">
                           {etat === 'livre'
                             ? (userRole === 'Admin' || userRole === 'LOGISTIQUE')
@@ -2128,6 +2306,14 @@ function ProjectDetail({ project, onBack, currentUser }) {
           chassisLabels={chassisLabels}
           language={language}
           onClose={() => setRemplissageEditor(null)}
+          onSaved={() => { if (refreshProject) refreshProject(project.id); }}
+        />
+      )}
+      {groupStatesModal && (
+        <GroupUnitStatesModal
+          chassis={groupStatesModal}
+          project={project}
+          onClose={() => setGroupStatesModal(null)}
           onSaved={() => { if (refreshProject) refreshProject(project.id); }}
         />
       )}
