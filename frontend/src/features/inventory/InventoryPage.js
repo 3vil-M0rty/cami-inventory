@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
+
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import {
@@ -494,6 +496,7 @@ function InventoryPage() {
 }
 
 /* ── Image Preview Modal ────────────────────────────────────── */
+/* ── Image Preview Modal ────────────────────────────────────── */
 function ImagePreviewModal({ src, alt, onClose }) {
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
@@ -501,7 +504,7 @@ function ImagePreviewModal({ src, alt, onClose }) {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  return (
+  return ReactDOM.createPortal(
     <div className="modal-overlay image-preview-overlay" onClick={onClose}>
       <div className="image-preview-modal" onClick={e => e.stopPropagation()}>
         <button className="image-preview-close" onClick={onClose}>
@@ -509,7 +512,8 @@ function ImagePreviewModal({ src, alt, onClose }) {
         </button>
         <img src={src} alt={alt} className="image-preview-img" />
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
