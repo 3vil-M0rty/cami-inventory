@@ -5,7 +5,7 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import {
   Layers, GlassWater, Wrench, FlaskConical, Settings, Paintbrush, MirrorRectangular,
-  Search, AlertTriangle, Plus, Minus, Pencil, Trash2,
+  Search, AlertTriangle, AlertCircle, Plus, Minus, Pencil, Trash2,
   FileDown, PackagePlus, Package, ChevronRight, Tag,
   CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn,
 } from 'lucide-react';
@@ -126,8 +126,9 @@ function InventoryPage() {
     setLoading(true);
     try {
       let url;
-      if (filter === 'low-stock') {
-        url = `${API_URL}/inventory/filter/low-stock`;
+      if (filter === 'low-stock' || filter === 'alert-stock') {
+        // both are computed client-side from the full inventory list
+        url = `${API_URL}/inventory?superCategory=${activeSuperCat}`;
       } else if (selectedCategory !== 'all') {
         url = `${API_URL}/inventory?categoryId=${selectedCategory}&superCategory=${activeSuperCat}`;
       } else {
@@ -135,15 +136,23 @@ function InventoryPage() {
       }
       const res = await axios.get(url);
       let data = res.data;
+
       if (filter === 'low-stock') {
+        data = data.filter(i => getStockStatus(i).className === 'status-critical');
+        data = data.filter(i => (i.superCategory || 'aluminium') === activeSuperCat);
+        if (selectedCategory !== 'all')
+          data = data.filter(i => i.categoryId?.id === selectedCategory || i.categoryId?._id === selectedCategory);
+      } else if (filter === 'alert-stock') {
+        data = data.filter(i => getStockStatus(i).className === 'status-warning');
         data = data.filter(i => (i.superCategory || 'aluminium') === activeSuperCat);
         if (selectedCategory !== 'all')
           data = data.filter(i => i.categoryId?.id === selectedCategory || i.categoryId?._id === selectedCategory);
       }
+
       setItems(data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, [activeSuperCat, selectedCategory, filter]);
+  }, [activeSuperCat, selectedCategory, filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchSuperCats(); }, [fetchSuperCats]);
   useEffect(() => { fetchCategories(); }, [fetchCategories]);
@@ -339,6 +348,13 @@ function InventoryPage() {
           >
             <AlertTriangle size={12} strokeWidth={2.5} />
             {t('lowStock')}
+          </button>
+          <button
+            className={`filter-btn filter-btn--warning ${filter === 'alert-stock' ? 'active' : ''}`}
+            onClick={() => setFilter(filter === 'alert-stock' ? 'all' : 'alert-stock')}
+          >
+            <AlertCircle size={12} strokeWidth={2.5} />
+            {t('alertStock')}
           </button>
 
           <div className="filter-divider" />

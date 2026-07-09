@@ -747,3 +747,7 @@
   border-color: #dc2626;
   color: #fff;
 }
+
+.filter-btn--warning { color: #fbbf24; border-color: rgba(217,119,6,.3); background: rgba(217,119,6,.08); }
+.filter-btn--warning:hover { background: rgba(217,119,6,.15); border-color: #d97706; color: #fcd34d; }
+.filter-btn--warning.active { background: #d97706; color: #fff; border-color: #d97706; }

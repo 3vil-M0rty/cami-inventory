@@ -16,6 +16,7 @@ const translations = {
     backCommandes: "Retour aux commandes",
     barStockRemaining: 'Stock restant',
     Demandesadmin: 'Demandes admin',
+    alertStock: "Stock alerte",
     mdpoubliécontactezadmin: "Mot de passe oublié ? Contactez l'administrateur",
     allCompanies: 'Tout', company: 'Société', language: 'Langue',
     changePassword: 'Changer le mot de passe', logout: 'Se déconnecter',
@@ -219,6 +220,7 @@ const translations = {
     height_mm: "H (mm) *",
     add: "+ Aggiungi",
     surface: "Superficie:",
+    alertStock: "Stock alerte",
 
     etat_non_entame: 'Non iniziato',
     etat_en_cours: 'In corso',
@@ -420,6 +422,7 @@ const translations = {
     navChantiers: 'Sites',
     unitNotes: 'Notes',
     dimension: 'Dimensions',
+    alertStock: "Stock alerte",
     blHistory: 'BLs',
     backCommandes: 'Back to orders',
     status_pret_a_livrer: 'Ready to deliver',
