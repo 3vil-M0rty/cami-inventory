@@ -8,6 +8,11 @@ export const ProjectProvider = ({ children }) => {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
 
+  // ── NEW: paginated list cache for the projects page ──
+  const [projectList, setProjectList] = useState(null); // { projects, total, page, pages }
+  const [listParams, setListParams] = useState(null);
+  const [listLoading, setListLoading] = useState(false);
+
   useEffect(() => { loadProjects(); }, []);
 
   const loadProjects = async () => {
@@ -18,10 +23,35 @@ export const ProjectProvider = ({ children }) => {
     finally { setLoading(false); }
   };
 
+  // ── NEW: cached, paginated loader — used by ProjectsPage/CategoryPage ──
+  const loadProjectList = useCallback(async (params, { force = false } = {}) => {
+    const sameParams = projectList && listParams && JSON.stringify(params) === JSON.stringify(listParams);
+    if (sameParams && !force) return projectList; // reuse cache, no network call
+    setListLoading(true);
+    try {
+      const data = await projectService.getProjectsList(params); // GET /projects/list
+      setProjectList(data);
+      setListParams(params);
+      return data;
+    } finally {
+      setListLoading(false);
+    }
+  }, [projectList, listParams]);
+
+  // ── NEW: patch one card in the cached list without refetching ──
+  const patchProjectInList = useCallback((id, patch) => {
+    setProjectList(prev => prev && {
+      ...prev,
+      projects: prev.projects.map(p => p.id === id ? { ...p, ...patch } : p),
+    });
+  }, []);
+
   // Refresh a single project in state from server
   const refreshProject = async (id) => {
     const updated = await projectService.getProjectById(id);
     setProjects(prev => prev.map(p => p.id === id ? updated : p));
+    // keep the list card's summary fields in sync without a full list refetch
+    patchProjectInList(id, { status: updated.status, cachedTotalPieces: updated.cachedTotalPieces });
     return updated;
   };
 
@@ -30,6 +60,7 @@ export const ProjectProvider = ({ children }) => {
     try {
       const p = await projectService.createProject(data);
       setProjects(prev => [p, ...prev]);
+      setProjectList(null); // list is now stale — force a refetch next time it's viewed
       return { success: true, project: p };
     } catch (err) { return { success: false, error: err.message }; }
   };
@@ -38,6 +69,7 @@ export const ProjectProvider = ({ children }) => {
     try {
       const updated = await projectService.updateProject(id, data);
       setProjects(prev => prev.map(p => p.id === id ? updated : p));
+      patchProjectInList(id, { name: updated.name, reference: updated.reference, ralCode: updated.ralCode, ralColor: updated.ralColor });
       return { success: true, project: updated };
     } catch (err) { return { success: false, error: err.message }; }
   };
@@ -46,15 +78,17 @@ export const ProjectProvider = ({ children }) => {
     try {
       await projectService.deleteProject(id);
       setProjects(prev => prev.filter(p => p.id !== id));
+      setProjectList(prev => prev && { ...prev, projects: prev.projects.filter(p => p.id !== id) });
       return { success: true };
     } catch (err) { return { success: false, error: err.message }; }
   };
 
-  // ---- Chassis ----
+  // ---- Chassis ---- (unchanged, but each success now also patches the list's status/count)
   const addChassis = async (projectId, data) => {
     try {
       const updated = await projectService.addChassis(projectId, data);
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
+      patchProjectInList(projectId, { status: updated.status });
       return { success: true, project: updated };
     } catch (err) { return { success: false, error: err.message }; }
   };
@@ -63,6 +97,7 @@ export const ProjectProvider = ({ children }) => {
     try {
       const updated = await projectService.updateChassis(projectId, chassisId, data);
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
+      patchProjectInList(projectId, { status: updated.status });
       return { success: true, project: updated };
     } catch (err) { return { success: false, error: err.message }; }
   };
@@ -71,39 +106,33 @@ export const ProjectProvider = ({ children }) => {
     try {
       const updated = await projectService.deleteChassis(projectId, chassisId);
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
+      patchProjectInList(projectId, { status: updated.status });
       return { success: true, project: updated };
     } catch (err) { return { success: false, error: err.message }; }
   };
 
-  /**
-   * Update a single unit's état and optional deliveryDate (non-composite chassis).
-   * Server auto-computes new project status and returns full project.
-   */
   const updateUnit = async (projectId, chassisId, unitIndex, data) => {
     try {
       const updated = await projectService.updateUnit(projectId, chassisId, unitIndex, data);
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
+      patchProjectInList(projectId, { status: updated.status });
       return { success: true, project: updated };
     } catch (err) { return { success: false, error: err.message }; }
   };
 
-  /**
-   * Update a single component's état within a specific unit (composite chassis).
-   * The unit's overall état is automatically derived from all component states on the server.
-   */
   const updateComponent = async (projectId, chassisId, unitIndex, compIndex, data) => {
     try {
       const updated = await projectService.updateComponent(projectId, chassisId, unitIndex, compIndex, data);
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
+      patchProjectInList(projectId, { status: updated.status });
       return { success: true, project: updated };
     } catch (err) { return { success: false, error: err.message }; }
   };
 
-  // ---- BL (Bon de Livraison) ----
+  // ---- BL, Used Bars ---- (unchanged)
   const getBonsLivraison = (projectId) => projectService.getBonsLivraison(projectId);
   const getBonLivraison  = (projectId, dateKey) => projectService.getBonLivraison(projectId, dateKey);
 
-  // ---- Used Bars ----
   const addUsedBar = async (projectId, itemId, quantity) => {
     try {
       const updated = await projectService.addUsedBar(projectId, itemId, quantity);
@@ -125,6 +154,8 @@ export const ProjectProvider = ({ children }) => {
   return (
     <ProjectContext.Provider value={{
       projects, loading, error, loadProjects, refreshProject,
+      // NEW exports:
+      projectList, listLoading, loadProjectList, patchProjectInList,
       addProject, updateProject, deleteProject,
       addChassis, updateChassis, deleteChassis,
       updateUnit, updateComponent,

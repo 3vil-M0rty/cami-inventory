@@ -10,20 +10,14 @@ const TABS = [
   { key: 'vitrage', label: 'Vitrage', Component: VitrageTab },
 ];
 
-const PAGE_SIZE = 10;
-
-export default function CategoryPage({ categoryKey, statusFilter }) {
+export default function CategoryPage({ categoryKey, statusFilter, page, pageSize, onLoadMore }) {
   const [activeTab, setActiveTab] = useState('aluminium');
-  const [limit, setLimit] = useState(PAGE_SIZE);
-
-  // Reset limit when category or status filter changes from parent
-  useEffect(() => {
-    setLimit(PAGE_SIZE);
-  }, [categoryKey, statusFilter]);
 
   const handleTabChange = (key) => {
     setActiveTab(key);
-    setLimit(PAGE_SIZE);
+    // page reset now happens in the parent (ProjectsPage) since it owns `page` state;
+    // switching sub-tab still needs a reset, so bubble it up
+    onLoadMore(1);
   };
 
   const ActiveComponent =
@@ -47,8 +41,11 @@ export default function CategoryPage({ categoryKey, statusFilter }) {
         <ActiveComponent
           categoryKey={categoryKey}
           statusFilter={statusFilter}
-          limit={limit}
-          onLoadMore={(target) => typeof target === 'number' ? setLimit(target) : setLimit(prev => prev + PAGE_SIZE)} />
+          tab={activeTab}          
+          page={page}
+          pageSize={pageSize}
+          onLoadMore={onLoadMore}
+        />
       </div>
     </div>
   );

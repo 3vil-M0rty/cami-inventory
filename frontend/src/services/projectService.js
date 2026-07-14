@@ -10,6 +10,15 @@ const handle = async (res) => {
 };
 
 export const getAllProjects   = () => fetch(`${API_BASE}/projects`).then(handle);
+
+// Paginated/filtered list for the projects page (matches GET /api/projects/list)
+export const getProjectsList = (params) => {
+  const qs = new URLSearchParams(
+    Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ''))
+  ).toString();
+  return fetch(`${API_BASE}/projects/list${qs ? `?${qs}` : ''}`).then(handle);
+};
+
 export const getProjectById   = (id) => fetch(`${API_BASE}/projects/${id}`).then(handle);
 export const createProject    = (data) => fetch(`${API_BASE}/projects`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(handle);
 export const updateProject    = (id, data) => fetch(`${API_BASE}/projects/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(handle);
@@ -37,5 +46,9 @@ export const getBonLivraison  = (projectId, dateKey) => fetch(`${API_BASE}/proje
 export const addUsedBar    = (projectId, itemId, quantity) => fetch(`${API_BASE}/projects/${projectId}/bars`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemId, quantity }) }).then(handle);
 export const removeUsedBar = (projectId, itemId) => fetch(`${API_BASE}/projects/${projectId}/bars/${itemId}`, { method: 'DELETE' }).then(handle);
 
-const projectService = { getAllProjects, getProjectById, createProject, updateProject, deleteProject, addChassis, updateChassis, deleteChassis, updateUnit, updateComponent, getBonsLivraison, getBonLivraison, addUsedBar, removeUsedBar };
+const projectService = {
+  getAllProjects, getProjectsList, getProjectById, createProject, updateProject, deleteProject,
+  addChassis, updateChassis, deleteChassis, updateUnit, updateComponent,
+  getBonsLivraison, getBonLivraison, addUsedBar, removeUsedBar
+};
 export default projectService;

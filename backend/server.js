@@ -10,6 +10,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
+const compression = require('compression');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -18,6 +19,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
 app.use(express.json());
+app.use(compression()); // add this near your other app.use() calls, before routes
+
 app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
@@ -351,6 +354,25 @@ const projectSchema = new mongoose.Schema({
     }
   }
 });
+
+// Add to projectSchema definition
+projectSchema.add({
+  cachedStatus: { type: String, default: 'non_entame' },
+  cachedTotalPieces: { type: Number, default: 0 },
+});
+
+projectSchema.pre('save', function (next) {
+  if (this.isModified('chassis')) {
+    this.cachedStatus = computeProjectStatus(this.chassis);
+    this.cachedTotalPieces = (this.chassis || []).reduce((s, ch) => s + (ch.quantity || 1), 0);
+  }
+  next();
+});
+
+// Indexes for fast filtering
+projectSchema.index({ tab: 1, cachedStatus: 1, createdAt: -1 });
+projectSchema.index({ companyId: 1, createdAt: -1 });
+
 const Project = mongoose.model('Project', projectSchema);
 
 // ==================== CHANTIER SCHEMAS ====================
@@ -1559,6 +1581,57 @@ app.get('/api/projects', async (req, res) => {
     const projects = await Project.find(filter).populate('usedBars.itemId').populate('companyId').populate('clientId').sort({ createdAt: -1 });
     res.json(projects.map(p => p.toJSON()));
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/projects/list', async (req, res) => {
+  try {
+    const { tab, status, page = 1, limit = 10, companyId, search } = req.query;
+    const filter = {};
+    if (tab) filter.tab = tab;
+    if (companyId) filter.companyId = companyId;
+    if (status && status !== 'all') filter.cachedStatus = status;
+    if (search) filter.$or = [
+      { name: new RegExp(search, 'i') },
+      { reference: new RegExp(search, 'i') },
+    ];
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const [rawProjects, total] = await Promise.all([
+      Project.find(filter)
+        .select('name reference ralCode ralColor date companyId clientId tab cachedStatus cachedTotalPieces createdAt')
+        .populate('companyId')
+        .populate('clientId')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .lean(),
+      Project.countDocuments(filter),
+    ]);
+
+    // .lean() skips the toJSON transform, so re-map _id -> id manually
+    const projects = rawProjects.map(p => {
+      const { _id, __v, companyId: co, clientId: cl, ...rest } = p;
+      return {
+        id: _id.toString(),
+        ...rest,
+        status: p.cachedStatus, // keep field name your cards already expect
+        companyId: co ? { ...co, id: co._id?.toString(), _id: undefined } : null,
+        clientId: cl ? { ...cl, id: cl._id?.toString(), _id: undefined } : null,
+      };
+    });
+
+    res.json({ projects, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/migrate/cached-status', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  const projects = await Project.find({});
+  for (const p of projects) {
+    p.cachedStatus = computeProjectStatus(p.chassis || []);
+    p.cachedTotalPieces = (p.chassis || []).reduce((s, ch) => s + (ch.quantity || 1), 0);
+    await p.save();
+  }
+  res.json({ migrated: projects.length });
 });
 app.get('/api/projects/:id', async (req, res) => {
   try {
