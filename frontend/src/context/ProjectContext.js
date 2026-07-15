@@ -47,14 +47,36 @@ export const ProjectProvider = ({ children }) => {
   }, []);
 
   // Refresh a single project in state from server
+  // Refresh a single project in state from server (UPSERT)
   const refreshProject = async (id) => {
     const updated = await projectService.getProjectById(id);
-    setProjects(prev => prev.map(p => p.id === id ? updated : p));
-    // keep the list card's summary fields in sync without a full list refetch
-    patchProjectInList(id, { status: updated.status, cachedTotalPieces: updated.cachedTotalPieces });
+
+    setProjects(prev => {
+      const index = prev.findIndex(p => p.id === id);
+
+      // Project already exists → replace it
+      if (index !== -1) {
+        const next = [...prev];
+        next[index] = updated;
+        return next;
+      }
+
+      // Project wasn't loaded yet → insert it
+      return [...prev, updated];
+    });
+
+    // Keep project cards in sync
+    patchProjectInList(id, {
+      status: updated.status,
+      cachedTotalPieces: updated.cachedTotalPieces,
+      name: updated.name,
+      reference: updated.reference,
+      ralCode: updated.ralCode,
+      ralColor: updated.ralColor,
+    });
+
     return updated;
   };
-
   // ---- Projects ----
   const addProject = async (data) => {
     try {

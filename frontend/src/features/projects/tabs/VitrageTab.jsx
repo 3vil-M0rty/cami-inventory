@@ -93,8 +93,11 @@ export default function VitrageTab({ categoryKey, statusFilter }) {
   if (openProject) {
     return (
       <ProjectDetail
-        project={openProject}
-        onBack={() => { setOpenProject(null); fetchPage(1, false); }}
+        projectId={openProject.id}
+        onBack={() => {
+          setOpenProject(null);
+          fetchPage(1, false);
+        }}
       />
     );
   }

@@ -362,10 +362,10 @@ projectSchema.add({
 });
 
 projectSchema.pre('save', function (next) {
-  if (this.isModified('chassis')) {
-    this.cachedStatus = computeProjectStatus(this.chassis);
-    this.cachedTotalPieces = (this.chassis || []).reduce((s, ch) => s + (ch.quantity || 1), 0);
-  }
+  // Always recompute — don't rely on isModified('chassis') detection,
+  // which can miss deep/nested subdocument mutations and leave cachedStatus stale.
+  this.cachedStatus = computeProjectStatus(this.chassis || []);
+  this.cachedTotalPieces = (this.chassis || []).reduce((s, ch) => s + (ch.quantity || 1), 0);
   next();
 });
 

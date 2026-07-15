@@ -1551,8 +1551,10 @@ function BulkRemplissageModal({ project, onClose, onSaved }) {
   );
 }
 // ─── ProjectDetail ────────────────────────────────────────────────────────────
-function ProjectDetail({ project, onBack, currentUser }) {
-  const { deleteChassis, updateChassis, updateUnit, updateComponent, refreshProject } = useProjects();
+function ProjectDetail({ projectId, onBack, currentUser }) {
+  const { deleteChassis, updateChassis, updateUnit, updateComponent, getProjectById, refreshProject } = useProjects();
+
+
   const { t, currentLanguage } = useLanguage();
   const [activeTab, setActiveTab] = useState('chassis');
   const [showChassisForm, setShowChassisForm] = useState(false);
@@ -1573,11 +1575,20 @@ function ProjectDetail({ project, onBack, currentUser }) {
   const [groupStatesModal, setGroupStatesModal] = useState(null);
 
   const language = currentLanguage;
-  const statusColor = STATUS_COLORS[project.status] || '#9ca3af';
-  const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
+  const project = getProjectById(projectId);
+
+  useEffect(() => {
+    refreshProject(projectId);
+  }, [projectId, refreshProject]);
+
+
+
+  const statusColor = STATUS_COLORS[project?.status] || '#9ca3af';
+  const dateStr = project?.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
   const { user } = useAuth();
   const userRole = user?.role;
+
 
   // ── Derived permission flags ────────────────────────────────────────────────
   const tabCfg = getTabConfig(project);
@@ -1609,10 +1620,11 @@ function ProjectDetail({ project, onBack, currentUser }) {
 
   // ─────────────────────────────────────────────────────────────────────────────
 
+
   useEffect(() => { fetchChassisTypes().then(types => setChassisLabels(buildChassisLabels(types))).catch(() => { }); }, [showTypeManager]);
   useEffect(() => {
     const init = {};
-    for (const ch of project.chassis || []) {
+    for (const ch of project?.chassis || []) {
       const qty = ch.quantity || 1; const chId = ch._id || ch.id; const isComposite = (ch.components || []).length > 0;
       for (let i = 0; i < qty; i++) {
         const unit = getUnit(ch, i); const key = `${chId}-${i}`;
@@ -1644,7 +1656,7 @@ function ProjectDetail({ project, onBack, currentUser }) {
     } catch (e) { console.error('Atelier table save failed', e); } finally { setSavingTableKey(null); }
   }, [project, refreshProject, atelierTables]);
 
-  const rows = (project.chassis || []).flatMap(ch => {
+  const rows = (project?.chassis || []).flatMap(ch => {
     const qty = ch.quantity || 1;
     const chId = ch._id || ch.id;
     const isComposite = (ch.components || []).length > 0;
@@ -1828,14 +1840,14 @@ function ProjectDetail({ project, onBack, currentUser }) {
     const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
   };
 
-  const totalDisplayRows = (project.chassis || []).reduce((acc, ch) => {
+  const totalDisplayRows = (project?.chassis || []).reduce((acc, ch) => {
     const keepAsOne = ch.keepAsOne === true || (ch.keepAsOne == null && projectTab === 'laquage');
     return acc + (keepAsOne ? 1 : (ch.quantity || 1));
   }, 0);
 
   const detailTabs = [
     { key: 'chassis', label: t('tabChassis'), count: totalDisplayRows },
-    { key: 'bars', label: t('cons'), count: project.usedBars?.length || 0 },
+    { key: 'bars', label: t('cons'), count: project?.usedBars?.length || 0 },
     { key: 'bl', label: t('tabBL'), count: null },
     { key: 'barres_laquer', label: t('BarresaLaquer'), count: null },
     { key: 'accessoires_laquer', label: t('AccessoiresaLaquer'), count: null },
@@ -1896,6 +1908,10 @@ function ProjectDetail({ project, onBack, currentUser }) {
   };
   // ─────────────────────────────────────────────────────────────────────────────
   const stateThingCor = userRole === 'Admin' || ['LOGISTIQUE', 'Coordinateur'].includes(userRole);
+  
+  if (!project) {
+    return <div className="loading">{t('loading')}</div>;
+  }
   return (
     <div className="project-detail">
       <button className="btn-back" onClick={onBack}><StepBack size={15} />{t('backToProjects')}</button>

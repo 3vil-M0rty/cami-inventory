@@ -82,11 +82,15 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
           <h3 className="project-card__name">{project.name}</h3>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             {project.companyId && (
-              <span className="project-company-tag">{project.companyId.name}</span>
+              <span className="project-company-tag">
+                {project.companyId.name === "CANDIDO & MICHEL Aluminium Italien S.A.R.L"
+                  ? "CAMI SARL"
+                  : project.companyId.name}
+              </span>
             )}
-            <span className="project-card__status" style={{ backgroundColor: statusColor }}>
+            {/* <span className="project-card__status" style={{ backgroundColor: statusColor }}>
               {statusLabel}
-            </span>
+            </span> */}
           </div>
         </div>
 
