@@ -1,4 +1,4 @@
-// ProjectsPage.jsx
+// ProjectsPage.jsx — same as before but drop `limit`/`onLoadMore` entirely
 import { useMemo, useState } from 'react';
 import CategoryPage from './categories/CategoryPage';
 import './ProjectsPage.css';
@@ -7,7 +7,6 @@ const MAIN_CATEGORIES = [
   { key: 'particuliers', label: 'Particuliers' },
   { key: 'tgalu', label: 'TGALU' },
 ];
-
 const PROJECT_STATUS_FILTERS = [
   { key: 'all', label: 'Tous' },
   { key: 'non_entame', label: 'Non entamé' },
@@ -18,31 +17,13 @@ const PROJECT_STATUS_FILTERS = [
   { key: 'non_vitre', label: 'Non vitré' },
 ];
 
-const PAGE_SIZE = 10;
-
 export default function ProjectsPage() {
   const [activeCategory, setActiveCategory] = useState('particuliers');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [limit, setLimit] = useState(PAGE_SIZE);
 
   const currentStatusLabel = useMemo(() => {
     return PROJECT_STATUS_FILTERS.find(s => s.key === statusFilter)?.label || 'Tous';
   }, [statusFilter]);
-
-  const handleCategoryChange = (key) => {
-    setActiveCategory(key);
-    setLimit(PAGE_SIZE);
-  };
-
-  const handleStatusChange = (key) => {
-    setStatusFilter(key);
-    setLimit(PAGE_SIZE);
-  };
-
-  // Tabs call onLoadMore() to add a page, or onLoadMore(n) to jump straight to n (e.g. "load all")
-  const handleLoadMore = (specificLimit) => {
-    setLimit(prev => (specificLimit != null ? specificLimit : prev + PAGE_SIZE));
-  };
 
   return (
     <div className="projects-page-shell">
@@ -51,20 +32,19 @@ export default function ProjectsPage() {
           <button
             key={cat.key}
             className={`projects-category-tab ${activeCategory === cat.key ? 'active' : ''}`}
-            onClick={() => handleCategoryChange(cat.key)}
+            onClick={() => setActiveCategory(cat.key)}
           >
             {cat.label}
           </button>
         ))}
       </div>
-
       <div className="projects-page-shell__filters">
         <div className="project-status-tabs">
           {PROJECT_STATUS_FILTERS.map(status => (
             <button
               key={status.key}
               className={`project-status-tab ${statusFilter === status.key ? 'active' : ''}`}
-              onClick={() => handleStatusChange(status.key)}
+              onClick={() => setStatusFilter(status.key)}
             >
               {status.label}
             </button>
@@ -74,14 +54,8 @@ export default function ProjectsPage() {
           État: <strong>{currentStatusLabel}</strong>
         </div>
       </div>
-
       <div className="projects-page-shell__body">
-        <CategoryPage
-          categoryKey={activeCategory}
-          statusFilter={statusFilter}
-          limit={limit}
-          onLoadMore={handleLoadMore}
-        />
+        <CategoryPage categoryKey={activeCategory} statusFilter={statusFilter} />
       </div>
     </div>
   );

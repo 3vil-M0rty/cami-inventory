@@ -1585,40 +1585,75 @@ app.get('/api/projects', async (req, res) => {
 
 app.get('/api/projects/list', async (req, res) => {
   try {
-    const { tab, status, page = 1, limit = 10, companyId, search } = req.query;
-    const filter = {};
-    if (tab) filter.tab = tab;
-    if (companyId) filter.companyId = companyId;
-    if (status && status !== 'all') filter.cachedStatus = status;
-    if (search) filter.$or = [
+    const { tab, status, page = 1, limit = 12, companyId, search, category } = req.query;
+    const match = {};
+    if (tab) match.tab = tab;
+    if (companyId && mongoose.Types.ObjectId.isValid(companyId)) match.companyId = new mongoose.Types.ObjectId(companyId);
+    if (status && status !== 'all') match.cachedStatus = status;
+    if (search) match.$or = [
       { name: new RegExp(search, 'i') },
       { reference: new RegExp(search, 'i') },
     ];
 
-    const skip = (Number(page) - 1) * Number(limit);
-    const [rawProjects, total] = await Promise.all([
-      Project.find(filter)
-        .select('name reference ralCode ralColor date companyId clientId tab cachedStatus cachedTotalPieces createdAt')
-        .populate('companyId')
-        .populate('clientId')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(Number(limit))
-        .lean(),
-      Project.countDocuments(filter),
-    ]);
+    const pipeline = [
+      { $match: match },
+      { $lookup: { from: 'clients', localField: 'clientId', foreignField: '_id', as: 'client' } },
+      { $unwind: { path: '$client', preserveNullAndEmptyArrays: true } },
+    ];
 
-    // .lean() skips the toJSON transform, so re-map _id -> id manually
-    const projects = rawProjects.map(p => {
-      const { _id, __v, companyId: co, clientId: cl, ...rest } = p;
-      return {
-        id: _id.toString(),
-        ...rest,
-        status: p.cachedStatus, // keep field name your cards already expect
-        companyId: co ? { ...co, id: co._id?.toString(), _id: undefined } : null,
-        clientId: cl ? { ...cl, id: cl._id?.toString(), _id: undefined } : null,
-      };
-    });
+    const TGALU_RE = /infinite|tgalu/i;
+    if (category === 'tgalu') {
+      pipeline.push({ $match: { 'client.name': { $regex: TGALU_RE } } });
+    } else if (category === 'particuliers') {
+      pipeline.push({
+        $match: {
+          $or: [
+            { client: { $exists: false } },
+            { 'client.name': { $not: TGALU_RE } },
+          ],
+        },
+      });
+    }
+
+    pipeline.push(
+      { $lookup: { from: 'companies', localField: 'companyId', foreignField: '_id', as: 'company' } },
+      { $unwind: { path: '$company', preserveNullAndEmptyArrays: true } },
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          data: [
+            { $skip: (Number(page) - 1) * Number(limit) },
+            { $limit: Number(limit) },
+            {
+              $project: {
+                name: 1, reference: 1, ralCode: 1, ralColor: 1, date: 1, tab: 1,
+                cachedStatus: 1, cachedTotalPieces: 1, createdAt: 1,
+                company: 1, client: 1,
+              },
+            },
+          ],
+          totalCount: [{ $count: 'count' }],
+        },
+      }
+    );
+
+    const [result] = await Project.aggregate(pipeline);
+    const total = result.totalCount[0]?.count || 0;
+
+    const projects = result.data.map(p => ({
+      id: p._id.toString(),
+      name: p.name,
+      reference: p.reference,
+      ralCode: p.ralCode,
+      ralColor: p.ralColor,
+      date: p.date,
+      tab: p.tab,
+      status: p.cachedStatus,
+      cachedTotalPieces: p.cachedTotalPieces,
+      createdAt: p.createdAt,
+      companyId: p.company ? { ...p.company, id: p.company._id?.toString(), _id: undefined } : null,
+      clientId: p.client ? { ...p.client, id: p.client._id?.toString(), _id: undefined } : null,
+    }));
 
     res.json({ projects, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
   } catch (e) { res.status(500).json({ error: e.message }); }

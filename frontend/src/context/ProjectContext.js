@@ -5,15 +5,16 @@ const ProjectContext = createContext(null);
 
 export const ProjectProvider = ({ children }) => {
   const [projects, setProjects] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
+  const [loading, setLoading] = useState(false); // was true — nothing auto-fetches now
+  const [error, setError] = useState(null);
 
-  // ── NEW: paginated list cache for the projects page ──
-  const [projectList, setProjectList] = useState(null); // { projects, total, page, pages }
+  const [projectList, setProjectList] = useState(null);
   const [listParams, setListParams] = useState(null);
   const [listLoading, setListLoading] = useState(false);
 
-  useEffect(() => { loadProjects(); }, []);
+  // REMOVED: useEffect(() => { loadProjects(); }, []);
+  // Any page that truly needs the full `projects` array should call
+  // loadProjects() itself in its own useEffect.
 
   const loadProjects = async () => {
     try {
@@ -22,7 +23,6 @@ export const ProjectProvider = ({ children }) => {
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
   };
-
   // ── NEW: cached, paginated loader — used by ProjectsPage/CategoryPage ──
   const loadProjectList = useCallback(async (params, { force = false } = {}) => {
     const sameParams = projectList && listParams && JSON.stringify(params) === JSON.stringify(listParams);
@@ -131,7 +131,7 @@ export const ProjectProvider = ({ children }) => {
 
   // ---- BL, Used Bars ---- (unchanged)
   const getBonsLivraison = (projectId) => projectService.getBonsLivraison(projectId);
-  const getBonLivraison  = (projectId, dateKey) => projectService.getBonLivraison(projectId, dateKey);
+  const getBonLivraison = (projectId, dateKey) => projectService.getBonLivraison(projectId, dateKey);
 
   const addUsedBar = async (projectId, itemId, quantity) => {
     try {

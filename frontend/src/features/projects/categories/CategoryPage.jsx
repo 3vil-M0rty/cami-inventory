@@ -10,16 +10,9 @@ const TABS = [
   { key: 'vitrage', label: 'Vitrage', Component: VitrageTab },
 ];
 
-export default function CategoryPage({ categoryKey, statusFilter, limit, onLoadMore }) {
+export default function CategoryPage({ categoryKey, statusFilter }) {
   const [activeTab, setActiveTab] = useState('aluminium');
-
-  const handleTabChange = (key) => {
-    setActiveTab(key);
-    onLoadMore(10); // reset to first page-worth when switching sub-tab; adjust to match PAGE_SIZE
-  };
-
-  const ActiveComponent =
-    TABS.find(t => t.key === activeTab)?.Component || AluminiumTab;
+  const ActiveComponent = TABS.find(t => t.key === activeTab)?.Component || AluminiumTab;
 
   return (
     <div className="category-page">
@@ -28,20 +21,14 @@ export default function CategoryPage({ categoryKey, statusFilter, limit, onLoadM
           <button
             key={tab.key}
             className={`category-page__tab ${activeTab === tab.key ? 'active' : ''}`}
-            onClick={() => handleTabChange(tab.key)}
+            onClick={() => setActiveTab(tab.key)}
           >
             {tab.label}
           </button>
         ))}
       </div>
-
       <div className="category-page__content">
-        <ActiveComponent
-          categoryKey={categoryKey}
-          statusFilter={statusFilter}
-          limit={limit}
-          onLoadMore={onLoadMore}
-        />
+        <ActiveComponent categoryKey={categoryKey} statusFilter={statusFilter} />
       </div>
     </div>
   );
