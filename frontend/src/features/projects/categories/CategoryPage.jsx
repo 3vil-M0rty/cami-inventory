@@ -1,5 +1,5 @@
 // categories/CategoryPage.jsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import AluminiumTab from '../tabs/AluminiumTab';
 import LaquageTab from '../tabs/LaquageTab';
 import VitrageTab from '../tabs/VitrageTab';
@@ -10,14 +10,12 @@ const TABS = [
   { key: 'vitrage', label: 'Vitrage', Component: VitrageTab },
 ];
 
-export default function CategoryPage({ categoryKey, statusFilter, page, pageSize, onLoadMore }) {
+export default function CategoryPage({ categoryKey, statusFilter, limit, onLoadMore }) {
   const [activeTab, setActiveTab] = useState('aluminium');
 
   const handleTabChange = (key) => {
     setActiveTab(key);
-    // page reset now happens in the parent (ProjectsPage) since it owns `page` state;
-    // switching sub-tab still needs a reset, so bubble it up
-    onLoadMore(1);
+    onLoadMore(10); // reset to first page-worth when switching sub-tab; adjust to match PAGE_SIZE
   };
 
   const ActiveComponent =
@@ -41,9 +39,7 @@ export default function CategoryPage({ categoryKey, statusFilter, page, pageSize
         <ActiveComponent
           categoryKey={categoryKey}
           statusFilter={statusFilter}
-          tab={activeTab}          
-          page={page}
-          pageSize={pageSize}
+          limit={limit}
           onLoadMore={onLoadMore}
         />
       </div>

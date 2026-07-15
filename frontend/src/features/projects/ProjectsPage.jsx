@@ -29,7 +29,6 @@ export default function ProjectsPage() {
     return PROJECT_STATUS_FILTERS.find(s => s.key === statusFilter)?.label || 'Tous';
   }, [statusFilter]);
 
-  // Reset limit when category or filter changes
   const handleCategoryChange = (key) => {
     setActiveCategory(key);
     setLimit(PAGE_SIZE);
@@ -40,9 +39,13 @@ export default function ProjectsPage() {
     setLimit(PAGE_SIZE);
   };
 
+  // Tabs call onLoadMore() to add a page, or onLoadMore(n) to jump straight to n (e.g. "load all")
+  const handleLoadMore = (specificLimit) => {
+    setLimit(prev => (specificLimit != null ? specificLimit : prev + PAGE_SIZE));
+  };
+
   return (
     <div className="projects-page-shell">
-      {/* ── Main categories ───────────────────────── */}
       <div className="projects-page-shell__categories">
         {MAIN_CATEGORIES.map(cat => (
           <button
@@ -55,7 +58,6 @@ export default function ProjectsPage() {
         ))}
       </div>
 
-      {/* ── Status filters row ───────────────────── */}
       <div className="projects-page-shell__filters">
         <div className="project-status-tabs">
           {PROJECT_STATUS_FILTERS.map(status => (
@@ -73,13 +75,12 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {/* ── Content ──────────────────────────────── */}
       <div className="projects-page-shell__body">
         <CategoryPage
           categoryKey={activeCategory}
           statusFilter={statusFilter}
           limit={limit}
-          onLoadMore={() => setLimit(prev => prev + PAGE_SIZE)}
+          onLoadMore={handleLoadMore}
         />
       </div>
     </div>
