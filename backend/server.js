@@ -1627,7 +1627,9 @@ app.get('/api/projects/list', async (req, res) => {
             {
               $project: {
                 name: 1, reference: 1, ralCode: 1, ralColor: 1, date: 1, tab: 1,
-                cachedStatus: 1, cachedTotalPieces: 1, createdAt: 1,
+                cachedStatus: { $ifNull: ['$cachedStatus', 'non_entame'] },
+                cachedTotalPieces: { $ifNull: ['$cachedTotalPieces', 0] },
+                createdAt: 1,
                 company: 1, client: 1,
               },
             },
