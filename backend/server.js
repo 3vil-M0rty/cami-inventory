@@ -359,6 +359,7 @@ const projectSchema = new mongoose.Schema({
 projectSchema.add({
   cachedStatus: { type: String, default: 'non_entame' },
   cachedTotalPieces: { type: Number, default: 0 },
+  cachedEtatCounts: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
 });
 
 projectSchema.pre('save', function (next) {
@@ -366,6 +367,7 @@ projectSchema.pre('save', function (next) {
   // which can miss deep/nested subdocument mutations and leave cachedStatus stale.
   this.cachedStatus = computeProjectStatus(this.chassis || []);
   this.cachedTotalPieces = (this.chassis || []).reduce((s, ch) => s + (ch.quantity || 1), 0);
+  this.cachedEtatCounts = computeEtatCounts(this.chassis || []);
   next();
 });
 
@@ -565,7 +567,7 @@ function sanitizeSupplierCodes(arr) {
 }
 // ==================== STATUS COMPUTATION ====================
 
-function computeProjectStatus(chassis) {
+/* function computeProjectStatus(chassis) {
   if (!chassis || chassis.length === 0) return 'non_entame';
 
   const allEtats = [];
@@ -615,6 +617,71 @@ function computeProjectStatus(chassis) {
 
   return 'en_cours';
 }
+ */
+
+// ── shared helper: one flat array of every unit/component's état ──
+function getAllUnitEtats(chassis) {
+  const allEtats = [];
+  for (const ch of chassis || []) {
+    const units = ch.units || [];
+    const qty = ch.quantity || 1;
+    const numComps = (ch.components || []).length;
+    const composite = numComps > 0;
+
+    if (units.length === 0) {
+      for (let i = 0; i < qty; i++) allEtats.push('non_entame');
+    } else {
+      for (const u of units) {
+        const etat = composite
+          ? deriveCompositeUnitEtat(u, numComps)
+          : (u.etat || 'non_entame');
+        allEtats.push(etat);
+      }
+    }
+  }
+  return allEtats;
+}
+
+function computeProjectStatus(chassis) {
+  if (!chassis || chassis.length === 0) return 'non_entame';
+
+  const allEtats = getAllUnitEtats(chassis);
+
+  if (allEtats.length === 0) return 'en_cours';
+
+  if (allEtats.every(e => e === 'non_entame')) return 'non_entame';
+
+  if (allEtats.every(e => e === 'livre')) return 'cloture';
+
+  if (allEtats.every(e => e === 'pret_a_livrer' || e === 'livre'))
+    return 'pret_a_livrer';
+
+  const allowed = ['non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
+
+  if (
+    allEtats.every(e => allowed.includes(e)) &&
+    allEtats.some(e => e === 'non_vitre')
+  ) {
+    return 'non_vitre';
+  }
+
+  if (allEtats.every(e => e === 'fabrique' || e === 'livre'))
+    return 'fabrique';
+
+  if (allEtats.every(e => e === 'non_vitre'))
+    return 'non_vitre';
+
+  return 'en_cours';
+}
+
+// ── NEW: cached per-project état tally used by the card's progress bar ──
+function computeEtatCounts(chassis) {
+  const counts = { non_entame: 0, en_cours: 0, non_vitre: 0, fabrique: 0, livre: 0, pret_a_livrer: 0 };
+  for (const e of getAllUnitEtats(chassis)) counts[e] = (counts[e] || 0) + 1;
+  return counts;
+}
+
+
 
 function deriveCompositeUnitEtat(unit, numComponents) {
   if (!numComponents) return unit.etat || 'non_entame';
@@ -1629,6 +1696,7 @@ app.get('/api/projects/list', async (req, res) => {
                 name: 1, reference: 1, ralCode: 1, ralColor: 1, date: 1, tab: 1,
                 cachedStatus: { $ifNull: ['$cachedStatus', 'non_entame'] },
                 cachedTotalPieces: { $ifNull: ['$cachedTotalPieces', 0] },
+                cachedEtatCounts: { $ifNull: ['$cachedEtatCounts', {}] },
                 createdAt: 1,
                 company: 1, client: 1,
               },
@@ -1652,6 +1720,7 @@ app.get('/api/projects/list', async (req, res) => {
       tab: p.tab,
       status: p.cachedStatus,
       cachedTotalPieces: p.cachedTotalPieces,
+      etatCounts: p.cachedEtatCounts || {},
       createdAt: p.createdAt,
       companyId: p.company ? { ...p.company, id: p.company._id?.toString(), _id: undefined } : null,
       clientId: p.client ? { ...p.client, id: p.client._id?.toString(), _id: undefined } : null,
@@ -1664,12 +1733,11 @@ app.get('/api/projects/list', async (req, res) => {
 app.post('/api/migrate/cached-status', requireAuth, requirePermission('admin.view'), async (req, res) => {
   const projects = await Project.find({});
   for (const p of projects) {
-    p.cachedStatus = computeProjectStatus(p.chassis || []);
-    p.cachedTotalPieces = (p.chassis || []).reduce((s, ch) => s + (ch.quantity || 1), 0);
-    await p.save();
+    await p.save(); // pre-save hook recomputes cachedStatus, cachedTotalPieces, cachedEtatCounts
   }
   res.json({ migrated: projects.length });
 });
+
 app.get('/api/projects/:id', async (req, res) => {
   try {
     const p = await Project.findById(req.params.id).populate('usedBars.itemId').populate('companyId').populate('clientId');

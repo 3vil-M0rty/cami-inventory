@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import projectService from '../services/projectService';
+import { computeEtatCounts } from '../features/projects/components/ProjectCard';
 
 const ProjectContext = createContext(null);
 
@@ -29,7 +30,7 @@ export const ProjectProvider = ({ children }) => {
     } finally {
       setListLoading(false);
     }
-  }, []); // don't depend on projectList/listParams — read via functional setState if you need caching
+  }, []);
 
   const patchProjectInList = useCallback((id, patch) => {
     setProjectList(prev => prev && {
@@ -40,19 +41,32 @@ export const ProjectProvider = ({ children }) => {
 
   const refreshProject = useCallback(async (id) => {
     const updated = await projectService.getProjectById(id);
+
     setProjects(prev => {
       const index = prev.findIndex(p => p.id === id);
-      if (index !== -1) { const next = [...prev]; next[index] = updated; return next; }
+
+      // Project already exists → replace it
+      if (index !== -1) {
+        const next = [...prev];
+        next[index] = updated;
+        return next;
+      }
+
+      // Project wasn't loaded yet → insert it
       return [...prev, updated];
     });
+
+    // Keep project cards in sync
     patchProjectInList(id, {
       status: updated.status,
       cachedTotalPieces: updated.cachedTotalPieces,
+      etatCounts: computeEtatCounts(updated.chassis || []),
       name: updated.name,
       reference: updated.reference,
       ralCode: updated.ralCode,
       ralColor: updated.ralColor,
     });
+
     return updated;
   }, [patchProjectInList]);
 
@@ -87,7 +101,7 @@ export const ProjectProvider = ({ children }) => {
     try {
       const updated = await projectService.addChassis(projectId, data);
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
-      patchProjectInList(projectId, { status: updated.status });
+      patchProjectInList(projectId, { status: updated.status, etatCounts: computeEtatCounts(updated.chassis || []) });
       return { success: true, project: updated };
     } catch (err) { return { success: false, error: err.message }; }
   }, [patchProjectInList]);
@@ -96,7 +110,7 @@ export const ProjectProvider = ({ children }) => {
     try {
       const updated = await projectService.updateChassis(projectId, chassisId, data);
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
-      patchProjectInList(projectId, { status: updated.status });
+      patchProjectInList(projectId, { status: updated.status, etatCounts: computeEtatCounts(updated.chassis || []) });
       return { success: true, project: updated };
     } catch (err) { return { success: false, error: err.message }; }
   }, [patchProjectInList]);
@@ -105,7 +119,7 @@ export const ProjectProvider = ({ children }) => {
     try {
       const updated = await projectService.deleteChassis(projectId, chassisId);
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
-      patchProjectInList(projectId, { status: updated.status });
+      patchProjectInList(projectId, { status: updated.status, etatCounts: computeEtatCounts(updated.chassis || []) });
       return { success: true, project: updated };
     } catch (err) { return { success: false, error: err.message }; }
   }, [patchProjectInList]);
@@ -114,7 +128,7 @@ export const ProjectProvider = ({ children }) => {
     try {
       const updated = await projectService.updateUnit(projectId, chassisId, unitIndex, data);
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
-      patchProjectInList(projectId, { status: updated.status });
+      patchProjectInList(projectId, { status: updated.status, etatCounts: computeEtatCounts(updated.chassis || []) });
       return { success: true, project: updated };
     } catch (err) { return { success: false, error: err.message }; }
   }, [patchProjectInList]);
@@ -123,7 +137,7 @@ export const ProjectProvider = ({ children }) => {
     try {
       const updated = await projectService.updateComponent(projectId, chassisId, unitIndex, compIndex, data);
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
-      patchProjectInList(projectId, { status: updated.status });
+      patchProjectInList(projectId, { status: updated.status, etatCounts: computeEtatCounts(updated.chassis || []) });
       return { success: true, project: updated };
     } catch (err) { return { success: false, error: err.message }; }
   }, [patchProjectInList]);

@@ -69,7 +69,9 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
   const statusLabel = t(`status_${project.status}`) || project.status || '';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
-  const etatCounts = computeEtatCounts(project.chassis);
+  // Prefer the cached counts the list endpoint already sends (cheap, no chassis needed).
+  // Fall back to local computation only if a full project (with .chassis) was passed.
+  const etatCounts = project.etatCounts || computeEtatCounts(project.chassis);
   const total = Object.values(etatCounts).reduce((a, b) => a + b, 0);
   const activeEtats = ETAT_ORDER.filter(e => etatCounts[e] > 0);
 
@@ -88,9 +90,9 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
                   : project.companyId.name}
               </span>
             )}
-            {/* <span className="project-card__status" style={{ backgroundColor: statusColor }}>
+            <span className="project-card__status" style={{ backgroundColor: statusColor }}>
               {statusLabel}
-            </span> */}
+            </span>
           </div>
         </div>
 
@@ -105,15 +107,26 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
         )}
 
         {total > 0 && (
-          <div className="project-card__etat-row">
-            {activeEtats.map(e => (
-              <span key={e} className="project-card__etat-dot" title={`${t('etat_' + e) || e}: ${etatCounts[e]}`}>
-                <span className="project-card__etat-pip" style={{ backgroundColor: ETAT_COLORS[e] }} />
-                <span className="project-card__etat-count">{etatCounts[e]}</span>
-              </span>
-            ))}
-            <span className="project-card__etat-total">{total}</span>
-          </div>
+          <>
+            <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', background: '#f3f4f6', margin: '8px 0 4px' }}>
+              {activeEtats.map(e => (
+                <div
+                  key={e}
+                  title={`${t('etat_' + e) || e}: ${etatCounts[e]}`}
+                  style={{ width: `${(etatCounts[e] / total) * 100}%`, background: ETAT_COLORS[e] }}
+                />
+              ))}
+            </div>
+            <div className="project-card__etat-row">
+              {activeEtats.map(e => (
+                <span key={e} className="project-card__etat-dot" title={`${t('etat_' + e) || e}: ${etatCounts[e]}`}>
+                  <span className="project-card__etat-pip" style={{ backgroundColor: ETAT_COLORS[e] }} />
+                  <span className="project-card__etat-count">{etatCounts[e]}</span>
+                </span>
+              ))}
+              <span className="project-card__etat-total">{total}</span>
+            </div>
+          </>
         )}
       </div>
 
