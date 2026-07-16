@@ -330,7 +330,6 @@ function generateBLHtml(bl, project, logoBase64 = '') {
       ${clientCity ? `<div class="client-detail">${clientCity}</div>` : ''}
     </div>` : '';
   const unitNotes = bl.unitNotes || {};
-  // ─── AFTER ───
   const rows = bl.units.map((u, i) => {
     const note = unitNotes[u.unitLabel] || u.notes || '';
     const rowClass = u.isRemplissage ? 'row-sub row-remp' : (u.isComponent ? 'row-sub' : (i % 2 === 0 ? 'row-even' : 'row-odd'));
@@ -395,7 +394,6 @@ td{padding:10px 12px;font-size:12.5px;border-bottom:1px solid #f0f0f0}
   <div class="info-card"><div class="info-card__label">Transport</div><div class="info-card__val">${bl.transport || '—'}</div></div>
 </div>
 ${clientBlock}
-// ─── AFTER ───
 <table><thead><tr><th class="th-c" style="width:36px">#</th><th>Repère</th><th>Désignation</th><th class="th-c" style="width:50px">Qté</th><th class="th-c">Dimension</th><th class="th-c">m²</th><th class="th-c">Date livraison</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>
 <div class="sig-row"><div class="sig-box">Signature livreur</div><div class="sig-box">Signature réceptionnaire</div></div>
 <div class="bl-page-footer"><div class="footer" style="border:none;padding:0;margin:0;text-align:center;width:100%">${[companyName, companyAddr, companyPhone ? 'Tél : ' + companyPhone : '', companyRC ? 'RC : ' + companyRC : '', companyICE ? 'ICE : ' + companyICE : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')}</div></div>
@@ -454,7 +452,6 @@ function exportBLExcel(bl, project) {
     if (addr) { setCell(0, row, addr, S.clientSub); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } }); row++; }
   }
   row++;
-  // ─── AFTER ───
   ['#', 'Repère', 'Désignation', 'Qté', 'Dimension', 'm²', 'Date livraison', 'Notes'].forEach((h, i) => { setCell(i, row, h, i === 0 || i === 3 || i === 4 || i === 5 || i === 6 ? S.th : S.thLeft); }); row++;
   const unitNotes = bl.unitNotes || {};
   bl.units.forEach((u, idx) => {
@@ -874,7 +871,6 @@ function BLPanel({ project, t, language }) {
             {openBL === bl.deliveryDate && (
               <div className="bl-card__body">
                 <table className="bl-table">
-                  // ─── AFTER ───
                   <thead><tr><th>{t('repere')}</th><th>{t('type')}</th><th style={{ textAlign: 'center' }}>Qté</th><th>{t('dimension')}</th><th style={{ textAlign: 'center' }}>m²</th><th>{t('blDate')}</th><th>{t('unitNotes')}</th></tr></thead>
                   <tbody>
                     {bl.units.map((u, i) => (
@@ -1687,7 +1683,6 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
       : new Set(logistiqueSelectableKeys)
   );
 
-  // ─── AFTER ───
   const handleUnitEtatChange = async (ch, unitIndex, newEtat, rowKey) => {
     const chId = ch._id || ch.id;
     const qty = ch.quantity || 1;
