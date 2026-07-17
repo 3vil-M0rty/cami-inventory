@@ -1730,6 +1730,28 @@ app.get('/api/projects/list', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/projects/lite', async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.companyId) filter.companyId = req.query.companyId;
+    const projects = await Project.find(filter)
+      .select('name reference ralCode ralColor companyId clientId')
+      .populate('companyId', 'name color')
+      .populate('clientId', 'name')
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json(projects.map(p => ({
+      id: p._id.toString(),
+      name: p.name,
+      reference: p.reference,
+      ralCode: p.ralCode,
+      ralColor: p.ralColor,
+      companyId: p.companyId ? { id: p.companyId._id.toString(), name: p.companyId.name, color: p.companyId.color } : null,
+      clientId: p.clientId ? { id: p.clientId._id.toString(), name: p.clientId.name } : null,
+    })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/migrate/cached-status', requireAuth, requirePermission('admin.view'), async (req, res) => {
   const projects = await Project.find({});
   for (const p of projects) {

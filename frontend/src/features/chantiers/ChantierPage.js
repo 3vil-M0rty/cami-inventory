@@ -194,7 +194,7 @@ export default function ChantierPage() {
         try {
             const [cRes, pRes, tRes] = await Promise.all([
                 authFetch(`${API_URL}/chantiers`),
-                authFetch(`${API_URL}/projects`),
+                authFetch(`${API_URL}/projects/lite`),   // ← was /projects
                 authFetch(`${API_URL}/teams`),
             ]);
             const [ch, pr, tm] = await Promise.all([cRes.json(), pRes.json(), tRes.json()]);
