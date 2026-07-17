@@ -471,6 +471,114 @@ function exportBLExcel(bl, project) {
   XLSX.utils.book_append_sheet(wb, ws, 'BL'); XLSX.writeFile(wb, `${bl.blId || 'BL'}.xlsx`);
 }
 
+// ─── Chassis + Remplissage Excel Export ───────────────────────────────────────
+function exportChassisRemplissageExcel(project, chassisLabels, language) {
+  const rows = [];
+  let idx = 0;
+
+  const etatLabelFr = {
+    non_entame: 'Non entamé', en_cours: 'En cours', non_vitre: 'Non vitré',
+    fabrique: 'Fabriqué', livre: 'Livré', pret_a_livrer: 'Prêt à livrer',
+  };
+  const etatOf = (e) => etatLabelFr[e] || e || '—';
+
+  for (const ch of project.chassis || []) {
+    const qty = ch.quantity || 1;
+    const isComposite = (ch.components || []).length > 0;
+    const typeLabel = chassisLabels[ch.type]?.[language] || chassisLabels[ch.type]?.fr || ch.type;
+    const keepAsOne = ch.keepAsOne === true;
+    const iterations = keepAsOne ? 1 : qty;
+
+    for (let unitIndex = 0; unitIndex < iterations; unitIndex++) {
+      const unit = getUnit(ch, unitIndex);
+      const baseLabel = (!keepAsOne && qty > 1) ? `${ch.repere} #${unitIndex + 1}` : ch.repere;
+
+      if (!isComposite) {
+        idx++;
+        const m2 = ch.largeur && ch.hauteur ? parseFloat(((ch.largeur * ch.hauteur) / 1e6 * (keepAsOne ? qty : 1)).toFixed(2)) : '';
+        rows.push({
+          '#': idx,
+          'Repère': baseLabel,
+          'Type': typeLabel,
+          'Qté': keepAsOne ? qty : 1,
+          'L (mm)': ch.largeur,
+          'H (mm)': ch.hauteur,
+          'Dimension': ch.dimension || `${ch.largeur}×${ch.hauteur}`,
+          'm²': m2,
+          'État châssis': etatOf(unit.etat),
+          'Date livraison châssis': unit.deliveryDate ? fmtDate(unit.deliveryDate) : '',
+          'Type remplissage': '', 'Sous-type': '', 'Dim. remplissage': '', 'm² remplissage': '', 'État remplissage': '', 'Date livraison remplissage': '',
+        });
+        (ch.remplissages || [])
+          .filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex == null)
+          .forEach(r => {
+            idx++;
+            rows.push({
+              '#': idx, 'Repère': `↳ ${baseLabel}`, 'Type': '', 'Qté': '',
+              'L (mm)': '', 'H (mm)': '', 'Dimension': '', 'm²': '',
+              'État châssis': '', 'Date livraison châssis': '',
+              'Type remplissage': r.type,
+              'Sous-type': r.sousType || '',
+              'Dim. remplissage': `${r.largeur}×${r.hauteur}`,
+              'm² remplissage': r.largeur && r.hauteur ? parseFloat(((r.largeur * r.hauteur) / 1e6).toFixed(2)) : '',
+              'État remplissage': etatOf(r.etat),
+              'Date livraison remplissage': r.deliveryDate ? fmtDate(r.deliveryDate) : '',
+            });
+          });
+      } else {
+        (ch.components || []).forEach((comp, ci) => {
+          idx++;
+          const compEtat = getComponentEtat(unit, ci, comp);
+          const cs = (unit.componentStates || []).find(c => c.compIndex === ci);
+          const compLabel = comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${ci + 1}`);
+          const compL = comp.largeur || ch.largeur;
+          const compH = comp.hauteur || ch.hauteur;
+          const compM2 = compL && compH ? parseFloat(((compL * compH) / 1e6).toFixed(2)) : '';
+          rows.push({
+            '#': idx,
+            'Repère': `${baseLabel} — ${compLabel}`,
+            'Type': `${typeLabel} (${comp.role === 'dormant' ? 'Dormant' : 'Vantail'})`,
+            'Qté': 1, 'L (mm)': compL, 'H (mm)': compH,
+            'Dimension': compL && compH ? `${compL}×${compH}` : '',
+            'm²': compM2,
+            'État châssis': etatOf(compEtat),
+            'Date livraison châssis': cs?.deliveryDate ? fmtDate(cs.deliveryDate) : '',
+            'Type remplissage': '', 'Sous-type': '', 'Dim. remplissage': '', 'm² remplissage': '', 'État remplissage': '', 'Date livraison remplissage': '',
+          });
+          (ch.remplissages || [])
+            .filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex === ci)
+            .forEach(r => {
+              idx++;
+              rows.push({
+                '#': idx, 'Repère': `↳ ${baseLabel} — ${compLabel}`, 'Type': '', 'Qté': '',
+                'L (mm)': '', 'H (mm)': '', 'Dimension': '', 'm²': '',
+                'État châssis': '', 'Date livraison châssis': '',
+                'Type remplissage': r.type,
+                'Sous-type': r.sousType || '',
+                'Dim. remplissage': `${r.largeur}×${r.hauteur}`,
+                'm² remplissage': r.largeur && r.hauteur ? parseFloat(((r.largeur * r.hauteur) / 1e6).toFixed(2)) : '',
+                'État remplissage': etatOf(r.etat),
+                'Date livraison remplissage': r.deliveryDate ? fmtDate(r.deliveryDate) : '',
+              });
+            });
+        });
+      }
+    }
+  }
+
+  if (rows.length === 0) { alert('Aucun châssis dans ce projet.'); return; }
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 5 }, { wch: 26 }, { wch: 22 }, { wch: 6 }, { wch: 9 }, { wch: 9 },
+    { wch: 14 }, { wch: 9 }, { wch: 14 }, { wch: 16 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 18 },
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Châssis & Remplissages');
+  XLSX.writeFile(wb, `${project.name || 'projet'}_chassis_remplissages.xlsx`);
+}
+
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
 function ProgressBar({ chassis, t }) {
   if (!chassis || chassis.length === 0) return null;
@@ -1903,7 +2011,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
   };
   // ─────────────────────────────────────────────────────────────────────────────
   const stateThingCor = userRole === 'Admin' || ['LOGISTIQUE', 'Coordinateur'].includes(userRole);
-  
+
   if (!project) {
     return <div className="loading">{t('loading')}</div>;
   }
@@ -1936,6 +2044,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
           <div className="project-detail__header-actions">
             <button className="excel-btn" onClick={() => exportProjectPDF(project, language, chassisLabels, t)}>📄 {t('exportPDF')} — Châssis</button>
             <button className="excel-btn" onClick={() => exportBarsPDF(project, language, t)}>📄 {t('exportPDF')} — Barres</button>
+            <button className="excel-btn" onClick={() => exportChassisRemplissageExcel(project, chassisLabels, language)}>📊 Excel — Châssis & Remplissages</button>
           </div>
         )}
       </div>
