@@ -31,6 +31,9 @@ async function uploadToCloudinary(file) {
 // ─── Static data cache (survives re-renders, loaded once per session) ─────────
 const _staticCache = { chantierStates: null, chassisTypes: null };
 
+// ─── Projects cache (lazy — only fetched when the chantier form actually needs it) ─
+const _projectsCache = { data: null };
+
 // ─── Camera Cell Component ────────────────────────────────────────────────────
 function CameraCell({ chassisId, unitIndex, chantier, authFetch, onPhotoAdded, onPhotoDeleted }) {
     const [uploading, setUploading] = useState(false);
@@ -176,7 +179,9 @@ export default function ChantierPage() {
     const isAdmin = user?.role === 'Admin' || can('chantiers.edit');
 
     const [chantiers, setChantiers] = useState([]);
-    const [projects, setProjects] = useState([]);
+    // Projects: lazily loaded only when the chantier form modal needs them (assign-projects picker)
+    const [projects, setProjects] = useState(_projectsCache.data || []);
+    const [projectsLoading, setProjectsLoading] = useState(false);
     const [teams, setTeams] = useState([]);
     // Static data: fetched once and cached
     const [chantierStates, setChantierStates] = useState(_staticCache.chantierStates || []);
@@ -189,17 +194,15 @@ export default function ChantierPage() {
     const [showForm, setShowForm] = useState(false);
     const [editItem, setEditItem] = useState(null);
 
-    // ── Load dynamic data only (chantiers/projects/teams) ──────────────────────
+    // ── Load dynamic data only (chantiers/teams) — NOT projects, those are lazy ──
     const loadDynamic = useCallback(async () => {
         try {
-            const [cRes, pRes, tRes] = await Promise.all([
+            const [cRes, tRes] = await Promise.all([
                 authFetch(`${API_URL}/chantiers`),
-                authFetch(`${API_URL}/projects/lite`),   // ← was /projects
                 authFetch(`${API_URL}/teams`),
             ]);
-            const [ch, pr, tm] = await Promise.all([cRes.json(), pRes.json(), tRes.json()]);
+            const [ch, tm] = await Promise.all([cRes.json(), tRes.json()]);
             setChantiers(Array.isArray(ch) ? ch : []);
-            setProjects(Array.isArray(pr) ? pr : []);
             setTeams(Array.isArray(tm) ? tm : []);
         } catch (e) { console.error(e); }
     }, [authFetch]);
@@ -220,7 +223,22 @@ export default function ChantierPage() {
         } catch (e) { console.error(e); }
     }, [authFetch]);
 
-    // ── Full initial load ──────────────────────────────────────────────────────
+    // ── Lazy projects load — only called right before the form modal opens ────
+    // Uses the lean /api/projects/lite route (no chassis payload) and caches
+    // the result for the rest of the session so re-opening the form is instant.
+    const ensureProjectsLoaded = useCallback(async () => {
+        if (_projectsCache.data) { setProjects(_projectsCache.data); return; }
+        setProjectsLoading(true);
+        try {
+            const res = await authFetch(`${API_URL}/projects/lite`);
+            const data = await res.json();
+            _projectsCache.data = Array.isArray(data) ? data : [];
+            setProjects(_projectsCache.data);
+        } catch (e) { console.error(e); }
+        finally { setProjectsLoading(false); }
+    }, [authFetch]);
+
+    // ── Full initial load (no projects here — kept fast) ──────────────────────
     const load = useCallback(async () => {
         setLoading(true);
         await Promise.all([loadDynamic(), loadStatic()]);
@@ -235,6 +253,19 @@ export default function ChantierPage() {
         setView('chantiers'); setDetailId(null);
         setChantiers(prev => prev.filter(c => c.id !== id));
     };
+
+    // ── Open form helpers: trigger the lazy projects fetch right as the modal opens ──
+    const openNewChantier = useCallback(() => {
+        setEditItem(null);
+        setShowForm(true);
+        ensureProjectsLoaded();
+    }, [ensureProjectsLoaded]);
+
+    const openEditChantier = useCallback((chantier) => {
+        setEditItem(chantier);
+        setShowForm(true);
+        ensureProjectsLoaded();
+    }, [ensureProjectsLoaded]);
 
     const adminThing = user?.role === 'Admin';
     const defaultState = useMemo(
@@ -272,7 +303,7 @@ export default function ChantierPage() {
                 isAdmin={isAdmin}
                 authFetch={authFetch}
                 onBack={() => { setView('chantiers'); setDetailId(null); loadDynamic(); }}
-                onEdit={() => { setEditItem(detailChantier); setShowForm(true); }}
+                onEdit={() => openEditChantier(detailChantier)}
                 onDelete={() => deleteChantier(detailChantier.id)}
                 onRefreshFull={loadDynamic}
                 patchChantier={patchChantier}
@@ -294,7 +325,7 @@ export default function ChantierPage() {
                 <div className="ch-page__header-right">
                     <div className="ch-tab-toggle">
                         {adminThing && (
-                            <button className="ch-new-btn" onClick={() => { setEditItem(null); setShowForm(true); }}>
+                            <button className="ch-new-btn" onClick={openNewChantier}>
                                 <Plus size={14} /> Nouveau chantier
                             </button>
                         )}
@@ -316,7 +347,7 @@ export default function ChantierPage() {
                         <HardHat size={44} strokeWidth={1.2} />
                         <p>Aucun chantier pour l'instant.</p>
                         {adminThing && (
-                            <button className="ch-new-btn" onClick={() => { setEditItem(null); setShowForm(true); }}>+ Créer un chantier</button>
+                            <button className="ch-new-btn" onClick={openNewChantier}>+ Créer un chantier</button>
                         )}
                     </div>
                 ) : (
@@ -329,7 +360,7 @@ export default function ChantierPage() {
                                 chantierStates={chantierStates}
                                 isAdmin={isAdmin}
                                 onClick={() => { setDetailId(ch.id); setView('detail'); }}
-                                onEdit={e => { e.stopPropagation(); setEditItem(ch); setShowForm(true); }}
+                                onEdit={e => { e.stopPropagation(); openEditChantier(ch); }}
                                 onDelete={e => { e.stopPropagation(); deleteChantier(ch.id); }}
                             />
                         ))}
@@ -359,6 +390,7 @@ export default function ChantierPage() {
                 <ChantierFormModal
                     chantier={editItem}
                     projects={projects}
+                    projectsLoading={projectsLoading}
                     teams={teams}
                     isAdmin={isAdmin}
                     authFetch={authFetch}
@@ -1147,7 +1179,7 @@ function TeamStockActionModal({ title, inventory, chantiers, showChantier, onClo
 }
 
 // ─── Project Search Picker ────────────────────────────────────────────────────
-function ProjectSearchPicker({ projects, selectedIds, onChange }) {
+function ProjectSearchPicker({ projects, selectedIds, onChange, loading }) {
     const [query, setQuery] = useState('');
     const [open, setOpen] = useState(false);
     const wrapRef = useRef(null);
@@ -1186,14 +1218,15 @@ function ProjectSearchPicker({ projects, selectedIds, onChange }) {
             )}
             <div className="ch-proj-picker__input-wrap">
                 <input type="text" className="ch-proj-picker__input"
-                    placeholder={selected.length ? 'Ajouter un projet...' : 'Rechercher par nom, référence, RAL, société...'}
+                    placeholder={loading ? 'Chargement des projets...' : (selected.length ? 'Ajouter un projet...' : 'Rechercher par nom, référence, RAL, société...')}
                     value={query}
+                    disabled={loading}
                     onChange={e => { setQuery(e.target.value); setOpen(true); }}
                     onFocus={() => setOpen(true)}
                 />
                 {query && <button type="button" className="ch-proj-picker__clear" onClick={() => setQuery('')}>×</button>}
             </div>
-            {open && (
+            {open && !loading && (
                 <div className="ch-proj-picker__dropdown">
                     {filtered.length === 0
                         ? <div className="ch-proj-picker__empty">Aucun résultat</div>
@@ -1219,7 +1252,7 @@ function ProjectSearchPicker({ projects, selectedIds, onChange }) {
 }
 
 // ─── Chantier Form Modal ──────────────────────────────────────────────────────
-function ChantierFormModal({ chantier, projects, teams, isAdmin, authFetch, onClose, onSave }) {
+function ChantierFormModal({ chantier, projects, projectsLoading, teams, isAdmin, authFetch, onClose, onSave }) {
     const [form, setForm] = useState({
         name: chantier?.name || '',
         reference: chantier?.reference || '',
@@ -1290,7 +1323,7 @@ function ChantierFormModal({ chantier, projects, teams, isAdmin, authFetch, onCl
                                     <span className="ch-form-count">{form.projectIds.length} sélectionné(s)</span>
                                 )}
                             </label>
-                            <ProjectSearchPicker projects={projects} selectedIds={form.projectIds} onChange={ids => set('projectIds', ids)} />
+                            <ProjectSearchPicker projects={projects || []} selectedIds={form.projectIds} onChange={ids => set('projectIds', ids)} loading={!!projectsLoading} />
                         </div>
                     )}
                     {error && <div className="form-error">{error}</div>}
