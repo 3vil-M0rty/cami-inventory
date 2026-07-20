@@ -579,6 +579,119 @@ function exportChassisRemplissageExcel(project, chassisLabels, language) {
   XLSX.writeFile(wb, `${project.name || 'projet'}_chassis_remplissages.xlsx`);
 }
 
+// ─── Devis-style Excel Export (Repère / Désignation / Qté / PU HT / Total HT) ──
+function exportDevisExcel(project, chassisLabels, language) {
+  const rows = [];
+  let idx = 0;
+
+  const pushRow = (repere, designation, qty) => {
+    idx++;
+    rows.push({ '#': idx, 'Repère': repere, 'Désignation': designation, 'Quantité': qty, 'Prix unitaire HT': null, 'Prix total HT': null });
+  };
+
+  for (const ch of project.chassis || []) {
+    const qty = ch.quantity || 1;
+    const isComposite = (ch.components || []).length > 0;
+    const typeLabel = chassisLabels[ch.type]?.[language] || chassisLabels[ch.type]?.fr || ch.type;
+    const keepAsOne = ch.keepAsOne === true;
+    const iterations = keepAsOne ? 1 : qty;
+
+    for (let unitIndex = 0; unitIndex < iterations; unitIndex++) {
+      const baseLabel = (!keepAsOne && qty > 1) ? `${ch.repere} #${unitIndex + 1}` : ch.repere;
+
+      if (!isComposite) {
+        const dim = ch.dimension || `${ch.largeur}×${ch.hauteur}`;
+        pushRow(baseLabel, `${typeLabel} — ${dim} mm`, keepAsOne ? qty : 1);
+
+        (ch.remplissages || [])
+          .filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex == null)
+          .forEach(r => {
+            const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+            pushRow(`↳ ${baseLabel}`, `${rLabel} — ${r.largeur}×${r.hauteur} mm`, 1);
+          });
+      } else {
+        (ch.components || []).forEach((comp, ci) => {
+          const compLabel = comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${ci + 1}`);
+          const compL = comp.largeur || ch.largeur;
+          const compH = comp.hauteur || ch.hauteur;
+          pushRow(`${baseLabel} — ${compLabel}`, `${typeLabel} (${comp.role === 'dormant' ? 'Dormant' : 'Vantail'}) — ${compL}×${compH} mm`, 1);
+
+          (ch.remplissages || [])
+            .filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex === ci)
+            .forEach(r => {
+              const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+              pushRow(`↳ ${baseLabel} — ${compLabel}`, `${rLabel} — ${r.largeur}×${r.hauteur} mm`, 1);
+            });
+        });
+      }
+    }
+  }
+
+  if (rows.length === 0) { alert('Aucun châssis dans ce projet.'); return; }
+
+  const co = resolveCompany(project);
+  const companyColor = co.color || '#1a1a1a';
+  const hexToArgb = (hex) => { const h = hex.replace('#', ''); return 'FF' + (h.length === 3 ? h.split('').map(c => c + c).join('') : h).toUpperCase(); };
+  const headerArgb = hexToArgb(companyColor);
+  const lightBg = 'FFF9FAFB'; const borderColor = 'FFE5E7EB';
+
+  const ws = {}; const merges = []; let row = 1;
+  const setCell = (col, r, value, s, formula) => {
+    const addr = XLSX.utils.encode_cell({ c: col, r: r - 1 });
+    ws[addr] = formula ? { f: formula, t: 'n' } : { v: value, t: typeof value === 'number' ? 'n' : 's' };
+    if (s) ws[addr].s = s;
+  };
+
+  const S = {
+    title: { font: { bold: true, sz: 16, color: { rgb: headerArgb } } },
+    subtitle: { font: { sz: 10, color: { rgb: 'FF666666' } } },
+    th: { font: { bold: true, sz: 10, color: { rgb: 'FFFFFFFF' } }, fill: { fgColor: { rgb: headerArgb }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' } },
+    thLeft: { font: { bold: true, sz: 10, color: { rgb: 'FFFFFFFF' } }, fill: { fgColor: { rgb: headerArgb }, patternType: 'solid' }, alignment: { horizontal: 'left', vertical: 'center' } },
+    tdEven: { font: { sz: 11 }, fill: { fgColor: { rgb: 'FFFFFFFF' }, patternType: 'solid' }, border: { bottom: { style: 'thin', color: { rgb: borderColor } } } },
+    tdOdd: { font: { sz: 11 }, fill: { fgColor: { rgb: lightBg }, patternType: 'solid' }, border: { bottom: { style: 'thin', color: { rgb: borderColor } } } },
+    tdSub: { font: { sz: 10.5, color: { rgb: 'FF6B7280' } }, fill: { fgColor: { rgb: lightBg }, patternType: 'solid' }, border: { bottom: { style: 'thin', color: { rgb: borderColor } } } },
+    tdInput: { font: { sz: 11, color: { rgb: 'FF1D4ED8' } }, fill: { fgColor: { rgb: 'FFEFF6FF' }, patternType: 'solid' }, border: { bottom: { style: 'thin', color: { rgb: borderColor } }, top: { style: 'thin', color: { rgb: 'FFBFDBFE' } }, left: { style: 'thin', color: { rgb: 'FFBFDBFE' } }, right: { style: 'thin', color: { rgb: 'FFBFDBFE' } } }, alignment: { horizontal: 'center' } },
+    tdTotal: { font: { bold: true, sz: 11 }, fill: { fgColor: { rgb: lightBg }, patternType: 'solid' }, border: { bottom: { style: 'thin', color: { rgb: borderColor } } }, alignment: { horizontal: 'center' } },
+    grandLabel: { font: { bold: true, sz: 12, color: { rgb: 'FF1A1A1A' } }, alignment: { horizontal: 'right' } },
+    grandTotal: { font: { bold: true, sz: 13, color: { rgb: headerArgb } }, fill: { fgColor: { rgb: lightBg }, patternType: 'solid' }, alignment: { horizontal: 'center' }, border: { top: { style: 'medium', color: { rgb: headerArgb } } } },
+  };
+
+  setCell(0, row, `DEVIS — ${project.name}`, S.title); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 2 } }); row++;
+  setCell(0, row, `Réf. ${project.reference}  ·  RAL ${project.ralCode}  ·  ${co.name || ''}`, S.subtitle); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 4 } }); row += 2;
+
+  const headerRow = row;
+  ['#', 'Repère', 'Désignation', 'Quantité', 'Prix unitaire HT', 'Prix total HT'].forEach((h, i) =>
+    setCell(i, headerRow, h, i === 1 || i === 2 ? S.thLeft : S.th)
+  );
+  row++;
+
+  const firstDataRow = row;
+  rows.forEach((r, i) => {
+    const isSub = r['Repère'].startsWith('↳');
+    const base = isSub ? S.tdSub : (i % 2 === 0 ? S.tdEven : S.tdOdd);
+    setCell(0, row, r['#'], { ...base, alignment: { horizontal: 'center' } });
+    setCell(1, row, r['Repère'], { ...base, font: { ...base.font, bold: !isSub } });
+    setCell(2, row, r['Désignation'], base);
+    setCell(3, row, r['Quantité'], { ...base, alignment: { horizontal: 'center' } });
+    setCell(4, row, '', S.tdInput); // Prix unitaire HT — left blank for manual entry
+    setCell(5, row, 0, S.tdTotal, `D${row}*E${row}`); // Prix total HT — auto-calculated
+    row++;
+  });
+  const lastDataRow = row - 1;
+
+  row++;
+  setCell(4, row, 'TOTAL HT', S.grandLabel);
+  setCell(5, row, 0, S.grandTotal, `SUM(F${firstDataRow}:F${lastDataRow})`);
+
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row, c: 5 } });
+  ws['!merges'] = merges;
+  ws['!cols'] = [{ wch: 5 }, { wch: 26 }, { wch: 38 }, { wch: 10 }, { wch: 16 }, { wch: 16 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Devis');
+  XLSX.writeFile(wb, `${project.name || 'projet'}_devis.xlsx`);
+}
+
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
 function ProgressBar({ chassis, t }) {
   if (!chassis || chassis.length === 0) return null;
@@ -2045,6 +2158,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
             <button className="excel-btn" onClick={() => exportProjectPDF(project, language, chassisLabels, t)}>📄 {t('exportPDF')} — Châssis</button>
             <button className="excel-btn" onClick={() => exportBarsPDF(project, language, t)}>📄 {t('exportPDF')} — Barres</button>
             <button className="excel-btn" onClick={() => exportChassisRemplissageExcel(project, chassisLabels, language)}>📊 Excel — Châssis & Remplissages</button>
+            <button className="excel-btn" onClick={() => exportDevisExcel(project, chassisLabels, language)}>💰 Excel — Devis</button>
           </div>
         )}
       </div>
