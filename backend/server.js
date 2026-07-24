@@ -113,6 +113,7 @@ const ALL_PERMISSIONS = [
   'inventory.verre.view', 'inventory.verre.edit', 'inventory.verre.delete',
   'inventory.accessoires.view', 'inventory.accessoires.edit', 'inventory.accessoires.delete',
   'inventory.poudre.view', 'inventory.poudre.edit', 'inventory.poudre.delete',
+  'inventory.fer.view', 'inventory.fer.edit', 'inventory.fer.delete', 
   'orders.view', 'orders.edit', 'orders.delete', 'orders.receive',
   'projects.view', 'projects.edit', 'projects.delete',
   'clients.view', 'clients.edit', 'clients.delete',
