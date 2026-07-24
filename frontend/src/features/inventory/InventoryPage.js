@@ -216,8 +216,12 @@ function InventoryPage() {
 
   const filteredItems = items.filter(item => {
     if (!searchTerm) return true;
-    const d = item.designation[language] || item.designation.fr || '';
-    return d.toLowerCase().includes(searchTerm.toLowerCase());
+    const tokens = searchTerm.toLowerCase().split(/\s+/).filter(Boolean);
+    const designation = item.designation[language] || item.designation.fr || '';
+    const codeInterne = item.codeInterne || '';
+    const supplierCodes = (item.supplierCodes || []).map(sc => sc.code || '').join(' ');
+    const haystack = `${designation} ${codeInterne} ${supplierCodes}`.toLowerCase();
+    return tokens.every(tok => haystack.includes(tok));
   });
 
   const exportToExcel = () => {

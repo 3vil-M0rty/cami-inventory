@@ -161,9 +161,11 @@ export default function OrdersPage() {
       order.supplierId?.name,
       order.supplier,
       order.notes,
-      ...(order.lines || []).map(l =>
-        l.itemId?.designation?.[lang] || l.itemId?.designation?.fr || ''
-      ),
+      ...(order.lines || []).flatMap(l => [
+        l.itemId?.designation?.[lang] || l.itemId?.designation?.fr || '',
+        l.itemId?.codeInterne || '',
+        ...(l.itemId?.supplierCodes || []).map(sc => sc.code || ''),
+      ]),
     ].join(' ').toLowerCase();
     return tokens.every(tok => haystack.includes(tok));
   };
@@ -734,7 +736,8 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
           const tokens = lf.search.toLowerCase().split(/\s+/).filter(Boolean);
           const name = (it.designation?.[lang] || it.designation?.fr || '').toLowerCase();
           const code = (it.codeInterne || '').toLowerCase();
-          if (!tokens.every(tok => name.includes(tok) || code.includes(tok))) return false;
+          const supplierCodes = (it.supplierCodes || []).map(sc => (sc.code || '').toLowerCase()).join(' ');
+          if (!tokens.every(tok => name.includes(tok) || code.includes(tok) || supplierCodes.includes(tok))) return false;
         }
         return true;
       });
@@ -743,7 +746,6 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
       }
     }
   };
-
   const getFilteredItems = (idx) => {
     const lf = lineFilters[idx] || { search: '', superCat: '', category: '' };
     return items.filter(it => {
@@ -756,12 +758,12 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
         const tokens = lf.search.toLowerCase().split(/\s+/).filter(Boolean);
         const name = (it.designation?.[lang] || it.designation?.fr || '').toLowerCase();
         const code = (it.codeInterne || '').toLowerCase();
-        if (!tokens.every(tok => name.includes(tok) || code.includes(tok))) return false;
+        const supplierCodes = (it.supplierCodes || []).map(sc => (sc.code || '').toLowerCase()).join(' ');
+        if (!tokens.every(tok => name.includes(tok) || code.includes(tok) || supplierCodes.includes(tok))) return false;
       }
       return true;
     });
   };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.lines.length === 0) { alert('Ajoutez au moins une ligne'); return; }
@@ -804,7 +806,7 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
                 placeholder="Laissez vide pour attribution auto à l'envoi"
                 value={form.number}
                 onChange={e => setForm(f => ({ ...f, number: e.target.value }))}
-                disabled={isLocked && !isAdmin} 
+                disabled={isLocked && !isAdmin}
               />
               {isLocked && isAdmin && (
                 <p style={{ fontSize: 11, color: '#b45309', marginTop: 4 }}>
