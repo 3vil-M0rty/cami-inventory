@@ -973,12 +973,14 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
 }
 
 /* ── Super-Category Manager ────────────────────────────────── */
+/* ── Super-Category Manager ────────────────────────────────── */
 function SuperCategoryManager({ superCats, language, t, onClose }) {
   const [list, setList] = useState(superCats);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ key: '', labelFr: '', labelIt: '', labelEn: '', color: '#6366f1' });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [reordering, setReordering] = useState(false);
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -1007,7 +1009,27 @@ function SuperCategoryManager({ superCats, language, t, onClose }) {
     } catch (err) { alert(err.response?.data?.error || 'Erreur'); }
   };
 
-  const SYSTEM_KEYS = ['aluminium', 'verre', 'accessoires'];
+  const move = async (idx, dir) => {
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= list.length) return;
+    const previous = list;
+    const reordered = [...list];
+    [reordered[idx], reordered[newIdx]] = [reordered[newIdx], reordered[idx]];
+    setList(reordered); // optimistic update
+    setReordering(true);
+    try {
+      await axios.put(`${API_URL}/super-categories-reorder`, {
+        orderedKeys: reordered.map(sc => sc.key),
+      });
+    } catch (err) {
+      alert(err.response?.data?.error || 'Erreur lors du réordonnancement');
+      setList(previous); // revert on failure
+    } finally {
+      setReordering(false);
+    }
+  };
+
+  const SYSTEM_KEYS = ['aluminium', 'verre', 'accessoires', 'poudre'];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1018,8 +1040,32 @@ function SuperCategoryManager({ superCats, language, t, onClose }) {
         </div>
 
         <div className="supercat-list">
-          {list.map(sc => (
+          {list.map((sc, idx) => (
             <div key={sc.key} className="supercat-row">
+              <div style={{ display: 'flex', flexDirection: 'column', marginRight: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => move(idx, -1)}
+                  disabled={idx === 0 || reordering}
+                  title="Monter"
+                  style={{
+                    border: 'none', background: 'none', cursor: idx === 0 ? 'default' : 'pointer',
+                    padding: 0, lineHeight: 1, fontSize: 11, color: '#666',
+                    opacity: idx === 0 ? 0.3 : 1,
+                  }}
+                >▲</button>
+                <button
+                  type="button"
+                  onClick={() => move(idx, 1)}
+                  disabled={idx === list.length - 1 || reordering}
+                  title="Descendre"
+                  style={{
+                    border: 'none', background: 'none', cursor: idx === list.length - 1 ? 'default' : 'pointer',
+                    padding: 0, lineHeight: 1, fontSize: 11, color: '#666',
+                    opacity: idx === list.length - 1 ? 0.3 : 1,
+                  }}
+                >▼</button>
+              </div>
               <span className="supercat-icon">{getSCIcon(sc.key)}</span>
               <span className="supercat-color-dot" style={{ background: sc.color }} />
               <span className="supercat-label">{getSuperCatLabel(sc, language)}</span>
@@ -1037,7 +1083,7 @@ function SuperCategoryManager({ superCats, language, t, onClose }) {
         </div>
 
         {!adding ? (
-          <button className="btn-outline" style={{ marginTop: 16 }} onClick={() => setAdding(true)}>
+          <button className="btn-outline superbtn" style={{ marginTop: 16 }} onClick={() => setAdding(true)}>
             <Plus size={14} />
             {t('addSuperCategory')}
           </button>

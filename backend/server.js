@@ -30,7 +30,7 @@ app.use((req, res, next) => {
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aluminum-inventory';
 
 mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => { console.log('✅ MongoDB connected'); initSampleData(); migrateExistingData(); migrateLaquageToLots(); fixStuckLaquageLots(); })
+  .then(() => { console.log('✅ MongoDB connected'); initSampleData(); migrateExistingData(); migrateLaquageToLots(); fixStuckLaquageLots(); seedSuperCategories(); })
   .catch(err => { console.error('❌ MongoDB error:', err); process.exit(1); });
 
 
@@ -736,6 +736,22 @@ function syncUnits(chassis) {
 }
 
 // ==================== SEED DATA ====================
+
+async function seedSuperCategories() {
+  const BUILTIN = [
+    { key: 'aluminium', label: { fr: 'Aluminium', it: 'Alluminio', en: 'Aluminium' }, color: '#3b82f6', order: 0 },
+    { key: 'verre', label: { fr: 'Verre', it: 'Vetro', en: 'Glass' }, color: '#06b6d4', order: 1 },
+    { key: 'accessoires', label: { fr: 'Accessoires', it: 'Accessori', en: 'Accessories' }, color: '#f59e0b', order: 2 },
+    { key: 'poudre', label: { fr: 'Poudre', it: 'Polvere', en: 'Powder' }, color: '#ef4444', order: 3 },
+  ];
+  for (const b of BUILTIN) {
+    const exists = await SuperCategory.findOne({ key: b.key });
+    if (!exists) {
+      await SuperCategory.create(b);
+      console.log(`✅ Seeded built-in super-category: ${b.key}`);
+    }
+  }
+}
 
 async function createDefaultAdminUser() {
   let adminRole = await Role.findOne({ name: 'Admin' });
@@ -2400,14 +2416,7 @@ app.get('/api/analytics/dashboard', async (req, res) => {
 // ==================== SUPER-CATEGORY ROUTES ====================
 app.get('/api/super-categories', optionalAuth, async (req, res) => {
   try {
-    const cats = await SuperCategory.find().sort({ order: 1 });
-    const defaults = [
-      { key: 'aluminium', label: { fr: 'Aluminium', it: 'Alluminio', en: 'Aluminium' }, color: '#3b82f6' },
-      { key: 'verre', label: { fr: 'Verre', it: 'Vetro', en: 'Glass' }, color: '#06b6d4' },
-      { key: 'accessoires', label: { fr: 'Accessoires', it: 'Accessori', en: 'Accessories' }, color: '#f59e0b' },
-      { key: 'poudre', label: { fr: 'Poudre', it: 'Polvere', en: 'Powder' }, color: '#ff1100' },
-    ];
-    const all = cats.length === 0 ? defaults : cats;
+    const all = await SuperCategory.find().sort({ order: 1 });   // ← no more defaults fallback needed
     const allowed = req.allowedSuperCategories;
     const filtered = allowed === null ? all : all.filter(sc => allowed.includes(sc.key));
     res.json(filtered);
@@ -2425,9 +2434,24 @@ app.post('/api/super-categories', requireAuth, requirePermission('admin.view'), 
 });
 app.put('/api/super-categories/:key', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
-    const sc = await SuperCategory.findOneAndUpdate({ key: req.params.key }, { label: req.body.label, color: req.body.color }, { new: true });
+    const sc = await SuperCategory.findOneAndUpdate(
+      { key: req.params.key },
+      { label: req.body.label, color: req.body.color, order: req.body.order }, // ← add order
+      { new: true }
+    );
     if (!sc) return res.status(404).json({ error: 'Not found' });
     res.json(sc);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/super-categories-reorder', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const { orderedKeys } = req.body; // e.g. ['poudre', 'aluminium', 'verre', 'accessoires', 'composite']
+    if (!Array.isArray(orderedKeys)) return res.status(400).json({ error: 'orderedKeys must be an array' });
+    await Promise.all(
+      orderedKeys.map((key, idx) => SuperCategory.updateOne({ key }, { $set: { order: idx } }))
+    );
+    const all = await SuperCategory.find().sort({ order: 1 });
+    res.json(all);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/super-categories/:key', requireAuth, requirePermission('admin.view'), async (req, res) => {

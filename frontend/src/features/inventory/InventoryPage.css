@@ -335,6 +335,10 @@
   font-size: 13px; font-weight: 700; color: rgba(255,255,255,.6);
   cursor: pointer; font-family: inherit; transition: all .18s;
 }
+
+.superbtn {
+  color: #111;
+}
 .btn-outline:hover:not(:disabled) { background: #fff; color: #111; border-color: #fff; }
 .btn-outline:disabled { opacity: .3; cursor: not-allowed; }
 
