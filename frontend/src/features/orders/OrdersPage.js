@@ -370,6 +370,7 @@ export default function OrdersPage() {
             suppliers={suppliers}
             onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
             lang={lang}
+            isAdmin={isAdmin}
             onClose={() => { setShowForm(false); setEditOrder(null); }}
             onSave={() => { setShowForm(false); setEditOrder(null); fetchOrders(); }}
           />
@@ -653,7 +654,7 @@ function SupplierModal({ onClose, onSaved }) {
 }
 
 /* ── Order Form ─────────────────────────────────────────────────── */
-function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, onClose, onSave }) {
+function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, isAdmin, onClose, onSave }) {
   const { t } = useLanguage();
   const today = new Date().toISOString().split('T')[0];
   const [showSupplierModal, setShowSupplierModal] = useState(false);
@@ -803,8 +804,13 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
                 placeholder="Laissez vide pour attribution auto à l'envoi"
                 value={form.number}
                 onChange={e => setForm(f => ({ ...f, number: e.target.value }))}
-                disabled={isLocked}
+                disabled={isLocked && !isAdmin} 
               />
+              {isLocked && isAdmin && (
+                <p style={{ fontSize: 11, color: '#b45309', marginTop: 4 }}>
+                  ⚠️ Modification du numéro sur un bon déjà envoyé — action réservée à l'administrateur.
+                </p>
+              )}
             </div>
             <div className="form-group">
               <label>Fournisseur</label>
