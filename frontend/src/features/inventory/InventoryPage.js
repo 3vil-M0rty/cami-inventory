@@ -126,8 +126,8 @@ function InventoryPage() {
     setLoading(true);
     try {
       let url;
-      if (filter === 'low-stock' || filter === 'alert-stock') {
-        // both are computed client-side from the full inventory list
+      if (filter === 'low-stock' || filter === 'alert-stock' || filter === 'ordered') {  // ← ADD 'ordered' HERE
+        // all computed client-side from the full inventory list
         url = `${API_URL}/inventory?superCategory=${activeSuperCat}`;
       } else if (selectedCategory !== 'all') {
         url = `${API_URL}/inventory?categoryId=${selectedCategory}&superCategory=${activeSuperCat}`;
@@ -144,6 +144,11 @@ function InventoryPage() {
           data = data.filter(i => i.categoryId?.id === selectedCategory || i.categoryId?._id === selectedCategory);
       } else if (filter === 'alert-stock') {
         data = data.filter(i => getStockStatus(i).className === 'status-warning');
+        data = data.filter(i => (i.superCategory || 'aluminium') === activeSuperCat);
+        if (selectedCategory !== 'all')
+          data = data.filter(i => i.categoryId?.id === selectedCategory || i.categoryId?._id === selectedCategory);
+      } else if (filter === 'ordered') {                                              // ← ADD THIS BLOCK
+        data = data.filter(i => (i.orderedQuantity || 0) !== 0);
         data = data.filter(i => (i.superCategory || 'aluminium') === activeSuperCat);
         if (selectedCategory !== 'all')
           data = data.filter(i => i.categoryId?.id === selectedCategory || i.categoryId?._id === selectedCategory);
@@ -355,6 +360,13 @@ function InventoryPage() {
           >
             <AlertCircle size={12} strokeWidth={2.5} />
             {t('alertStock')}
+          </button>
+          <button
+            className={`filter-btn filter-btn--ordered ${filter === 'ordered' ? 'active' : ''}`}
+            onClick={() => setFilter(filter === 'ordered' ? 'all' : 'ordered')}
+          >
+            <ShoppingCart size={12} strokeWidth={2.5} />
+            Commandés
           </button>
 
           <div className="filter-divider" />
