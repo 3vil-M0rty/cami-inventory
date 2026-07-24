@@ -1404,6 +1404,7 @@ app.post('/api/orders', requireAuth, requirePermission('orders.edit'), async (re
     }
     const o = new Order({
       reference: req.body.reference || '',
+      number: (req.body.number || '').trim(),   // ← ADD THIS
       companyId: req.body.companyId || null,
       supplierId: req.body.supplierId || null,
       supplier: supplierName,
@@ -1437,6 +1438,9 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
       o.supplierId = req.body.supplierId || null;
     }
     o.reference = req.body.reference ?? o.reference;
+    if (req.body.number !== undefined && (o.status === 'brouillon' || isAdmin(req))) {
+      o.number = (req.body.number || '').trim();   // ← ADD THIS
+    }
     o.companyId = req.body.companyId || null;
     o.supplier = supplierName;
     o.orderDate = req.body.orderDate || o.orderDate;
@@ -1493,7 +1497,9 @@ app.post('/api/orders/:id/send', requireAuth, requirePermission('orders.edit'), 
     if (!o.companyId) return res.status(400).json({ error: 'Sélectionnez une société avant l\'envoi.' });
     if (!o.lines.length) return res.status(400).json({ error: 'Impossible d\'envoyer un bon de commande vide.' });
 
-    o.number = await assignBcNumber(o.companyId);
+    if (!o.number) {                                    // ← CHANGED: only auto-assign if empty
+      o.number = await assignBcNumber(o.companyId);
+    }
     o.status = 'envoye';
     o.sentAt = new Date();
     o.sentBy = req.user?.displayName || req.user?.username || '';

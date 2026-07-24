@@ -580,13 +580,22 @@ function exportChassisRemplissageExcel(project, chassisLabels, language) {
 }
 
 // ─── Devis-style Excel Export (Repère / Désignation / Qté / PU HT / Total HT) ──
-function exportDevisExcel(project, chassisLabels, language) {
+/* function exportDevisExcel(project, chassisLabels, language) {
   const rows = [];
   let idx = 0;
 
-  const pushRow = (repere, designation, qty) => {
+  const pushRow = (repere, designation, qty, largeur, hauteur) => {
     idx++;
-    rows.push({ '#': idx, 'Repère': repere, 'Désignation': designation, 'Quantité': qty, 'Prix unitaire HT': null, 'Prix total HT': null });
+    rows.push({
+      '#': idx,
+      'Repère': repere,
+      'Désignation': designation,
+      'Quantité': qty,
+      'L (mm)': largeur ?? '',
+      'H (mm)': hauteur ?? '',
+      'Prix unitaire HT': null,
+      'Prix total HT': null
+    });
   };
 
   for (const ch of project.chassis || []) {
@@ -601,26 +610,32 @@ function exportDevisExcel(project, chassisLabels, language) {
 
       if (!isComposite) {
         const dim = ch.dimension || `${ch.largeur}×${ch.hauteur}`;
-        pushRow(baseLabel, `${typeLabel} — ${dim} mm`, keepAsOne ? qty : 1);
+        let cL = ch.largeur, cH = ch.hauteur;
+        if ((cL == null || cH == null) && ch.dimension) {
+          const parts = String(ch.dimension).split(/[×x]/i).map(s => parseFloat(s));
+          cL = cL ?? parts[0];
+          cH = cH ?? parts[1];
+        }
+        pushRow(baseLabel, `${typeLabel} — ${dim} mm`, keepAsOne ? qty : 1, cL, cH);
 
         (ch.remplissages || [])
           .filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex == null)
           .forEach(r => {
             const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
-            pushRow(`↳ ${baseLabel}`, `${rLabel} — ${r.largeur}×${r.hauteur} mm`, 1);
+            pushRow(`↳ ${baseLabel}`, `${rLabel} — ${r.largeur}×${r.hauteur} mm`, 1, r.largeur, r.hauteur);
           });
       } else {
         (ch.components || []).forEach((comp, ci) => {
           const compLabel = comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${ci + 1}`);
           const compL = comp.largeur || ch.largeur;
           const compH = comp.hauteur || ch.hauteur;
-          pushRow(`${baseLabel} — ${compLabel}`, `${typeLabel} (${comp.role === 'dormant' ? 'Dormant' : 'Vantail'}) — ${compL}×${compH} mm`, 1);
+          pushRow(`${baseLabel} — ${compLabel}`, `${typeLabel} (${comp.role === 'dormant' ? 'Dormant' : 'Vantail'}) — ${compL}×${compH} mm`, 1, compL, compH);
 
           (ch.remplissages || [])
             .filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex === ci)
             .forEach(r => {
               const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
-              pushRow(`↳ ${baseLabel} — ${compLabel}`, `${rLabel} — ${r.largeur}×${r.hauteur} mm`, 1);
+              pushRow(`↳ ${baseLabel} — ${compLabel}`, `${rLabel} — ${r.largeur}×${r.hauteur} mm`, 1, r.largeur, r.hauteur);
             });
         });
       }
@@ -628,6 +643,16 @@ function exportDevisExcel(project, chassisLabels, language) {
   }
 
   if (rows.length === 0) { alert('Aucun châssis dans ce projet.'); return; }
+
+  // total linear meters (périmètre) of rectilinear remplissage panels
+  let totalMLRemplissage = 0;
+  rows.forEach(r => {
+    const isRemplissage = String(r['Repère']).startsWith('↳');
+    if (isRemplissage && typeof r['L (mm)'] === 'number' && typeof r['H (mm)'] === 'number') {
+      const qty = typeof r['Quantité'] === 'number' ? r['Quantité'] : 1;
+      totalMLRemplissage += (2 * (r['L (mm)'] + r['H (mm)']) / 1000) * qty;
+    }
+  });
 
   const co = resolveCompany(project);
   const companyColor = co.color || '#1a1a1a';
@@ -652,15 +677,17 @@ function exportDevisExcel(project, chassisLabels, language) {
     tdSub: { font: { sz: 10.5, color: { rgb: 'FF6B7280' } }, fill: { fgColor: { rgb: lightBg }, patternType: 'solid' }, border: { bottom: { style: 'thin', color: { rgb: borderColor } } } },
     tdInput: { font: { sz: 11, color: { rgb: 'FF1D4ED8' } }, fill: { fgColor: { rgb: 'FFEFF6FF' }, patternType: 'solid' }, border: { bottom: { style: 'thin', color: { rgb: borderColor } }, top: { style: 'thin', color: { rgb: 'FFBFDBFE' } }, left: { style: 'thin', color: { rgb: 'FFBFDBFE' } }, right: { style: 'thin', color: { rgb: 'FFBFDBFE' } } }, alignment: { horizontal: 'center' } },
     tdTotal: { font: { bold: true, sz: 11 }, fill: { fgColor: { rgb: lightBg }, patternType: 'solid' }, border: { bottom: { style: 'thin', color: { rgb: borderColor } } }, alignment: { horizontal: 'center' } },
+    tdNum: { font: { sz: 11 }, fill: { fgColor: { rgb: 'FFFFFFFF' }, patternType: 'solid' }, border: { bottom: { style: 'thin', color: { rgb: borderColor } } }, alignment: { horizontal: 'center' } },
     grandLabel: { font: { bold: true, sz: 12, color: { rgb: 'FF1A1A1A' } }, alignment: { horizontal: 'right' } },
     grandTotal: { font: { bold: true, sz: 13, color: { rgb: headerArgb } }, fill: { fgColor: { rgb: lightBg }, patternType: 'solid' }, alignment: { horizontal: 'center' }, border: { top: { style: 'medium', color: { rgb: headerArgb } } } },
   };
 
-  setCell(0, row, `DEVIS — ${project.name}`, S.title); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 2 } }); row++;
-  setCell(0, row, `Réf. ${project.reference}  ·  RAL ${project.ralCode}  ·  ${co.name || ''}`, S.subtitle); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 4 } }); row += 2;
+  // columns: A # | B Repère | C Désignation | D L(mm) | E H(mm) | F Quantité | G M² | H Prix unitaire HT | I Prix total HT
+  setCell(0, row, `DEVIS — ${project.name}`, S.title); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 8 } }); row++;
+  setCell(0, row, `Réf. ${project.reference}  ·  RAL ${project.ralCode}  ·  ${co.name || ''}`, S.subtitle); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 8 } }); row += 2;
 
   const headerRow = row;
-  ['#', 'Repère', 'Désignation', 'Quantité', 'Prix unitaire HT', 'Prix total HT'].forEach((h, i) =>
+  ['#', 'Repère', 'Désignation', 'L (mm)', 'H (mm)', 'Quantité', 'M²', 'Prix unitaire HT', 'Prix total HT'].forEach((h, i) =>
     setCell(i, headerRow, h, i === 1 || i === 2 ? S.thLeft : S.th)
   );
   row++;
@@ -669,23 +696,327 @@ function exportDevisExcel(project, chassisLabels, language) {
   rows.forEach((r, i) => {
     const isSub = r['Repère'].startsWith('↳');
     const base = isSub ? S.tdSub : (i % 2 === 0 ? S.tdEven : S.tdOdd);
+    const numBase = isSub ? S.tdSub : S.tdNum;
     setCell(0, row, r['#'], { ...base, alignment: { horizontal: 'center' } });
     setCell(1, row, r['Repère'], { ...base, font: { ...base.font, bold: !isSub } });
     setCell(2, row, r['Désignation'], base);
-    setCell(3, row, r['Quantité'], { ...base, alignment: { horizontal: 'center' } });
-    setCell(4, row, '', S.tdInput); // Prix unitaire HT — left blank for manual entry
-    setCell(5, row, 0, S.tdTotal, `D${row}*E${row}`); // Prix total HT — auto-calculated
+    setCell(3, row, r['L (mm)'], { ...numBase, alignment: { horizontal: 'center' } });
+    setCell(4, row, r['H (mm)'], { ...numBase, alignment: { horizontal: 'center' } });
+    setCell(5, row, r['Quantité'], { ...base, alignment: { horizontal: 'center' } });
+    setCell(6, row, 0, { ...numBase, alignment: { horizontal: 'center' }, z: '0.00' }, `D${row}*E${row}/1000000`); // M²
+    setCell(7, row, '', S.tdInput); // Prix unitaire HT — left blank for manual entry
+    setCell(8, row, 0, S.tdTotal, `F${row}*H${row}`); // Prix total HT — auto-calculated
     row++;
   });
   const lastDataRow = row - 1;
 
   row++;
-  setCell(4, row, 'TOTAL HT', S.grandLabel);
-  setCell(5, row, 0, S.grandTotal, `SUM(F${firstDataRow}:F${lastDataRow})`);
+  setCell(7, row, 'TOTAL HT', S.grandLabel);
+  setCell(8, row, 0, S.grandTotal, `SUM(I${firstDataRow}:I${lastDataRow})`);
 
-  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row, c: 5 } });
+  row++;
+  setCell(7, row, 'Total ML remplissage', S.grandLabel);
+  setCell(8, row, Math.round(totalMLRemplissage * 100) / 100, { ...S.grandTotal, z: '0.00' });
+
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row, c: 8 } });
   ws['!merges'] = merges;
-  ws['!cols'] = [{ wch: 5 }, { wch: 26 }, { wch: 38 }, { wch: 10 }, { wch: 16 }, { wch: 16 }];
+  ws['!cols'] = [{ wch: 5 }, { wch: 26 }, { wch: 38 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 9 }, { wch: 16 }, { wch: 16 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Devis');
+  XLSX.writeFile(wb, `${project.name || 'projet'}_devis.xlsx`);
+} */
+
+function exportDevisExcel(project, chassisLabels, language, company) {
+  const co = company || resolveCompany(project);
+  const accentHex = co.color || '#1a1a1a';
+
+  const hexToArgb = (hex) => {
+    const h = hex.replace('#', '');
+    const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    return 'FF' + full.toUpperCase();
+  };
+  const lightenHex = (hex, amt = 0.82) => {
+    const h = hex.replace('#', '');
+    const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    const r = parseInt(full.slice(0, 2), 16), g = parseInt(full.slice(2, 4), 16), b = parseInt(full.slice(4, 6), 16);
+    const mix = (c) => Math.round(c + (255 - c) * amt);
+    return 'FF' + [mix(r), mix(g), mix(b)].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+  };
+
+  const accentArgb = hexToArgb(accentHex);
+  const lightArgb = lightenHex(accentHex);
+
+  const thin = { style: 'thin', color: { rgb: 'FFB0B0B0' } };
+  const allBorders = { top: thin, bottom: thin, left: thin, right: thin };
+
+  // Every style shares the same alignment: centered both ways, and wrapped.
+  const CENTER = { horizontal: 'center', vertical: 'center', wrapText: true };
+
+  const S = {
+    companyName: { font: { bold: true, sz: 12, color: { rgb: accentArgb } }, alignment: CENTER, border: allBorders },
+    companyLine: { font: { bold: true, sz: 11 }, alignment: CENTER, border: allBorders },
+    companyValue: { font: { bold: true, sz: 11, color: { rgb: accentArgb } }, alignment: CENTER, border: allBorders },
+    refLabel: { font: { bold: true, sz: 11 }, fill: { fgColor: { rgb: lightArgb }, patternType: 'solid' }, alignment: CENTER, border: allBorders },
+    refValue: { font: { sz: 11 }, alignment: CENTER, border: allBorders },
+    refInput: { font: { sz: 11, color: { rgb: 'FF1D4ED8' } }, fill: { fgColor: { rgb: 'FFEFF6FF' }, patternType: 'solid' }, alignment: CENTER, border: allBorders },
+    sectionBand: { font: { bold: true, sz: 13, color: { rgb: 'FFFFFFFF' } }, fill: { fgColor: { rgb: accentArgb }, patternType: 'solid' }, alignment: CENTER, border: allBorders },
+    th: { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: lightArgb }, patternType: 'solid' }, alignment: CENTER, border: allBorders },
+    typeCell: { font: { bold: true, sz: 11 }, alignment: CENTER, border: allBorders },
+    descCell: { font: { sz: 10.5 }, alignment: CENTER, border: allBorders },
+    compCell: { font: { bold: true, sz: 10.5 }, alignment: CENTER, border: allBorders },
+    detailCell: { font: { sz: 10.5 }, alignment: CENTER, border: allBorders },
+    valueCell: { font: { sz: 10.5 }, alignment: CENTER, border: allBorders },
+    valueInput: { font: { sz: 10.5, color: { rgb: 'FF1D4ED8' } }, fill: { fgColor: { rgb: 'FFEFF6FF' }, patternType: 'solid' }, alignment: CENTER, border: allBorders },
+    priceInput: { font: { sz: 10.5, color: { rgb: 'FF1D4ED8' } }, fill: { fgColor: { rgb: 'FFEFF6FF' }, patternType: 'solid' }, alignment: CENTER, border: allBorders, numFmt: '#,##0.00 "DH"' },
+    priceCell: { font: { bold: true, sz: 10.5 }, alignment: CENTER, border: allBorders, numFmt: '#,##0.00 "DH"' },
+    totalLabel: { font: { bold: true, sz: 11 }, fill: { fgColor: { rgb: lightArgb }, patternType: 'solid' }, alignment: CENTER, border: allBorders },
+    totalValue: { font: { bold: true, sz: 11 }, fill: { fgColor: { rgb: lightArgb }, patternType: 'solid' }, alignment: CENTER, border: allBorders, numFmt: '#,##0.00 "DH"' },
+    footerBand: { font: { bold: true, sz: 11, color: { rgb: 'FFFFFFFF' } }, fill: { fgColor: { rgb: accentArgb }, patternType: 'solid' }, alignment: CENTER, border: allBorders },
+    footerLegal: { font: { sz: 8.5 }, alignment: CENTER, border: allBorders },
+  };
+
+  const ws = {};
+  const merges = [];
+
+  // setCell: col is 0-based (A=0), row is 1-based
+  const setCell = (col, r, value, s, formula) => {
+    const addr = XLSX.utils.encode_cell({ c: col, r: r - 1 });
+    const cell = formula ? { f: formula, t: 'n' } : { v: value, t: typeof value === 'number' ? 'n' : 's' };
+    if (s) {
+      const { numFmt, ...rest } = s;
+      cell.s = rest;
+      if (numFmt) cell.z = numFmt;
+    }
+    ws[addr] = cell;
+  };
+  // merge: rows 1-based inclusive, cols 0-based inclusive
+  const merge = (r1, r2, c1, c2) => {
+    if (r1 === r2 && c1 === c2) return;
+    merges.push({ s: { r: r1 - 1, c: c1 }, e: { r: r2 - 1, c: c2 } });
+  };
+  const colLetter = (col) => XLSX.utils.encode_col(col);
+  const addr = (col, r) => `${colLetter(col)}${r}`;
+
+  // ---------- Company header block (cols E:G) ----------
+  let compRow = 1;
+  setCell(4, compRow, co.name || '', S.companyName); merge(compRow, compRow, 4, 6); compRow++;
+  const infoLines = [];
+  if (co.address) infoLines.push([null, co.address]);
+  if (co.phone) infoLines.push(['Tél:', co.phone]);
+  if (co.email) infoLines.push(['Email:', co.email]);
+  if (co.ice) infoLines.push(['ICE:', co.ice]);
+  if (co.rc) infoLines.push(['RC:', co.rc]);
+  infoLines.forEach(([label, value]) => {
+    if (label) {
+      setCell(4, compRow, label, S.companyLine); merge(compRow, compRow, 4, 5);
+      setCell(6, compRow, value, S.companyValue);
+    } else {
+      setCell(4, compRow, value, S.companyLine); merge(compRow, compRow, 4, 6);
+    }
+    compRow++;
+  });
+  const companyBlockEnd = compRow - 1;
+
+  // ---------- Reference / Date / Devis N° block (cols A:D) ----------
+  let refRow = 2;
+  setCell(0, refRow, 'Référence:', S.refLabel);
+  setCell(1, refRow, project.reference || '', S.refValue); merge(refRow, refRow, 1, 3); refRow++;
+  setCell(0, refRow, 'Date:', S.refLabel);
+  setCell(1, refRow, new Date().toLocaleDateString('fr-FR'), S.refValue); merge(refRow, refRow, 1, 3); refRow++;
+  setCell(0, refRow, 'Devis N°:', S.refLabel);
+  setCell(1, refRow, '', S.refInput); merge(refRow, refRow, 1, 3); refRow++;
+  const refBlockEnd = refRow - 1;
+
+  // ---------- Section band ----------
+  let row = Math.max(companyBlockEnd, refBlockEnd) + 2;
+  setCell(0, row, `DEVIS — ${project.name || ''}`, S.sectionBand); merge(row, row, 0, 6);
+  row += 2;
+
+  // Table header — written once, not repeated per item.
+  ['Type', 'Description', 'Composants', 'Détails', 'Valeurs', 'Prix Unitaire', 'Prix HT'].forEach((h, i) =>
+    setCell(i, row, h, S.th)
+  );
+  row++;
+
+  const tableFirstRow = row;
+  let typeIndex = 0;
+  const remplissageRefs = []; // { lAddr, hAddr, qAddr } for every Vitrage sub-block, used for ML total
+
+  // Writes one 4-row sub-block (Aluminium frame OR a remplissage/Vitrage panel)
+  // and merges the Composants / Prix Unitaire / Prix HT columns across it.
+  const writeSubBlock = (startRow, compLabel, detailPrefix, L, H, qty, isRemplissage) => {
+    let r = startRow;
+    setCell(3, r, `${detailPrefix} L(mm)`, S.detailCell);
+    setCell(4, r, L || 0, S.valueInput);
+    const lAddr = addr(4, r); r++;
+
+    setCell(3, r, `${detailPrefix} H(mm)`, S.detailCell);
+    setCell(4, r, H || 0, S.valueInput);
+    const hAddr = addr(4, r); r++;
+
+    setCell(3, r, `${detailPrefix} Quantité`, S.detailCell);
+    setCell(4, r, qty || 1, S.valueInput);
+    const qAddr = addr(4, r); r++;
+
+    setCell(3, r, `${detailPrefix} M²`, S.detailCell);
+    setCell(4, r, 0, S.valueCell, `${lAddr}*${hAddr}*${qAddr}/1000000`);
+    const m2Addr = addr(4, r);
+    const endRow = r;
+
+    setCell(2, startRow, compLabel, S.compCell);
+    merge(startRow, endRow, 2, 2);
+
+    setCell(5, startRow, '', S.priceInput);
+    merge(startRow, endRow, 5, 5);
+
+    setCell(6, startRow, 0, S.priceCell, `${addr(5, startRow)}*${m2Addr}`);
+    merge(startRow, endRow, 6, 6);
+
+    if (isRemplissage) remplissageRefs.push({ lAddr, hAddr, qAddr });
+
+    return endRow + 1;
+  };
+
+  // Composite châssis: one Aluminium sub-block for the WHOLE châssis (overall M²),
+  // instead of a separate M² per component. Each component's L/H is still listed
+  // (for reference), but they're summed into a single total M² / single price.
+  const writeAluminiumOverallBlock = (startRow, componentsInfo, qty) => {
+    let r = startRow;
+    const lhAddrs = [];
+    componentsInfo.forEach(({ label, L, H }) => {
+      setCell(3, r, `${label} L(mm)`, S.detailCell);
+      setCell(4, r, L || 0, S.valueInput);
+      const lAddr = addr(4, r); r++;
+
+      setCell(3, r, `${label} H(mm)`, S.detailCell);
+      setCell(4, r, H || 0, S.valueInput);
+      const hAddr = addr(4, r); r++;
+
+      lhAddrs.push({ lAddr, hAddr });
+    });
+
+    setCell(3, r, 'Aluminium Quantité', S.detailCell);
+    setCell(4, r, qty || 1, S.valueInput);
+    const qAddr = addr(4, r); r++;
+
+    setCell(3, r, 'Aluminium M² (total)', S.detailCell);
+    const sumTerms = lhAddrs.map(({ lAddr, hAddr }) => `${lAddr}*${hAddr}`).join('+');
+    setCell(4, r, 0, S.valueCell, `(${sumTerms})*${qAddr}/1000000`);
+    const m2Addr = addr(4, r);
+    const endRow = r;
+
+    setCell(2, startRow, 'Aluminium', S.compCell);
+    merge(startRow, endRow, 2, 2);
+
+    setCell(5, startRow, '', S.priceInput);
+    merge(startRow, endRow, 5, 5);
+
+    setCell(6, startRow, 0, S.priceCell, `${addr(5, startRow)}*${m2Addr}`);
+    merge(startRow, endRow, 6, 6);
+
+    return endRow + 1;
+  };
+  // Groups remplissages that were diffused across N units back into one line per
+  // distinct (type, sousType, dimensions) combo, with quantity = how many units have it.
+  const groupRemplissages = (remplissages, compIndex) => {
+    const relevant = (remplissages || []).filter(r => compIndex === null ? r.compIndex == null : r.compIndex === compIndex);
+    const groups = new Map();
+    relevant.forEach(r => {
+      const key = `${r.type}|${r.sousType || ''}|${r.largeur}|${r.hauteur}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          label: r.sousType ? `${r.type} — ${r.sousType}` : r.type,
+          type: r.type, largeur: r.largeur, hauteur: r.hauteur, count: 0,
+        });
+      }
+      groups.get(key).count++;
+    });
+    return [...groups.values()];
+  };
+
+  for (const ch of project.chassis || []) {
+    const qty = ch.quantity || 1;
+    const isComposite = (ch.components || []).length > 0;
+    const typeLabel = chassisLabels[ch.type]?.[language] || chassisLabels[ch.type]?.fr || ch.type;
+
+    typeIndex++;
+    const itemStart = row;
+
+    if (!isComposite) {
+      const dim = ch.dimension || `${ch.largeur}×${ch.hauteur}`;
+      let cL = ch.largeur, cH = ch.hauteur;
+      if ((cL == null || cH == null) && ch.dimension) {
+        const parts = String(ch.dimension).split(/[×x]/i).map(s => parseFloat(s));
+        cL = cL ?? parts[0];
+        cH = cH ?? parts[1];
+      }
+      row = writeSubBlock(row, 'Aluminium', 'Aluminium', cL, cH, qty, false);
+
+      groupRemplissages(ch.remplissages, null).forEach(g => {
+        row = writeSubBlock(row, g.label, g.type, g.largeur, g.hauteur, g.count, true);
+      });
+    } else {
+      let cL = ch.largeur, cH = ch.hauteur;
+      if ((cL == null || cH == null) && ch.dimension) {
+        const parts = String(ch.dimension).split(/[×x]/i).map(s => parseFloat(s));
+        cL = cL ?? parts[0];
+        cH = cH ?? parts[1];
+      }
+      row = writeSubBlock(row, 'Aluminium', 'Aluminium', cL, cH, qty, false);
+
+      groupRemplissages(ch.remplissages, 'any').forEach(g => {
+        row = writeSubBlock(row, g.label, g.type, g.largeur, g.hauteur, g.count, true);
+      });
+    }
+
+    const itemEnd = row - 1;
+    setCell(0, itemStart, typeIndex, S.typeCell); merge(itemStart, itemEnd, 0, 0);
+    setCell(1, itemStart, `${ch.repere} — ${typeLabel}`, S.descCell); merge(itemStart, itemEnd, 1, 1);
+  }
+  const tableLastRow = row - 1; // last written data row
+
+  // ---------- Totals ----------
+  row += 1;
+  setCell(5, row, 'TOTAL HORS TAXE:', S.totalLabel);
+  setCell(6, row, 0, S.totalValue, `SUM(G${tableFirstRow}:G${tableLastRow})`);
+  const totalHtRow = row; row++;
+
+  setCell(5, row, 'TVA 20%:', S.totalLabel);
+  setCell(6, row, 0, S.totalValue, `0.2*G${totalHtRow}`);
+  const tvaRow = row; row++;
+
+  setCell(5, row, 'TOTAL TTC:', S.totalLabel);
+  setCell(6, row, 0, S.totalValue, `G${totalHtRow}+G${tvaRow}`);
+  row++;
+
+  if (remplissageRefs.length > 0) {
+    row++;
+    const mlFormula = remplissageRefs
+      .map(({ lAddr, hAddr, qAddr }) => `2*(${lAddr}+${hAddr})/1000*${qAddr}`)
+      .join('+');
+    setCell(5, row, 'TOTAL ML REMPLISSAGE:', S.totalLabel);
+    setCell(6, row, 0, { ...S.totalValue, numFmt: '#,##0.00 "ML"' }, mlFormula);
+    row++;
+  }
+
+  // ---------- Footer ----------
+  row += 2;
+  setCell(0, row, co.name || '', S.footerBand); merge(row, row, 0, 6);
+  row++;
+  const legalParts = [];
+  if (co.ice) legalParts.push(`ICE : ${co.ice}`);
+  if (co.rc) legalParts.push(`R.C : ${co.rc}`);
+  if (legalParts.length > 0) {
+    setCell(0, row, legalParts.join('  -  '), S.footerLegal); merge(row, row, 0, 6);
+    row++;
+  }
+
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row, c: 6 } });
+  ws['!merges'] = merges;
+  ws['!cols'] = [
+    { wch: 6 }, { wch: 24 }, { wch: 20 }, { wch: 24 }, { wch: 12 }, { wch: 16 }, { wch: 16 }
+  ];
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Devis');

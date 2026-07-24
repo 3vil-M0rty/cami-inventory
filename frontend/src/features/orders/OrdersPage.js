@@ -10,11 +10,11 @@ import { useAuth } from '../../context/AuthContext';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const STATUS_COLORS = {
-  brouillon: { bg: '#f3f4f6', text: '#374151', label: { fr: 'Brouillon', en: 'Draft',     it: 'Bozza' } },
-  envoye:    { bg: '#e0e7ff', text: '#3730a3', label: { fr: 'Envoyé',    en: 'Sent',      it: 'Inviato' } },
-  partielle: { bg: '#dbeafe', text: '#1e40af', label: { fr: 'Partielle', en: 'Partial',   it: 'Parziale' } },
-  recue:     { bg: '#dcfce7', text: '#166534', label: { fr: 'Reçue',     en: 'Received',  it: 'Ricevuta' } },
-  annulee:   { bg: '#fee2e2', text: '#991b1b', label: { fr: 'Annulée',   en: 'Cancelled', it: 'Annullata' } },
+  brouillon: { bg: '#f3f4f6', text: '#374151', label: { fr: 'Brouillon', en: 'Draft', it: 'Bozza' } },
+  envoye: { bg: '#e0e7ff', text: '#3730a3', label: { fr: 'Envoyé', en: 'Sent', it: 'Inviato' } },
+  partielle: { bg: '#dbeafe', text: '#1e40af', label: { fr: 'Partielle', en: 'Partial', it: 'Parziale' } },
+  recue: { bg: '#dcfce7', text: '#166534', label: { fr: 'Reçue', en: 'Received', it: 'Ricevuta' } },
+  annulee: { bg: '#fee2e2', text: '#991b1b', label: { fr: 'Annulée', en: 'Cancelled', it: 'Annullata' } },
 };
 
 export default function OrdersPage() {
@@ -44,9 +44,9 @@ export default function OrdersPage() {
   const [markingId, setMarkingId] = useState(null);
 
   // who may touch THIS order
-  const canEditOrder   = (o) => o.status === 'brouillon' ? can('orders.edit') : isAdmin;
+  const canEditOrder = (o) => o.status === 'brouillon' ? can('orders.edit') : isAdmin;
   const canDeleteOrder = (o) => o.status === 'brouillon' ? (can('orders.delete') || isAdmin) : isAdmin;
-  const canSendOrder   = (o) => o.status === 'brouillon' && can('orders.edit');
+  const canSendOrder = (o) => o.status === 'brouillon' && can('orders.edit');
   const canCancelOrder = (o) => (o.status === 'envoye' || o.status === 'partielle') && isAdmin;
 
   const fetchOrders = useCallback(async () => {
@@ -304,7 +304,7 @@ export default function OrdersPage() {
                 <div className="detail-line-image">
                   {item?.image
                     ? <img src={item.image} alt={item.designation?.[lang] || ''} />
-                    : <div className="detail-line-no-image"><Package size={15}/></div>
+                    : <div className="detail-line-no-image"><Package size={15} /></div>
                   }
                 </div>
                 <div className="detail-line-body">
@@ -388,7 +388,7 @@ export default function OrdersPage() {
             onClick={() => setActiveTab('orders')}
           >
             <ShoppingCart size={15} /> {t('navOrders')}
-           
+
           </button>
           <button
             className={`orders-tab-btn ${activeTab === 'requests' ? 'active' : ''}`}
@@ -408,7 +408,7 @@ export default function OrdersPage() {
             <Sheet size={15} color='GREEN' />
           </button>
           <button className="btn-primary" onClick={() => { setEditOrder(null); setShowForm(true); }}>
-            <FilePlus size={15}/>{t('orderNew')}
+            <FilePlus size={15} />{t('orderNew')}
           </button>
         </div>
       </header>
@@ -467,7 +467,7 @@ export default function OrdersPage() {
             <div className="loading-msg">{t('loading')}</div>
           ) : filteredOrders.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon"><ShoppingCart size={15}/></div>
+              <div className="empty-icon"><ShoppingCart size={15} /></div>
               <p>{t("noData")}</p>
             </div>
           ) : (
@@ -676,6 +676,7 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
 
   const [form, setForm] = useState(order ? {
     reference: order.reference || '',
+    number: order.number || '',
     companyId: order.companyId?.id || order.companyId?._id || '',
     supplierId: order.supplierId?.id || order.supplierId?._id || '',
     orderDate: order.orderDate?.split('T')[0] || today,
@@ -715,8 +716,32 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
   const updateLine = (idx, field, val) =>
     setForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, [field]: val } : l) }));
 
-  const updateLineFilter = (idx, field, val) =>
+  const updateLineFilter = (idx, field, val) => {
     setLineFilters(f => f.map((lf, i) => i === idx ? { ...lf, [field]: val } : lf));
+
+    // Auto-select when the new filter narrows results to exactly one item
+    if (field === 'search' || field === 'superCat' || field === 'category') {
+      const nextFilters = lineFilters.map((lf, i) => i === idx ? { ...lf, [field]: val } : lf);
+      const lf = nextFilters[idx];
+      const matches = items.filter(it => {
+        if (lf.superCat && (it.superCategory || 'autre') !== lf.superCat) return false;
+        if (lf.category) {
+          const catId = it.categoryId?.id || it.categoryId?._id;
+          if (catId !== lf.category) return false;
+        }
+        if (lf.search) {
+          const tokens = lf.search.toLowerCase().split(/\s+/).filter(Boolean);
+          const name = (it.designation?.[lang] || it.designation?.fr || '').toLowerCase();
+          const code = (it.codeInterne || '').toLowerCase();
+          if (!tokens.every(tok => name.includes(tok) || code.includes(tok))) return false;
+        }
+        return true;
+      });
+      if (lf.search && matches.length === 1) {
+        updateLine(idx, 'itemId', matches[0].id);
+      }
+    }
+  };
 
   const getFilteredItems = (idx) => {
     const lf = lineFilters[idx] || { search: '', superCat: '', category: '' };
@@ -770,6 +795,16 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
             <div className="form-group">
               <label>Référence interne</label>
               <input type="text" placeholder="(facultatif)" value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label>Numéro BC</label>
+              <input
+                type="text"
+                placeholder="Laissez vide pour attribution auto à l'envoi"
+                value={form.number}
+                onChange={e => setForm(f => ({ ...f, number: e.target.value }))}
+                disabled={isLocked}
+              />
             </div>
             <div className="form-group">
               <label>Fournisseur</label>
