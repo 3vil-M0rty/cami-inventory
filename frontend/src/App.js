@@ -20,6 +20,9 @@ import AtelierTablesPage from './features/AtelierTables';
 
 const PROJECTS_DEFAULT_ROLES = new Set(['LOGISTIQUE', 'Coordinateur', 'BARREMAN']);
 const CHANTIER_DEFAULT_ROLES = new Set(['chefChantier', 'BARREMAN']);
+// Rôles qui reçoivent des commandes par catégorie (accessoires / poudre / verre)
+// et doivent donc accéder à la page Commandes même sans la permission orders.view
+const ORDERS_RECEIVING_ROLES = new Set(['Magasinier', 'Laquage', 'Coordinateur-vitrage']);
 const LS_PAGE = 'app_active_page';
 
 function getDefaultPage(role) {
@@ -76,7 +79,14 @@ function AppInner() {
     analytics: 'analytics.view', admin: 'admin.view', ateliertables: 'ateliertables.view',
     chantiers: 'chantiers.view',
   };
-  const currentAllowed = !pagePerms[activePage] || can(pagePerms[activePage]);
+
+  // ── Accès à "orders" : permission classique OU rôle de réception par catégorie ──
+  const canAccessOrders = can('orders.view') || ORDERS_RECEIVING_ROLES.has(user?.role);
+
+  const currentAllowed =
+    activePage === 'orders'
+      ? canAccessOrders
+      : (!pagePerms[activePage] || can(pagePerms[activePage]));
 
   return (
     <CompanyProvider>
@@ -94,7 +104,7 @@ function AppInner() {
               ) : (
                 <>
                   {activePage === 'inventory'     && can('inventory.view')      && <InventoryPage />}
-                  {activePage === 'orders'        && can('orders.view')         && <OrdersPage />}
+                  {activePage === 'orders'        && canAccessOrders            && <OrdersPage />}
                   {activePage === 'projects'      && can('projects.view')       && <ProjectsPage />}
                   {activePage === 'clients'       && can('clients.view')        && <ClientsPage />}
                   {activePage === 'devis'         && can('devis.view')          && <DevisPage />}

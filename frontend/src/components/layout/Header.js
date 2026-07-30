@@ -14,41 +14,47 @@ import ChangePasswordModal from '../../features/admin/ChangePasswordModal';
 import './Header.css';
 
 const NAV_ICONS = {
-  inventory:     <Package      size={14} strokeWidth={2} />,
-  orders:        <ShoppingCart size={14} strokeWidth={2} />,
-  projects:      <HardHat      size={14} strokeWidth={2} />,
-  chantiers:     <Shovel       size={14} strokeWidth={2} />,
-  clients:       <Users        size={14} strokeWidth={2} />,
-  devis:         <FileText     size={14} strokeWidth={2} />,
-  movements:     <BarChart2    size={14} strokeWidth={2} />,
-  analytics:     <TrendingUp   size={14} strokeWidth={2} />,
-  admin:         <Settings     size={14} strokeWidth={2} />,
-  ateliertables: <Factory      size={14} strokeWidth={2} />,
+  inventory: <Package size={14} strokeWidth={2} />,
+  orders: <ShoppingCart size={14} strokeWidth={2} />,
+  projects: <HardHat size={14} strokeWidth={2} />,
+  chantiers: <Shovel size={14} strokeWidth={2} />,
+  clients: <Users size={14} strokeWidth={2} />,
+  devis: <FileText size={14} strokeWidth={2} />,
+  movements: <BarChart2 size={14} strokeWidth={2} />,
+  analytics: <TrendingUp size={14} strokeWidth={2} />,
+  admin: <Settings size={14} strokeWidth={2} />,
+  ateliertables: <Factory size={14} strokeWidth={2} />,
 };
 
 const Header = ({ activePage, onNavigate }) => {
   const { t, currentLanguage, changeLanguage, languageLabels } = useLanguage();
-  const { companies, selectedCompany, setSelectedCompany }     = useCompany();
-  const { user, logout, can }                                  = useAuth();
+  const { companies, selectedCompany, setSelectedCompany } = useCompany();
+  const { user, logout, can } = useAuth();
 
-  const [showUserMenu,  setShowUserMenu]  = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [showChangePwd, setShowChangePwd] = useState(false);
-  const [mobileOpen,    setMobileOpen]    = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const userMenuRef = useRef(null);
 
+  const RECEIVING_ROLES = ['Magasinier', 'Laquage', 'Coordinateur-vitrage'];
+
   const navItems = [
-    { key: 'inventory',     label: t('navInventory'),     perm: 'inventory.view'    },
-    { key: 'orders',        label: t('navOrders'),        perm: 'orders.view'       },
-    { key: 'projects',      label: t('navProjects'),      perm: 'projects.view'     },
-    { key: 'chantiers',     label: t('navChantiers') || 'Chantiers', perm: 'chantiers.view' },
-    { key: 'clients',       label: t('navClients'),       perm: 'clients.view'      },
-    { key: 'devis',         label: t('navDevis'),         perm: 'devis.view'        },
-    { key: 'movements',     label: t('navMovements'),     perm: 'movements.view'    },
-    { key: 'analytics',     label: t('navAnalytics'),     perm: 'analytics.view'    },
-    { key: 'admin',         label: t('navAdmin'),         perm: 'admin.view'        },
-    { key: 'ateliertables', label: t('navAtelierTables'), perm: 'ateliertables.view'},
-  ].filter(item => can(item.perm));
+    { key: 'inventory', label: t('navInventory'), perm: 'inventory.view' },
+    { key: 'orders', label: t('navOrders'), perm: 'orders.view' },
+    { key: 'projects', label: t('navProjects'), perm: 'projects.view' },
+    { key: 'chantiers', label: t('navChantiers') || 'Chantiers', perm: 'chantiers.view' },
+    { key: 'clients', label: t('navClients'), perm: 'clients.view' },
+    { key: 'devis', label: t('navDevis'), perm: 'devis.view' },
+    { key: 'movements', label: t('navMovements'), perm: 'movements.view' },
+    { key: 'analytics', label: t('navAnalytics'), perm: 'analytics.view' },
+    { key: 'admin', label: t('navAdmin'), perm: 'admin.view' },
+    { key: 'ateliertables', label: t('navAtelierTables'), perm: 'ateliertables.view' },
+  ].filter(item =>
+    item.key === 'orders'
+      ? can(item.perm) || RECEIVING_ROLES.includes(user?.role)
+      : can(item.perm)
+  );
 
   const navigate = key => { onNavigate(key); setMobileOpen(false); };
 
@@ -118,11 +124,11 @@ const Header = ({ activePage, onNavigate }) => {
           <div className="hdr__brand">
             <div className="hdr__logo">
               <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
-                <rect x="2" y="2" width="28" height="28" rx="5" stroke="currentColor" strokeWidth="2"/>
-                <path d="M8 16L14 10L18 14L24 8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="14" cy="10" r="1.8" fill="currentColor"/>
-                <circle cx="18" cy="14" r="1.8" fill="currentColor"/>
-                <circle cx="24" cy="8"  r="1.8" fill="currentColor"/>
+                <rect x="2" y="2" width="28" height="28" rx="5" stroke="currentColor" strokeWidth="2" />
+                <path d="M8 16L14 10L18 14L24 8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="14" cy="10" r="1.8" fill="currentColor" />
+                <circle cx="18" cy="14" r="1.8" fill="currentColor" />
+                <circle cx="24" cy="8" r="1.8" fill="currentColor" />
               </svg>
             </div>
             <div className="hdr__brand-text">
@@ -135,11 +141,11 @@ const Header = ({ activePage, onNavigate }) => {
           <div className="hdr__controls desktop-only">
             <div className="hdr__companies">{companyPills}</div>
             {langPicker}
-            <FourStatus/>
+            <FourStatus />
             <NotifBell />
 
             <div className="hdr__user" ref={userMenuRef}>
-              
+
               <button className="hdr__user-btn" onClick={() => setShowUserMenu(v => !v)}>
                 <span className="hdr__avatar">{user?.displayName?.charAt(0).toUpperCase()}</span>
                 <span className="hdr__username">{user?.displayName}</span>
@@ -153,7 +159,7 @@ const Header = ({ activePage, onNavigate }) => {
           {/* Mobile top-bar controls */}
           <div className="hdr__controls mobile-only" style={{ gap: 8 }}>
             {langPicker}
-            <FourStatus/>
+            <FourStatus />
             <NotifBell />
             <div className="hdr__user" ref={userMenuRef}>
               <button className="hdr__user-btn" onClick={() => setShowUserMenu(v => !v)}>

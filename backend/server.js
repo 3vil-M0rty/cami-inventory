@@ -113,7 +113,7 @@ const ALL_PERMISSIONS = [
   'inventory.verre.view', 'inventory.verre.edit', 'inventory.verre.delete',
   'inventory.accessoires.view', 'inventory.accessoires.edit', 'inventory.accessoires.delete',
   'inventory.poudre.view', 'inventory.poudre.edit', 'inventory.poudre.delete',
-  'inventory.fer.view', 'inventory.fer.edit', 'inventory.fer.delete', 
+  'inventory.fer.view', 'inventory.fer.edit', 'inventory.fer.delete',
   'orders.view', 'orders.edit', 'orders.delete', 'orders.receive',
   'projects.view', 'projects.edit', 'projects.delete',
   'clients.view', 'clients.edit', 'clients.delete',
@@ -197,6 +197,12 @@ const orderLineSchema = new mongoose.Schema({
 const orderSchema = new mongoose.Schema({
   number: { type: String, default: '' },   // BC number, assigned ONLY on send
   reference: { type: String, default: '', trim: true }, // optional free-text ref
+  category: {
+    type: String,
+    enum: ['aluminium', 'verre', 'accessoires', 'poudre', 'fer'],
+    default: 'aluminium',
+    required: true,
+  },
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
   supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Fournisseur', default: null },
   supplier: { type: String, default: '' },    // denormalised supplier name (display/legacy)
@@ -209,6 +215,14 @@ const orderSchema = new mongoose.Schema({
   notes: { type: String, default: '' },
   sentAt: { type: Date, default: null },
   sentBy: { type: String, default: '' },
+  // ── historique des réceptions, avec le n° de BL obligatoire ──
+  receptions: [{
+    lineId: { type: mongoose.Schema.Types.ObjectId, required: true },
+    quantityReceived: { type: Number, required: true }, // quantité reçue LORS de cette réception (delta)
+    blNumber: { type: String, required: true, trim: true },
+    receivedBy: { type: String, default: '' },
+    receivedAt: { type: Date, default: Date.now },
+  }],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 orderSchema.index({ companyId: 1, number: 1 });
 const Order = mongoose.model('Order', orderSchema);
@@ -558,6 +572,41 @@ const isAdmin = (req) => (req.permissions || []).includes('admin.view');
 function canMutateOrder(req, order) {
   if (order.status === 'brouillon') return true;
   return isAdmin(req);
+}
+const CATEGORY_RECEIVE_ROLE = {
+  accessoires: 'Magasinier',
+  poudre: 'Laquage',
+  verre: 'Coordinateur-vitrage',
+  aluminium: 'Admin',
+  fer: 'Admin',
+};
+
+function receivingCategoriesForRole(roleName) {
+  return Object.entries(CATEGORY_RECEIVE_ROLE)
+    .filter(([, role]) => role === roleName)
+    .map(([cat]) => cat);
+}
+
+// Can this user at least VIEW the orders list/detail (full access or as a receiver)?
+function canViewOrders(req) {
+  if (isAdmin(req)) return true;
+  if ((req.permissions || []).includes('orders.view')) return true;
+  const userRole = req.user?.roleId?.name || '';
+  return receivingCategoriesForRole(userRole).length > 0;
+}
+
+function requireOrdersView(req, res, next) {
+  if (!canViewOrders(req)) {
+    return res.status(403).json({ error: 'Accès refusé — permission requise: orders.view' });
+  }
+  next();
+}
+
+function canReceiveOrderCategory(req, category) {
+  if (isAdmin(req)) return true; // l'admin peut toujours réceptionner
+  const userRole = req.user?.roleId?.name || '';
+  const requiredRole = CATEGORY_RECEIVE_ROLE[category];
+  return !!requiredRole && requiredRole === userRole;
 }
 
 function sanitizeSupplierCodes(arr) {
@@ -1398,19 +1447,34 @@ const populateOrder = (q) => q
   .populate({ path: 'lines.itemId', populate: { path: 'categoryId' } })
   .populate('companyId').populate('supplierId');
 
-app.get('/api/orders', requireAuth, requirePermission('orders.view'), async (req, res) => {
-  try { res.json(await populateOrder(Order.find()).sort({ createdAt: -1 })); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/orders/:id', requireAuth, requirePermission('orders.view'), async (req, res) => {
+// GET all — full access sees everything; receiving-only roles see just their
+// category, and only sent orders (drafts stay hidden from them).
+app.get('/api/orders', requireAuth, requireOrdersView, async (req, res) => {
   try {
-    const o = await populateOrder(Order.findById(req.params.id));
-    if (!o) return res.status(404).json({ error: 'Not found' });
-    res.json(o);
+    const filter = {};
+    if (!isAdmin(req) && !(req.permissions || []).includes('orders.view')) {
+      const userRole = req.user?.roleId?.name || '';
+      filter.category = { $in: receivingCategoriesForRole(userRole) };
+      filter.status = { $ne: 'brouillon' };
+    }
+    res.json(await populateOrder(Order.find(filter)).sort({ createdAt: -1 }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/orders/:id', requireAuth, requireOrdersView, async (req, res) => {
+  try {
+    const o = await populateOrder(Order.findById(req.params.id));
+    if (!o) return res.status(404).json({ error: 'Not found' });
+    if (!isAdmin(req) && !(req.permissions || []).includes('orders.view')) {
+      const userRole = req.user?.roleId?.name || '';
+      const allowedCats = receivingCategoriesForRole(userRole);
+      if (!allowedCats.includes(o.category) || o.status === 'brouillon') {
+        return res.status(403).json({ error: 'Accès refusé à cette commande.' });
+      }
+    }
+    res.json(o);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 // Create — always starts as a DRAFT. No number, no orderedQuantity impact yet.
 app.post('/api/orders', requireAuth, requirePermission('orders.edit'), async (req, res) => {
   try {
@@ -1421,7 +1485,8 @@ app.post('/api/orders', requireAuth, requirePermission('orders.edit'), async (re
     }
     const o = new Order({
       reference: req.body.reference || '',
-      number: (req.body.number || '').trim(),   // ← ADD THIS
+      number: (req.body.number || '').trim(),
+      category: req.body.category || 'aluminium',   // ← AJOUT
       companyId: req.body.companyId || null,
       supplierId: req.body.supplierId || null,
       supplier: supplierName,
@@ -1457,6 +1522,9 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
     o.reference = req.body.reference ?? o.reference;
     if (req.body.number !== undefined && (o.status === 'brouillon' || isAdmin(req))) {
       o.number = (req.body.number || '').trim();   // ← ADD THIS
+    }
+    if (req.body.category !== undefined && (o.status === 'brouillon' || isAdmin(req))) {   // ← AJOUT
+      o.category = req.body.category;
     }
     o.companyId = req.body.companyId || null;
     o.supplier = supplierName;
@@ -1527,29 +1595,61 @@ app.post('/api/orders/:id/send', requireAuth, requirePermission('orders.edit'), 
 });
 
 // Receive — achat allowed even on sent orders (normal workflow).
-app.patch('/api/orders/:id/receive', requireAuth, requirePermission('orders.receive'), async (req, res) => {
+// Receive — réservé au rôle concerné par la catégorie du BC (ou Admin). BL obligatoire.
+app.patch('/api/orders/:id/receive', requireAuth, async (req, res) => {
   try {
-    const { lineId, quantityReceived } = req.body;
+    const { lineId, quantityReceived, blNumber } = req.body;
+
+    if (!blNumber || !blNumber.trim()) {
+      return res.status(400).json({ error: 'Le numéro de BL de réception est requis.' });
+    }
+
     const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Order not found' });
+
+    if (!canReceiveOrderCategory(req, o.category)) {
+      const requiredRole = CATEGORY_RECEIVE_ROLE[o.category] || 'un rôle spécifique';
+      return res.status(403).json({
+        error: `Accès refusé — la réception des commandes "${o.category}" est réservée au rôle ${requiredRole} (ou Admin).`
+      });
+    }
+
     if (o.status === 'brouillon') return res.status(400).json({ error: 'Envoyez le bon de commande avant de réceptionner.' });
     if (o.status === 'annulee') return res.status(400).json({ error: 'Bon de commande annulé.' });
+
     const line = o.lines.id(lineId);
     if (!line) return res.status(404).json({ error: 'Line not found' });
+
     const alreadyReceived = line.quantityReceived || 0;
     const newlyReceived = Number(quantityReceived) - alreadyReceived;
     if (newlyReceived <= 0) return res.status(400).json({ error: 'La quantité reçue doit dépasser le déjà reçu.' });
+
     line.quantityReceived = Number(quantityReceived);
+
     const item = await Item.findById(line.itemId);
     if (item) {
       item.quantity += newlyReceived;
       item.orderedQuantity = Math.max(0, (item.orderedQuantity || 0) - newlyReceived);
       await item.save();
-      await StockMovement.create({ itemId: item._id, type: 'order_reception', quantity: newlyReceived, balanceAfter: item.quantity, orderId: o._id, note: `Réception ${o.number || o.reference}` });
+      await StockMovement.create({
+        itemId: item._id, type: 'order_reception', quantity: newlyReceived,
+        balanceAfter: item.quantity, orderId: o._id,
+        note: `Réception ${o.number || o.reference} — BL ${blNumber.trim()}`,
+      });
     }
+
+    o.receptions.push({
+      lineId: line._id,
+      quantityReceived: newlyReceived,
+      blNumber: blNumber.trim(),
+      receivedBy: req.user?.displayName || req.user?.username || '',
+      receivedAt: new Date(),
+    });
+
     const allReceived = o.lines.every(l => l.quantityReceived >= l.quantityOrdered);
     const someReceived = o.lines.some(l => (l.quantityReceived || 0) > 0);
     if (allReceived) o.status = 'recue'; else if (someReceived) o.status = 'partielle';
+
     await o.save();
     res.json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1935,7 +2035,8 @@ app.delete('/api/projects/:id/chassis/:cid', async (req, res) => {
 
 // rooooooooooouttttttttttes
 
-app.get('/api/fournisseurs', requireAuth, requirePermission('orders.view'), async (req, res) => {
+// Suppliers list — same visibility rule, so the search/labels work for receivers too
+app.get('/api/fournisseurs', requireAuth, requireOrdersView, async (req, res) => {
   try { res.json(await Fournisseur.find().sort({ name: 1 })); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
