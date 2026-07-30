@@ -17,6 +17,22 @@ const STATUS_COLORS = {
   annulee: { bg: '#fee2e2', text: '#991b1b', label: { fr: 'Annulée', en: 'Cancelled', it: 'Annullata' } },
 };
 
+const CATEGORY_LABELS = {
+  aluminium: { fr: 'Aluminium', en: 'Aluminium', it: 'Alluminio' },
+  verre: { fr: 'Verre', en: 'Glass', it: 'Vetro' },
+  accessoires: { fr: 'Accessoires', en: 'Accessories', it: 'Accessori' },
+  poudre: { fr: 'Poudre', en: 'Powder', it: 'Polvere' },
+  fer: { fr: 'Fer', en: 'Iron', it: 'Ferro' },
+};
+
+const CATEGORY_RECEIVE_ROLE = {
+  accessoires: 'Magasinier',
+  poudre: 'Laquage',
+  verre: 'Coordinateur-vitrage',
+  aluminium: 'Admin',
+  fer: 'Admin',
+};
+
 export default function OrdersPage() {
   const { currentLanguage: lang, t } = useLanguage();
   const { companies, selectedCompany } = useCompany();
@@ -29,15 +45,20 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState(null); // detail view
   const [receiveModal, setReceiveModal] = useState(null);
   const [receiveQty, setReceiveQty] = useState(0);
+  const [receiveBlNumber, setReceiveBlNumber] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [exportingPdf, setExportingPdf] = useState(null);
   const [sendingId, setSendingId] = useState(null);
 
   // ── Purchase requests (admin → ACHAT) ─────────────────────────────
-  const { can } = useAuth();
+  const { can, user } = useAuth();               // ← ajouter `user`
   const isAdmin = can('admin.view');
-  const canReceive = can('orders.receive') || isAdmin;
+  const canReceiveOrder = (order) => {
+    if (isAdmin) return true;
+    const requiredRole = CATEGORY_RECEIVE_ROLE[order.category];
+    return !!requiredRole && user?.role === requiredRole;
+  };
   const [purchaseRequests, setPurchaseRequests] = useState([]);
   const [prLoading, setPrLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'requests'
@@ -136,19 +157,23 @@ export default function OrdersPage() {
 
   const handleReceive = async () => {
     if (!receiveModal) return;
+    if (!receiveBlNumber.trim()) { alert('Le numéro de BL est requis'); return; }
     try {
       await axios.patch(`${API_URL}/orders/${receiveModal.order.id}/receive`, {
         lineId: receiveModal.line._id || receiveModal.line.id,
         quantityReceived: Number(receiveQty),
+        blNumber: receiveBlNumber,          // ← AJOUT
       });
       fetchOrders();
       setReceiveModal(null);
+      setReceiveBlNumber('');
     } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
   };
 
   const openReceive = (order, line) => {
     setReceiveModal({ order, line });
     setReceiveQty(line.quantityReceived || 0);
+    setReceiveBlNumber('');            // ← AJOUT
   };
 
   // Flexible search: split into tokens, check each against multiple fields
@@ -336,15 +361,64 @@ export default function OrdersPage() {
                     {isComplete && <span className="line-check"> ✓</span>}
                   </div>
                 </div>
-                {!isComplete && canReceive && order.status !== 'annulee' && order.status !== 'brouillon' && (
-                  <button className="btn-receive" onClick={() => openReceive(order, line)}>
-                    Réceptionner
-                  </button>
+                {!isComplete && order.status !== 'annulee' && order.status !== 'brouillon' && (
+                  canReceiveOrder(order) ? (
+                    <button className="btn-receive" onClick={() => openReceive(order, line)}>
+                      Réceptionner
+                    </button>
+                  ) : (
+                    <span className="bc-lock" title={`Réservé au rôle ${CATEGORY_RECEIVE_ROLE[order.category] || ''}`}>
+                      <Lock size={12} /> {CATEGORY_RECEIVE_ROLE[order.category]}
+                    </span>
+                  )
                 )}
               </div>
             );
           })}
         </div>
+
+        {(order.receptions || []).length > 0 && (
+          <div className="order-detail-lines" style={{ marginTop: 24 }}>
+            <h2 className="order-detail-lines-title">Historique des réceptions</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[...order.receptions]
+                .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt))
+                .map((rec, idx) => {
+                  const line = (order.lines || []).find(
+                    l => (l._id || l.id) === rec.lineId || (l._id || l.id)?.toString() === rec.lineId?.toString()
+                  );
+                  const item = line?.itemId;
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '10px 14px', border: '1px solid #eee', borderRadius: 8,
+                        background: '#fafafa',
+                      }}
+                    >
+                      <CheckCheck size={16} color="#16a34a" style={{ flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>
+                          {item?.designation?.[lang] || item?.designation?.fr || 'Article'}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#666' }}>
+                          +{rec.quantityReceived} reçu(s) · BL <strong>{rec.blNumber}</strong>
+                          {rec.receivedBy && ` · par ${rec.receivedBy}`}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, color: '#999', whiteSpace: 'nowrap' }}>
+                        {new Date(rec.receivedAt).toLocaleDateString('fr-FR', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
 
         {/* Totals */}
         <div className="order-detail-totals">
@@ -393,26 +467,32 @@ export default function OrdersPage() {
             <ShoppingCart size={15} /> {t('navOrders')}
 
           </button>
-          <button
-            className={`orders-tab-btn ${activeTab === 'requests' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('requests'); fetchPurchaseRequests(); }}
-          >
-            <ShoppingCart size={13} />
-            {t('Demandesadmin')}
-            {purchaseRequests.filter(r => r.status === 'pending').length > 0 && (
-              <span className="orders-tab-badge orders-tab-badge--orange">
-                {purchaseRequests.filter(r => r.status === 'pending').length}
-              </span>
-            )}
-          </button>
+
+          {can('orders.edit') && (
+            <button
+              className={`orders-tab-btn ${activeTab === 'requests' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('requests'); fetchPurchaseRequests(); }}
+            >
+              <ShoppingCart size={13} />
+              {t('Demandesadmin')}
+              {purchaseRequests.filter(r => r.status === 'pending').length > 0 && (
+                <span className="orders-tab-badge orders-tab-badge--orange">
+                  {purchaseRequests.filter(r => r.status === 'pending').length}
+                </span>
+              )}
+            </button>
+          )}
+
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="super-cat-settings-btn" title='Excel' onClick={() => exportOrdersExcel(filteredOrders, lang)}>
             <Sheet size={15} color='GREEN' />
           </button>
-          <button className="btn-primary" onClick={() => { setEditOrder(null); setShowForm(true); }}>
-            <FilePlus size={15} />{t('orderNew')}
-          </button>
+          {can('orders.edit') && (
+            <button className="btn-primary" onClick={() => { setEditOrder(null); setShowForm(true); }}>
+              <FilePlus size={15} />{t('orderNew')}
+            </button>
+          )}
         </div>
       </header>
 
@@ -492,12 +572,22 @@ export default function OrdersPage() {
                         {order.status === 'brouillon' && <span className="bc-draft-tag">Brouillon</span>}
                         {order.companyId && <span className="order-company-badge">{order.companyId.name}</span>}
                         {(order.supplierId?.name || order.supplier) && <span className="order-supplier">— {order.supplierId?.name || order.supplier}</span>}
+                        {order.category && (
+                          <span className="order-company-badge" style={{ background: '#eef2ff', color: '#3730a3' }}>
+                            {CATEGORY_LABELS[order.category]?.[lang] || order.category}
+                          </span>
+                        )}
                       </div>
                       <div className="order-card-meta">
                         <span className="status-badge" style={{ background: st.bg, color: st.text }}>
                           {st.label[lang] || st.label.fr}
                         </span>
                         <span className="order-date">{new Date(order.orderDate).toLocaleDateString('fr-FR')}</span>
+                        {order.category && (
+                          <span className="order-company-badge" style={{ background: '#eef2ff', color: '#3730a3' }}>
+                            {CATEGORY_LABELS[order.category]?.[lang] || order.category}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -567,7 +657,7 @@ export default function OrdersPage() {
 }
 
 /* ── Receive Modal (shared between list & detail view) ──────────── */
-function ReceiveModal({ receiveModal, receiveQty, lang, setReceiveQty, onConfirm, onClose }) {
+function ReceiveModal({ receiveModal, receiveQty, lang, setReceiveQty, blNumber, setBlNumber, onConfirm, onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, padding: 28 }}>
@@ -593,12 +683,21 @@ function ReceiveModal({ receiveModal, receiveQty, lang, setReceiveQty, onConfirm
             / {receiveModal.line.quantityOrdered}
           </span>
         </div>
+        <div className="form-group">
+          <label>N° de BL de réception *</label>
+          <input
+            type="text"
+            placeholder="ex: BL-2026-00458"
+            value={blNumber}
+            onChange={e => setBlNumber(e.target.value)}
+          />
+        </div>
         <div className="modal-actions" style={{ marginTop: 20 }}>
           <button onClick={onClose}>Annuler</button>
           <button
             className="primary"
             onClick={onConfirm}
-            disabled={Number(receiveQty) <= (receiveModal.line.quantityReceived || 0)}
+            disabled={Number(receiveQty) <= (receiveModal.line.quantityReceived || 0) || !blNumber.trim()}
             style={{ background: '#16a34a' }}
           >
             ✓ Confirmer réception
@@ -680,6 +779,7 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
   const [form, setForm] = useState(order ? {
     reference: order.reference || '',
     number: order.number || '',
+    category: order.category || 'aluminium',   // ← AJOUT
     companyId: order.companyId?.id || order.companyId?._id || '',
     supplierId: order.supplierId?.id || order.supplierId?._id || '',
     orderDate: order.orderDate?.split('T')[0] || today,
@@ -793,6 +893,19 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
               <select required value={form.companyId} onChange={e => setForm(f => ({ ...f, companyId: e.target.value }))}>
                 <option value="">Choisir…</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Catégorie *</label>
+              <select
+                required
+                value={form.category}
+                onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                disabled={isLocked && !isAdmin}
+              >
+                {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+                  <option key={key} value={key}>{label.fr}</option>
+                ))}
               </select>
             </div>
             <div className="form-group">
