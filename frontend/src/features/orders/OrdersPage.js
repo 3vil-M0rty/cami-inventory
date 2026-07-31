@@ -433,11 +433,12 @@ export default function OrdersPage() {
             receiveQty={receiveQty}
             lang={lang}
             setReceiveQty={setReceiveQty}
+            blNumber={receiveBlNumber}
+            setBlNumber={setReceiveBlNumber}
             onConfirm={handleReceive}
-            onClose={() => setReceiveModal(null)}
+            onClose={() => { setReceiveModal(null); setReceiveBlNumber(''); }}
           />
         )}
-
         {showForm && (
           <OrderForm
             order={editOrder}
@@ -648,8 +649,10 @@ export default function OrdersPage() {
           receiveQty={receiveQty}
           lang={lang}
           setReceiveQty={setReceiveQty}
+          blNumber={receiveBlNumber}
+          setBlNumber={setReceiveBlNumber}
           onConfirm={handleReceive}
-          onClose={() => setReceiveModal(null)}
+          onClose={() => { setReceiveModal(null); setReceiveBlNumber(''); }}
         />
       )}
     </div>
