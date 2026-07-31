@@ -13,6 +13,7 @@ const PRUNE_MS = 30 * 24 * 60 * 60 * 1000;
 
 function getNotifId(ev) {
   if (ev._type === 'purchase') return `pr_${ev._id}`;
+  if (ev._type === 'reception') return `rec_${ev.orderId}_${ev.lineId}_${new Date(ev.at).getTime()}`;
   return `laq_${ev.action}_${ev.projectId}_${new Date(ev.at).getTime()}`;
 }
 
@@ -40,12 +41,12 @@ function persistReadIds(newIds) {
 }
 
 const LAQUAGE_META = {
-  add_lot:            { label: 'Nouveau lot créé',                    color: '#3b5bdb', icon: <Package size={13} /> },
-  send_to_laquage:    { label: 'Envoyé au laquage',                   color: '#f59e0b', icon: <Send size={13} /> },
-  receive_all_laquage:{ label: 'Tout réceptionné (Laquage)',          color: '#3b82f6', icon: <PackageCheck size={13} /> },
-  return_to_coord:    { label: 'Retourné au coordinateur',            color: '#8b5cf6', icon: <RotateCcw size={13} /> },
-  receive_all_coord:  { label: 'Tout réceptionné (Coordinateur)',     color: '#16a34a', icon: <CheckCircle2 size={13} /> },
-  incomplete_line:    { label: 'Ligne signalée incomplète',           color: '#dc2626', icon: <AlertTriangle size={13} /> },
+  add_lot: { label: 'Nouveau lot créé', color: '#3b5bdb', icon: <Package size={13} /> },
+  send_to_laquage: { label: 'Envoyé au laquage', color: '#f59e0b', icon: <Send size={13} /> },
+  receive_all_laquage: { label: 'Tout réceptionné (Laquage)', color: '#3b82f6', icon: <PackageCheck size={13} /> },
+  return_to_coord: { label: 'Retourné au coordinateur', color: '#8b5cf6', icon: <RotateCcw size={13} /> },
+  receive_all_coord: { label: 'Tout réceptionné (Coordinateur)', color: '#16a34a', icon: <CheckCircle2 size={13} /> },
+  incomplete_line: { label: 'Ligne signalée incomplète', color: '#dc2626', icon: <AlertTriangle size={13} /> },
   receive_incomplete_line_laquage: {
     label: 'Ligne incomplète réceptionnée (Laquage)',
     color: '#3b82f6', icon: <PackageCheck size={13} />,
@@ -55,12 +56,14 @@ const LAQUAGE_META = {
     color: '#16a34a', icon: <PackageCheck size={13} />,
   },
 };
-
+const RECEPTION_META = {
+  label: 'Réception commande', color: '#16a34a', icon: <PackageCheck size={13} />,
+};
 function getLaquageMeta(action) {
   if (action.startsWith('receive_line_laquage:'))
-    return { label: 'Ligne réceptionnée (Laquage)',       color: '#3b82f6', icon: <PackageCheck size={13} /> };
+    return { label: 'Ligne réceptionnée (Laquage)', color: '#3b82f6', icon: <PackageCheck size={13} /> };
   if (action.startsWith('receive_line_coord:'))
-    return { label: 'Ligne réceptionnée (Coordinateur)',  color: '#16a34a', icon: <CheckCircle2 size={13} /> };
+    return { label: 'Ligne réceptionnée (Coordinateur)', color: '#16a34a', icon: <CheckCircle2 size={13} /> };
   return LAQUAGE_META[action] || { label: action, color: '#9ca3af', icon: <Bell size={13} /> };
 }
 
@@ -101,29 +104,44 @@ export default function NotifBell() {
     try {
       const requests = [
         axios.get(`${API_URL}/laquage/recent-actions?limit=30`).catch(() => ({ data: [] })),
+        axios.get(`${API_URL}/orders/recent-receptions?limit=30`).catch(() => ({ data: [] })),
       ];
       if (isAdmin) {
         requests.push(
           axios.get(`${API_URL}/purchase-requests?status=ordered&limit=30`).catch(() => ({ data: [] }))
         );
       }
-      const [laqRes, prRes] = await Promise.all(requests);
+      const [laqRes, recRes, prRes] = await Promise.all(requests);
 
       const laqEvents = (laqRes.data || []).map(ev => ({ ...ev, _type: 'laquage' }));
+
+      const recEvents = (recRes.data || []).map(r => ({
+        _type: 'reception',
+        action: 'order_reception',
+        at: r.receivedAt,
+        by: r.receivedBy || '—',
+        projectName: r.itemName,
+        projectRef: `+${r.quantityReceived} · BL ${r.blNumber}`,
+        note: r.orderNumber ? `BC ${r.orderNumber}${r.companyName ? ' · ' + r.companyName : ''}` : null,
+        orderId: r.orderId,
+        lineId: r.lineId,
+        category: r.category,
+      }));
+
       const prEvents = isAdmin
         ? (prRes?.data || []).map(pr => ({
-            _type: 'purchase',
-            action: 'purchase_ordered',
-            at: pr.orderedAt || pr.updatedAt,
-            by: pr.orderedBy || 'ACHAT',
-            projectName: pr.itemName,
-            projectRef: `Qté : ${pr.quantity}`,
-            note: pr.note || null,
-            _id: pr.id || pr._id,
-          }))
+          _type: 'purchase',
+          action: 'purchase_ordered',
+          at: pr.orderedAt || pr.updatedAt,
+          by: pr.orderedBy || 'ACHAT',
+          projectName: pr.itemName,
+          projectRef: `Qté : ${pr.quantity}`,
+          note: pr.note || null,
+          _id: pr.id || pr._id,
+        }))
         : [];
 
-      const all = [...laqEvents, ...prEvents].sort((a, b) => new Date(b.at) - new Date(a.at));
+      const all = [...laqEvents, ...recEvents, ...prEvents].sort((a, b) => new Date(b.at) - new Date(a.at));
       setEvents(all.slice(0, 40));
     } catch { }
   }, [isAdmin]);
@@ -251,7 +269,7 @@ export default function NotifBell() {
     }
 
     /* Laquage notification */
-    const meta = getLaquageMeta(ev.action);
+    const meta = ev._type === 'reception' ? RECEPTION_META : getLaquageMeta(ev.action);
     const laqType = ev.laqType || ev.recordType;
     const laqBadge = laqType === 'barres'
       ? { label: 'BARRES', bg: '#bd5f08', color: '#fff' }
@@ -309,7 +327,7 @@ export default function NotifBell() {
           )}
         </div>
 
-        {isAdmin && (
+        {isAdmin && ev._type === 'laquage' && (
           <button onClick={() => deleteOne(ev)} disabled={deleting} title="Supprimer"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ddd', padding: 2, flexShrink: 0, display: 'flex', alignItems: 'center', marginTop: 2 }}
             onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}

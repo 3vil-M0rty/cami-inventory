@@ -1697,6 +1697,45 @@ app.delete('/api/orders/:id', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Recent receptions across all orders (for the notif bell)
+app.get('/api/orders/recent-receptions', requireAuth, requireOrdersView, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const filter = { 'receptions.0': { $exists: true } };
+    if (!isAdmin(req) && !(req.permissions || []).includes('orders.view')) {
+      const userRole = req.user?.roleId?.name || '';
+      filter.category = { $in: receivingCategoriesForRole(userRole) };
+    }
+    const orders = await Order.find(filter)
+      .populate({ path: 'lines.itemId', select: 'designation' })
+      .populate('companyId', 'name')
+      .lean();
+
+    const events = [];
+    for (const o of orders) {
+      for (const rec of o.receptions || []) {
+        const line = (o.lines || []).find(l => String(l._id) === String(rec.lineId));
+        const item = line?.itemId;
+        events.push({
+          orderId: o._id,
+          lineId: rec.lineId,
+          orderNumber: o.number || o.reference || '',
+          category: o.category,
+          companyName: o.companyId?.name || '',
+          itemName: item?.designation?.fr || item?.designation?.it || item?.designation?.en || 'Article',
+          quantityReceived: rec.quantityReceived,
+          blNumber: rec.blNumber,
+          receivedBy: rec.receivedBy || '',
+          receivedAt: rec.receivedAt,
+        });
+      }
+    }
+    events.sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt));
+    res.json(events.slice(0, limit));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
 // ==================== CLIENT ROUTES ====================
 app.get('/api/clients', async (req, res) => {
   try { res.json(await Client.find().populate('companyId').sort({ name: 1 })); }
