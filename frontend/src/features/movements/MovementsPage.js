@@ -18,12 +18,14 @@ function fmt(val) {
 }
 
 const TYPE_META = {
-  entree:           { color: '#16a34a', bg: '#f0fdf4', icon: '↑' },
-  sortie:           { color: '#ef4444', bg: '#fef2f2', icon: '↓' },
-  project_use:      { color: '#f59e0b', bg: '#eff6ff', icon: '↙' },
-  project_return:   { color: '#3b82f6', bg: '#fffbeb', icon: '↗' },
-  order_reception:  { color: '#d410c4', bg: '#f0fdf4', icon: '↑' },
+  entree: { color: '#16a34a', bg: '#f0fdf4', icon: '↑' },
+  sortie: { color: '#ef4444', bg: '#fef2f2', icon: '↓' },
+  project_use: { color: '#f59e0b', bg: '#eff6ff', icon: '↙' },
+  project_return: { color: '#3b82f6', bg: '#fffbeb', icon: '↗' },
+  order_reception: { color: '#d410c4', bg: '#f0fdf4', icon: '↑' },
 };
+
+const PAGE_SIZE = 200;
 
 const SUPER_CATS = [
   { key: 'all', labelFr: 'Toutes catégories' },
@@ -179,7 +181,9 @@ export default function MovementsPage() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [search, setSearch] = useState('');
-
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
   // Hidden movements (soft-delete, persisted in localStorage)
   const [hiddenIds, setHiddenIds] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('mv_hidden') || '[]')); }
@@ -227,12 +231,34 @@ export default function MovementsPage() {
       if (typeFilter !== 'all') params.set('type', typeFilter);
       if (fromDate) params.set('from', fromDate);
       if (toDate) params.set('to', toDate);
-      params.set('limit', '1000');
+      params.set('limit', String(PAGE_SIZE));
+      params.set('skip', '0');
       const res = await axios.get(`${API}/movements?${params}`);
-      setMovements(res.data);
+      setMovements(res.data.movements);
+      setTotalCount(res.data.total);
+      setHasMore(res.data.hasMore);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }, [typeFilter, fromDate, toDate]);
+
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams();
+      if (typeFilter !== 'all') params.set('type', typeFilter);
+      if (fromDate) params.set('from', fromDate);
+      if (toDate) params.set('to', toDate);
+      params.set('limit', String(PAGE_SIZE));
+      params.set('skip', String(movements.length));
+      const res = await axios.get(`${API}/movements?${params}`);
+      setMovements(prev => [...prev, ...res.data.movements]);
+      setTotalCount(res.data.total);
+      setHasMore(res.data.hasMore);
+    } catch (e) { setError(e.message); }
+    finally { setLoadingMore(false); }
+  }, [typeFilter, fromDate, toDate, movements.length, hasMore, loadingMore]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -302,8 +328,8 @@ export default function MovementsPage() {
   };
   const TABLE_TYPE_META = {
     chassis_assignment: { color: '#f59e0b', bg: '#fffbeb', icon: '🔧' },
-    manual_in:          { color: '#16a34a', bg: '#f0fdf4', icon: '↑' },
-    manual_out:         { color: '#ef4444', bg: '#fef2f2', icon: '↓' },
+    manual_in: { color: '#16a34a', bg: '#f0fdf4', icon: '↑' },
+    manual_out: { color: '#ef4444', bg: '#fef2f2', icon: '↓' },
   };
 
   const filteredTableMovements = tableMovements.filter(m => {
@@ -383,310 +409,320 @@ export default function MovementsPage() {
       {/* ── INVENTORY TAB ── */}
       {mainTab === 'inventory' && (<>
 
-      {/* Summary chips */}
-      <div className="mv-summary">
-        {Object.entries(TYPE_META).map(([type, meta]) => (
-          <div key={type} className="mv-chip" style={{ borderColor: meta.color, background: meta.bg }}>
-            <span className="mv-chip__icon" style={{ color: meta.color }}>{meta.icon}</span>
-            <span className="mv-chip__label" style={{ color: meta.color }}>{TYPE_LABELS[type]}</span>
-            <span className="mv-chip__val" style={{ color: meta.color }}>
-              {fmt(totals[type] || 0)}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div className="mv-filters">
-        {/* Supercategory filter */}
-        <select
-          className="mv-select"
-          value={superCat}
-          onChange={e => setSuperCat(e.target.value)}
-          style={{ minWidth: 160 }}
-        >
-          {SUPER_CATS.map(sc => (
-            <option key={sc.key} value={sc.key}>{sc.labelFr}</option>
+        {/* Summary chips */}
+        <div className="mv-summary">
+          {Object.entries(TYPE_META).map(([type, meta]) => (
+            <div key={type} className="mv-chip" style={{ borderColor: meta.color, background: meta.bg }}>
+              <span className="mv-chip__icon" style={{ color: meta.color }}>{meta.icon}</span>
+              <span className="mv-chip__label" style={{ color: meta.color }}>{TYPE_LABELS[type]}</span>
+              <span className="mv-chip__val" style={{ color: meta.color }}>
+                {fmt(totals[type] || 0)}
+              </span>
+            </div>
           ))}
-        </select>
-
-        <input
-          className="mv-search"
-          type="text"
-          placeholder={t('mvSearch') || 'Rechercher article, projet, note…'}
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-
-        <select className="mv-select" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
-          {typeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-
-        <div className="mv-dates">
-          <input type="date" className="mv-date-input" value={fromDate} onChange={e => setFromDate(e.target.value)} />
-          <span className="mv-date-sep">→</span>
-          <input type="date" className="mv-date-input" value={toDate} onChange={e => setToDate(e.target.value)} />
         </div>
 
-        {hasActiveFilters && (
-          <button className="mv-clear-btn" onClick={() => {
-            setFromDate(''); setToDate(''); setTypeFilter('all'); setSearch(''); setSuperCat('all');
-          }}>
-            ✕ {t('mvClear') || 'Effacer'}
-          </button>
-        )}
-      </div>
+        {/* Filters */}
+        <div className="mv-filters">
+          {/* Supercategory filter */}
+          <select
+            className="mv-select"
+            value={superCat}
+            onChange={e => setSuperCat(e.target.value)}
+            style={{ minWidth: 160 }}
+          >
+            {SUPER_CATS.map(sc => (
+              <option key={sc.key} value={sc.key}>{sc.labelFr}</option>
+            ))}
+          </select>
 
-      {/* Graph panel */}
-      {showGraph && (
-        <div className="mv-graph-panel">
-          {/* Graph controls */}
-          <div className="mv-graph-controls">
-            {/* Grouping */}
-            <div className="mv-graph-control-group">
-              <span className="mv-graph-label">Regrouper par</span>
-              <div className="mv-graph-toggle-row">
-                {GROUP_OPTIONS.map(g => (
-                  <button
-                    key={g.value}
-                    className={`mv-toggle-btn ${groupBy === g.value ? 'active' : ''}`}
-                    onClick={() => setGroupBy(g.value)}
-                  >
-                    {g.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          <input
+            className="mv-search"
+            type="text"
+            placeholder={t('mvSearch') || 'Rechercher article, projet, note…'}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
 
-            {/* Chart type */}
-            <div className="mv-graph-control-group">
-              <span className="mv-graph-label">Type de graphique</span>
-              <div className="mv-graph-toggle-row">
-                <button
-                  className={`mv-toggle-btn ${chartType === 'line' ? 'active' : ''}`}
-                  onClick={() => setChartType('line')}
-                >Courbe</button>
-                <button
-                  className={`mv-toggle-btn ${chartType === 'bar' ? 'active' : ''}`}
-                  onClick={() => setChartType('bar')}
-                >Barres</button>
-              </div>
-            </div>
+          <select className="mv-select" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
+            {typeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
 
-            {/* Series toggles */}
-            <div className="mv-graph-control-group">
-              <span className="mv-graph-label">Séries</span>
-              <div className="mv-graph-toggle-row">
-                {Object.entries(TYPE_META).map(([type, meta]) => (
-                  <button
-                    key={type}
-                    className={`mv-toggle-btn mv-series-btn ${activeTypes.includes(type) ? 'active' : ''}`}
-                    style={activeTypes.includes(type)
-                      ? { borderColor: meta.color, color: meta.color, background: meta.bg }
-                      : {}}
-                    onClick={() => toggleType(type)}
-                  >
-                    {meta.icon} {TYPE_LABELS[type]}
-                  </button>
-                ))}
-              </div>
-            </div>
+          <div className="mv-dates">
+            <input type="date" className="mv-date-input" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+            <span className="mv-date-sep">→</span>
+            <input type="date" className="mv-date-input" value={toDate} onChange={e => setToDate(e.target.value)} />
           </div>
 
-          {/* Custom legend */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
-            {Object.entries(TYPE_META)
-              .filter(([t]) => activeTypes.includes(t))
-              .map(([type, meta]) => (
-                <span key={type} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                  <span style={{ width: 10, height: 10, borderRadius: 2, background: meta.color, display: 'inline-block' }}></span>
-                  {TYPE_LABELS[type]}
-                </span>
-              ))}
-          </div>
-
-          {!chartJsReady ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)', fontSize: 14 }}>
-              Chargement du graphique…
-            </div>
-          ) : filtered.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)', fontSize: 14 }}>
-              Aucune donnée à afficher pour les filtres sélectionnés.
-            </div>
-          ) : (
-            <MovementsChart
-              movements={filtered}
-              groupBy={groupBy}
-              activeTypes={activeTypes}
-              chartType={chartType}
-            />
+          {hasActiveFilters && (
+            <button className="mv-clear-btn" onClick={() => {
+              setFromDate(''); setToDate(''); setTypeFilter('all'); setSearch(''); setSuperCat('all');
+            }}>
+              ✕ {t('mvClear') || 'Effacer'}
+            </button>
           )}
         </div>
-      )}
 
-      {/* Table */}
-      {loading ? (
-        <div className="mv-state">{t('loading') || 'Chargement…'}</div>
-      ) : error ? (
-        <div className="mv-state mv-state--error">Erreur: {error}</div>
-      ) : filtered.length === 0 ? (
-        <div className="mv-state">{t('noData') || 'Aucun mouvement'}</div>
-      ) : (
-        <div className="mv-table-wrap">
-          <table className="mv-table">
-            <thead>
-              <tr>
-                <th>{t('mvColDate') || 'Date'}</th>
-                <th>{t('mvColType') || 'Type'}</th>
-                <th>Catégorie</th>
-                <th>{t('mvColItem') || 'Article'}</th>
-                <th className="td-right">{t('mvColQty') || 'Qté'}</th>
-                <th className="td-right">{t('mvColBalance') || 'Solde'}</th>
-                <th>{t('mvColProject') || 'Projet'}</th>
-                <th>{t('mvColNote') || 'Note'}</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((m, i) => {
-                const meta = TYPE_META[m.type] || { color: '#888', bg: '#f9f9f9', icon: '•' };
-                const designation = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '—';
-                const sc = m.itemId?.superCategory || null;
-                const scMeta = SUPER_CATS.find(s => s.key === sc);
-                const isPositive = m.type === 'entree' || m.type === 'project_return' || m.type === 'order_reception';
-                const qty = fmt(m.quantity);
-                const bal = fmt(m.balanceAfter);
-                return (
-                  <tr
-                    key={m._id || i}
-                    className="mv-row-clickable"
-                    onClick={() => setSelectedMovement(m)}
-                  >
-                    <td className="mv-col-date">{fmtDate(m.createdAt)}</td>
-                    <td>
-                      <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg }}>
-                        {meta.icon} {TYPE_LABELS[m.type] || m.type}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="mv-supercat-badge">
-                        {scMeta ? scMeta.labelFr : (sc || '—')}
-                      </span>
-                    </td>
-                    <td className="mv-col-item">{designation}</td>
-                    <td className="td-right">
-                      <span className="mv-qty" style={{ color: meta.color }}>
-                        {isPositive ? '+' : '−'}{qty}
-                      </span>
-                    </td>
-                    <td className="td-right mv-balance">{bal}</td>
-                    <td className="mv-col-project">{m.projectName || '—'}</td>
-                    <td className="mv-col-note">{m.note || '—'}</td>
-                    <td>
-                      <button
-                        className="mv-delete-btn"
-                        onClick={(e) => hideMovement(m._id || m.id, e)}
-                        title="Masquer ce mouvement"
-                      >
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div className="mv-count">{filtered.length} {t('mvRows') || 'lignes'}</div>
-        </div>
-      )}
-
-      {/* Detail modal */}
-      {selectedMovement && (() => {
-        const m = selectedMovement;
-        const meta = TYPE_META[m.type] || { color: '#888', bg: '#f9f9f9', icon: '•' };
-        const designation = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '—';
-        const sc = m.itemId?.superCategory || null;
-        const scMeta = SUPER_CATS.find(s => s.key === sc);
-        const isPositive = m.type === 'entree' || m.type === 'project_return' || m.type === 'order_reception';
-        const mid = m._id || m.id;
-        return (
-          <div className="mv-modal-overlay" onClick={() => setSelectedMovement(null)}>
-            <div className="mv-modal" onClick={e => e.stopPropagation()}>
-              <div className="mv-modal-header">
-                <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg, fontSize: 14, padding: '5px 12px' }}>
-                  {meta.icon} {TYPE_LABELS[m.type] || m.type}
-                </span>
-                <button className="mv-modal-close" onClick={() => setSelectedMovement(null)}>✕</button>
+        {/* Graph panel */}
+        {showGraph && (
+          <div className="mv-graph-panel">
+            {/* Graph controls */}
+            <div className="mv-graph-controls">
+              {/* Grouping */}
+              <div className="mv-graph-control-group">
+                <span className="mv-graph-label">Regrouper par</span>
+                <div className="mv-graph-toggle-row">
+                  {GROUP_OPTIONS.map(g => (
+                    <button
+                      key={g.value}
+                      className={`mv-toggle-btn ${groupBy === g.value ? 'active' : ''}`}
+                      onClick={() => setGroupBy(g.value)}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="mv-modal-title">{designation}</div>
-
-              <div className="mv-modal-grid">
-                <div className="mv-modal-field">
-                  <span className="mv-modal-field__label">Date</span>
-                  <span className="mv-modal-field__val">{fmtDate(m.createdAt)}</span>
+              {/* Chart type */}
+              <div className="mv-graph-control-group">
+                <span className="mv-graph-label">Type de graphique</span>
+                <div className="mv-graph-toggle-row">
+                  <button
+                    className={`mv-toggle-btn ${chartType === 'line' ? 'active' : ''}`}
+                    onClick={() => setChartType('line')}
+                  >Courbe</button>
+                  <button
+                    className={`mv-toggle-btn ${chartType === 'bar' ? 'active' : ''}`}
+                    onClick={() => setChartType('bar')}
+                  >Barres</button>
                 </div>
-                <div className="mv-modal-field">
-                  <span className="mv-modal-field__label">Catégorie</span>
-                  <span className="mv-modal-field__val">
-                    <span className="mv-supercat-badge">{scMeta ? scMeta.labelFr : (sc || '—')}</span>
-                  </span>
-                </div>
-                <div className="mv-modal-field">
-                  <span className="mv-modal-field__label">Quantité</span>
-                  <span className="mv-modal-field__val mv-qty" style={{ color: meta.color }}>
-                    {isPositive ? '+' : '−'}{fmt(m.quantity)}
-                  </span>
-                </div>
-                <div className="mv-modal-field">
-                  <span className="mv-modal-field__label">Solde après</span>
-                  <span className="mv-modal-field__val mv-balance">{fmt(m.balanceAfter)}</span>
-                </div>
-                {m.projectName && (
-                  <div className="mv-modal-field">
-                    <span className="mv-modal-field__label">Projet</span>
-                    <span className="mv-modal-field__val mv-col-project">{m.projectName}</span>
-                  </div>
-                )}
-                {m.user && (
-                  <div className="mv-modal-field">
-                    <span className="mv-modal-field__label">Utilisateur</span>
-                    <span className="mv-modal-field__val">{m.user}</span>
-                  </div>
-                )}
               </div>
 
-              {m.note && (
-                <div className="mv-modal-note">
-                  <div className="mv-modal-field__label" style={{ marginBottom: 6 }}>Note</div>
-                  <div className="mv-modal-note__body">{m.note}</div>
+              {/* Series toggles */}
+              <div className="mv-graph-control-group">
+                <span className="mv-graph-label">Séries</span>
+                <div className="mv-graph-toggle-row">
+                  {Object.entries(TYPE_META).map(([type, meta]) => (
+                    <button
+                      key={type}
+                      className={`mv-toggle-btn mv-series-btn ${activeTypes.includes(type) ? 'active' : ''}`}
+                      style={activeTypes.includes(type)
+                        ? { borderColor: meta.color, color: meta.color, background: meta.bg }
+                        : {}}
+                      onClick={() => toggleType(type)}
+                    >
+                      {meta.icon} {TYPE_LABELS[type]}
+                    </button>
+                  ))}
                 </div>
-              )}
-
-              <div className="mv-modal-actions">
-                <button
-                  className="mv-modal-hide-btn"
-                  onClick={() => {
-                    if (!window.confirm('Masquer ce mouvement ?')) return;
-                    setHiddenIds(prev => {
-                      const next = new Set(prev);
-                      next.add(mid);
-                      localStorage.setItem('mv_hidden', JSON.stringify([...next]));
-                      return next;
-                    });
-                    setSelectedMovement(null);
-                  }}
-                >
-                  🗑 Masquer ce mouvement
-                </button>
-                <button className="mv-modal-close-btn" onClick={() => setSelectedMovement(null)}>
-                  Fermer
-                </button>
               </div>
             </div>
+
+            {/* Custom legend */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
+              {Object.entries(TYPE_META)
+                .filter(([t]) => activeTypes.includes(t))
+                .map(([type, meta]) => (
+                  <span key={type} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 2, background: meta.color, display: 'inline-block' }}></span>
+                    {TYPE_LABELS[type]}
+                  </span>
+                ))}
+            </div>
+
+            {!chartJsReady ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)', fontSize: 14 }}>
+                Chargement du graphique…
+              </div>
+            ) : filtered.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)', fontSize: 14 }}>
+                Aucune donnée à afficher pour les filtres sélectionnés.
+              </div>
+            ) : (
+              <MovementsChart
+                movements={filtered}
+                groupBy={groupBy}
+                activeTypes={activeTypes}
+                chartType={chartType}
+              />
+            )}
           </div>
-        );
-      })()}
+        )}
+
+        {/* Table */}
+        {loading ? (
+          <div className="mv-state">{t('loading') || 'Chargement…'}</div>
+        ) : error ? (
+          <div className="mv-state mv-state--error">Erreur: {error}</div>
+        ) : filtered.length === 0 ? (
+          <div className="mv-state">{t('noData') || 'Aucun mouvement'}</div>
+        ) : (
+          <div className="mv-table-wrap">
+            <table className="mv-table">
+              <thead>
+                <tr>
+                  <th>{t('mvColDate') || 'Date'}</th>
+                  <th>{t('mvColType') || 'Type'}</th>
+                  <th>Catégorie</th>
+                  <th>{t('mvColItem') || 'Article'}</th>
+                  <th className="td-right">{t('mvColQty') || 'Qté'}</th>
+                  <th className="td-right">{t('mvColBalance') || 'Solde'}</th>
+                  <th>{t('mvColProject') || 'Projet'}</th>
+                  <th>{t('mvColNote') || 'Note'}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((m, i) => {
+                  const meta = TYPE_META[m.type] || { color: '#888', bg: '#f9f9f9', icon: '•' };
+                  const designation = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '—';
+                  const sc = m.itemId?.superCategory || null;
+                  const scMeta = SUPER_CATS.find(s => s.key === sc);
+                  const isPositive = m.type === 'entree' || m.type === 'project_return' || m.type === 'order_reception';
+                  const qty = fmt(m.quantity);
+                  const bal = fmt(m.balanceAfter);
+                  return (
+                    <tr
+                      key={m._id || i}
+                      className="mv-row-clickable"
+                      onClick={() => setSelectedMovement(m)}
+                    >
+                      <td className="mv-col-date">{fmtDate(m.createdAt)}</td>
+                      <td>
+                        <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg }}>
+                          {meta.icon} {TYPE_LABELS[m.type] || m.type}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="mv-supercat-badge">
+                          {scMeta ? scMeta.labelFr : (sc || '—')}
+                        </span>
+                      </td>
+                      <td className="mv-col-item">{designation}</td>
+                      <td className="td-right">
+                        <span className="mv-qty" style={{ color: meta.color }}>
+                          {isPositive ? '+' : '−'}{qty}
+                        </span>
+                      </td>
+                      <td className="td-right mv-balance">{bal}</td>
+                      <td className="mv-col-project">{m.projectName || '—'}</td>
+                      <td className="mv-col-note">{m.note || '—'}</td>
+                      <td>
+                        <button
+                          className="mv-delete-btn"
+                          onClick={(e) => hideMovement(m._id || m.id, e)}
+                          title="Masquer ce mouvement"
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="mv-count">
+              {filtered.length} {t('mvRows') || 'lignes'}
+              {totalCount > movements.length && ` (chargées: ${movements.length} sur ${totalCount} au total)`}
+            </div>
+            {hasMore && (
+              <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                <button className="mv-refresh-btn" onClick={loadMore} disabled={loadingMore}>
+                  {loadingMore ? 'Chargement…' : `↓ Charger plus (${totalCount - movements.length} restants)`}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Detail modal */}
+        {selectedMovement && (() => {
+          const m = selectedMovement;
+          const meta = TYPE_META[m.type] || { color: '#888', bg: '#f9f9f9', icon: '•' };
+          const designation = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '—';
+          const sc = m.itemId?.superCategory || null;
+          const scMeta = SUPER_CATS.find(s => s.key === sc);
+          const isPositive = m.type === 'entree' || m.type === 'project_return' || m.type === 'order_reception';
+          const mid = m._id || m.id;
+          return (
+            <div className="mv-modal-overlay" onClick={() => setSelectedMovement(null)}>
+              <div className="mv-modal" onClick={e => e.stopPropagation()}>
+                <div className="mv-modal-header">
+                  <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg, fontSize: 14, padding: '5px 12px' }}>
+                    {meta.icon} {TYPE_LABELS[m.type] || m.type}
+                  </span>
+                  <button className="mv-modal-close" onClick={() => setSelectedMovement(null)}>✕</button>
+                </div>
+
+                <div className="mv-modal-title">{designation}</div>
+
+                <div className="mv-modal-grid">
+                  <div className="mv-modal-field">
+                    <span className="mv-modal-field__label">Date</span>
+                    <span className="mv-modal-field__val">{fmtDate(m.createdAt)}</span>
+                  </div>
+                  <div className="mv-modal-field">
+                    <span className="mv-modal-field__label">Catégorie</span>
+                    <span className="mv-modal-field__val">
+                      <span className="mv-supercat-badge">{scMeta ? scMeta.labelFr : (sc || '—')}</span>
+                    </span>
+                  </div>
+                  <div className="mv-modal-field">
+                    <span className="mv-modal-field__label">Quantité</span>
+                    <span className="mv-modal-field__val mv-qty" style={{ color: meta.color }}>
+                      {isPositive ? '+' : '−'}{fmt(m.quantity)}
+                    </span>
+                  </div>
+                  <div className="mv-modal-field">
+                    <span className="mv-modal-field__label">Solde après</span>
+                    <span className="mv-modal-field__val mv-balance">{fmt(m.balanceAfter)}</span>
+                  </div>
+                  {m.projectName && (
+                    <div className="mv-modal-field">
+                      <span className="mv-modal-field__label">Projet</span>
+                      <span className="mv-modal-field__val mv-col-project">{m.projectName}</span>
+                    </div>
+                  )}
+                  {m.user && (
+                    <div className="mv-modal-field">
+                      <span className="mv-modal-field__label">Utilisateur</span>
+                      <span className="mv-modal-field__val">{m.user}</span>
+                    </div>
+                  )}
+                </div>
+
+                {m.note && (
+                  <div className="mv-modal-note">
+                    <div className="mv-modal-field__label" style={{ marginBottom: 6 }}>Note</div>
+                    <div className="mv-modal-note__body">{m.note}</div>
+                  </div>
+                )}
+
+                <div className="mv-modal-actions">
+                  <button
+                    className="mv-modal-hide-btn"
+                    onClick={() => {
+                      if (!window.confirm('Masquer ce mouvement ?')) return;
+                      setHiddenIds(prev => {
+                        const next = new Set(prev);
+                        next.add(mid);
+                        localStorage.setItem('mv_hidden', JSON.stringify([...next]));
+                        return next;
+                      });
+                      setSelectedMovement(null);
+                    }}
+                  >
+                    🗑 Masquer ce mouvement
+                  </button>
+                  <button className="mv-modal-close-btn" onClick={() => setSelectedMovement(null)}>
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       </>)}
 

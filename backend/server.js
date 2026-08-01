@@ -2508,13 +2508,28 @@ app.put('/api/chassis-type-accessories/:chassisTypeId', async (req, res) => {
 // ==================== STOCK MOVEMENT ROUTES ====================
 app.get('/api/movements', async (req, res) => {
   try {
-    const { itemId, type, from, to, limit = 500 } = req.query;
+    const { itemId, type, from, to, limit = 200, skip = 0 } = req.query;
     const filter = {};
     if (itemId) filter.itemId = itemId;
     if (type && type !== 'all') filter.type = type;
-    if (from || to) { filter.createdAt = {}; if (from) filter.createdAt.$gte = new Date(from); if (to) filter.createdAt.$lte = new Date(new Date(to).setHours(23, 59, 59, 999)); }
-    const movements = await StockMovement.find(filter).populate('itemId', 'designation categoryId superCategory').sort({ createdAt: -1 }).limit(Number(limit));
-    res.json(movements);
+    if (from || to) {
+      filter.createdAt = {};
+      if (from) filter.createdAt.$gte = new Date(from);
+      if (to) filter.createdAt.$lte = new Date(new Date(to).setHours(23, 59, 59, 999));
+    }
+    const lim = Math.min(Number(limit) || 200, 500); // cap per-request page size
+    const sk = Math.max(Number(skip) || 0, 0);
+
+    const [movements, total] = await Promise.all([
+      StockMovement.find(filter)
+        .populate('itemId', 'designation categoryId superCategory')
+        .sort({ createdAt: -1 })
+        .skip(sk)
+        .limit(lim),
+      StockMovement.countDocuments(filter),
+    ]);
+
+    res.json({ movements, total, hasMore: sk + movements.length < total });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/movements/item/:itemId', async (req, res) => {
