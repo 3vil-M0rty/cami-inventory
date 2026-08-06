@@ -24,6 +24,7 @@ const CATEGORY_LABELS = {
   poudre: { fr: 'Poudre', en: 'Powder', it: 'Polvere' },
   fer: { fr: 'Fer', en: 'Iron', it: 'Ferro' },
   toles: { fr: 'Tôles', en: 'Tôles', it: 'Tôles' },
+  
 };
 
 const CATEGORY_RECEIVE_ROLE = {
@@ -33,7 +34,7 @@ const CATEGORY_RECEIVE_ROLE = {
   aluminium: 'Admin',
   fer: 'Admin',
   toles: 'Admin',
-  
+
 };
 
 export default function OrdersPage() {
