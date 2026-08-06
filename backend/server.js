@@ -200,7 +200,7 @@ const orderSchema = new mongoose.Schema({
   reference: { type: String, default: '', trim: true }, // optional free-text ref
   category: {
     type: String,
-    enum: ['aluminium', 'verre', 'accessoires', 'poudre', 'fer'],
+    enum: ['aluminium', 'verre', 'accessoires', 'poudre', 'fer', 'toles'],
     default: 'aluminium',
     required: true,
   },
