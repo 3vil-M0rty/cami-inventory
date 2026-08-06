@@ -23,6 +23,7 @@ const CATEGORY_LABELS = {
   accessoires: { fr: 'Accessoires', en: 'Accessories', it: 'Accessori' },
   poudre: { fr: 'Poudre', en: 'Powder', it: 'Polvere' },
   fer: { fr: 'Fer', en: 'Iron', it: 'Ferro' },
+  toles: { fr: 'Tôles', en: 'Tôles', it: 'Tôles' },
 };
 
 const CATEGORY_RECEIVE_ROLE = {
@@ -31,6 +32,8 @@ const CATEGORY_RECEIVE_ROLE = {
   verre: 'Coordinateur-vitrage',
   aluminium: 'Admin',
   fer: 'Admin',
+  toles: 'Admin',
+  
 };
 
 export default function OrdersPage() {
