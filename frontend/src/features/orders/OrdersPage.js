@@ -4,7 +4,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import './OrdersPage.css';
 import { exportOrdersExcel, exportOrderPDF } from '../../utils/orderExport';
-import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus } from 'lucide-react';
+import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus, ClipboardList } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -37,6 +37,25 @@ const CATEGORY_RECEIVE_ROLE = {
 
 };
 
+// ── Suivi des commandes: static option lists ───────────────────────────────
+const FACTURE_OPTIONS = [
+  { value: 'non_recue', label: 'Non reçue' },
+  { value: 'recue', label: 'Reçue' },
+];
+const PAIEMENT_OPTIONS = [
+  { value: '', label: '—' },
+  { value: 'espece', label: 'Espèce' },
+  { value: 'virement', label: 'Virement' },
+  { value: 'cheque', label: 'Chèque' },
+  { value: 'effet', label: 'Effet' },
+];
+const TYPE_FACTURE_OPTIONS = [
+  { value: '', label: '—' },
+  { value: 'bl', label: 'BL' },
+  { value: 'facture', label: 'Facture' },
+  { value: 'situation', label: 'Situation' },
+];
+
 export default function OrdersPage() {
   const { currentLanguage: lang, t } = useLanguage();
   const { companies, selectedCompany } = useCompany();
@@ -65,7 +84,7 @@ export default function OrdersPage() {
   };
   const [purchaseRequests, setPurchaseRequests] = useState([]);
   const [prLoading, setPrLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'requests'
+  const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'requests' | 'suivi'
   const [markingId, setMarkingId] = useState(null);
 
   // who may touch THIS order
@@ -488,6 +507,16 @@ export default function OrdersPage() {
             </button>
           )}
 
+          {can('orders.edit') && (
+            <button
+              className={`orders-tab-btn ${activeTab === 'suivi' ? 'active' : ''}`}
+              onClick={() => setActiveTab('suivi')}
+            >
+              <ClipboardList size={13} />
+              Suivi des commandes
+            </button>
+          )}
+
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="super-cat-settings-btn" title='Excel' onClick={() => exportOrdersExcel(filteredOrders, lang)}>
@@ -514,6 +543,8 @@ export default function OrdersPage() {
           isAdmin={isAdmin}
           lang={lang}
         />
+      ) : activeTab === 'suivi' ? (
+        <SuiviCommandesPanel />
       ) : (
         <>
           <div className="orders-stats">
@@ -1260,6 +1291,239 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
                 </tr>
               ))}
             </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Suivi des commandes Panel ─────────────────────────────────────────────
+   Shown on the "Suivi des commandes" tab. Achat + Admin only (gated at the
+   tab-button level via can('orders.edit') and at the API level).
+
+   Each row = one (order, BL) pair, built server-side from the order's own
+   `receptions[]` array — so every order (sent/partial/received/cancelled)
+   shows up automatically, and an order with several partial receptions
+   naturally produces several rows (one per BL). Orders not yet received
+   show a single "en attente" row. Date, montant BC, montant BL and état
+   are always computed live from the order — never stored — so they can't
+   drift. Only Facture / Mode de paiement / Type de facture / Remarque are
+   editable and persisted.
+────────────────────────────────────────────────────────────────────────── */
+function SuiviCommandesPanel() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [savingKey, setSavingKey] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [factureFilter, setFactureFilter] = useState('all'); // 'all' | 'recue' | 'non_recue'
+
+  const fetchRows = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API_URL}/order-tracking`);
+      setRows(res.data || []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchRows(); }, [fetchRows]);
+
+  const rowKey = (r) => `${r.orderId}::${r.blNumber}`;
+
+  const updateField = async (row, field, value) => {
+    const key = rowKey(row);
+    setRows(prev => prev.map(r => rowKey(r) === key ? { ...r, [field]: value } : r));
+    setSavingKey(key);
+    try {
+      await axios.patch(`${API_URL}/order-tracking`, {
+        orderId: row.orderId,
+        blNumber: row.blNumber,
+        [field]: value,
+      });
+    } catch (e) {
+      console.error(e);
+      alert('Erreur lors de la sauvegarde');
+      fetchRows();
+    } finally { setSavingKey(null); }
+  };
+
+  const visibleRows = rows.filter(r => {
+    if (factureFilter !== 'all' && r.factureStatus !== factureFilter) return false;
+    if (searchTerm.trim()) {
+      const tokens = searchTerm.toLowerCase().split(/\s+/).filter(Boolean);
+      const haystack = [r.supplierName, r.orderNumber, r.blNumber, r.remarque].join(' ').toLowerCase();
+      if (!tokens.every(tok => haystack.includes(tok))) return false;
+    }
+    return true;
+  });
+
+  const totals = visibleRows.reduce((acc, r) => ({
+    bc: acc.bc + (r.montantBC || 0),
+    bl: acc.bl + (r.montantBL || 0),
+  }), { bc: 0, bl: 0 });
+
+  if (loading) {
+    return (
+      <div style={{ padding: '60px 20px', textAlign: 'center', color: '#888' }}>
+        <LoaderCircle size={24} style={{ animation: 'spin .7s linear infinite' }} />
+        <p style={{ marginTop: 8 }}>Chargement du suivi…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pr-panel">
+      <div className="pr-panel__header">
+        <div className="pr-panel__title">
+          <ClipboardList size={16} />
+          <span>Suivi des commandes</span>
+          <span className="pr-badge" style={{ background: '#eef2ff', color: '#3730a3' }}>
+            {visibleRows.length} ligne{visibleRows.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="pr-filter-tabs">
+            <button
+              className={`pr-filter-tab ${factureFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setFactureFilter('all')}
+            >
+              Toutes
+            </button>
+            <button
+              className={`pr-filter-tab ${factureFilter === 'non_recue' ? 'active' : ''}`}
+              onClick={() => setFactureFilter('non_recue')}
+            >
+              Facture non reçue
+            </button>
+            <button
+              className={`pr-filter-tab ${factureFilter === 'recue' ? 'active' : ''}`}
+              onClick={() => setFactureFilter('recue')}
+            >
+              Facture reçue
+            </button>
+          </div>
+          <button className="pr-refresh-btn" onClick={fetchRows} title="Rafraîchir">
+            🔄
+          </button>
+        </div>
+      </div>
+
+      <div className="orders-controls" style={{ marginBottom: 12 }}>
+        <input
+          className="search-input"
+          placeholder="Rechercher (fournisseur, n° BC, n° BL, remarque…)"
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+        />
+      </div>
+
+      {visibleRows.length === 0 ? (
+        <div className="pr-empty">
+          <ClipboardList size={36} strokeWidth={1} style={{ color: '#ccc' }} />
+          <p>Aucune commande à afficher.</p>
+        </div>
+      ) : (
+        <div className="pr-table-wrap">
+          <table className="pr-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Fournisseur</th>
+                <th>N° BC</th>
+                <th>BL</th>
+                <th>Montant BC</th>
+                <th>Montant BL</th>
+                <th>Facture</th>
+                <th>Mode paiement</th>
+                <th>Type facture</th>
+                <th>État commande</th>
+                <th style={{ minWidth: 180 }}>Remarque</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map(row => {
+                const key = rowKey(row);
+                const st = STATUS_COLORS[row.status] || STATUS_COLORS.brouillon;
+                const saving = savingKey === key;
+                return (
+                  <tr key={key}>
+                    <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
+                      {new Date(row.date).toLocaleDateString('fr-FR')}
+                    </td>
+                    <td style={{ fontSize: 13, fontWeight: 600 }}>{row.supplierName || '—'}</td>
+                    <td style={{ fontSize: 13 }}>{row.orderNumber || '—'}</td>
+                    <td style={{ fontSize: 13 }}>
+                      {row.blNumber
+                        ? <strong>{row.blNumber}</strong>
+                        : <span style={{ color: '#aaa' }}>En attente</span>}
+                    </td>
+                    <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{row.montantBC.toFixed(2)}</td>
+                    <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{row.montantBL.toFixed(2)}</td>
+                    <td>
+                      <select
+                        value={row.factureStatus}
+                        disabled={saving}
+                        onChange={e => updateField(row, 'factureStatus', e.target.value)}
+                        style={{
+                          fontSize: 12, padding: '3px 6px', borderRadius: 6,
+                          border: '1px solid #ddd',
+                          background: row.factureStatus === 'recue' ? '#dcfce7' : '#fee2e2',
+                          color: row.factureStatus === 'recue' ? '#166534' : '#991b1b',
+                        }}
+                      >
+                        {FACTURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        value={row.modePaiement}
+                        disabled={saving}
+                        onChange={e => updateField(row, 'modePaiement', e.target.value)}
+                        style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: '1px solid #ddd' }}
+                      >
+                        {PAIEMENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        value={row.typeFacture}
+                        disabled={saving}
+                        onChange={e => updateField(row, 'typeFacture', e.target.value)}
+                        style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: '1px solid #ddd' }}
+                      >
+                        {TYPE_FACTURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <span className="status-badge" style={{ background: st.bg, color: st.text, fontSize: 11, whiteSpace: 'nowrap' }}>
+                        {st.label.fr}
+                      </span>
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        defaultValue={row.remarque}
+                        placeholder="—"
+                        disabled={saving}
+                        onBlur={e => { if (e.target.value !== row.remarque) updateField(row, 'remarque', e.target.value); }}
+                        style={{ fontSize: 12, padding: '4px 6px', width: '100%', border: '1px solid #ddd', borderRadius: 6 }}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={4} style={{ textAlign: 'right', fontWeight: 700, fontSize: 12, padding: '10px 12px' }}>
+                  Totaux (lignes affichées) :
+                </td>
+                <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{totals.bc.toFixed(2)}</td>
+                <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{totals.bl.toFixed(2)}</td>
+                <td colSpan={5}></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
