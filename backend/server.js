@@ -511,6 +511,23 @@ const fournisseurSchema = new mongoose.Schema({
 const Fournisseur = mongoose.model('Fournisseur', fournisseurSchema);
 
 
+// ==================== ORDER TRACKING (Suivi des commandes) ====================
+// Stores only the editable metadata per (order, BL). The rest (date, montants,
+// fournisseur, état) is computed on the fly from Order + its receptions.
+const orderTrackingSchema = new mongoose.Schema({
+  orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
+  blNumber: { type: String, default: '' }, // '' = pas encore de BL (commande envoyée, non reçue)
+  factureStatus: { type: String, enum: ['non_recue', 'recue'], default: 'non_recue' },
+  modePaiement: { type: String, enum: ['', 'espece', 'virement', 'cheque', 'effet'], default: '' },
+  typeFacture: { type: String, enum: ['', 'bl', 'facture', 'situation'], default: '' },
+  remarque: { type: String, default: '' },
+}, {
+  timestamps: true,
+  toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } }
+});
+orderTrackingSchema.index({ orderId: 1, blNumber: 1 }, { unique: true });
+const OrderTracking = mongoose.model('OrderTracking', orderTrackingSchema);
+
 
 app.get('/api/projects/:projectId/bl-metadata/:deliveryDate', async (req, res) => {
   try {
@@ -1462,6 +1479,44 @@ app.get('/api/orders', requireAuth, requireOrdersView, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/orders/recent-receptions', requireAuth, requireOrdersView, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const filter = { 'receptions.0': { $exists: true } };
+    if (!isAdmin(req) && !(req.permissions || []).includes('orders.view')) {
+      const userRole = req.user?.roleId?.name || '';
+      filter.category = { $in: receivingCategoriesForRole(userRole) };
+    }
+    const orders = await Order.find(filter)
+      .populate({ path: 'lines.itemId', select: 'designation' })
+      .populate('companyId', 'name')
+      .lean();
+
+    const events = [];
+    for (const o of orders) {
+      for (const rec of o.receptions || []) {
+        const line = (o.lines || []).find(l => String(l._id) === String(rec.lineId));
+        const item = line?.itemId;
+        events.push({
+          orderId: o._id,
+          lineId: rec.lineId,
+          orderNumber: o.number || o.reference || '',
+          category: o.category,
+          companyName: o.companyId?.name || '',
+          itemName: item?.designation?.fr || item?.designation?.it || item?.designation?.en || 'Article',
+          quantityReceived: rec.quantityReceived,
+          blNumber: rec.blNumber,
+          receivedBy: rec.receivedBy || '',
+          receivedAt: rec.receivedAt,
+        });
+      }
+    }
+    events.sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt));
+    res.json(events.slice(0, limit));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
 app.get('/api/orders/:id', requireAuth, requireOrdersView, async (req, res) => {
   try {
     const o = await populateOrder(Order.findById(req.params.id));
@@ -1698,43 +1753,95 @@ app.delete('/api/orders/:id', requireAuth, async (req, res) => {
 });
 
 // Recent receptions across all orders (for the notif bell)
-app.get('/api/orders/recent-receptions', requireAuth, requireOrdersView, async (req, res) => {
-  try {
-    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
-    const filter = { 'receptions.0': { $exists: true } };
-    if (!isAdmin(req) && !(req.permissions || []).includes('orders.view')) {
-      const userRole = req.user?.roleId?.name || '';
-      filter.category = { $in: receivingCategoriesForRole(userRole) };
-    }
-    const orders = await Order.find(filter)
-      .populate({ path: 'lines.itemId', select: 'designation' })
-      .populate('companyId', 'name')
-      .lean();
 
-    const events = [];
+
+// ==================== ORDER TRACKING ROUTES ====================
+// Access: only users with 'orders.edit' — i.e. Achat role + Admin (Admin has ALL_PERMISSIONS).
+
+app.get('/api/order-tracking', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+  try {
+    const orders = await Order.find({ status: { $ne: 'brouillon' } })
+      .populate('companyId').populate('supplierId')
+      .sort({ orderDate: -1 });
+
+    const trackingDocs = await OrderTracking.find({});
+    const trackingMap = {};
+    trackingDocs.forEach(t => { trackingMap[`${t.orderId}::${t.blNumber || ''}`] = t; });
+
+    const rows = [];
     for (const o of orders) {
+      const totalHT = (o.lines || []).reduce((s, l) => s + (l.quantityOrdered || 0) * (l.unitPrice || 0), 0);
+      const tvaRate = o.tva != null ? Number(o.tva) : 20;
+      const montantBC = parseFloat((totalHT * (1 + tvaRate / 100)).toFixed(2));
+      const supplierName = o.supplierId?.name || o.supplier || '';
+      const orderNumber = o.number || o.reference || '';
+
+      // group receptions by BL number
+      const blGroups = {};
       for (const rec of o.receptions || []) {
-        const line = (o.lines || []).find(l => String(l._id) === String(rec.lineId));
-        const item = line?.itemId;
-        events.push({
-          orderId: o._id,
-          lineId: rec.lineId,
-          orderNumber: o.number || o.reference || '',
-          category: o.category,
-          companyName: o.companyId?.name || '',
-          itemName: item?.designation?.fr || item?.designation?.it || item?.designation?.en || 'Article',
-          quantityReceived: rec.quantityReceived,
-          blNumber: rec.blNumber,
-          receivedBy: rec.receivedBy || '',
-          receivedAt: rec.receivedAt,
-        });
+        const key = rec.blNumber || '';
+        (blGroups[key] = blGroups[key] || []).push(rec);
+      }
+      const blKeys = Object.keys(blGroups);
+
+      const buildRow = (blNumber, date, montantBL) => {
+        const t = trackingMap[`${o._id}::${blNumber}`];
+        return {
+          orderId: o._id.toString(),
+          blNumber,
+          date,
+          supplierName,
+          orderNumber,
+          montantBC,
+          montantBL,
+          status: o.status,
+          factureStatus: t?.factureStatus || 'non_recue',
+          modePaiement: t?.modePaiement || '',
+          typeFacture: t?.typeFacture || '',
+          remarque: t?.remarque || '',
+        };
+      };
+
+      if (blKeys.length === 0) {
+        rows.push(buildRow('', o.orderDate, 0));
+      } else {
+        for (const bl of blKeys) {
+          const recs = blGroups[bl];
+          let montantBLHT = 0;
+          for (const rec of recs) {
+            const line = (o.lines || []).find(l => String(l._id) === String(rec.lineId));
+            montantBLHT += (rec.quantityReceived || 0) * (line?.unitPrice || 0);
+          }
+          const montantBL = parseFloat((montantBLHT * (1 + tvaRate / 100)).toFixed(2));
+          const lastDate = recs.reduce((max, r) => new Date(r.receivedAt) > new Date(max) ? r.receivedAt : max, recs[0].receivedAt);
+          rows.push(buildRow(bl, lastDate, montantBL));
+        }
       }
     }
-    events.sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt));
-    res.json(events.slice(0, limit));
+
+    // Most recent first
+    rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+    res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.patch('/api/order-tracking', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+  try {
+    const { orderId, blNumber, factureStatus, modePaiement, typeFacture, remarque } = req.body;
+    if (!orderId) return res.status(400).json({ error: 'orderId requis' });
+    const t = await OrderTracking.findOneAndUpdate(
+      { orderId, blNumber: blNumber || '' },
+      { $set: {
+          ...(factureStatus !== undefined ? { factureStatus } : {}),
+          ...(modePaiement !== undefined ? { modePaiement } : {}),
+          ...(typeFacture !== undefined ? { typeFacture } : {}),
+          ...(remarque !== undefined ? { remarque } : {}),
+      } },
+      { upsert: true, new: true, runValidators: true }
+    );
+    res.json(t.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ==================== CLIENT ROUTES ====================
 app.get('/api/clients', async (req, res) => {
