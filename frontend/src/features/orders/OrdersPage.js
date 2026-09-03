@@ -24,7 +24,7 @@ const CATEGORY_LABELS = {
   poudre: { fr: 'Poudre', en: 'Powder', it: 'Polvere' },
   fer: { fr: 'Fer', en: 'Iron', it: 'Ferro' },
   toles: { fr: 'Tôles', en: 'Tôles', it: 'Tôles' },
-  
+
 };
 
 const CATEGORY_RECEIVE_ROLE = {
@@ -60,6 +60,7 @@ export default function OrdersPage() {
   const { currentLanguage: lang, t } = useLanguage();
   const { companies, selectedCompany } = useCompany();
   const [orders, setOrders] = useState([]);
+  const [displayCount, setDisplayCount] = useState(10);
   const [items, setItems] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -79,8 +80,11 @@ export default function OrdersPage() {
   const isAdmin = can('admin.view');
   const canReceiveOrder = (order) => {
     if (isAdmin) return true;
-    const requiredRole = CATEGORY_RECEIVE_ROLE[order.category];
-    return !!requiredRole && user?.role === requiredRole;
+    const orderCats = order.categories || (order.category ? [order.category] : []);
+    return orderCats.some(cat => {
+      const requiredRole = CATEGORY_RECEIVE_ROLE[cat];
+      return requiredRole && user?.role === requiredRole;
+    });
   };
   const [purchaseRequests, setPurchaseRequests] = useState([]);
   const [prLoading, setPrLoading] = useState(false);
@@ -224,6 +228,9 @@ export default function OrdersPage() {
     return matchesSearch(o);
   });
 
+  // Pagination: show only first displayCount orders
+  const visibleOrders = filteredOrders.slice(0, displayCount);
+  const hasMoreOrders = displayCount < filteredOrders.length;
   const stats = {
     total: orders.length,
     brouillon: orders.filter(o => o.status === 'brouillon').length,
@@ -590,76 +597,109 @@ export default function OrdersPage() {
               <p>{t("noData")}</p>
             </div>
           ) : (
-            <div className="orders-list">
-              {filteredOrders.map(order => {
-                const st = STATUS_COLORS[order.status] || STATUS_COLORS.brouillon;
-                const totalOrdered = (order.lines || []).reduce((s, l) => s + l.quantityOrdered, 0);
-                const totalReceived = (order.lines || []).reduce((s, l) => s + (l.quantityReceived || 0), 0);
-                const progress = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
-                return (
-                  <div
-                    key={order.id}
-                    className="order-card order-card--clickable"
-                    onClick={() => setSelectedOrder(order)}
-                  >
-                    <div className="order-card-header">
-                      <div className="order-card-title">
-                        <h3>{orderTitle(order)}</h3>
-                        {order.status === 'brouillon' && <span className="bc-draft-tag">Brouillon</span>}
-                        {order.companyId && <span className="order-company-badge">{order.companyId.name}</span>}
-                        {(order.supplierId?.name || order.supplier) && <span className="order-supplier">— {order.supplierId?.name || order.supplier}</span>}
-                        {order.category && (
-                          <span className="order-company-badge" style={{ background: '#eef2ff', color: '#3730a3' }}>
-                            {CATEGORY_LABELS[order.category]?.[lang] || order.category}
+            <>
+              <div className="orders-list">
+                {visibleOrders.map(order => {
+                  const st = STATUS_COLORS[order.status] || STATUS_COLORS.brouillon;
+                  const totalOrdered = (order.lines || []).reduce((s, l) => s + l.quantityOrdered, 0);
+                  const totalReceived = (order.lines || []).reduce((s, l) => s + (l.quantityReceived || 0), 0);
+                  const progress = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
+                  return (
+                    <div
+                      key={order.id}
+                      className="order-card order-card--clickable"
+                      onClick={() => setSelectedOrder(order)}
+                    >
+                      <div className="order-card-header">
+                        <div className="order-card-title">
+                          <h3>{orderTitle(order)}</h3>
+                          {order.status === 'brouillon' && <span className="bc-draft-tag">Brouillon</span>}
+                          {order.companyId && <span className="order-company-badge">{order.companyId.name}</span>}
+                          {(order.supplierId?.name || order.supplier) && <span className="order-supplier">— {order.supplierId?.name || order.supplier}</span>}
+                          {(order.categories || []).length > 0 && (
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                              {order.categories.map(cat => (
+                                <span
+                                  key={cat}
+                                  className="order-company-badge"
+                                  style={{ background: '#f0f9ff', color: '#0369a1', fontSize: 11 }}
+                                >
+                                  {CATEGORY_LABELS[cat]?.fr || cat}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="order-card-meta">
+                          <span className="status-badge" style={{ background: st.bg, color: st.text }}>
+                            {st.label[lang] || st.label.fr}
                           </span>
+                          <span className="order-date">{new Date(order.orderDate).toLocaleDateString('fr-FR')}</span>
+
+                        </div>
+                      </div>
+
+                      <div className="order-progress-bar">
+                        <div className="order-progress-fill" style={{ width: `${progress}%` }} />
+                      </div>
+                      <div className="order-progress-label">
+                        {totalReceived} / {totalOrdered} articles reçus ({progress}%)
+                      </div>
+
+                      <div className="order-card-thumbs">
+                        {(order.lines || []).slice(0, 5).map((line, idx) => (
+                          <div key={idx} className="order-card-thumb" title={line.itemId?.designation?.[lang] || ''}>
+                            {line.itemId?.image
+                              ? <img src={line.itemId.image} alt="" />
+                              : <span>📦</span>
+                            }
+                          </div>
+                        ))}
+                        {(order.lines || []).length > 5 && (
+                          <div className="order-card-thumb order-card-thumb--more">
+                            +{order.lines.length - 5}
+                          </div>
                         )}
                       </div>
-                      <div className="order-card-meta">
-                        <span className="status-badge" style={{ background: st.bg, color: st.text }}>
-                          {st.label[lang] || st.label.fr}
+
+                      <div className="order-card-footer">
+                        <span className="order-card-lines-count">
+                          {(order.lines || []).length} article{(order.lines || []).length !== 1 ? 's' : ''}
                         </span>
-                        <span className="order-date">{new Date(order.orderDate).toLocaleDateString('fr-FR')}</span>
-                        {order.category && (
-                          <span className="order-company-badge" style={{ background: '#eef2ff', color: '#3730a3' }}>
-                            {CATEGORY_LABELS[order.category]?.[lang] || order.category}
-                          </span>
-                        )}
+                        <span className="order-card-open-hint">Voir détails →</span>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
 
-                    <div className="order-progress-bar">
-                      <div className="order-progress-fill" style={{ width: `${progress}%` }} />
-                    </div>
-                    <div className="order-progress-label">
-                      {totalReceived} / {totalOrdered} articles reçus ({progress}%)
-                    </div>
+              {hasMoreOrders && (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '30px 20px',
+                  marginTop: 20,
+                  borderTop: '1px solid #e5e7eb'
+                }}>
+                  <button
+                    onClick={() => setDisplayCount(prev => prev + 10)}
+                    className="btn-primary"
+                    style={{
+                      padding: '12px 24px',
+                      fontSize: 14,
+                      background: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      fontWeight: 600
+                    }}
+                  >
+                    📥 Charger 10 autres commandes ({displayCount} / {filteredOrders.length})
+                  </button>
+                </div>
+              )}
+            </>
 
-                    <div className="order-card-thumbs">
-                      {(order.lines || []).slice(0, 5).map((line, idx) => (
-                        <div key={idx} className="order-card-thumb" title={line.itemId?.designation?.[lang] || ''}>
-                          {line.itemId?.image
-                            ? <img src={line.itemId.image} alt="" />
-                            : <span>📦</span>
-                          }
-                        </div>
-                      ))}
-                      {(order.lines || []).length > 5 && (
-                        <div className="order-card-thumb order-card-thumb--more">
-                          +{order.lines.length - 5}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="order-card-footer">
-                      <span className="order-card-lines-count">
-                        {(order.lines || []).length} article{(order.lines || []).length !== 1 ? 's' : ''}
-                      </span>
-                      <span className="order-card-open-hint">Voir détails →</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           )}
         </>
       )}
@@ -817,7 +857,9 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
   const [form, setForm] = useState(order ? {
     reference: order.reference || '',
     number: order.number || '',
-    category: order.category || 'aluminium',   // ← AJOUT
+    categories: order.categories && order.categories.length > 0
+      ? order.categories
+      : (order.category ? [order.category] : []),
     companyId: order.companyId?.id || order.companyId?._id || '',
     supplierId: order.supplierId?.id || order.supplierId?._id || '',
     orderDate: order.orderDate?.split('T')[0] || today,
@@ -834,6 +876,7 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
     })),
   } : {
     reference: '', companyId: companies[0]?.id || '', supplierId: '',
+    categories: [],
     orderDate: today, expectedDate: '', notes: '', tva: 20, status: 'brouillon', lines: [],
   });
 
@@ -905,6 +948,7 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.lines.length === 0) { alert('Ajoutez au moins une ligne'); return; }
+    if (form.categories.length === 0) { alert('Sélectionnez au moins une catégorie'); return; }
     try {
       if (order) {
         await axios.put(`${API_URL}/orders/${order.id}`, form);
@@ -934,17 +978,71 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
               </select>
             </div>
             <div className="form-group">
-              <label>Catégorie *</label>
-              <select
-                required
-                value={form.category}
-                onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                disabled={isLocked && !isAdmin}
-              >
-                {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>{label.fr}</option>
-                ))}
-              </select>
+              <label>Catégories *</label>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                padding: '8px 0'
+              }}>
+                {Object.entries(CATEGORY_LABELS).map(([key, label]) => {
+                  const isChecked = form.categories.includes(key);
+                  const isDisabled = isLocked && !isAdmin;
+                  return (
+                    <label
+                      key={key}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '10px 12px',
+                        margin: 0,
+                        fontSize: 13,
+                        fontWeight: 500,
+                        borderRadius: 6,
+                        cursor: isDisabled ? 'not-allowed' : 'pointer',
+                        background: isChecked ? '#dbeafe' : '#f9fafb',
+                        border: isChecked ? '1px solid #0369a1' : '1px solid #e5e7eb',
+                        transition: 'all 0.15s ease',
+                        opacity: isDisabled ? 0.6 : 1,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            setForm(f => ({ ...f, categories: [...f.categories, key] }));
+                          } else {
+                            setForm(f => ({ ...f, categories: f.categories.filter(c => c !== key) }));
+                          }
+                        }}
+                        disabled={isDisabled}
+                        style={{
+                          cursor: isDisabled ? 'not-allowed' : 'pointer',
+                          width: 18,
+                          height: 18,
+                          accentColor: '#0369a1'
+                        }}
+                      />
+                      <span style={{ flex: 1 }}>{label.fr}</span>
+                      {isChecked && (
+                        <span style={{ fontSize: 12, color: '#0369a1', fontWeight: 600 }}>✓</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+              {form.categories.length === 0 && (
+                <p style={{ fontSize: 12, color: '#dc2626', margin: '8px 0 0' }}>
+                  ⚠️ Sélectionnez au moins une catégorie
+                </p>
+              )}
+              {form.categories.length > 0 && (
+                <p style={{ fontSize: 12, color: '#059669', margin: '8px 0 0' }}>
+                  ✓ {form.categories.length} catégorie{form.categories.length > 1 ? 's' : ''} sélectionnée{form.categories.length > 1 ? 's' : ''}
+                </p>
+              )}
             </div>
             <div className="form-group">
               <label>Référence interne</label>
