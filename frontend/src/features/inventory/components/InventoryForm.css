@@ -7,10 +7,9 @@
   width: 100%;
 }
 
-/* Section block */
 .inv-form__section {
   padding: 16px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--150);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -23,7 +22,7 @@
   gap: 7px;
   font-size: 10px;
   font-weight: 700;
-  color: #888;
+  color: var(--text-3);
   text-transform: uppercase;
   letter-spacing: .07em;
   margin-bottom: 2px;
@@ -31,17 +30,17 @@
 
 /* Image preview */
 .inv-form__preview {
-  border: 2px dashed #e0e0e0;
+  border: 2px dashed var(--border);
   border-radius: 10px;
   padding: 12px;
-  background: #f9f9f9;
+  background: var(--50);
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 140px;
   transition: border-color .18s;
 }
-.inv-form__preview:hover { border-color: #aaa; }
+.inv-form__preview:hover { border-color: var(--400); }
 .inv-form__preview-img {
   max-width: 100%;
   max-height: 260px;
@@ -60,36 +59,38 @@
   margin-top: 10px;
   width: 28px; height: 28px;
   display: flex; align-items: center; justify-content: center;
-  background: #111; color: #fff;
+  background: var(--900); color: #fff;
   font-size: 9px; font-weight: 800;
   border-radius: 6px; letter-spacing: .06em;
 }
 .inv-form__lang-row > :last-child { flex: 1; }
 
-/* Number fields */
+/* Number fields — 1-col mobile, 2-col at 481px+ */
 .inv-form__numbers {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 14px;
 }
 .inv-form__number-field { display: flex; flex-direction: column; gap: 5px; }
 .inv-form__number-field label {
-  font-size: 10px; font-weight: 700; color: #888;
+  font-size: 10px; font-weight: 700; color: var(--text-3);
   text-transform: uppercase; letter-spacing: .06em;
 }
 
-/* Action buttons */
+/* Action buttons — stacked mobile, row at 481px+ */
 .inv-form__actions {
   display: flex;
+  flex-direction: column-reverse;
   gap: 10px;
-  justify-content: flex-end;
   padding-top: 16px;
 }
 .inv-form__btn-cancel,
 .inv-form__btn-save {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
+  width: 100%;
   padding: 10px 20px;
   border-radius: 10px;
   font-size: 13px;
@@ -99,21 +100,21 @@
   transition: all .15s;
 }
 .inv-form__btn-cancel {
-  background: #f5f5f5;
-  border: 1.5px solid #e0e0e0;
-  color: #555;
+  background: var(--50);
+  border: 1.5px solid var(--border);
+  color: var(--text-2);
 }
-.inv-form__btn-cancel:hover { background: #eee; }
+.inv-form__btn-cancel:hover { background: var(--100); }
 .inv-form__btn-save {
-  background: #111;
-  border: 1.5px solid #111;
+  background: var(--900);
+  border: 1.5px solid var(--900);
   color: #fff;
 }
-.inv-form__btn-save:hover { background: #333; border-color: #333; }
+.inv-form__btn-save:hover { background: var(--800); border-color: var(--800); }
 
-@media (max-width: 480px) {
-  .inv-form__numbers { grid-template-columns: 1fr; }
-  .inv-form__actions { flex-direction: column-reverse; }
+@media (min-width: 481px) {
+  .inv-form__numbers { grid-template-columns: 1fr 1fr; }
+  .inv-form__actions { flex-direction: row; justify-content: flex-end; }
   .inv-form__btn-cancel,
-  .inv-form__btn-save { width: 100%; justify-content: center; }
+  .inv-form__btn-save { width: auto; }
 }

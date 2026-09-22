@@ -39,6 +39,12 @@
   --success:    #16a34a; --success-bg: #f0fdf4; --success-bd: #86efac;
   --info:       #2563eb; --info-bg:    #eff6ff; --info-bd:    #bfdbfe;
 
+  /* Extended accent palette — use via var() instead of hardcoding */
+  --amber:      #f59e0b;
+  --blue:       #3b82f6;
+  --purple:     #8b5cf6;
+  --green-vivid:#479400;
+
   /* Typography */
   --font: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --mono: 'DM Mono', 'Courier New', monospace;
@@ -88,3 +94,12 @@ input,select,textarea { font-family:inherit; }
 @keyframes slideIn { from{transform:translateX(100%);opacity:0} to{transform:none;opacity:1} }
 @keyframes spin    { to{transform:rotate(360deg)} }
 @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+/* Respect user motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after {
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+  }
+}

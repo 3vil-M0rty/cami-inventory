@@ -1686,6 +1686,7 @@ app.post('/api/orders', requireAuth, requirePermission('orders.edit'), async (re
 });
 
 // Edit — drafts: anyone with orders.edit. Sent/beyond: ADMIN ONLY.
+// Edit — drafts: anyone with orders.edit. Sent/beyond: ADMIN ONLY.
 app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async (req, res) => {
   try {
     const o = await Order.findById(req.params.id);
@@ -1705,7 +1706,6 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
     if (req.body.number !== undefined && (o.status === 'brouillon' || isAdmin(req))) {
       const newNumber = (req.body.number || '').trim();
       if (newNumber && newNumber !== o.number) {
-        // Check for duplicate only if changing the number
         const existing = await Order.findOne({
           companyId: o.companyId,
           number: newNumber,
@@ -1721,7 +1721,6 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
       o.number = newNumber;
     }
 
-    // CHANGED: Update categories array
     if (req.body.categories !== undefined) {
       const categories = Array.isArray(req.body.categories)
         ? req.body.categories.filter(c => c)
@@ -1730,7 +1729,6 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
         o.categories = categories;
       }
     } else if (req.body.category !== undefined && (o.status === 'brouillon' || isAdmin(req))) {
-      // Fallback for backward compatibility
       o.categories = [req.body.category];
     }
 
@@ -1742,7 +1740,69 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
     if (req.body.tva != null) o.tva = Number(req.body.tva);
     if (req.body.status && isAdmin(req)) o.status = req.body.status;
 
-    // ... rest of the logic for lines remains the same
+    // ── LINES: persist edits, reverse stock for deleted received lines,
+    //           and reconcile Item.orderedQuantity for a sent order ──
+    if (req.body.lines !== undefined && (o.status === 'brouillon' || isAdmin(req))) {
+      const isSent = o.status !== 'brouillon';
+      const existingById = new Map(o.lines.map(l => [String(l._id), l]));
+      const incomingIds = new Set(req.body.lines.filter(l => l._id).map(l => String(l._id)));
+
+      // 1) Lines removed entirely: reverse received stock, release pending reservation
+      for (const l of o.lines) {
+        if (incomingIds.has(String(l._id))) continue; // still present, handled below
+
+        const received = l.quantityReceived || 0;
+        const pending = (l.quantityOrdered || 0) - received;
+
+        if (received > 0) {
+          const item = await Item.findById(l.itemId);
+          if (item) {
+            item.quantity = Math.max(0, item.quantity - received);
+            await item.save();
+            await StockMovement.create({
+              itemId: item._id, type: 'sortie', quantity: received,
+              balanceAfter: item.quantity, orderId: o._id,
+              note: `Annulation ligne supprimée — ${o.number || o.reference}`,
+            });
+          }
+        }
+
+        if (isSent && pending > 0) {
+          await Item.findByIdAndUpdate(l.itemId, { $inc: { orderedQuantity: -pending } });
+        }
+      }
+
+      // 2) Rebuild lines array, reconciling orderedQuantity for kept/edited/new lines
+      const newLines = [];
+      for (const l of req.body.lines) {
+        const existing = l._id ? existingById.get(String(l._id)) : null;
+        const newQtyOrdered = Number(l.quantityOrdered) || 1;
+        const receivedQty = existing ? (existing.quantityReceived || 0) : 0;
+
+        if (isSent) {
+          if (existing) {
+            // quantity changed on an already-sent line → adjust the reservation by the delta
+            const delta = newQtyOrdered - (existing.quantityOrdered || 0);
+            if (delta !== 0) {
+              await Item.findByIdAndUpdate(l.itemId, { $inc: { orderedQuantity: delta } });
+            }
+          } else {
+            // brand-new line added to an already-sent order → reserve it like a send would
+            await Item.findByIdAndUpdate(l.itemId, { $inc: { orderedQuantity: newQtyOrdered } });
+          }
+        }
+
+        newLines.push({
+          _id: existing ? existing._id : undefined,
+          itemId: l.itemId,
+          quantityOrdered: newQtyOrdered,
+          quantityReceived: receivedQty,
+          unitPrice: Number(l.unitPrice) || 0,
+          note: l.note || '',
+        });
+      }
+      o.lines = newLines;
+    }
 
     await o.save();
     res.json(await populateOrder(Order.findById(o._id)));

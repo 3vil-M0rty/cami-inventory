@@ -1,6 +1,8 @@
 /* ============================================================
    APP.CSS — Global component library
    All pages share these primitives. No colours except status.
+   Mobile-first: base styles target smallest screens, then
+   progressively enhance with min-width queries.
    ============================================================ */
 
 .app { min-height:100vh; display:flex; flex-direction:column; }
@@ -13,7 +15,13 @@
 .admin-page,.analytics-page,.mv-page {
   max-width: var(--page-max);
   margin: 0 auto;
-  padding: var(--page-pad);
+  padding: 16px;
+}
+@media (min-width:769px) {
+  .page,
+  .inventory-app,.projects-page,.project-detail,
+  .orders-page,.clients-page,.devis-page,
+  .admin-page,.analytics-page,.mv-page { padding: var(--page-pad); }
 }
 
 /* ── Buttons ── */
@@ -97,27 +105,46 @@ button { transition: all var(--t); min-width: fit-content; padding-inline: 12px 
 .form-group input::placeholder,.form-group textarea::placeholder { color:var(--text-4); }
 .form-group select { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 10px center; padding-right:32px; }
 .form-group input[type="color"] { height:44px;padding:4px 8px;cursor:pointer; }
-.form-row   { display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--sp-4); }
-.form-row-2 { display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3); }
-.form-grid-2 { display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);margin-bottom:var(--sp-3); }
-.form-grid-3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--sp-3);margin-bottom:var(--sp-3); }
+
+/* Mobile-first form grids: single column by default */
+.form-row   { display:grid;grid-template-columns:1fr;gap:var(--sp-4); }
+.form-row-2 { display:grid;grid-template-columns:1fr;gap:var(--sp-3); }
+.form-grid-2 { display:grid;grid-template-columns:1fr;gap:var(--sp-3);margin-bottom:var(--sp-3); }
+.form-grid-3 { display:grid;grid-template-columns:1fr;gap:var(--sp-3);margin-bottom:var(--sp-3); }
+@media (min-width:769px) {
+  .form-row   { grid-template-columns:1fr 1fr 1fr; }
+  .form-row-2 { grid-template-columns:1fr 1fr; }
+  .form-grid-2 { grid-template-columns:1fr 1fr; }
+  .form-grid-3 { grid-template-columns:1fr 1fr 1fr; }
+}
+
 .form-error { background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-bd);border-radius:var(--r-md);padding:10px 14px;font-size:13px;margin-bottom:var(--sp-3); }
 
 /* ── Modals ── */
 .modal-overlay {
   position:fixed;inset:0;background:rgba(0,0,0,.55);
   display:flex;align-items:center;justify-content:center;
-  z-index:1000;padding:var(--sp-5);backdrop-filter:blur(2px);
+  z-index:1000;padding:var(--sp-4);backdrop-filter:blur(2px);
 }
+@media (min-width:481px) { .modal-overlay { padding:var(--sp-5); } }
+
+/* Mobile: full-width sheet; desktop: centred card */
 .modal {
   background:var(--surface);border-radius:var(--r-xl);
-  padding:var(--sp-8);max-width:520px;width:100%;
+  padding:var(--sp-4);max-width:520px;width:100%;
   max-height:92vh;overflow-y:auto;
   box-shadow:var(--sh-xl);border:1px solid var(--border);
   animation:modalIn .18s ease-out;
 }
 .modal.large  { max-width:700px; }
-.modal.xlarge { max-width:920px;width:96vw; }
+.modal.xlarge { max-width:920px;width:100%; }
+
+@media (min-width:481px) { .modal { padding:var(--sp-5); } }
+@media (min-width:769px) {
+  .modal { padding:var(--sp-8); }
+  .modal.xlarge { width:96vw; }
+}
+
 .modal h2 { margin-bottom:var(--sp-6);font-size:18px;font-weight:800;letter-spacing:-.02em; }
 .modal-actions { display:flex;gap:var(--sp-2);margin-top:var(--sp-6);justify-content:flex-end; }
 .modal-actions button { padding:9px 20px;border:1.5px solid var(--border);background:var(--surface);border-radius:var(--r-md);font-size:13px;font-weight:600;color:var(--text);cursor:pointer;transition:all var(--t);font-family:inherit; }
@@ -130,7 +157,8 @@ button { transition: all var(--t); min-width: fit-content; padding-inline: 12px 
 
 /* ── Data tables ── */
 .table-wrap { background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;overflow-x:auto;-webkit-overflow-scrolling:touch; }
-.data-table  { width:100%;border-collapse:collapse;font-size:13px;min-width:560px; }
+.data-table  { width:100%;border-collapse:collapse;font-size:13px;min-width:480px; }
+@media (min-width:769px) { .data-table { min-width:560px; } }
 .data-table thead tr { background:var(--900); }
 .data-table th { padding:10px 14px;color:#fff;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;text-align:left;white-space:nowrap; }
 .data-table td { padding:10px 14px;border-bottom:1px solid var(--150);color:var(--text);vertical-align:middle; }
@@ -139,7 +167,8 @@ button { transition: all var(--t); min-width: fit-content; padding-inline: 12px 
 .data-table tbody tr:hover td { background:var(--50); }
 
 /* ── Toolbar ── */
-.toolbar { display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:var(--sp-5); }
+.toolbar { display:flex;align-items:center;gap:var(--sp-1);flex-wrap:wrap;margin-bottom:var(--sp-5); }
+@media (min-width:481px) { .toolbar { gap:var(--sp-2); } }
 .toolbar__right { margin-left:auto;display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap; }
 .panel-toolbar  { display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-5);flex-wrap:wrap; }
 .selection-toolbar { display:flex;align-items:center;gap:var(--sp-2);margin-left:auto;flex-wrap:wrap; }
@@ -163,21 +192,6 @@ button { transition: all var(--t); min-width: fit-content; padding-inline: 12px 
 .chassis-table th,.used-bars-table th { background:var(--900);color:#fff;padding:10px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap; }
 .chassis-table td,.used-bars-table td { padding:10px 14px;border-bottom:1px solid var(--150);color:var(--text);vertical-align:middle; }
 .chassis-row:hover td,.used-bars-table tr:hover td { background:var(--50); }
-
-/* ── Responsive ── */
-@media (max-width:768px) {
-  .inventory-app,.projects-page,.project-detail,
-  .orders-page,.clients-page,.devis-page,
-  .admin-page,.analytics-page,.mv-page { padding:16px; }
-  .form-row,.form-row-2,.form-grid-2,.form-grid-3 { grid-template-columns:1fr; }
-  .modal { padding:var(--sp-5); }
-  .modal.xlarge { width:100%; }
-  .data-table { min-width:480px; }
-}
-@media (max-width:480px) {
-  .modal { padding:var(--sp-4); }
-  .toolbar { gap:var(--sp-1); }
-}
 
 body {
   background-color: #000000;

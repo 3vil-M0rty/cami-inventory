@@ -1,8 +1,8 @@
 /* StockNotifications.css */
-.stock-notification { background:var(--warning-bg);border:1px solid var(--warning-bd);border-radius:var(--r-md);padding:var(--sp-4) var(--sp-5);margin-bottom:var(--sp-6);animation:fadeUp .35s ease-out;box-shadow:var(--sh-sm); }
-.stock-notification__icon { float:left;margin-right:14px;color:var(--warning);display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:rgba(217,119,6,.1);border-radius:50%;flex-shrink:0; }
+.stock-notification { background:var(--warning-bg);border:1px solid var(--warning-bd);border-radius:var(--r-md);padding:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-6);animation:fadeUp .35s ease-out;box-shadow:var(--sh-sm); }
+.stock-notification__icon { display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:rgba(217,119,6,.1);border-radius:50%;flex-shrink:0;color:var(--warning);margin:0 auto var(--sp-2); }
 .stock-notification__icon svg { width:16px;height:16px; }
-.stock-notification__content { overflow:hidden;margin-bottom:var(--sp-3); }
+.stock-notification__content { overflow:hidden;margin-bottom:var(--sp-3);text-align:center; }
 .stock-notification__title { font-size:12px;font-weight:700;color:#92400e;margin-bottom:4px;text-transform:uppercase;letter-spacing:.03em; }
 .stock-notification__message { font-size:13px;color:#78350f; }
 .stock-notification__message strong { font-weight:700;color:#b45309; }
@@ -10,4 +10,9 @@
 .stock-notification__item { display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:12px;color:#78350f;padding:6px 10px;background:rgba(255,255,255,.4);border-radius:var(--r-sm); }
 .stock-notification__item-name { flex:1;margin-right:var(--sp-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
 .stock-notification__item-stock { font-weight:600;color:#b45309;white-space:nowrap; }
-@media (max-width:768px) { .stock-notification { padding:var(--sp-3) var(--sp-4); } .stock-notification__icon { float:none;margin:0 auto var(--sp-2); } .stock-notification__content { text-align:center; } }
+
+@media (min-width:769px) {
+  .stock-notification { padding:var(--sp-4) var(--sp-5); }
+  .stock-notification__icon { float:left;margin:0 14px 0 0; }
+  .stock-notification__content { text-align:left; }
+}

@@ -51,5 +51,14 @@
 .doc-total-row { display:flex;gap:60px;font-size:13px; }
 .doc-total-row.ttc { font-size:15px;font-weight:700;border-top:2px solid var(--900);padding-top:6px;margin-top:4px; }
 .devis-doc-notes { background:var(--50);padding:12px var(--sp-4);border-radius:var(--r-md);font-size:13px;color:var(--text-2);border:1px solid var(--border); }
-@media (max-width:768px) { .form-grid-3 { grid-template-columns:1fr; } .line-form-row { flex-direction:column; } .devis-doc { padding:var(--sp-5); } }
+/* Mobile-first responsive */
+.form-grid-3 { grid-template-columns:1fr; }
+.line-form-row { flex-direction:column; }
+.devis-doc { padding:var(--sp-5); }
+
+@media (min-width:481px) { .line-form-row { flex-direction:row; } }
+@media (min-width:769px) {
+  .form-grid-3 { grid-template-columns:1fr 1fr 1fr; }
+  .devis-doc { padding:40px; }
+}
 @media print { .preview-toolbar { display:none; } .devis-doc { padding:20px; } }

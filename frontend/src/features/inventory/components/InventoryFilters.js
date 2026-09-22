@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Search, X, AlertTriangle, List } from 'lucide-react';
+import { Search, X, AlertTriangle, AlertCircle, List } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 import './InventoryFilters.css';
 
 export const FILTER_TYPES = {
   ALL: 'all',
-  LOW_STOCK: 'low_stock',
+  LOW_STOCK: 'low_stock',     // rupture / critical — below threshold, nothing on order to cover it
+  ALERT_STOCK: 'alert_stock', // warning — below threshold but order already in progress
 };
 
 const InventoryFilters = ({ onFilterChange, onSearchChange }) => {
@@ -14,8 +15,10 @@ const InventoryFilters = ({ onFilterChange, onSearchChange }) => {
   const [searchTerm,   setSearchTerm]   = useState('');
 
   const handleFilterClick = (type) => {
-    setActiveFilter(type);
-    onFilterChange(type);
+    // clicking the already-active filter toggles it back to ALL
+    const next = activeFilter === type ? FILTER_TYPES.ALL : type;
+    setActiveFilter(next);
+    onFilterChange(next);
   };
 
   const handleSearchChange = (e) => {
@@ -38,12 +41,21 @@ const InventoryFilters = ({ onFilterChange, onSearchChange }) => {
           <List size={12} strokeWidth={2.5} />
           {t('showAll')}
         </button>
+
         <button
-          className={`inv-filter-btn inv-filter-btn--alert ${activeFilter === FILTER_TYPES.LOW_STOCK ? 'active' : ''}`}
+          className={`inv-filter-btn inv-filter-btn--danger ${activeFilter === FILTER_TYPES.LOW_STOCK ? 'active' : ''}`}
           onClick={() => handleFilterClick(FILTER_TYPES.LOW_STOCK)}
         >
           <AlertTriangle size={12} strokeWidth={2.5} />
           {t('showLowStock')}
+        </button>
+
+        <button
+          className={`inv-filter-btn inv-filter-btn--warning ${activeFilter === FILTER_TYPES.ALERT_STOCK ? 'active' : ''}`}
+          onClick={() => handleFilterClick(FILTER_TYPES.ALERT_STOCK)}
+        >
+          <AlertCircle size={12} strokeWidth={2.5} />
+          {t('showAlertStock')}
         </button>
       </div>
 

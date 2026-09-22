@@ -36,7 +36,7 @@
 .btn-sm-warn:hover   { background:var(--warning-bg);border-color:var(--warning); }
 .btn-sm-ok     { color:var(--success);border-color:var(--success-bd); }
 .btn-sm-ok:hover     { background:var(--success-bg);border-color:var(--success); }
-.roles-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:var(--sp-4); }
+.roles-grid { display:grid;grid-template-columns:1fr;gap:var(--sp-4); }
 .role-card { background:var(--surface);border-radius:var(--r-xl);border:1.5px solid var(--border);padding:var(--sp-5);box-shadow:var(--sh-sm); }
 .role-card-header { display:flex;align-items:center;gap:10px;margin-bottom:var(--sp-4); }
 .role-color-dot { width:12px;height:12px;border-radius:50%;flex-shrink:0; }
@@ -52,7 +52,7 @@
 .permissions-editor { border:1.5px solid var(--border);border-radius:var(--r-lg);padding:var(--sp-5);margin-bottom:var(--sp-4); }
 .perms-header { display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-4);flex-wrap:wrap;gap:var(--sp-2); }
 .perms-header h3 { font-size:14px;font-weight:700;margin:0; }
-.perms-groups { display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:var(--sp-4); }
+.perms-groups { display:grid;grid-template-columns:1fr;gap:var(--sp-4); }
 .perm-group-block { background:var(--50);border-radius:var(--r-md);padding:var(--sp-3);border:1px solid var(--border); }
 .perm-group-block--sub { margin-left:var(--sp-5);border-left:2px solid var(--border);padding-left:var(--sp-3);background:var(--surface); }
 .perm-group-block--sub .perm-group-title { color:var(--text-3); }
@@ -64,4 +64,7 @@
 .perm-item.perm-on { background:var(--info-bg);border-color:var(--info-bd);color:#1e40af; }
 .perm-item input { width:15px;height:15px;cursor:pointer;accent-color:var(--900); }
 .form-error { background:var(--danger-bg);color:var(--danger);padding:10px var(--sp-4);border-radius:var(--r-md);font-size:13px;margin-bottom:var(--sp-3);border:1px solid var(--danger-bd); }
-@media (max-width:768px) { .roles-grid { grid-template-columns:1fr; } .perms-groups { grid-template-columns:1fr; } .form-grid-2 { grid-template-columns:1fr; } }
+@media (min-width:481px) {
+  .roles-grid { grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); }
+  .perms-groups { grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); }
+}
