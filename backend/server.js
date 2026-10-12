@@ -22,8 +22,24 @@ app.use(express.json());
 app.use(compression()); // add this near your other app.use() calls, before routes
 
 app.use(express.urlencoded({ extended: true }));
+// Request log WITH duration and response size, to see what is slow: "GET /api/orders 200 1834ms 412kB"
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  const start = process.hrtime.bigint();
+  res.on('finish', () => {
+    const ms = Number(process.hrtime.bigint() - start) / 1e6;
+    const len = Number(res.getHeader('content-length')) || 0;
+    const size = len ? ` ${(len / 1024).toFixed(0)}kB` : '';
+    const flag = ms > 1000 ? ' 🐢' : '';
+    console.log(`${new Date().toISOString()} ${req.method} ${req.path} ${res.statusCode} ${ms.toFixed(0)}ms${size}${flag}`);
+  });
+  next();
+});
+
+// Any write (POST/PUT/PATCH/DELETE) may change what the orders list shows → drop its cache
+let ordersListCache = new Map(); // filterKey -> { at, data }
+const ORDERS_CACHE_MS = 5 * 60 * 1000;
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.path.startsWith('/api/')) ordersListCache.clear();
   next();
 });
 
@@ -149,6 +165,8 @@ const sessionSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   expiresAt: { type: Date, required: true }
 }, { timestamps: true });
+// Expired sessions are removed automatically by MongoDB (TTL index)
+sessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 const Session = mongoose.model('Session', sessionSchema);
 
 const categorySchema = new mongoose.Schema({
@@ -237,6 +255,9 @@ const orderSchema = new mongoose.Schema({
 
 // Keep the index but update to use categories array
 orderSchema.index({ companyId: 1, number: 1 });
+orderSchema.index({ createdAt: -1 });
+orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ 'lines.itemId': 1 });
 const Order = mongoose.model('Order', orderSchema);
 
 const clientSchema = new mongoose.Schema({
@@ -1121,16 +1142,31 @@ app.put('/api/four-status', requireAuth, async (req, res) => {
 
 // ==================== AUTH MIDDLEWARE ====================
 
+// Short in-memory cache of authenticated sessions: avoids 3 round trips to Atlas on EVERY request.
+// Cleared on logout and whenever users / roles change.
+const AUTH_CACHE_MS = 30 * 1000;
+const authCache = new Map(); // token -> { user, permissions, until, expiresAt }
+function clearAuthCache() { authCache.clear(); }
+
 async function requireAuth(req, res, next) {
   const token = req.headers['x-auth-token'] || req.headers['authorization']?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Non authentifié' });
   try {
-    const session = await Session.findOne({ token, expiresAt: { $gt: new Date() } });
-    if (!session) return res.status(401).json({ error: 'Session expirée, veuillez vous reconnecter' });
+    const now = Date.now();
+    const cached = authCache.get(token);
+    if (cached && cached.until > now && cached.expiresAt > now) {
+      req.user = cached.user;
+      req.permissions = cached.permissions;
+      return next();
+    }
+    const session = await Session.findOne({ token, expiresAt: { $gt: new Date() } }).lean();
+    if (!session) { authCache.delete(token); return res.status(401).json({ error: 'Session expirée, veuillez vous reconnecter' }); }
     const user = await User.findById(session.userId).populate('roleId');
-    if (!user || !user.active) return res.status(401).json({ error: 'Compte désactivé' });
+    if (!user || !user.active) { authCache.delete(token); return res.status(401).json({ error: 'Compte désactivé' }); }
     req.user = user;
     req.permissions = user.roleId?.permissions || [];
+    if (authCache.size > 1000) authCache.clear();
+    authCache.set(token, { user, permissions: req.permissions, until: now + AUTH_CACHE_MS, expiresAt: new Date(session.expiresAt).getTime() });
     next();
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
@@ -1179,12 +1215,27 @@ async function optionalAuth(req, res, next) {
   const token = req.headers["x-auth-token"] || req.headers["authorization"]?.replace("Bearer ", "");
   if (!token) { req.permissions = []; req.allowedSuperCategories = null; return next(); }
   try {
-    const session = await Session.findOne({ token, expiresAt: { $gt: new Date() } });
+    const now = Date.now();
+    const cached = authCache.get(token);
+    if (cached && cached.until > now && cached.expiresAt > now && cached.allowedSuperCategories !== undefined) {
+      req.user = cached.user;
+      req.permissions = cached.permissions;
+      req.allowedSuperCategories = cached.allowedSuperCategories;
+      return next();
+    }
+    const session = await Session.findOne({ token, expiresAt: { $gt: new Date() } }).lean();
     if (!session) { req.permissions = []; req.allowedSuperCategories = null; return next(); }
     const user = await User.findById(session.userId).populate("roleId");
     req.user = user;
     req.permissions = user?.roleId?.permissions || [];
     req.allowedSuperCategories = await resolveAllowedSCs(req.permissions);
+    if (user && user.active) {
+      if (authCache.size > 1000) authCache.clear();
+      authCache.set(token, {
+        user, permissions: req.permissions, allowedSuperCategories: req.allowedSuperCategories,
+        until: now + AUTH_CACHE_MS, expiresAt: new Date(session.expiresAt).getTime(),
+      });
+    }
     next();
   } catch (e) { req.permissions = []; req.allowedSuperCategories = null; next(); }
 }
@@ -1207,7 +1258,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/logout', async (req, res) => {
   const token = req.headers['x-auth-token'] || req.headers['authorization']?.replace('Bearer ', '');
-  if (token) await Session.deleteOne({ token });
+  if (token) { await Session.deleteOne({ token }); authCache.delete(token); }
   res.json({ success: true });
 });
 
@@ -1216,6 +1267,7 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
 });
 
 app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+  clearAuthCache();
   try {
     const { currentPassword, newPassword } = req.body;
     if (!newPassword || newPassword.length < 4) return res.status(400).json({ error: 'Nouveau mot de passe trop court (min 4 caractères)' });
@@ -1241,6 +1293,7 @@ app.post('/api/roles', requireAuth, requirePermission('admin.view'), async (req,
   } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ error: e.message }); }
 });
 app.put('/api/roles/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  clearAuthCache();
   try {
     const r = await Role.findById(req.params.id);
     if (!r) return res.status(404).json({ error: 'Not found' });
@@ -1251,6 +1304,7 @@ app.put('/api/roles/:id', requireAuth, requirePermission('admin.view'), async (r
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/roles/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  clearAuthCache();
   try {
     const r = await Role.findById(req.params.id);
     if (!r) return res.status(404).json({ error: 'Not found' });
@@ -1279,6 +1333,7 @@ app.post('/api/users', requireAuth, requirePermission('admin.view'), async (req,
   } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ error: e.message }); }
 });
 app.put('/api/users/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  clearAuthCache();
   try {
     const u = await User.findById(req.params.id);
     if (!u) return res.status(404).json({ error: 'Not found' });
@@ -1292,6 +1347,7 @@ app.put('/api/users/:id', requireAuth, requirePermission('admin.view'), async (r
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/users/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  clearAuthCache();
   try {
     if (req.user.id === req.params.id) return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
     await User.findByIdAndDelete(req.params.id);
@@ -1510,6 +1566,30 @@ const populateOrder = (q) => q
   .populate({ path: 'lines.itemId', populate: { path: 'categoryId' } })
   .populate('companyId').populate('supplierId');
 
+// Fast version for the orders LIST: plain objects (lean) + only the article fields the page uses.
+// Adds the `id` fields the frontend expects (toJSON is not applied on lean documents).
+const ORDER_LIST_ITEM_FIELDS = 'designation image codeInterne supplierCodes categoryId superCategory';
+const withId = (d) => (d && typeof d === 'object' && d._id ? Object.assign(d, { id: String(d._id) }) : d);
+async function findOrdersForList(filter) {
+  const orders = await Order.find(filter)
+    .sort({ createdAt: -1 })
+    .populate({ path: 'lines.itemId', select: ORDER_LIST_ITEM_FIELDS, populate: { path: 'categoryId', select: 'name color' } })
+    .populate('companyId')
+    .populate('supplierId')
+    .lean();
+  for (const o of orders) {
+    withId(o);
+    delete o.__v;
+    withId(o.companyId);
+    withId(o.supplierId);
+    for (const l of o.lines || []) {
+      withId(l.itemId);
+      if (l.itemId) withId(l.itemId.categoryId);
+    }
+  }
+  return orders;
+}
+
 // Item.orderedQuantity = sum of (quantityOrdered - quantityReceived) over every
 // SENT order (envoye / partielle), closed lines excluded. Recomputed from the orders themselves instead of
 // $inc counters, so it can never drift (e.g. after an inventory edit overwrote it).
@@ -1569,62 +1649,33 @@ async function resyncAllOrderedQuantities() {
 // category, and only sent orders (drafts stay hidden from them).
 app.get('/api/orders', requireAuth, requireOrdersView, async (req, res) => {
   try {
-    console.log('\n========== GET /api/orders ==========');
-    console.log(`Timestamp: ${new Date().toISOString()}`);
-    console.log(`User: ${req.user?.username} (ID: ${req.user?._id})`);
-    console.log(`Is Admin: ${isAdmin(req)}`);
-    console.log(`User Role: ${req.user?.roleId?.name}`);
-    console.log(`Permissions: [${(req.permissions || []).join(', ')}]`);
-
-    let filter = {};
+    const filter = {};
 
     if (!isAdmin(req) && !(req.permissions || []).includes('orders.view')) {
       const userRole = req.user?.roleId?.name || '';
       const allowedCats = receivingCategoriesForRole(userRole);
-
-      console.log(`\n🔐 Non-admin access`);
-      console.log(`User role: "${userRole}"`);
-      console.log(`Allowed categories: [${allowedCats.join(', ')}]`);
-
-      if (allowedCats.length === 0) {
-        console.log('❌ No allowed categories - returning empty\n');
-        return res.json([]);
-      }
-
+      if (allowedCats.length === 0) return res.json([]);
       filter.categories = { $in: allowedCats };
       filter.status = { $ne: 'brouillon' };
-      console.log(`Filter: categories IN [${allowedCats.join(', ')}] AND status != brouillon`);
     } else {
-      console.log(`\n✅ Admin/Full access - no category filtering`);
-      // Only filter out drafts for non-ACHAT users
+      // Only ACHAT (orders.edit) and Admin see drafts
       const hasOrdersEdit = (req.permissions || []).includes('orders.edit');
-      if (!hasOrdersEdit && !isAdmin(req)) {
-        filter.status = { $ne: 'brouillon' };
-        console.log(`Filter: status != brouillon (non-ACHAT user)`);
-      } else {
-        console.log(`Filter: no filter (ACHAT/Admin user - can see all)`);
-      }
+      if (!hasOrdersEdit && !isAdmin(req)) filter.status = { $ne: 'brouillon' };
     }
 
-    console.log(`\nExecuting find with filter:`, JSON.stringify(filter));
-
-    const orders = await populateOrder(Order.find(filter)).sort({ createdAt: -1 });
-
-    console.log(`✅ Found ${orders.length} orders\n`);
-
-    if (orders.length > 0) {
-      console.log(`First order:`, {
-        id: orders[0]._id,
-        number: orders[0].number,
-        categories: orders[0].categories,
-        status: orders[0].status,
-        company: orders[0].companyId?.name
-      });
+    // Cached list (cleared by any write) — Atlas free tier is slow, the list rarely changes
+    const key = JSON.stringify(filter);
+    const hit = ordersListCache.get(key);
+    if (hit && Date.now() - hit.at < ORDERS_CACHE_MS) {
+      res.set('X-Cache', 'HIT');
+      return res.json(hit.data);
     }
-
-    res.json(orders);
+    const data = await findOrdersForList(filter);
+    ordersListCache.set(key, { at: Date.now(), data });
+    res.set('X-Cache', 'MISS');
+    res.json(data);
   } catch (e) {
-    console.error('❌ Error:', e.message, e.stack);
+    console.error('❌ GET /api/orders:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -1638,6 +1689,7 @@ app.get('/api/orders/recent-receptions', requireAuth, requireOrdersView, async (
       filter.category = { $in: receivingCategoriesForRole(userRole) };
     }
     const orders = await Order.find(filter)
+      .select('number reference category companyId lines._id lines.itemId receptions')
       .populate({ path: 'lines.itemId', select: 'designation' })
       .populate('companyId', 'name')
       .lean();

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
@@ -8,6 +8,27 @@ import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Tras
 import { useAuth } from '../../context/AuthContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+
+// Last orders list, per user: shown instantly when the page opens, then refreshed in the background.
+// Kept in memory (navigation inside the app) and in localStorage (page reload).
+const ORDERS_CACHE_PREFIX = 'orders-cache-v1:';
+const ordersMemCache = {};
+function readOrdersCache(userKey) {
+  if (!userKey) return null;
+  if (ordersMemCache[userKey]) return ordersMemCache[userKey];
+  try {
+    const raw = localStorage.getItem(ORDERS_CACHE_PREFIX + userKey);
+    const data = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(data)) ordersMemCache[userKey] = data;
+    return Array.isArray(data) ? data : null;
+  } catch { return null; }
+}
+function writeOrdersCache(userKey, data) {
+  if (!userKey) return;
+  ordersMemCache[userKey] = data;
+  try { localStorage.setItem(ORDERS_CACHE_PREFIX + userKey, JSON.stringify(data)); }
+  catch { /* quota exceeded: memory cache is enough */ }
+}
 
 const STATUS_COLORS = {
   brouillon: { bg: '#f3f4f6', text: '#374151', label: { fr: 'Brouillon', en: 'Draft', it: 'Bozza' } },
@@ -97,19 +118,34 @@ export default function OrdersPage() {
   const canSendOrder = (o) => o.status === 'brouillon' && can('orders.edit');
   const canCancelOrder = (o) => (o.status === 'envoye' || o.status === 'partielle') && isAdmin;
 
+  const userKey = user?.id || user?._id || user?.username || '';
+  const hasOrders = useRef(false);
   const fetchOrders = useCallback(async () => {
-    setLoading(true);
+    // Show the last known list immediately; the spinner only appears when there is nothing to show
+    if (!hasOrders.current) {
+      const cached = readOrdersCache(userKey);
+      if (cached) { setOrders(cached); hasOrders.current = true; setLoading(false); }
+      else setLoading(true);
+    }
     try {
       const res = await axios.get(`${API_URL}/orders`);
       setOrders(res.data);
+      hasOrders.current = true;
+      writeOrdersCache(userKey, res.data);
     } catch (e) { console.error(e); } finally { setLoading(false); }
-  }, []);
+  }, [userKey]);
 
+  // The full inventory is only needed by the order form → loaded the first time the form opens
+  const [itemsLoaded, setItemsLoaded] = useState(false);
+  const itemsRequested = useRef(false);
   const fetchItems = useCallback(async () => {
+    if (itemsRequested.current) return;
+    itemsRequested.current = true;
     try {
       const res = await axios.get(`${API_URL}/inventory`);
       setItems(res.data);
-    } catch (e) { console.error(e); }
+      setItemsLoaded(true);
+    } catch (e) { console.error(e); itemsRequested.current = false; }
   }, []);
 
   const fetchSuppliers = useCallback(async () => {
@@ -145,7 +181,8 @@ export default function OrdersPage() {
     } catch (e) { console.error(e); } finally { setDeletingPrId(null); }
   };
 
-  useEffect(() => { fetchOrders(); fetchItems(); fetchSuppliers(); fetchPurchaseRequests(); }, [fetchOrders, fetchItems, fetchSuppliers, fetchPurchaseRequests]);
+  useEffect(() => { fetchOrders(); fetchSuppliers(); fetchPurchaseRequests(); }, [fetchOrders, fetchSuppliers, fetchPurchaseRequests]);
+  useEffect(() => { if (showForm) fetchItems(); }, [showForm, fetchItems]);
 
   // Keep selectedOrder in sync after a re-fetch
   useEffect(() => {
@@ -394,7 +431,7 @@ export default function OrdersPage() {
               <div key={idx} className={`order-detail-line ${isComplete ? 'line-complete' : ''}`}>
                 <div className="detail-line-image">
                   {item?.image
-                    ? <img src={item.image} alt={item.designation?.[lang] || ''} />
+                    ? <img loading="lazy" decoding="async" src={item.image} alt={item.designation?.[lang] || ''} />
                     : <div className="detail-line-no-image"><Package size={15} /></div>
                   }
                 </div>
@@ -521,7 +558,7 @@ export default function OrdersPage() {
                         return (
                           <div key={idx} className={`reception-row ${rec.cancelled ? 'reception-row--cancelled' : ''}`}>
                             <div className="reception-row__thumb">
-                              {item?.image ? <img src={item.image} alt="" /> : <Package size={14} />}
+                              {item?.image ? <img loading="lazy" decoding="async" src={item.image} alt="" /> : <Package size={14} />}
                             </div>
                             <div className="reception-row__name" title={name}>
                               {name}
@@ -586,6 +623,7 @@ export default function OrdersPage() {
           <OrderForm
             order={editOrder}
             items={items}
+            itemsLoaded={itemsLoaded}
             companies={companies}
             suppliers={suppliers}
             onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
@@ -763,7 +801,7 @@ export default function OrdersPage() {
                         {(order.lines || []).slice(0, 5).map((line, idx) => (
                           <div key={idx} className="order-card-thumb" title={line.itemId?.designation?.[lang] || ''}>
                             {line.itemId?.image
-                              ? <img src={line.itemId.image} alt="" />
+                              ? <img loading="lazy" decoding="async" src={line.itemId.image} alt="" />
                               : <span>📦</span>
                             }
                           </div>
@@ -822,6 +860,7 @@ export default function OrdersPage() {
         <OrderForm
           order={editOrder}
           items={items}
+          itemsLoaded={itemsLoaded}
           companies={companies}
           suppliers={suppliers}
           onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
@@ -946,7 +985,7 @@ function SupplierModal({ onClose, onSaved }) {
 }
 
 /* ── Order Form ─────────────────────────────────────────────────── */
-function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, isAdmin, onClose, onSave }) {
+function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onSupplierAdded, lang, isAdmin, onClose, onSave }) {
   const { t } = useLanguage();
   const today = new Date().toISOString().split('T')[0];
   const [showSupplierModal, setShowSupplierModal] = useState(false);
@@ -1210,7 +1249,9 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
           <div className="order-lines-section">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <h3 style={{ margin: 0 }}>Articles commandés</h3>
-              <button type="button" className="btn-add-line" onClick={addLine}>+ Ajouter ligne</button>
+              <button type="button" className="btn-add-line" onClick={addLine} disabled={!itemsLoaded}>
+                {itemsLoaded ? '+ Ajouter ligne' : 'Chargement des articles…'}
+              </button>
             </div>
 
             {form.lines.length === 0 && (
@@ -1264,7 +1305,7 @@ function OrderForm({ order, items, companies, suppliers, onSupplierAdded, lang, 
                   <div className="order-line-main">
                     <div className="line-item-selector">
                       {selectedItem?.image && (
-                        <img className="line-item-preview" src={selectedItem.image} alt="" />
+                        <img loading="lazy" decoding="async" className="line-item-preview" src={selectedItem.image} alt="" />
                       )}
                       {!selectedItem?.image && (
                         <div className="line-item-preview line-item-preview--placeholder">📦</div>
@@ -1429,7 +1470,7 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
                 <tr key={req.id || req._id} className={`pr-row pr-row--${req.status}`}>
                   <td>
                     {req.itemImage
-                      ? <img src={req.itemImage} alt={req.itemName} style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 6, border: '1px solid #e8e8e8', background: '#fff' }} />
+                      ? <img loading="lazy" decoding="async" src={req.itemImage} alt={req.itemName} style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 6, border: '1px solid #e8e8e8', background: '#fff' }} />
                       : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>
                     }
                   </td>
