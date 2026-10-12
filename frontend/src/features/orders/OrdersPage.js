@@ -401,80 +401,97 @@ export default function OrdersPage() {
 
     return (
       <div className="orders-page">
-        <div className="order-detail-back">
-          <div className="order-detail-actions">
-            <button className="btn-back" onClick={() => closeOrder()}>
-              <StepBack size={15} />
-              {t('backCommandes')}
-            </button>
+        {/* ── Toolbar: back on the left, actions on the right (all buttons same height) ── */}
+        <div className="od-toolbar">
+          <button className="od-btn od-btn--back" onClick={() => closeOrder()}>
+            <StepBack size={15} />
+            <span>{t('backCommandes')}</span>
+          </button>
 
+          <div className="od-toolbar__actions">
             <button
-              className="btn-pdf"
-              title='PDF'
+              className="od-btn"
+              title="Exporter en PDF"
               onClick={() => handleExportPDF(order)}
               disabled={exportingPdf === order.id}
             >
-              {exportingPdf === order.id ? <LoaderCircle size={15} /> : <FileText size={15} />}
+              {exportingPdf === order.id ? <LoaderCircle size={15} className="od-spin" /> : <FileText size={15} />}
+              <span className="od-btn__label">PDF</span>
             </button>
 
             {canSendOrder(order) && (
-              <button className="btn-send" onClick={() => handleSend(order)} disabled={sendingId === order.id}>
-                {sendingId === order.id ? <LoaderCircle size={15} /> : <Send size={14} />} Envoyer
+              <button className="od-btn od-btn--send" onClick={() => handleSend(order)} disabled={sendingId === order.id}>
+                {sendingId === order.id ? <LoaderCircle size={15} className="od-spin" /> : <Send size={15} />}
+                <span className="od-btn__label">Envoyer</span>
               </button>
             )}
 
             {canEditOrder(order) ? (
-              <button className="btn-edit" title={t('edit')} onClick={() => { setEditOrder(order); setShowForm(true); }}>
+              <button className="od-btn" title={t('edit')} onClick={() => { setEditOrder(order); setShowForm(true); }}>
                 <Pencil size={15} />
+                <span className="od-btn__label">Modifier</span>
               </button>
             ) : locked && (
-              <span className="bc-lock" title="Verrouillé — admin uniquement"><Lock size={13} /> Verrouillé</span>
+              <span className="od-btn od-btn--locked" title="Verrouillé — admin uniquement">
+                <Lock size={14} />
+                <span className="od-btn__label">Verrouillé</span>
+              </span>
             )}
 
             {canCancelOrder(order) && (
-              <button className="btn-cancel-order" onClick={() => handleCancel(order)}><Ban size={14} /> Annuler</button>
+              <button className="od-btn od-btn--warn" title="Annuler le bon de commande" onClick={() => handleCancel(order)}>
+                <Ban size={15} />
+                <span className="od-btn__label">Annuler le BC</span>
+              </button>
             )}
 
             {canDeleteOrder(order) && (
-              <button className="btn-delete" title={t('delete')} onClick={() => handleDelete(order.id)}>
+              <button className="od-btn od-btn--danger" title={t('delete')} onClick={() => handleDelete(order.id)}>
                 <Trash2 size={15} />
+                <span className="od-btn__label">Supprimer</span>
               </button>
             )}
           </div>
         </div>
 
-        <div className="order-detail-header">
-          <div>
-            <h1 className="order-detail-ref">{orderTitle(order)}</h1>
-            <div className="order-detail-meta">
-              {order.companyId && <span className="order-company-badge">{order.companyId.name}</span>}
-              {(order.supplierId?.name || order.supplier) && <span className="order-supplier">— {order.supplierId?.name || order.supplier}</span>}
-              <span className="order-date" style={{ marginLeft: 8 }}>
-                <Calendar size={15} /> {new Date(order.orderDate).toLocaleDateString('fr-FR')}
+        {/* ── Header: number + status, meta, progress ── */}
+        <div className="od-header">
+          <div className="od-header__top">
+            <h1 className="od-header__ref">{orderTitle(order)}</h1>
+            <span className="status-badge status-badge--lg" style={{ background: st.bg, color: st.text }}>
+              {st.label[lang] || st.label.fr}
+            </span>
+          </div>
+          <div className="od-header__meta">
+            {order.companyId && (
+              <span className="order-company-badge od-header__company" style={order.companyId.color ? { background: order.companyId.color } : undefined}>
+                {order.companyId.name}
               </span>
-              {order.expectedDate && (
-                <span className="order-date">
-                  <CalendarClock size={15} /> {new Date(order.expectedDate).toLocaleDateString('fr-FR')}
-                </span>
-              )}
-              {order.sentAt && (
-                <span className="order-date">
-                  <Send size={13} /> {new Date(order.sentAt).toLocaleDateString('fr-FR')}{order.sentBy ? ` · ${order.sentBy}` : ''}
-                </span>
-              )}
+            )}
+            {(order.supplierId?.name || order.supplier) && (
+              <span className="od-header__supplier">{order.supplierId?.name || order.supplier}</span>
+            )}
+            <span className="od-header__chip" title="Date de commande">
+              <Calendar size={13} /> {new Date(order.orderDate).toLocaleDateString('fr-FR')}
+            </span>
+            {order.expectedDate && (
+              <span className="od-header__chip" title="Date de livraison prévue">
+                <CalendarClock size={13} /> {new Date(order.expectedDate).toLocaleDateString('fr-FR')}
+              </span>
+            )}
+            {order.sentAt && (
+              <span className="od-header__chip" title="Envoyé au fournisseur">
+                <Send size={12} /> {new Date(order.sentAt).toLocaleDateString('fr-FR')}{order.sentBy ? ` · ${order.sentBy}` : ''}
+              </span>
+            )}
+          </div>
+          <div className="od-header__progress">
+            <div className="od-header__bar">
+              <div style={{ width: `${progress}%` }} />
             </div>
-          </div>
-          <span className="status-badge status-badge--lg" style={{ background: st.bg, color: st.text }}>
-            {st.label[lang] || st.label.fr}
-          </span>
-        </div>
-
-        <div className="order-detail-progress-wrap">
-          <div className="order-progress-bar order-progress-bar--lg">
-            <div className="order-progress-fill" style={{ width: `${progress}%` }} />
-          </div>
-          <div className="order-progress-label">
-            {totalReceived} / {totalOrdered}{t('articlesRecues') || ' articles reçus '}({progress}%)
+            <div className="od-header__progress-label">
+              <strong>{totalReceived}</strong> / {totalOrdered} articles reçus <span>({progress}%)</span>
+            </div>
           </div>
         </div>
 
