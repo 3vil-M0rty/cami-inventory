@@ -197,6 +197,20 @@ export default function OrdersPage() {
     } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
   };
 
+  // Cancel a reception entered by mistake (stock + line reverted), then receive again correctly
+  const handleCancelReception = async (order, rec, itemName) => {
+    const answer = window.prompt(
+      `Annuler cette réception ?\n${itemName} : +${rec.quantityReceived} · BL ${rec.blNumber}\n\n` +
+      `La quantité sera retirée du stock et de la ligne. Vous pourrez ensuite réceptionner la bonne quantité.\n\nMotif (optionnel) :`,
+      ''
+    );
+    if (answer === null) return;
+    try {
+      await axios.post(`${API_URL}/orders/${order.id}/receptions/${rec._id || rec.id}/cancel`, { note: answer });
+      await fetchOrders();
+    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+  };
+
   // Close a line that will never be fully delivered (e.g. 198 / 200): the rest leaves "quantité commandée"
   const handleCloseLine = async (order, line, closed = true) => {
     let note = '';
@@ -477,7 +491,8 @@ export default function OrdersPage() {
                 <span className="order-receptions__count">{groups.length} BL</span>
               </h2>
               {groups.map(g => {
-                const totalQty = g.recs.reduce((s, r) => s + (r.quantityReceived || 0), 0);
+                const activeRecs = g.recs.filter(r => !r.cancelled);
+                const totalQty = activeRecs.reduce((s, r) => s + (r.quantityReceived || 0), 0);
                 return (
                   <div key={g.blNumber} className="reception-bl">
                     <div className="reception-bl__head">
@@ -492,11 +507,11 @@ export default function OrdersPage() {
                         <span><Calendar size={12} /> {fmtDate(g.receivedAt)}</span>
                         {g.receivedBy.size > 0 && <span>par <strong>{[...g.receivedBy].join(', ')}</strong></span>}
                         <span className="reception-bl__chip">
-                          {g.recs.length} article{g.recs.length > 1 ? 's' : ''} · {totalQty} pcs
+                          {activeRecs.length} article{activeRecs.length > 1 ? 's' : ''} · {totalQty} pcs
                         </span>
                       </div>
                     </div>
-                    <div className="reception-bl__rows">
+                    <div className={`reception-bl__rows ${order.status !== 'annulee' && canReceiveOrder(order) ? 'reception-bl__rows--actions' : ''}`}>
                       {g.recs.map((rec, idx) => {
                         const line = (order.lines || []).find(
                           l => (l._id || l.id)?.toString() === rec.lineId?.toString()
@@ -504,13 +519,20 @@ export default function OrdersPage() {
                         const item = line?.itemId;
                         const name = item?.designation?.[lang] || item?.designation?.fr || item?.codeInterne || 'Article';
                         return (
-                          <div key={idx} className="reception-row">
+                          <div key={idx} className={`reception-row ${rec.cancelled ? 'reception-row--cancelled' : ''}`}>
                             <div className="reception-row__thumb">
                               {item?.image ? <img src={item.image} alt="" /> : <Package size={14} />}
                             </div>
                             <div className="reception-row__name" title={name}>
                               {name}
                               {item?.codeInterne && <span className="reception-row__code">{item.codeInterne}</span>}
+                              {rec.cancelled && (
+                                <div className="reception-row__cancel-info">
+                                  Annulée{rec.cancelledBy && ` par ${rec.cancelledBy}`}
+                                  {rec.cancelledAt && ` le ${fmtDate(rec.cancelledAt)}`}
+                                  {rec.cancelNote && ` — ${rec.cancelNote}`}
+                                </div>
+                              )}
                             </div>
                             {line && (
                               <div className="reception-row__progress">
@@ -520,6 +542,15 @@ export default function OrdersPage() {
                             <div className="reception-row__qty">+{rec.quantityReceived}</div>
                             <div className="reception-row__time">
                               {new Date(rec.receivedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                            <div className="reception-row__actions">
+                              {!rec.cancelled && order.status !== 'annulee' && canReceiveOrder(order) && (
+                                <button type="button" className="reception-row__cancel"
+                                  title="Erreur de saisie : annuler cette réception"
+                                  onClick={() => handleCancelReception(order, rec, name)}>
+                                  Annuler
+                                </button>
+                              )}
                             </div>
                           </div>
                         );

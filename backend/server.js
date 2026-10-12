@@ -227,6 +227,11 @@ const orderSchema = new mongoose.Schema({
     blNumber: { type: String, required: true, trim: true },
     receivedBy: { type: String, default: '' },
     receivedAt: { type: Date, default: Date.now },
+    // Reception entered by mistake: cancelled (stock + line reverted), kept for traceability
+    cancelled: { type: Boolean, default: false },
+    cancelledAt: { type: Date, default: null },
+    cancelledBy: { type: String, default: '' },
+    cancelNote: { type: String, default: '' },
   }],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 
@@ -1640,6 +1645,7 @@ app.get('/api/orders/recent-receptions', requireAuth, requireOrdersView, async (
     const events = [];
     for (const o of orders) {
       for (const rec of o.receptions || []) {
+        if (rec.cancelled) continue;
         const line = (o.lines || []).find(l => String(l._id) === String(rec.lineId));
         const item = line?.itemId;
         events.push({
@@ -1951,6 +1957,58 @@ app.patch('/api/orders/:id/receive', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Cancel a reception entered by mistake: the quantity leaves the stock and the line again.
+// The entry stays in the history (struck through) — then receive again with the right quantity.
+app.post('/api/orders/:id/receptions/:receptionId/cancel', requireAuth, async (req, res) => {
+  try {
+    const o = await Order.findById(req.params.id);
+    if (!o) return res.status(404).json({ error: 'Order not found' });
+    if (o.status === 'annulee') return res.status(400).json({ error: 'Bon de commande annulé.' });
+
+    const rec = o.receptions.id(req.params.receptionId);
+    if (!rec) return res.status(404).json({ error: 'Réception introuvable' });
+    if (rec.cancelled) return res.status(400).json({ error: 'Cette réception est déjà annulée.' });
+
+    const line = o.lines.id(rec.lineId);
+    if (!line) return res.status(404).json({ error: 'Ligne introuvable' });
+
+    if (!isAdmin(req) && !(await canReceiveOrderLine(req, o, line.itemId)))
+      return res.status(403).json({ error: 'Vous ne pouvez pas annuler cette réception.' });
+
+    const qty = rec.quantityReceived || 0;
+    const blLabel = `${o.number || o.reference} — BL ${rec.blNumber}`;
+
+    // Take the quantity back out of the stock (refused if it was already used)
+    const item = await Item.findOneAndUpdate(
+      { _id: line.itemId, quantity: { $gte: qty } },
+      { $inc: { quantity: -qty } },
+      { new: true }
+    );
+    if (!item) {
+      const current = await Item.findById(line.itemId, 'quantity');
+      return res.status(400).json({
+        error: `Stock insuffisant pour annuler : ${qty} à retirer, ${current?.quantity ?? 0} en stock (une partie a déjà été consommée). Corrigez d'abord le stock dans l'inventaire.`,
+      });
+    }
+    await StockMovement.create({
+      itemId: item._id, type: 'sortie', quantity: qty,
+      balanceAfter: item.quantity, orderId: o._id,
+      note: `Annulation réception ${blLabel}${req.body.note ? ` — ${req.body.note}` : ''}`,
+    });
+
+    line.quantityReceived = Math.max(0, (line.quantityReceived || 0) - qty);
+    rec.cancelled = true;
+    rec.cancelledAt = new Date();
+    rec.cancelledBy = req.user?.displayName || req.user?.username || '';
+    rec.cancelNote = (req.body.note || '').trim();
+
+    refreshOrderStatus(o);
+    await o.save();
+    await recomputeOrderedQuantity([line.itemId]);
+    res.json(await populateOrder(Order.findById(o._id)));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Close a line that will never be fully delivered (e.g. 198 / 200 received).
 // The remaining quantity leaves Item.orderedQuantity. Reopen (closed: false) → admin only.
 app.patch('/api/orders/:id/lines/:lineId/close', requireAuth, async (req, res) => {
@@ -2046,6 +2104,7 @@ app.get('/api/order-tracking', requireAuth, requirePermission('orders.edit'), as
       // group receptions by BL number
       const blGroups = {};
       for (const rec of o.receptions || []) {
+        if (rec.cancelled) continue;
         const key = rec.blNumber || '';
         (blGroups[key] = blGroups[key] || []).push(rec);
       }
