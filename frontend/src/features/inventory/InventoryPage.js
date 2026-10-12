@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 
 import axios from 'axios';
@@ -13,6 +13,7 @@ import ItemOrdersModal from './components/ItemOrdersModal';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import './InventoryPage.css';
+import './InventoryPaging.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -47,6 +48,11 @@ const DEFAULT_SUPER_CATS = [
   { key: 'accessoires', labelFr: 'Accessoires', labelIt: 'Accessori', labelEn: 'Accessories', color: '#f59e0b' },
   { key: 'poudre', labelFr: 'Poudre', labelIt: 'Polvere', labelEn: 'Powder', color: '#ef4444' },
 ];
+
+// Inventory is loaded page by page (the server filters / searches); last result per view kept in memory
+const PAGE_SIZE = 40;
+const FILTER_TO_STOCK = { 'low-stock': 'critical', 'alert-stock': 'warning', ordered: 'ordered' };
+const inventoryViewCache = new Map(); // viewKey -> { items, total, page, hasMore }
 
 function getSuperCatLabel(sc, language) {
   if (!sc) return '';
@@ -86,12 +92,29 @@ function InventoryPage() {
   const [ordersItem, setOrdersItem] = useState(null); // article whose purchase orders are shown
 
   const [suppliers, setSuppliers] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const requestId = useRef(0);
+  const sentinelRef = useRef(null);
 
+  // Suppliers are only needed by the article form → loaded when it opens
+  const suppliersLoaded = useRef(false);
   useEffect(() => {
+    if (!(showAddItem || editingItem) || suppliersLoaded.current) return;
+    suppliersLoaded.current = true;
     axios.get(`${API_URL}/fournisseurs`)
       .then(r => setSuppliers(r.data || []))
-      .catch(() => setSuppliers([]));
-  }, []);
+      .catch(() => { setSuppliers([]); suppliersLoaded.current = false; });
+  }, [showAddItem, editingItem]);
+
+  // Search runs on the server, 300 ms after the last key stroke
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
+    return () => clearTimeout(id);
+  }, [searchTerm]);
 
   const isPoudre = activeSuperCat === 'poudre';
 
@@ -126,47 +149,66 @@ function InventoryPage() {
     } catch (e) { console.error(e); }
   }, [activeSuperCat]);
 
-  const fetchItems = useCallback(async () => {
+  const viewKey = `${activeSuperCat}|${selectedCategory}|${filter}|${debouncedSearch}`;
+
+  // Load page 1 (reset) or the next page of the current view
+  const fetchItems = useCallback(async ({ more = false } = {}) => {
     if (!activeSuperCat) return;
-    setLoading(true);
+    const nextPage = more ? page + 1 : 1;
+    const myRequest = ++requestId.current;
+
+    if (more) setLoadingMore(true);
+    else {
+      const cached = inventoryViewCache.get(viewKey);
+      if (cached) {
+        // Show the last result for this view immediately, refresh it in the background
+        setItems(cached.items); setTotal(cached.total); setPage(cached.page); setHasMore(cached.hasMore);
+        setLoading(false);
+      } else setLoading(true);
+    }
+
     try {
-      let url;
-      if (filter === 'low-stock' || filter === 'alert-stock' || filter === 'ordered') {  // ← ADD 'ordered' HERE
-        // all computed client-side from the full inventory list
-        url = `${API_URL}/inventory?superCategory=${activeSuperCat}`;
-      } else if (selectedCategory !== 'all') {
-        url = `${API_URL}/inventory?categoryId=${selectedCategory}&superCategory=${activeSuperCat}`;
-      } else {
-        url = `${API_URL}/inventory?superCategory=${activeSuperCat}`;
-      }
-      const res = await axios.get(url);
-      let data = res.data;
+      const params = { page: nextPage, limit: PAGE_SIZE, superCategory: activeSuperCat };
+      if (selectedCategory !== 'all') params.categoryId = selectedCategory;
+      if (FILTER_TO_STOCK[filter]) params.stock = FILTER_TO_STOCK[filter];
+      if (debouncedSearch) params.q = debouncedSearch;
+      const res = await axios.get(`${API_URL}/inventory`, { params });
+      if (myRequest !== requestId.current) return; // a newer request (other filter / search) won
 
-      if (filter === 'low-stock') {
-        data = data.filter(i => getStockStatus(i).className === 'status-critical');
-        data = data.filter(i => (i.superCategory || 'aluminium') === activeSuperCat);
-        if (selectedCategory !== 'all')
-          data = data.filter(i => i.categoryId?.id === selectedCategory || i.categoryId?._id === selectedCategory);
-      } else if (filter === 'alert-stock') {
-        data = data.filter(i => getStockStatus(i).className === 'status-warning');
-        data = data.filter(i => (i.superCategory || 'aluminium') === activeSuperCat);
-        if (selectedCategory !== 'all')
-          data = data.filter(i => i.categoryId?.id === selectedCategory || i.categoryId?._id === selectedCategory);
-      } else if (filter === 'ordered') {                                              // ← ADD THIS BLOCK
-        data = data.filter(i => (i.orderedQuantity || 0) !== 0);
-        data = data.filter(i => (i.superCategory || 'aluminium') === activeSuperCat);
-        if (selectedCategory !== 'all')
-          data = data.filter(i => i.categoryId?.id === selectedCategory || i.categoryId?._id === selectedCategory);
-      }
-
-      setItems(data);
+      const data = res.data || {};
+      const newItems = more ? [...items, ...(data.items || [])] : (data.items || []);
+      setItems(newItems);
+      setTotal(data.total || 0);
+      setPage(nextPage);
+      setHasMore(!!data.hasMore);
+      if (!more) inventoryViewCache.set(viewKey, { items: newItems, total: data.total || 0, page: 1, hasMore: !!data.hasMore });
     } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  }, [activeSuperCat, selectedCategory, filter]); // eslint-disable-line react-hooks/exhaustive-deps
+    finally {
+      if (myRequest === requestId.current) { setLoading(false); setLoadingMore(false); }
+    }
+  }, [activeSuperCat, selectedCategory, filter, debouncedSearch, page, items, viewKey]);
+
+  // Reload page 1 whenever the view changes (super-category, category, filter, search)
+  const fetchFirstPage = useRef(fetchItems);
+  fetchFirstPage.current = fetchItems;
+  useEffect(() => { fetchFirstPage.current(); }, [viewKey]);
+
+  // Infinite scroll: next page when the bottom of the grid becomes visible
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore || loading) return;
+    const obs = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && !loadingMore) fetchFirstPage.current({ more: true });
+    }, { rootMargin: '600px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasMore, loading, loadingMore, items.length]);
+
+  // After an edit, the cached views may be outdated
+  const refreshItems = () => { inventoryViewCache.clear(); fetchItems(); };
 
   useEffect(() => { fetchSuperCats(); }, [fetchSuperCats]);
   useEffect(() => { fetchCategories(); }, [fetchCategories]);
-  useEffect(() => { fetchItems(); }, [fetchItems]);
 
   const getStockStatus = (item) => {
     const total = item.quantity + (item.orderedQuantity || 0);
@@ -181,6 +223,7 @@ function InventoryPage() {
     try {
       const res = await axios.patch(`${API_URL}/inventory/${itemId}/quantity`, { amount, note });
       setItems(items.map(i => i.id === itemId ? res.data : i));
+      inventoryViewCache.clear();
     } catch { alert(t('errorUpdating') || 'Erreur de mise à jour'); }
   };
 
@@ -208,6 +251,8 @@ function InventoryPage() {
     try {
       await axios.delete(`${API_URL}/inventory/${itemId}`);
       setItems(items.filter(i => i.id !== itemId));
+      setTotal(n => Math.max(0, n - 1));
+      inventoryViewCache.clear();
     } catch (e) { console.error(e); }
   };
 
@@ -219,19 +264,17 @@ function InventoryPage() {
     } catch (e) { console.error(e); }
   };
 
-  const filteredItems = items.filter(item => {
-    if (!searchTerm) return true;
-    const tokens = searchTerm.toLowerCase().split(/\s+/).filter(Boolean);
-    const designation = item.designation[language] || item.designation.fr || '';
-    const codeInterne = item.codeInterne || '';
-    const supplierCodes = (item.supplierCodes || []).map(sc => sc.code || '').join(' ');
-    const haystack = `${designation} ${codeInterne} ${supplierCodes}`.toLowerCase();
-    return tokens.every(tok => haystack.includes(tok));
-  });
+  // Search / filters are applied by the server (see fetchItems)
+  const filteredItems = items;
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     setExporting(true);
     try {
+      // The page only holds what is on screen → fetch the full list for the export
+      const res = await axios.get(`${API_URL}/inventory`, {
+        params: { superCategory: activeSuperCat, ...(selectedCategory !== 'all' ? { categoryId: selectedCategory } : {}) },
+      });
+      const items = res.data || [];
       const wb = XLSX.utils.book_new();
       const cMap = new Map();
       cMap.set('no-category', { name: t('noCategory'), items: [] });
@@ -426,6 +469,8 @@ function InventoryPage() {
           <p>{t('noItems')}</p>
         </div>
       ) : (
+        <>
+        <div className="inv-count">{filteredItems.length} / {total} article{total > 1 ? 's' : ''}</div>
         <div className="items-grid">
           {filteredItems.map(item => (
             <ItemCard
@@ -444,6 +489,14 @@ function InventoryPage() {
             />
           ))}
         </div>
+        {hasMore && (
+          <div ref={sentinelRef} className="inv-load-more">
+            <button className="btn-outline" onClick={() => fetchItems({ more: true })} disabled={loadingMore}>
+              {loadingMore ? 'Chargement…' : `Afficher plus (${total - filteredItems.length} restants)`}
+            </button>
+          </div>
+        )}
+        </>
       )}
 
       {/* ── Modals ── */}
@@ -468,7 +521,7 @@ function InventoryPage() {
           isPoudre={isPoudre}
           t={t}
           onClose={() => { setShowAddItem(false); setEditingItem(null); }}
-          onSave={() => { setShowAddItem(false); setEditingItem(null); fetchItems(); }}
+          onSave={() => { setShowAddItem(false); setEditingItem(null); refreshItems(); }}
         />
       )}
 
@@ -573,7 +626,7 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
         onClick={() => item.image && setPreviewImage(item.image)}
       >
         {item.image
-          ? <img src={item.image} alt={item.designation[language]} />
+          ? <img src={item.image} alt={item.designation[language]} loading="lazy" decoding="async" />
           : <div className="no-image"><Package size={32} strokeWidth={1} /></div>
         }
         {item.image && (

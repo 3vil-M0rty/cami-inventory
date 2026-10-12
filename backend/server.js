@@ -189,6 +189,8 @@ const itemSchema = new mongoose.Schema({
   superCategory: { type: String, default: 'aluminium' }
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 itemSchema.index({ updatedAt: -1 });
+itemSchema.index({ superCategory: 1, createdAt: -1 });
+itemSchema.index({ superCategory: 1, categoryId: 1, createdAt: -1 });
 const Item = mongoose.model('Item', itemSchema);
 
 const stockMovementSchema = new mongoose.Schema({
@@ -1461,13 +1463,51 @@ function applyScFilter(filter, allowedSC) {
 app.get('/api/inventory/allowed-supercategories', optionalAuth, (req, res) => {
   res.json({ allowedSuperCategories: req.allowedSuperCategories });
 });
+// GET /api/inventory
+//  - without ?page → full array (used by Commandes, Chantiers, Ateliers…)
+//  - with ?page=1&limit=40 → { items, total, page, limit, hasMore }: the Inventory page loads
+//    only what is on screen. Search (?q=) and filters (?stock=critical|warning|ordered) run in MongoDB.
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 app.get('/api/inventory', optionalAuth, async (req, res) => {
   try {
     const filter = {};
     if (req.query.categoryId && req.query.categoryId !== 'all') filter.categoryId = req.query.categoryId;
     if (req.query.superCategory && req.query.superCategory !== 'all') filter.superCategory = req.query.superCategory;
-    if (!applyScFilter(filter, req.allowedSuperCategories)) return res.json([]);
-    res.json(await Item.find(filter).populate('categoryId').sort({ createdAt: -1 }));
+    const paged = req.query.page !== undefined;
+    if (!applyScFilter(filter, req.allowedSuperCategories)) return res.json(paged ? { items: [], total: 0, page: 1, hasMore: false } : []);
+
+    if (!paged) return res.json(await Item.find(filter).populate('categoryId').sort({ createdAt: -1 }));
+
+    // Every word must appear in the designation, the internal code or a supplier code
+    const words = String(req.query.q || '').trim().split(/\s+/).filter(Boolean).slice(0, 8);
+    const and = words.map(w => {
+      const rx = new RegExp(escapeRegex(w), 'i');
+      return { $or: [{ 'designation.fr': rx }, { 'designation.it': rx }, { 'designation.en': rx }, { codeInterne: rx }, { 'supplierCodes.code': rx }] };
+    });
+    // Stock filters, same rules as the badges on the cards
+    const total = { $add: ['$quantity', { $ifNull: ['$orderedQuantity', 0] }] };
+    if (req.query.stock === 'critical') and.push({ $expr: { $lt: [total, '$threshold'] } });
+    else if (req.query.stock === 'warning') and.push({ $expr: { $and: [{ $lt: ['$quantity', '$threshold'] }, { $gte: [total, '$threshold'] }] } });
+    else if (req.query.stock === 'ordered') and.push({ orderedQuantity: { $nin: [0, null] } });
+    if (and.length) filter.$and = and;
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 40, 1), 200);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const [items, count] = await Promise.all([
+      Item.find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('categoryId', 'name color')
+        .lean(),
+      Item.countDocuments(filter),
+    ]);
+    for (const it of items) {
+      it.id = String(it._id);
+      delete it.__v;
+      if (it.categoryId?._id) it.categoryId.id = String(it.categoryId._id);
+    }
+    res.json({ items, total: count, page, limit, hasMore: page * limit < count });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/inventory/filter/low-stock', optionalAuth, async (req, res) => {
