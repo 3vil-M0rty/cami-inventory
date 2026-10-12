@@ -30,7 +30,7 @@ app.use((req, res, next) => {
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aluminum-inventory';
 
 mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => { console.log('✅ MongoDB connected'); initSampleData(); migrateExistingData(); migrateLaquageToLots(); fixStuckLaquageLots(); seedSuperCategories(); })
+  .then(() => { console.log('✅ MongoDB connected'); initSampleData(); migrateExistingData(); migrateLaquageToLots(); fixStuckLaquageLots(); seedSuperCategories(); resyncAllOrderedQuantities(); })
   .catch(err => { console.error('❌ MongoDB error:', err); process.exit(1); });
 
 
@@ -193,6 +193,12 @@ const orderLineSchema = new mongoose.Schema({
   quantityReceived: { type: Number, default: 0, min: 0 },
   unitPrice: { type: Number, default: 0 },
   note: { type: String, default: '' },
+  // Line closed although not fully received (e.g. 198 / 200): the rest will never come,
+  // so it no longer counts in Item.orderedQuantity and the line counts as complete.
+  closed: { type: Boolean, default: false },
+  closedAt: { type: Date, default: null },
+  closedBy: { type: String, default: '' },
+  closedNote: { type: String, default: '' },
 }, { _id: true });
 
 const orderSchema = new mongoose.Schema({
@@ -1418,7 +1424,9 @@ app.get('/api/inventory/search', optionalAuth, async (req, res) => {
     res.json(await Item.find(filter).populate('categoryId').sort({ createdAt: -1 }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/inventory/:id', optionalAuth, async (req, res) => {
+app.get('/api/inventory/:id', optionalAuth, async (req, res, next) => {
+  // Not an id (e.g. /api/inventory/poudres) → let the later named route handle it
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next();
   try {
     const item = await Item.findById(req.params.id).populate('categoryId');
     if (!item) return res.status(404).json({ error: 'Not found' });
@@ -1436,7 +1444,7 @@ app.post('/api/inventory', optionalAuth, async (req, res) => {
       image: req.body.image || '',
       designation: req.body.designation,
       quantity: Number(req.body.quantity) || 0,
-      orderedQuantity: Number(req.body.orderedQuantity) || 0,
+      // orderedQuantity starts at 0: it is derived from sent orders (recomputeOrderedQuantity)
       threshold: Number(req.body.threshold) || 0,
       categoryId: req.body.categoryId || null,
       superCategory: sc,
@@ -1455,7 +1463,7 @@ app.put('/api/inventory/:id', optionalAuth, async (req, res) => {
       image: req.body.image,
       designation: req.body.designation,
       quantity: Number(req.body.quantity) || 0,
-      orderedQuantity: Number(req.body.orderedQuantity) || 0,
+      // orderedQuantity is NOT taken from the form: it is derived from sent orders (recomputeOrderedQuantity)
       threshold: Number(req.body.threshold) || 0,
       categoryId: req.body.categoryId || null,
       superCategory: sc,
@@ -1496,6 +1504,61 @@ app.delete('/api/inventory/:id', optionalAuth, async (req, res) => {
 const populateOrder = (q) => q
   .populate({ path: 'lines.itemId', populate: { path: 'categoryId' } })
   .populate('companyId').populate('supplierId');
+
+// Item.orderedQuantity = sum of (quantityOrdered - quantityReceived) over every
+// SENT order (envoye / partielle), closed lines excluded. Recomputed from the orders themselves instead of
+// $inc counters, so it can never drift (e.g. after an inventory edit overwrote it).
+const PENDING_ORDER_STATUSES = ['envoye', 'partielle'];
+async function recomputeOrderedQuantity(itemIds) {
+  const ids = [...new Set((itemIds || []).filter(Boolean).map(id => String(id._id || id)))]
+    .map(id => new mongoose.Types.ObjectId(id));
+  if (!ids.length) return;
+  const rows = await Order.aggregate([
+    { $match: { status: { $in: PENDING_ORDER_STATUSES }, 'lines.itemId': { $in: ids } } },
+    { $unwind: '$lines' },
+    { $match: { 'lines.itemId': { $in: ids }, 'lines.closed': { $ne: true } } },
+    { $group: {
+      _id: '$lines.itemId',
+      pending: { $sum: { $max: [0, { $subtract: ['$lines.quantityOrdered', { $ifNull: ['$lines.quantityReceived', 0] }] }] } },
+    } },
+  ]);
+  const pendingById = new Map(rows.map(r => [String(r._id), r.pending]));
+  await Item.bulkWrite(ids.map(id => ({
+    updateOne: { filter: { _id: id }, update: { $set: { orderedQuantity: pendingById.get(String(id)) || 0 } } },
+  })));
+}
+// Every order line must point to an existing inventory article
+async function assertOrderItemsExist(lines) {
+  const ids = [...new Set((lines || []).map(l => String(l.itemId?._id || l.itemId?.id || l.itemId || '')))];
+  if (ids.some(id => !mongoose.Types.ObjectId.isValid(id))) {
+    const err = new Error('Chaque ligne doit avoir un article sélectionné.');
+    err.status = 400;
+    throw err;
+  }
+  const found = await Item.countDocuments({ _id: { $in: ids } });
+  if (found !== ids.length) {
+    const err = new Error('Un article sélectionné n\'existe plus dans l\'inventaire. Rechargez la page et re-sélectionnez-le.');
+    err.status = 400;
+    throw err;
+  }
+}
+
+// A line is done when fully received or closed; derive the order status from its lines
+const isOrderLineDone = (l) => l.closed || (l.quantityReceived || 0) >= l.quantityOrdered;
+function refreshOrderStatus(o) {
+  if (o.status === 'brouillon' || o.status === 'annulee') return;
+  if (o.lines.every(isOrderLineDone)) o.status = 'recue';
+  else if (o.lines.some(l => (l.quantityReceived || 0) > 0 || l.closed)) o.status = 'partielle';
+  else o.status = 'envoye';
+}
+
+async function resyncAllOrderedQuantities() {
+  try {
+    const items = await Item.find({}, '_id').lean();
+    await recomputeOrderedQuantity(items.map(i => i._id));
+    console.log(`✅ orderedQuantity resynced for ${items.length} items`);
+  } catch (e) { console.error('orderedQuantity resync error:', e.message); }
+}
 
 // GET all — full access sees everything; receiving-only roles see just their
 // category, and only sent orders (drafts stay hidden from them).
@@ -1657,6 +1720,8 @@ app.post('/api/orders', requireAuth, requirePermission('orders.edit'), async (re
       if (f) supplierName = f.name;
     }
 
+    await assertOrderItemsExist(req.body.lines);
+
     const o = new Order({
       reference: req.body.reference || '',
       number: orderNumber,
@@ -1681,7 +1746,7 @@ app.post('/api/orders', requireAuth, requirePermission('orders.edit'), async (re
     await o.save();
     res.status(201).json(await populateOrder(Order.findById(o._id)));
   } catch (e) {
-    res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message });
+    res.status(e.status || (e.name === 'ValidationError' ? 400 : 500)).json({ error: e.message });
   }
 });
 
@@ -1740,10 +1805,12 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
     if (req.body.tva != null) o.tva = Number(req.body.tva);
     if (req.body.status && isAdmin(req)) o.status = req.body.status;
 
-    // ── LINES: persist edits, reverse stock for deleted received lines,
-    //           and reconcile Item.orderedQuantity for a sent order ──
+    // Items on the order before the edit — orderedQuantity is recomputed for them + new lines after save
+    const touchedItemIds = o.lines.map(l => l.itemId);
+
+    // ── LINES: persist edits, reverse stock for deleted received lines ──
     if (req.body.lines !== undefined && (o.status === 'brouillon' || isAdmin(req))) {
-      const isSent = o.status !== 'brouillon';
+      await assertOrderItemsExist(req.body.lines);
       const existingById = new Map(o.lines.map(l => [String(l._id), l]));
       const incomingIds = new Set(req.body.lines.filter(l => l._id).map(l => String(l._id)));
 
@@ -1752,7 +1819,6 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
         if (incomingIds.has(String(l._id))) continue; // still present, handled below
 
         const received = l.quantityReceived || 0;
-        const pending = (l.quantityOrdered || 0) - received;
 
         if (received > 0) {
           const item = await Item.findById(l.itemId);
@@ -1767,30 +1833,14 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
           }
         }
 
-        if (isSent && pending > 0) {
-          await Item.findByIdAndUpdate(l.itemId, { $inc: { orderedQuantity: -pending } });
-        }
       }
 
-      // 2) Rebuild lines array, reconciling orderedQuantity for kept/edited/new lines
+      // 2) Rebuild lines array (orderedQuantity is recomputed after save)
       const newLines = [];
       for (const l of req.body.lines) {
         const existing = l._id ? existingById.get(String(l._id)) : null;
         const newQtyOrdered = Number(l.quantityOrdered) || 1;
         const receivedQty = existing ? (existing.quantityReceived || 0) : 0;
-
-        if (isSent) {
-          if (existing) {
-            // quantity changed on an already-sent line → adjust the reservation by the delta
-            const delta = newQtyOrdered - (existing.quantityOrdered || 0);
-            if (delta !== 0) {
-              await Item.findByIdAndUpdate(l.itemId, { $inc: { orderedQuantity: delta } });
-            }
-          } else {
-            // brand-new line added to an already-sent order → reserve it like a send would
-            await Item.findByIdAndUpdate(l.itemId, { $inc: { orderedQuantity: newQtyOrdered } });
-          }
-        }
 
         newLines.push({
           _id: existing ? existing._id : undefined,
@@ -1799,14 +1849,19 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
           quantityReceived: receivedQty,
           unitPrice: Number(l.unitPrice) || 0,
           note: l.note || '',
+          closed: existing ? !!existing.closed : false,
+          closedAt: existing ? existing.closedAt : null,
+          closedBy: existing ? existing.closedBy : '',
+          closedNote: existing ? existing.closedNote : '',
         });
       }
       o.lines = newLines;
     }
 
     await o.save();
+    await recomputeOrderedQuantity([...touchedItemIds, ...o.lines.map(l => l.itemId)]);
     res.json(await populateOrder(Order.findById(o._id)));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 // SEND to supplier — draft → envoye. Assigns BC number + reserves orderedQuantity.
@@ -1824,8 +1879,8 @@ app.post('/api/orders/:id/send', requireAuth, requirePermission('orders.edit'), 
     o.status = 'envoye';
     o.sentAt = new Date();
     o.sentBy = req.user?.displayName || req.user?.username || '';
-    for (const line of o.lines) await Item.findByIdAndUpdate(line.itemId, { $inc: { orderedQuantity: line.quantityOrdered } });
     await o.save();
+    await recomputeOrderedQuantity(o.lines.map(l => l.itemId));
     res.json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1861,6 +1916,8 @@ app.patch('/api/orders/:id/receive', requireAuth, async (req, res) => {
       });
     }
 
+    if (line.closed) return res.status(400).json({ error: 'Cette ligne est clôturée.' });
+
     const alreadyReceived = line.quantityReceived || 0;
     const newlyReceived = Number(quantityReceived) - alreadyReceived;
     if (newlyReceived <= 0) return res.status(400).json({ error: 'La quantité reçue doit dépasser le déjà reçu.' });
@@ -1870,7 +1927,6 @@ app.patch('/api/orders/:id/receive', requireAuth, async (req, res) => {
     const item = await Item.findById(line.itemId);
     if (item) {
       item.quantity += newlyReceived;
-      item.orderedQuantity = Math.max(0, (item.orderedQuantity || 0) - newlyReceived);
       await item.save();
       await StockMovement.create({
         itemId: item._id, type: 'order_reception', quantity: newlyReceived,
@@ -1887,11 +1943,47 @@ app.patch('/api/orders/:id/receive', requireAuth, async (req, res) => {
       receivedAt: new Date(),
     });
 
-    const allReceived = o.lines.every(l => l.quantityReceived >= l.quantityOrdered);
-    const someReceived = o.lines.some(l => (l.quantityReceived || 0) > 0);
-    if (allReceived) o.status = 'recue'; else if (someReceived) o.status = 'partielle';
+    refreshOrderStatus(o);
 
     await o.save();
+    await recomputeOrderedQuantity([line.itemId]);
+    res.json(await populateOrder(Order.findById(o._id)));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Close a line that will never be fully delivered (e.g. 198 / 200 received).
+// The remaining quantity leaves Item.orderedQuantity. Reopen (closed: false) → admin only.
+app.patch('/api/orders/:id/lines/:lineId/close', requireAuth, async (req, res) => {
+  try {
+    const closed = req.body.closed !== false;
+    const o = await Order.findById(req.params.id);
+    if (!o) return res.status(404).json({ error: 'Order not found' });
+    if (o.status === 'brouillon' || o.status === 'annulee')
+      return res.status(400).json({ error: 'Seul un bon de commande envoyé peut avoir des lignes clôturées.' });
+
+    const line = o.lines.id(req.params.lineId);
+    if (!line) return res.status(404).json({ error: 'Line not found' });
+
+    if (closed) {
+      if (!isAdmin(req) && !(await canReceiveOrderLine(req, o, line.itemId)))
+        return res.status(403).json({ error: 'Vous ne pouvez pas clôturer cette ligne.' });
+      if ((line.quantityReceived || 0) >= line.quantityOrdered)
+        return res.status(400).json({ error: 'Cette ligne est déjà entièrement reçue.' });
+      line.closed = true;
+      line.closedAt = new Date();
+      line.closedBy = req.user?.displayName || req.user?.username || '';
+      line.closedNote = (req.body.note || '').trim();
+    } else {
+      if (!isAdmin(req)) return res.status(403).json({ error: 'Seul un administrateur peut rouvrir une ligne.' });
+      line.closed = false;
+      line.closedAt = null;
+      line.closedBy = '';
+      line.closedNote = '';
+    }
+
+    refreshOrderStatus(o);
+    await o.save();
+    await recomputeOrderedQuantity([line.itemId]);
     res.json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1902,14 +1994,9 @@ app.post('/api/orders/:id/cancel', requireAuth, requirePermission('orders.edit')
     const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Not found' });
     if (!canMutateOrder(req, o)) return res.status(403).json({ error: 'Bon de commande envoyé — seul un administrateur peut l\'annuler.' });
-    if (o.status !== 'brouillon') {
-      for (const line of o.lines) {
-        const pending = line.quantityOrdered - (line.quantityReceived || 0);
-        if (pending > 0) await Item.findByIdAndUpdate(line.itemId, { $inc: { orderedQuantity: -pending } });
-      }
-    }
     o.status = 'annulee';
     await o.save();
+    await recomputeOrderedQuantity(o.lines.map(l => l.itemId));
     res.json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1926,13 +2013,8 @@ app.delete('/api/orders/:id', requireAuth, async (req, res) => {
     } else if (!isAdmin(req)) {
       return res.status(403).json({ error: 'Bon de commande envoyé — seul un administrateur peut le supprimer.' });
     }
-    if (!draft && o.status !== 'annulee') {
-      for (const line of o.lines) {
-        const pending = line.quantityOrdered - (line.quantityReceived || 0);
-        if (pending > 0) await Item.findByIdAndUpdate(line.itemId, { $inc: { orderedQuantity: -pending } });
-      }
-    }
     await Order.findByIdAndDelete(req.params.id);
+    await recomputeOrderedQuantity(o.lines.map(l => l.itemId));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3314,11 +3396,29 @@ function applyLaquageAction(record, action, lineKey, by, extra = {}) {
 //  - lineStatuses are scoped per lot: `lot_${lotIndex}_${lineKey}`.
 
 const laquageBarresBrutesSchema = new mongoose.Schema(
-  { reference: { type: String, default: '' }, quantiteBrute: { type: Number, default: 0 } },
+  {
+    reference: { type: String, default: '' },
+    itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', default: null },
+    quantiteBrute: { type: Number, default: 0 },
+  },
   { _id: false }
 );
 const laquageBarresLaqueeSchema = new mongoose.Schema(
-  { reference: { type: String, default: '' }, ral: { type: String, default: '' }, quantiteLaquee: { type: Number, default: 0 } },
+  {
+    reference: { type: String, default: '' },
+    itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', default: null },
+    ral: { type: String, default: '' },
+    quantiteLaquee: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+// What a lot has already taken out of the inventory (barres brutes + barres laquées only)
+const laquageStockDeductionSchema = new mongoose.Schema(
+  {
+    itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
+    reference: { type: String, default: '' },
+    quantity: { type: Number, default: 0 },
+  },
   { _id: false }
 );
 const laquageMorceauBrutSchema = new mongoose.Schema(
@@ -3364,6 +3464,9 @@ const laquageLotSchema = new mongoose.Schema(
     receptionCoordNote: { type: String, default: '' },
     receptionLaquageQty: { type: Number, default: null },  // if received more than expected
     receptionCoordQty: { type: Number, default: null },
+    // Inventory deducted when the lot was sent to laquage (barres brutes + barres laquées)
+    stockDeducted: { type: [laquageStockDeductionSchema], default: undefined },
+    stockDeductedAt: { type: Date, default: null },
   },
   { _id: false }
 );
@@ -3681,6 +3784,106 @@ async function migrateLaquageToLots() {
 // Call this in your mongoose.connect().then() callback alongside initSampleData():
 // migrateLaquageToLots();
 
+// ==================== LAQUAGE STOCK DEDUCTION ====================
+// When a lot is sent to laquage, its barres brutes + barres laquées are taken out of the
+// aluminium inventory. Morceaux and the LaquageAccessoires panel never touch the stock.
+// lot.stockDeducted remembers what was taken, so an admin edit of a sent lot only applies
+// the difference (and never deducts twice).
+
+async function resolveLaquageBarItem(row) {
+  if (row.itemId) {
+    const byId = await Item.findById(row.itemId);
+    if (byId) return byId;
+  }
+  const ref = (row.reference || '').trim();
+  if (!ref) return null;
+  // Exact match, ignoring case / surrounding spaces, on any designation language or the internal code
+  const exact = new RegExp(`^\\s*${ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i');
+  return Item.findOne({
+    superCategory: 'aluminium',
+    $or: [{ 'designation.fr': exact }, { 'designation.en': exact }, { 'designation.it': exact }, { codeInterne: exact }],
+  });
+}
+
+async function syncLaquageLotStock(record, lot, project) {
+  // 1) What the lot should have taken out of stock right now
+  const wanted = new Map(); // itemId -> { item, reference, quantity }
+  const unknown = [];
+  const rows = [
+    ...(lot.barresBrutes || []).map(r => ({ row: r, qty: Number(r.quantiteBrute) || 0 })),
+    ...(lot.barresLaquees || []).map(r => ({ row: r, qty: Number(r.quantiteLaquee) || 0 })),
+  ];
+  for (const { row, qty } of rows) {
+    if (qty <= 0) continue;
+    const item = await resolveLaquageBarItem(row);
+    if (!item) { unknown.push(row.reference || '(sans référence)'); continue; }
+    if (!row.itemId) row.itemId = item._id;
+    const key = String(item._id);
+    const cur = wanted.get(key) || { item, reference: row.reference || item.designation?.fr || '', quantity: 0 };
+    cur.quantity += qty;
+    wanted.set(key, cur);
+  }
+  if (unknown.length) {
+    const err = new Error(`Article(s) introuvable(s) dans l'inventaire aluminium : ${[...new Set(unknown)].join(', ')}. Sélectionnez la référence depuis la recherche.`);
+    err.status = 400;
+    throw err;
+  }
+
+  // 2) Delta vs what was already deducted
+  const already = new Map((lot.stockDeducted || []).map(d => [String(d.itemId), d.quantity || 0]));
+  const keys = new Set([...wanted.keys(), ...already.keys()]);
+  const deltas = [];
+  for (const key of keys) {
+    const delta = (wanted.get(key)?.quantity || 0) - (already.get(key) || 0);
+    if (delta !== 0) deltas.push({ key, delta });
+  }
+
+  // 3) Check stock before touching anything
+  const missing = [];
+  for (const { key, delta } of deltas) {
+    if (delta <= 0) continue;
+    const item = wanted.get(key).item;
+    if ((item.quantity || 0) < delta) missing.push(`${item.designation?.fr || key} (stock ${item.quantity}, requis ${delta})`);
+  }
+  if (missing.length) {
+    const err = new Error(`Stock insuffisant : ${missing.join(' ; ')}`);
+    err.status = 400;
+    throw err;
+  }
+
+  // 4) Apply (atomic per item, rollback if one fails because stock moved meanwhile)
+  const applied = [];
+  const note = `Laquage — Lot ${lot.lotIndex + 1}`;
+  try {
+    for (const { key, delta } of deltas) {
+      const filter = delta > 0 ? { _id: key, quantity: { $gte: delta } } : { _id: key };
+      const updated = await Item.findOneAndUpdate(filter, { $inc: { quantity: -delta } }, { new: true });
+      if (!updated) {
+        const err = new Error('Stock insuffisant (modifié entre-temps). Réessayez.');
+        err.status = 409;
+        throw err;
+      }
+      applied.push({ key, delta });
+      await StockMovement.create({
+        itemId: updated._id,
+        type: delta > 0 ? 'sortie' : 'entree',
+        quantity: Math.abs(delta),
+        balanceAfter: updated.quantity,
+        projectId: project?._id || record.projectId,
+        projectName: project?.name || '',
+        note: delta > 0 ? `${note} — envoi au laquage` : `${note} — correction (retour stock)`,
+      });
+    }
+  } catch (e) {
+    for (const { key, delta } of applied) await Item.findByIdAndUpdate(key, { $inc: { quantity: delta } });
+    throw e;
+  }
+
+  lot.stockDeducted = [...wanted.entries()].map(([key, w]) => ({ itemId: key, reference: w.reference, quantity: w.quantity }));
+  if (!lot.stockDeductedAt) lot.stockDeductedAt = new Date();
+  record.markModified('lots');
+}
+
 // ==================== LAQUAGE BARRES ROUTES (REPLACE EXISTING) ====================
 
 app.get('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res) => {
@@ -3733,11 +3936,18 @@ app.put('/api/projects/:projectId/laquage/barres/lot/:lotIndex', requireAuth, as
     if (morceauxBruts !== undefined) lot.morceauxBruts = morceauxBruts;
     if (morceauxLaques !== undefined) lot.morceauxLaques = morceauxLaques;
 
+    // Lot already sent (admin edit) → apply only the stock difference.
+    // Lots sent before the automatic deduction existed (no stockDeducted) are left alone.
+    if (lot.status !== 'draft' && Array.isArray(lot.stockDeducted)) {
+      const project = await Project.findById(req.params.projectId, 'name');
+      await syncLaquageLotStock(record, lot, project);
+    }
+
     record.markModified('lots');
     await record.save();
     res.json(record.toJSON());
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
   }
 });
 
@@ -3785,9 +3995,20 @@ app.post('/api/projects/:projectId/laquage/barres/action', requireAuth, async (r
     let record = await LaquageBarres.findOne({ projectId: req.params.projectId });
     if (!record) return res.status(404).json({ error: 'Record not found' });
 
+    const lot = record.lots.find(l => l.lotIndex === lotIdx);
+
+    // Sending a draft lot: take the rows shown on screen (even if "Enregistrer" was not clicked)
+    if (action === 'send_to_laquage' && lot && lot.status === 'draft') {
+      const { barresBrutes, barresLaquees, morceauxBruts, morceauxLaques } = req.body;
+      if (Array.isArray(barresBrutes)) lot.barresBrutes = barresBrutes;
+      if (Array.isArray(barresLaquees)) lot.barresLaquees = barresLaquees;
+      if (Array.isArray(morceauxBruts)) lot.morceauxBruts = morceauxBruts;
+      if (Array.isArray(morceauxLaques)) lot.morceauxLaques = morceauxLaques;
+      record.markModified('lots');
+    }
+
     // Compute all line keys for auto-advance check
     let allLineKeys = [];
-    const lot = record.lots.find(l => l.lotIndex === lotIdx);
     if (lot) {
       (lot.barresBrutes || []).forEach((_, i) => allLineKeys.push(`bb-${i}`));
       (lot.barresLaquees || []).forEach((_, i) => allLineKeys.push(`bl-${i}`));
@@ -3797,11 +4018,24 @@ app.post('/api/projects/:projectId/laquage/barres/action', requireAuth, async (r
       );
     }
 
+    if (action === 'send_to_laquage') {
+      if (!lot) return res.status(404).json({ error: `Lot ${lotIdx} not found` });
+      if (lot.status !== 'draft') return res.status(400).json({ error: 'Ce lot a déjà été envoyé au laquage.' });
+      // Take barres brutes + barres laquées out of the inventory (throws 400 if unknown / insufficient)
+      const project = await Project.findById(req.params.projectId, 'name');
+      await syncLaquageLotStock(record, lot, project);
+    }
+
     applyLaquageAction(record, action, lotIdx, lineKey, by, { note, partialQty, lineLabel, allLineKeys });
     await record.save();
-    res.json(record.toJSON());
+    const out = record.toJSON();
+    if (action === 'send_to_laquage') {
+      // Summary shown in the toast: what was taken out of the stock
+      out.stockDeducted = (lot.stockDeducted || []).map(d => ({ reference: d.reference, quantity: d.quantity }));
+    }
+    res.json(out);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
   }
 });
 

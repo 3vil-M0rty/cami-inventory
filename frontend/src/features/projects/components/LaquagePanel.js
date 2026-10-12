@@ -579,8 +579,9 @@ export function BarresLaquerPanel({ project, currentUser }) {
   const [imageMap, setImageMap] = useState({});
   const [addingLot, setAddingLot] = useState(false);
 
-  const emptyBB = { reference: '', quantiteBrute: 1 };
-  const emptyBL = { reference: '', ral: '', quantiteLaquee: 1 };
+  // itemId links the row to the inventory article: the stock is deducted when the lot is sent to laquage
+  const emptyBB = { reference: '', itemId: null, quantiteBrute: 1 };
+  const emptyBL = { reference: '', itemId: null, ral: '', quantiteLaquee: 1 };
   const emptyMB = { reference: '', mesure: '', quantite: 1 };
   const emptyML = { reference: '', lignes: [{ ral: '', mesure: '', quantite: 1 }] };
 
@@ -665,11 +666,27 @@ export function BarresLaquerPanel({ project, currentUser }) {
   const transition = async (action, lotIndex, lineKey, extra = {}) => {
     setSaving(true); setError('');
     try {
+      // Sending a lot: include the rows shown on screen so unsaved rows are sent (and deducted) too
+      const sentLot = action === 'send_to_laquage'
+        ? (record?.lots || []).find(l => l.lotIndex === lotIndex)
+        : null;
+      const lotRows = sentLot ? {
+        barresBrutes: sentLot.barresBrutes || [],
+        barresLaquees: sentLot.barresLaquees || [],
+        morceauxBruts: sentLot.morceauxBruts || [],
+        morceauxLaques: sentLot.morceauxLaques || [],
+      } : {};
       const res = await axios.post(
         `${API_URL}/projects/${project.id}/laquage/barres/action`,
-        { action, lotIndex, lineKey, by: displayName, ...extra }
+        { action, lotIndex, lineKey, by: displayName, ...lotRows, ...extra }
       );
       setRecord(res.data);
+      if (action === 'send_to_laquage') {
+        const ded = res.data.stockDeducted || [];
+        toast(ded.length
+          ? `📉 Stock déduit : ${ded.map(d => `${d.quantity} × ${d.reference}`).join(', ')}`
+          : 'Aucune barre brute / laquée à déduire du stock', ded.length ? 'success' : 'error');
+      }
       const labels = {
         send_to_laquage: `📤 Lot ${lotIndex + 1} envoyé au laquage`,
         receive_all_laquage: `✅ Lot ${lotIndex + 1} réceptionné (Laquage)`,
@@ -908,7 +925,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
         <div className="laq-section-title">1. Barres Brutes</div>
         {canEdit && isDraft && (
           <div className="laq-add-form"><div className="laq-add-form__row">
-            <InvSearch value={newBB.reference} onChange={v => setNewBB(p => ({ ...p, reference: v }))} onSelect={(v, item) => { setNewBB(p => ({ ...p, reference: v })); capImg(v, item); }} superCategory="aluminium" label="Référence (aluminium)" />
+            <InvSearch value={newBB.reference} onChange={v => setNewBB(p => ({ ...p, reference: v, itemId: null }))} onSelect={(v, item) => { setNewBB(p => ({ ...p, reference: v, itemId: item?.id || item?._id || null })); capImg(v, item); }} superCategory="aluminium" label="Référence (aluminium)" />
             <div className="laq-add-form__field"><label>Quantité</label><input type="number" className="laq-add-input laq-add-input--sm" min="1" value={newBB.quantiteBrute} onChange={e => setNewBB(p => ({ ...p, quantiteBrute: e.target.value }))} /></div>
             <button className="laq-add-btn" onClick={addBB}>+ Ajouter</button>
           </div></div>
@@ -945,7 +962,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
         <div className="laq-section-title">2. Barres Laquées</div>
         {canEdit && isDraft && (
           <div className="laq-add-form"><div className="laq-add-form__row">
-            <InvSearch value={newBL.reference} onChange={v => setNewBL(p => ({ ...p, reference: v }))} onSelect={(v, item) => { setNewBL(p => ({ ...p, reference: v })); capImg(v, item); }} superCategory="aluminium" label="Référence (aluminium)" />
+            <InvSearch value={newBL.reference} onChange={v => setNewBL(p => ({ ...p, reference: v, itemId: null }))} onSelect={(v, item) => { setNewBL(p => ({ ...p, reference: v, itemId: item?.id || item?._id || null })); capImg(v, item); }} superCategory="aluminium" label="Référence (aluminium)" />
             <div className="laq-add-form__field"><label>RAL</label><input className="laq-add-input laq-add-input--sm" placeholder="ex: 9010" value={newBL.ral} onChange={e => setNewBL(p => ({ ...p, ral: e.target.value }))} /></div>
             <div className="laq-add-form__field"><label>Quantité</label><input type="number" className="laq-add-input laq-add-input--sm" min="1" value={newBL.quantiteLaquee} onChange={e => setNewBL(p => ({ ...p, quantiteLaquee: e.target.value }))} /></div>
             <button className="laq-add-btn" onClick={addBL}>+ Ajouter</button>
@@ -1077,7 +1094,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
         <div className="laq-workflow-buttons">
           {canSendToLaquage && isDraft && (
             <button className="laq-wf-btn laq-wf-btn--send" disabled={saving}
-              onClick={() => ask(`Envoyer le Lot ${lot.lotIndex + 1} au laquage ?`, () => transition('send_to_laquage', lot.lotIndex, null))}>
+              onClick={() => ask(`Envoyer le Lot ${lot.lotIndex + 1} au laquage ? Les barres brutes et laquées seront déduites du stock.`, () => transition('send_to_laquage', lot.lotIndex, null))}>
               <Send size={14} /> Envoyer Lot {lot.lotIndex + 1} au Laquage
             </button>
           )}

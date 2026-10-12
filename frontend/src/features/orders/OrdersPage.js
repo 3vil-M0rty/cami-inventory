@@ -197,6 +197,26 @@ export default function OrdersPage() {
     } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
   };
 
+  // Close a line that will never be fully delivered (e.g. 198 / 200): the rest leaves "quantité commandée"
+  const handleCloseLine = async (order, line, closed = true) => {
+    let note = '';
+    if (closed) {
+      const rest = line.quantityOrdered - (line.quantityReceived || 0);
+      const answer = window.prompt(
+        `Clôturer cette ligne ?\nReçu ${line.quantityReceived || 0} / ${line.quantityOrdered} — les ${rest} restant(s) ne seront jamais livrés et sortiront de la quantité commandée.\n\nMotif (optionnel) :`,
+        ''
+      );
+      if (answer === null) return;
+      note = answer;
+    } else if (!window.confirm('Rouvrir cette ligne ? Le reste à livrer sera de nouveau compté dans la quantité commandée.')) {
+      return;
+    }
+    try {
+      await axios.patch(`${API_URL}/orders/${order.id}/lines/${line._id || line.id}/close`, { closed, note });
+      await fetchOrders();
+    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+  };
+
   const openReceive = (order, line) => {
     setReceiveModal({ order, line });
     setReceiveQty(line.quantityReceived || 0);
@@ -352,7 +372,7 @@ export default function OrdersPage() {
           {(order.lines || []).map((line, idx) => {
             const item = line.itemId;
             const received = line.quantityReceived || 0;
-            const isComplete = received >= line.quantityOrdered;
+            const isComplete = received >= line.quantityOrdered || line.closed;
             const linePct = line.quantityOrdered > 0 ? Math.round((received / line.quantityOrdered) * 100) : 0;
             const supId = (order.supplierId?.id || order.supplierId?._id || '').toString();
             const codeFour = (item?.supplierCodes || []).find(sc => (sc.supplierId?._id || sc.supplierId)?.toString() === supId)?.code;
@@ -366,7 +386,9 @@ export default function OrdersPage() {
                 </div>
                 <div className="detail-line-body">
                   <div className="detail-line-name">
-                    {item?.designation?.[lang] || item?.designation?.fr || 'Article supprimé'}
+                    {item
+                      ? (item.designation?.[lang] || item.designation?.fr || item.designation?.it || item.designation?.en || item.codeInterne || 'Article sans désignation')
+                      : 'Article supprimé'}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '2px 0' }}>
                     {item?.codeInterne && <span className="detail-line-code">Int: {item.codeInterne}</span>}
@@ -390,12 +412,32 @@ export default function OrdersPage() {
                     {received} / {line.quantityOrdered}
                     {isComplete && <span className="line-check"> ✓</span>}
                   </div>
+                  {line.closed && (
+                    <div className="detail-line-closed" style={{ fontSize: 11, color: '#92400e', marginTop: 2 }}
+                      title={[line.closedBy && `Par ${line.closedBy}`, line.closedAt && new Date(line.closedAt).toLocaleString('fr-FR'), line.closedNote].filter(Boolean).join(' — ')}>
+                      Clôturée ({line.quantityOrdered - received} non livré{line.quantityOrdered - received > 1 ? 's' : ''})
+                      {line.closedNote && <> · {line.closedNote}</>}
+                    </div>
+                  )}
+                  {line.closed && isAdmin && order.status !== 'annulee' && (
+                    <button type="button" className="btn-link" style={{ fontSize: 11, marginTop: 2, background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0 }}
+                      onClick={() => handleCloseLine(order, line, false)}>
+                      Rouvrir
+                    </button>
+                  )}
                 </div>
                 {!isComplete && order.status !== 'annulee' && order.status !== 'brouillon' && (
                   canReceiveOrder(order) ? (
-                    <button className="btn-receive" onClick={() => openReceive(order, line)}>
-                      Réceptionner
-                    </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <button className="btn-receive" onClick={() => openReceive(order, line)}>
+                        Réceptionner
+                      </button>
+                      <button type="button" className="btn-receive" style={{ background: '#fff', color: '#92400e', border: '1px solid #f59e0b' }}
+                        title="Le reste ne sera jamais livré : clôturer la ligne"
+                        onClick={() => handleCloseLine(order, line)}>
+                        Clôturer
+                      </button>
+                    </div>
                   ) : (
                     <span className="bc-lock" title={`Réservé au rôle ${CATEGORY_RECEIVE_ROLE[order.category] || ''}`}>
                       <Lock size={12} /> {CATEGORY_RECEIVE_ROLE[order.category]}
@@ -407,54 +449,94 @@ export default function OrdersPage() {
           })}
         </div>
 
-        {(order.receptions || []).length > 0 && (
-          <div className="order-detail-lines" style={{ marginTop: 24 }}>
-            <h2 className="order-detail-lines-title">Historique des réceptions</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[...order.receptions]
-                .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt))
-                .map((rec, idx) => {
-                  const line = (order.lines || []).find(
-                    l => (l._id || l.id) === rec.lineId || (l._id || l.id)?.toString() === rec.lineId?.toString()
-                  );
-                  const item = line?.itemId;
-                  return (
-                    <div
-                      key={idx}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 12,
-                        padding: '10px 14px', border: '1px solid #eee', borderRadius: 8,
-                        background: '#fafafa',
-                      }}
-                    >
-                      <CheckCheck size={16} color="#16a34a" style={{ flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13 }}>
-                          {item?.designation?.[lang] || item?.designation?.fr || 'Article'}
-                        </div>
-                        <div style={{ fontSize: 12, color: '#666' }}>
-                          +{rec.quantityReceived} reçu(s) · BL <strong>{rec.blNumber}</strong>
-                          {rec.receivedBy && ` · par ${rec.receivedBy}`}
+        {(order.receptions || []).length > 0 && (() => {
+          // One card per BL (a BL usually brings several lines), newest first
+          const fmtDate = (d) => new Date(d).toLocaleDateString('fr-FR', {
+            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+          });
+          const groups = [];
+          const byBl = new Map();
+          [...order.receptions]
+            .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt))
+            .forEach(rec => {
+              const key = rec.blNumber || '—';
+              if (!byBl.has(key)) {
+                const g = { blNumber: key, receivedAt: rec.receivedAt, receivedBy: new Set(), recs: [] };
+                byBl.set(key, g);
+                groups.push(g);
+              }
+              const g = byBl.get(key);
+              if (rec.receivedBy) g.receivedBy.add(rec.receivedBy);
+              g.recs.push(rec);
+            });
+
+          return (
+            <div className="order-receptions">
+              <h2 className="order-detail-lines-title">
+                Historique des réceptions
+                <span className="order-receptions__count">{groups.length} BL</span>
+              </h2>
+              {groups.map(g => {
+                const totalQty = g.recs.reduce((s, r) => s + (r.quantityReceived || 0), 0);
+                return (
+                  <div key={g.blNumber} className="reception-bl">
+                    <div className="reception-bl__head">
+                      <div className="reception-bl__id">
+                        <span className="reception-bl__icon"><CheckCheck size={15} /></span>
+                        <div>
+                          <div className="reception-bl__label">BL</div>
+                          <div className="reception-bl__number">{g.blNumber}</div>
                         </div>
                       </div>
-                      <div style={{ fontSize: 11, color: '#999', whiteSpace: 'nowrap' }}>
-                        {new Date(rec.receivedAt).toLocaleDateString('fr-FR', {
-                          day: '2-digit', month: '2-digit', year: 'numeric',
-                          hour: '2-digit', minute: '2-digit',
-                        })}
+                      <div className="reception-bl__meta">
+                        <span><Calendar size={12} /> {fmtDate(g.receivedAt)}</span>
+                        {g.receivedBy.size > 0 && <span>par <strong>{[...g.receivedBy].join(', ')}</strong></span>}
+                        <span className="reception-bl__chip">
+                          {g.recs.length} article{g.recs.length > 1 ? 's' : ''} · {totalQty} pcs
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
+                    <div className="reception-bl__rows">
+                      {g.recs.map((rec, idx) => {
+                        const line = (order.lines || []).find(
+                          l => (l._id || l.id)?.toString() === rec.lineId?.toString()
+                        );
+                        const item = line?.itemId;
+                        const name = item?.designation?.[lang] || item?.designation?.fr || item?.codeInterne || 'Article';
+                        return (
+                          <div key={idx} className="reception-row">
+                            <div className="reception-row__thumb">
+                              {item?.image ? <img src={item.image} alt="" /> : <Package size={14} />}
+                            </div>
+                            <div className="reception-row__name" title={name}>
+                              {name}
+                              {item?.codeInterne && <span className="reception-row__code">{item.codeInterne}</span>}
+                            </div>
+                            {line && (
+                              <div className="reception-row__progress">
+                                {line.quantityReceived || 0} / {line.quantityOrdered}
+                              </div>
+                            )}
+                            <div className="reception-row__qty">+{rec.quantityReceived}</div>
+                            <div className="reception-row__time">
+                              {new Date(rec.receivedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Totals */}
         <div className="order-detail-totals">
-          <div><span>Total HT</span><strong>{totalHT.toFixed(2)}</strong></div>
-          <div><span>TVA ({tvaRate}%)</span><strong>{(totalHT * tvaRate / 100).toFixed(2)}</strong></div>
-          <div className="order-detail-totals__ttc"><span>Total TTC</span><strong>{ttc.toFixed(2)}</strong></div>
+          <div className="order-detail-totals__row"><span>Total HT</span><strong>{totalHT.toFixed(2)}</strong></div>
+          <div className="order-detail-totals__row"><span>TVA ({tvaRate}%)</span><strong>{(totalHT * tvaRate / 100).toFixed(2)}</strong></div>
+          <div className="order-detail-totals__row order-detail-totals__ttc"><span>Total TTC</span><strong>{ttc.toFixed(2)}</strong></div>
         </div>
 
         {receiveModal && (
