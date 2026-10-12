@@ -35,13 +35,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Any write (POST/PUT/PATCH/DELETE) may change what the orders list shows → drop its cache
-let ordersListCache = new Map(); // filterKey -> { at, data }
+// Orders list cache. Safe with several server instances: before serving it, we check in the
+// database (1 cheap round trip) that no order / article / company / supplier changed since.
+const ordersListCache = new Map(); // filterKey -> { at, version, data }
 const ORDERS_CACHE_MS = 5 * 60 * 1000;
-app.use((req, res, next) => {
-  if (req.method !== 'GET' && req.path.startsWith('/api/')) ordersListCache.clear();
-  next();
-});
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aluminum-inventory';
 
@@ -191,6 +188,7 @@ const itemSchema = new mongoose.Schema({
   }],
   superCategory: { type: String, default: 'aluminium' }
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
+itemSchema.index({ updatedAt: -1 });
 const Item = mongoose.model('Item', itemSchema);
 
 const stockMovementSchema = new mongoose.Schema({
@@ -250,6 +248,15 @@ const orderSchema = new mongoose.Schema({
     cancelledAt: { type: Date, default: null },
     cancelledBy: { type: String, default: '' },
     cancelNote: { type: String, default: '' },
+    // Quantity corrected after the fact (e.g. 100 entered instead of 90) — history of corrections
+    adjustments: [{
+      from: { type: Number, required: true },
+      to: { type: Number, required: true },
+      at: { type: Date, default: Date.now },
+      by: { type: String, default: '' },
+      note: { type: String, default: '' },
+      _id: false,
+    }],
   }],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
 
@@ -258,6 +265,7 @@ orderSchema.index({ companyId: 1, number: 1 });
 orderSchema.index({ createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ 'lines.itemId': 1 });
+orderSchema.index({ updatedAt: -1 });
 const Order = mongoose.model('Order', orderSchema);
 
 const clientSchema = new mongoose.Schema({
@@ -1570,6 +1578,16 @@ const populateOrder = (q) => q
 // Adds the `id` fields the frontend expects (toJSON is not applied on lean documents).
 const ORDER_LIST_ITEM_FIELDS = 'designation image codeInterne supplierCodes categoryId superCategory';
 const withId = (d) => (d && typeof d === 'object' && d._id ? Object.assign(d, { id: String(d._id) }) : d);
+// Changes whenever an order / article / company / supplier is created, edited or deleted
+async function ordersListVersion() {
+  const last = (M) => M.findOne({}, 'updatedAt').sort({ updatedAt: -1 }).lean().then(d => d?.updatedAt?.getTime() || 0);
+  const [o, i, c, f, nO, nI] = await Promise.all([
+    last(Order), last(Item), last(Company), last(Fournisseur),
+    Order.estimatedDocumentCount(), Item.estimatedDocumentCount(),
+  ]);
+  return `${o}-${i}-${c}-${f}-${nO}-${nI}`;
+}
+
 async function findOrdersForList(filter) {
   const orders = await Order.find(filter)
     .sort({ createdAt: -1 })
@@ -1665,19 +1683,73 @@ app.get('/api/orders', requireAuth, requireOrdersView, async (req, res) => {
 
     // Cached list (cleared by any write) — Atlas free tier is slow, the list rarely changes
     const key = JSON.stringify(filter);
+    const version = await ordersListVersion();
     const hit = ordersListCache.get(key);
-    if (hit && Date.now() - hit.at < ORDERS_CACHE_MS) {
+    if (hit && hit.version === version && Date.now() - hit.at < ORDERS_CACHE_MS) {
       res.set('X-Cache', 'HIT');
       return res.json(hit.data);
     }
     const data = await findOrdersForList(filter);
-    ordersListCache.set(key, { at: Date.now(), data });
+    ordersListCache.set(key, { at: Date.now(), version, data });
     res.set('X-Cache', 'MISS');
     res.json(data);
   } catch (e) {
     console.error('❌ GET /api/orders:', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// Orders containing an article (inventory → "Bons de commande" button). Same visibility rules as
+// the orders list: receiving-only roles see their categories and no drafts.
+app.get('/api/inventory/:id/orders', requireAuth, requireOrdersView, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Article invalide' });
+    const itemId = new mongoose.Types.ObjectId(req.params.id);
+    const filter = { 'lines.itemId': itemId };
+    if (!isAdmin(req) && !(req.permissions || []).includes('orders.view')) {
+      const allowedCats = receivingCategoriesForRole(req.user?.roleId?.name || '');
+      if (allowedCats.length === 0) return res.json([]);
+      filter.categories = { $in: allowedCats };
+      filter.status = { $ne: 'brouillon' };
+    } else if (!(req.permissions || []).includes('orders.edit') && !isAdmin(req)) {
+      filter.status = { $ne: 'brouillon' };
+    }
+
+    const orders = await Order.find(filter)
+      .select('number reference status orderDate expectedDate supplier supplierId companyId lines receptions createdAt')
+      .sort({ createdAt: -1 })
+      .populate('supplierId', 'name')
+      .populate('companyId', 'name color')
+      .lean();
+
+    const rows = [];
+    for (const o of orders) {
+      for (const l of o.lines || []) {
+        if (String(l.itemId) !== String(itemId)) continue;
+        const lastReception = (o.receptions || [])
+          .filter(r => !r.cancelled && String(r.lineId) === String(l._id))
+          .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt))[0];
+        rows.push({
+          orderId: String(o._id),
+          number: o.number || '',
+          reference: o.reference || '',
+          status: o.status,
+          orderDate: o.orderDate,
+          expectedDate: o.expectedDate,
+          supplierName: o.supplierId?.name || o.supplier || '',
+          companyName: o.companyId?.name || '',
+          companyColor: o.companyId?.color || '',
+          quantityOrdered: l.quantityOrdered || 0,
+          quantityReceived: l.quantityReceived || 0,
+          unitPrice: l.unitPrice || 0,
+          closed: !!l.closed,
+          lastReceptionAt: lastReception?.receivedAt || null,
+          lastBlNumber: lastReception?.blNumber || '',
+        });
+      }
+    }
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/orders/recent-receptions', requireAuth, requireOrdersView, async (req, res) => {
@@ -2053,6 +2125,66 @@ app.post('/api/orders/:id/receptions/:receptionId/cancel', requireAuth, async (r
     rec.cancelledAt = new Date();
     rec.cancelledBy = req.user?.displayName || req.user?.username || '';
     rec.cancelNote = (req.body.note || '').trim();
+
+    refreshOrderStatus(o);
+    await o.save();
+    await recomputeOrderedQuantity([line.itemId]);
+    res.json(await populateOrder(Order.findById(o._id)));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Adjust the quantity of a reception (e.g. 100 entered, 90 really received):
+// only the difference is applied to the stock and to the line — no need to cancel and receive again.
+app.patch('/api/orders/:id/receptions/:receptionId', requireAuth, async (req, res) => {
+  try {
+    const newQty = Number(req.body.quantity);
+    if (!Number.isFinite(newQty) || newQty <= 0)
+      return res.status(400).json({ error: 'La nouvelle quantité doit être supérieure à 0 (pour tout retirer, utilisez « Annuler »).' });
+
+    const o = await Order.findById(req.params.id);
+    if (!o) return res.status(404).json({ error: 'Order not found' });
+    if (o.status === 'annulee') return res.status(400).json({ error: 'Bon de commande annulé.' });
+
+    const rec = o.receptions.id(req.params.receptionId);
+    if (!rec) return res.status(404).json({ error: 'Réception introuvable' });
+    if (rec.cancelled) return res.status(400).json({ error: 'Cette réception est annulée.' });
+
+    const line = o.lines.id(rec.lineId);
+    if (!line) return res.status(404).json({ error: 'Ligne introuvable' });
+
+    if (!isAdmin(req) && !(await canReceiveOrderLine(req, o, line.itemId)))
+      return res.status(403).json({ error: 'Vous ne pouvez pas ajuster cette réception.' });
+
+    const oldQty = rec.quantityReceived || 0;
+    const delta = newQty - oldQty;
+    if (delta === 0) return res.status(400).json({ error: 'La quantité est inchangée.' });
+
+    // Stock: -delta when lowering (refused if already consumed), +delta when raising
+    const item = await Item.findOneAndUpdate(
+      delta < 0 ? { _id: line.itemId, quantity: { $gte: -delta } } : { _id: line.itemId },
+      { $inc: { quantity: delta } },
+      { new: true }
+    );
+    if (!item) {
+      const current = await Item.findById(line.itemId, 'quantity');
+      return res.status(400).json({
+        error: `Stock insuffisant pour ajuster : ${-delta} à retirer, ${current?.quantity ?? 0} en stock (une partie a déjà été consommée). Corrigez d'abord le stock dans l'inventaire.`,
+      });
+    }
+    const note = (req.body.note || '').trim();
+    await StockMovement.create({
+      itemId: item._id,
+      type: delta > 0 ? 'entree' : 'sortie',
+      quantity: Math.abs(delta),
+      balanceAfter: item.quantity,
+      orderId: o._id,
+      note: `Ajustement réception ${o.number || o.reference} — BL ${rec.blNumber} : ${oldQty} → ${newQty}${note ? ` — ${note}` : ''}`,
+    });
+
+    line.quantityReceived = Math.max(0, (line.quantityReceived || 0) + delta);
+    rec.quantityReceived = newQty;
+    rec.adjustments = rec.adjustments || [];
+    rec.adjustments.push({ from: oldQty, to: newQty, at: new Date(), by: req.user?.displayName || req.user?.username || '', note });
 
     refreshOrderStatus(o);
     await o.save();

@@ -1095,9 +1095,22 @@ textarea.form-control {
 }
 
 /* Cancel a reception (entry error) */
-.reception-row__actions { display:flex;justify-content:flex-end;min-width:0; }
+.reception-row__actions { display:flex;justify-content:flex-end;gap:6px;min-width:0; }
 /* keep the column width on cancelled rows so every row stays aligned */
-.reception-bl__rows--actions .reception-row__actions { min-width:74px; }
+.reception-bl__rows--actions .reception-row__actions { min-width:150px; }
+.reception-row__adjust {
+  padding:4px 10px;border-radius:var(--r-full);cursor:pointer;font-family:inherit;
+  font-size:11px;font-weight:700;white-space:nowrap;
+  background:var(--surface);color:#92400e;border:1px solid var(--warning-bd, #fcd34d);
+  opacity:.8;transition:all var(--t);
+}
+.reception-row__adjust:hover { opacity:1;background:var(--warning-bg, #fffbeb); }
+.reception-row__adjust-info {
+  font-size:11px;font-weight:600;color:#92400e;white-space:normal;margin-top:2px;
+}
+@media (max-width:480px) {
+  .reception-bl__rows--actions .reception-row__actions { min-width:0;flex-direction:column;gap:4px; }
+}
 .reception-row__cancel {
   padding:4px 10px;border-radius:var(--r-full);cursor:pointer;font-family:inherit;
   font-size:11px;font-weight:700;white-space:nowrap;

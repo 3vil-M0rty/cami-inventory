@@ -7,8 +7,9 @@ import {
   Layers, GlassWater, Wrench, FlaskConical, Settings, Paintbrush, MirrorRectangular,
   Search, AlertTriangle, AlertCircle, Plus, Minus, Pencil, Trash2,
   FileDown, PackagePlus, Package, ChevronRight, Tag,
-  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn,
+  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn, ClipboardList,
 } from 'lucide-react';
+import ItemOrdersModal from './components/ItemOrdersModal';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import './InventoryPage.css';
@@ -56,7 +57,10 @@ function getSuperCatLabel(sc, language) {
 
 function InventoryPage() {
   const { currentLanguage: language, t } = useLanguage();
-  const { can } = useAuth();
+  const { can, user: authUser } = useAuth();
+  // Who may see the purchase orders of an article (same rule as the Commandes page)
+  const canSeeItemOrders = can('admin.view') || can('orders.view')
+    || ['Magasinier', 'Laquage', 'Coordinateur-vitrage'].includes(authUser?.role);
 
   const [superCats, setSuperCats] = useState([]);
   const [activeSuperCat, setActiveSuperCat] = useState(null);
@@ -79,6 +83,7 @@ function InventoryPage() {
   const [addInNote, setAddInNote] = useState('');
   const [showSuperCatMgr, setShowSuperCatMgr] = useState(false);
   const [orderRequestModal, setOrderRequestModal] = useState(null);
+  const [ordersItem, setOrdersItem] = useState(null); // article whose purchase orders are shown
 
   const [suppliers, setSuppliers] = useState([]);
 
@@ -433,6 +438,7 @@ function InventoryPage() {
               onEdit={canEdit ? (i) => setEditingItem(i) : null}
               onDelete={canDelete ? deleteItem : null}
               onOrderRequest={can('admin.view') ? (i) => setOrderRequestModal({ item: i }) : null}
+              onShowOrders={canSeeItemOrders ? (i) => setOrdersItem(i) : null}
               getStockStatus={getStockStatus}
               t={t}
             />
@@ -505,6 +511,10 @@ function InventoryPage() {
         />
       )}
 
+      {ordersItem && (
+        <ItemOrdersModal item={ordersItem} language={language} onClose={() => setOrdersItem(null)} />
+      )}
+
       {orderRequestModal && (
         <OrderRequestModal
           item={orderRequestModal.item}
@@ -550,7 +560,7 @@ function ImagePreviewModal({ src, alt, onClose }) {
 }
 
 /* ── Item Card ──────────────────────────────────────────────── */
-function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit, onDelete, onOrderRequest, getStockStatus, t }) {
+function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit, onDelete, onOrderRequest, onShowOrders, getStockStatus, t }) {
   const status = getStockStatus(item);
   const formatQty = (val) => isPoudre ? fmt(val) : Math.floor(val);
   const { user } = useAuth();
@@ -629,6 +639,13 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
             </button>
           )}
         </div>
+
+        {onShowOrders && (
+          <button className="item-orders-btn" onClick={() => onShowOrders(item)} title="Voir les bons de commande de cet article">
+            <ClipboardList size={13} strokeWidth={2.5} />
+            Bons de commande
+          </button>
+        )}
 
         {(onEdit || onDelete) && (
           <div className="item-actions">
@@ -971,7 +988,10 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
             </div>
             <div className="form-group">
               <label>{t('orderedQuantityLabel')}</label>
-              <input type="number" required min="0" step={isPoudre ? '0.01' : '1'} placeholder={isPoudre ? '50.00' : '0'} value={formData.orderedQuantity} onChange={e => setFormData({ ...formData, orderedQuantity: parseQty(e.target.value) })} />
+              {/* Read-only: computed by the server from the sent purchase orders (not editable by hand) */}
+              <input type="number" value={formData.orderedQuantity} readOnly disabled
+                title="Calculée automatiquement à partir des bons de commande envoyés" />
+              <small style={{ fontSize: 10, color: '#888' }}>Calculée depuis les BC envoyés</small>
             </div>
             <div className="form-group">
               <label>{t('thresholdLabel')}</label>

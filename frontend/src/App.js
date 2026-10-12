@@ -17,6 +17,7 @@ import AdminPage from './features/admin/AdminPage';
 import ChantierPage from './features/chantiers/ChantierPage';
 import './App.css';
 import AtelierTablesPage from './features/AtelierTables';
+import { PAGE_PATHS, pageFromLocation, setUrl } from './routes';
 
 const PROJECTS_DEFAULT_ROLES = new Set(['LOGISTIQUE', 'Coordinateur', 'BARREMAN']);
 const CHANTIER_DEFAULT_ROLES = new Set(['chefChantier', 'BARREMAN']);
@@ -36,19 +37,37 @@ function AppInner() {
   const [activePage, setActivePage] = useState('inventory');
   const [pageInitialized, setPageInitialized] = useState(false);
 
+  // Page comes from the URL (/commandes, /projets…); "/" falls back to the last page / role default
   useEffect(() => {
     if (!loading && !pageInitialized) {
       if (user) {
-        const saved = localStorage.getItem(LS_PAGE);
-        setActivePage(saved || getDefaultPage(user.role));
+        const page = pageFromLocation() || localStorage.getItem(LS_PAGE) || getDefaultPage(user.role);
+        setActivePage(page);
+        localStorage.setItem(LS_PAGE, page);
+        if (!pageFromLocation()) setUrl(PAGE_PATHS[page] || '/', { replace: true });
       }
       setPageInitialized(true);
     }
   }, [loading, user, pageInitialized]);
 
+  // Browser back / forward buttons
+  useEffect(() => {
+    const onPop = () => {
+      const page = pageFromLocation();
+      if (page) { setActivePage(page); localStorage.setItem(LS_PAGE, page); }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   const navigate = (page) => {
     localStorage.setItem(LS_PAGE, page);
     setActivePage(page);
+    if (PAGE_PATHS[page]) {
+      setUrl(PAGE_PATHS[page]);
+      // let the open page react (e.g. Commandes clicked while a BC detail is open → back to the list)
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
   };
 
   if (loading) {
@@ -66,10 +85,11 @@ function AppInner() {
 
   if (!user) {
     return <LoginPage onLogin={(loggedInUser) => {
-      const defaultPage = getDefaultPage(loggedInUser?.role);
-      localStorage.setItem(LS_PAGE, defaultPage);
-      setPageInitialized(false);
-      setActivePage(defaultPage);
+      // A link opened before logging in (e.g. /commandes/123) is kept; otherwise the role's default page
+      const page = pageFromLocation() || getDefaultPage(loggedInUser?.role);
+      localStorage.setItem(LS_PAGE, page);
+      setActivePage(page);
+      if (!pageFromLocation()) setUrl(PAGE_PATHS[page] || '/', { replace: true });
     }} />;
   }
 

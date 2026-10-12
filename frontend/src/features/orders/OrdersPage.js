@@ -6,6 +6,7 @@ import './OrdersPage.css';
 import { exportOrdersExcel, exportOrderPDF } from '../../utils/orderExport';
 import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus, ClipboardList } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { PAGE_PATHS, subPathFromLocation, getQueryParam, setUrl } from '../../routes';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -109,7 +110,16 @@ export default function OrdersPage() {
   };
   const [purchaseRequests, setPurchaseRequests] = useState([]);
   const [prLoading, setPrLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'requests' | 'suivi'
+  const ORDER_TABS = ['orders', 'requests', 'suivi'];
+  // 'orders' | 'requests' | 'suivi' — kept in the URL (?onglet=suivi) so a refresh stays on the same tab
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = getQueryParam('onglet');
+    return ORDER_TABS.includes(tab) ? tab : 'orders';
+  });
+  const changeTab = (tab) => {
+    setActiveTab(tab);
+    setUrl(PAGE_PATHS.orders, { replace: true, query: { onglet: tab === 'orders' ? null : tab } });
+  };
   const [markingId, setMarkingId] = useState(null);
 
   // who may touch THIS order
@@ -192,11 +202,45 @@ export default function OrdersPage() {
     }
   }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Order detail in the URL: /commandes/<id> (refresh / back button / shared link) ──
+  const openOrder = (order) => {
+    setSelectedOrder(order);
+    setUrl(`${PAGE_PATHS.orders}/${order.id}`);
+  };
+  const closeOrder = ({ replace = false } = {}) => {
+    setSelectedOrder(null);
+    setUrl(PAGE_PATHS.orders, { replace, query: { onglet: activeTab === 'orders' ? null : activeTab } });
+  };
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
+  const urlOrderApplied = useRef(false);
+  useEffect(() => {
+    // Opening /commandes/<id> directly: show that order as soon as the list is there
+    if (urlOrderApplied.current || !orders.length) return;
+    const [id] = subPathFromLocation();
+    if (id) {
+      const found = orders.find(o => o.id === id);
+      if (found) setSelectedOrder(found);
+      else setUrl(PAGE_PATHS.orders, { replace: true }); // unknown / deleted order
+    }
+    urlOrderApplied.current = true;
+  }, [orders]);
+  useEffect(() => {
+    const onPop = () => {
+      const [id] = subPathFromLocation();
+      setSelectedOrder(id ? (ordersRef.current.find(o => o.id === id) || null) : null);
+      const tab = getQueryParam('onglet');
+      setActiveTab(ORDER_TABS.includes(tab) ? tab : 'orders');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleDelete = async (id) => {
     if (!window.confirm('Supprimer cette commande ?')) return;
     try {
       await axios.delete(`${API_URL}/orders/${id}`);
-      if (selectedOrder?.id === id) setSelectedOrder(null);
+      if (selectedOrder?.id === id) closeOrder({ replace: true });
       fetchOrders();
     } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
   };
@@ -244,6 +288,28 @@ export default function OrdersPage() {
     if (answer === null) return;
     try {
       await axios.post(`${API_URL}/orders/${order.id}/receptions/${rec._id || rec.id}/cancel`, { note: answer });
+      await fetchOrders();
+    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+  };
+
+  // Correct the quantity of a reception (e.g. 100 entered, 90 really received): only the difference is applied
+  const handleAdjustReception = async (order, rec, itemName) => {
+    const answer = window.prompt(
+      `Ajuster cette réception ?\n${itemName} · BL ${rec.blNumber}\nQuantité actuelle : ${rec.quantityReceived}\n\n` +
+      `Nouvelle quantité réellement reçue :`,
+      String(rec.quantityReceived)
+    );
+    if (answer === null) return;
+    const quantity = Number(String(answer).replace(',', '.'));
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      alert('Quantité invalide. Pour tout retirer, utilisez « Annuler ».');
+      return;
+    }
+    if (quantity === rec.quantityReceived) return;
+    const note = window.prompt(`${rec.quantityReceived} → ${quantity}\n\nMotif (optionnel) :`, '');
+    if (note === null) return;
+    try {
+      await axios.patch(`${API_URL}/orders/${order.id}/receptions/${rec._id || rec.id}`, { quantity, note });
       await fetchOrders();
     } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
   };
@@ -337,7 +403,7 @@ export default function OrdersPage() {
       <div className="orders-page">
         <div className="order-detail-back">
           <div className="order-detail-actions">
-            <button className="btn-back" onClick={() => setSelectedOrder(null)}>
+            <button className="btn-back" onClick={() => closeOrder()}>
               <StepBack size={15} />
               {t('backCommandes')}
             </button>
@@ -563,6 +629,13 @@ export default function OrdersPage() {
                             <div className="reception-row__name" title={name}>
                               {name}
                               {item?.codeInterne && <span className="reception-row__code">{item.codeInterne}</span>}
+                              {(rec.adjustments || []).map((a, ai) => (
+                                <div key={ai} className="reception-row__adjust-info">
+                                  Ajustée {a.from} → {a.to}{a.by && ` par ${a.by}`}
+                                  {a.at && ` le ${fmtDate(a.at)}`}
+                                  {a.note && ` — ${a.note}`}
+                                </div>
+                              ))}
                               {rec.cancelled && (
                                 <div className="reception-row__cancel-info">
                                   Annulée{rec.cancelledBy && ` par ${rec.cancelledBy}`}
@@ -582,11 +655,18 @@ export default function OrdersPage() {
                             </div>
                             <div className="reception-row__actions">
                               {!rec.cancelled && order.status !== 'annulee' && canReceiveOrder(order) && (
-                                <button type="button" className="reception-row__cancel"
-                                  title="Erreur de saisie : annuler cette réception"
-                                  onClick={() => handleCancelReception(order, rec, name)}>
-                                  Annuler
-                                </button>
+                                <>
+                                  <button type="button" className="reception-row__adjust"
+                                    title="Erreur de quantité : corriger la quantité reçue"
+                                    onClick={() => handleAdjustReception(order, rec, name)}>
+                                    Ajuster
+                                  </button>
+                                  <button type="button" className="reception-row__cancel"
+                                    title="Erreur de saisie : annuler cette réception"
+                                    onClick={() => handleCancelReception(order, rec, name)}>
+                                    Annuler
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
@@ -644,7 +724,7 @@ export default function OrdersPage() {
         <div className="orders-tab-switcher">
           <button
             className={`orders-tab-btn ${activeTab === 'orders' ? 'active' : ''}`}
-            onClick={() => setActiveTab('orders')}
+            onClick={() => changeTab('orders')}
           >
             <ShoppingCart size={15} /> {t('navOrders')}
 
@@ -653,7 +733,7 @@ export default function OrdersPage() {
           {can('orders.edit') && (
             <button
               className={`orders-tab-btn ${activeTab === 'requests' ? 'active' : ''}`}
-              onClick={() => { setActiveTab('requests'); fetchPurchaseRequests(); }}
+              onClick={() => { changeTab('requests'); fetchPurchaseRequests(); }}
             >
               <ShoppingCart size={13} />
               {t('Demandesadmin')}
@@ -668,7 +748,7 @@ export default function OrdersPage() {
           {can('orders.edit') && (
             <button
               className={`orders-tab-btn ${activeTab === 'suivi' ? 'active' : ''}`}
-              onClick={() => setActiveTab('suivi')}
+              onClick={() => changeTab('suivi')}
             >
               <ClipboardList size={13} />
               Suivi des commandes
@@ -759,7 +839,7 @@ export default function OrdersPage() {
                     <div
                       key={order.id}
                       className="order-card order-card--clickable"
-                      onClick={() => setSelectedOrder(order)}
+                      onClick={() => openOrder(order)}
                     >
                       <div className="order-card-header">
                         <div className="order-card-title">
