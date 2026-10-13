@@ -51,6 +51,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
     largeur: chassis?.largeur ?? '',
     hauteur: chassis?.hauteur ?? '',
     etat: chassis?.etat || 'non_entame',
+    atla78: chassis?.atla78 ?? false,
     components: buildComponents(getTypeObj(initialType), chassis?.components || [])
   });
 
@@ -94,6 +95,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
       payload = {
         ...formData,
         keepAsOne,
+        atla78: !!(isComposite && formData.atla78),
         repere: first.repere || formData.repere,
         largeur: parseInt(first.largeur, 10) || 0,
         hauteur: parseInt(first.hauteur, 10) || 0,
@@ -113,6 +115,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
       payload = {
         ...formData,
         keepAsOne,
+        atla78: !!(isComposite && formData.atla78),
         quantity: qty,
         largeur: parseInt(formData.largeur, 10) || 0,
         hauteur: parseInt(formData.hauteur, 10) || 0,
@@ -139,6 +142,30 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
   };
 
   const isComposite = getTypeObj(formData.type)?.composite;
+
+  // ── ATLA78: dormant = L × H, vantaux: Hv = H - 77, Lv = (L - 9) / n ──
+  const mainL = multiDim ? variants[0]?.largeur : formData.largeur;
+  const mainH = multiDim ? variants[0]?.hauteur : formData.hauteur;
+  useEffect(() => {
+    if (!formData.atla78 || !isComposite) return;
+    const L = parseFloat(mainL);
+    const H = parseFloat(mainH);
+    const hasL = Number.isFinite(L);
+    const hasH = Number.isFinite(H);
+    setFormData(prev => {
+      const n = prev.components.filter(c => c.role === 'vantail').length;
+      if (!n) return prev;
+      let changed = false;
+      const components = prev.components.map(c => {
+        const largeur = c.role === 'dormant' ? (hasL ? L : '') : (hasL ? Math.round((L - 9) / n) : '');
+        const hauteur = c.role === 'dormant' ? (hasH ? H : '') : (hasH ? H - 77 : '');
+        if (String(c.largeur) === String(largeur) && String(c.hauteur) === String(hauteur)) return c;
+        changed = true;
+        return { ...c, largeur, hauteur };
+      });
+      return changed ? { ...prev, components } : prev;
+    });
+  }, [formData.atla78, isComposite, mainL, mainH, formData.type, formData.components.length]);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -302,6 +329,15 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
           {isComposite && formData.components.length > 0 && (
             <div className="chassis-form__section chassis-form__section--composite">
               <label className="chassis-form__section-label">{t('componentsDimensions')}</label>
+              <label className="chassis-atla78" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={!!formData.atla78}
+                  onChange={e => set('atla78', e.target.checked)}
+                  style={{ width: 16, height: 16, accentColor: 'var(--600, #3b82f6)', cursor: 'pointer' }}
+                />
+                ATLA78
+              </label>
               <div className="composite-grid">
                 {formData.components.map((comp, idx) => (
                   <div key={idx} className="composite-card">
