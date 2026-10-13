@@ -1,10 +1,11 @@
 import { createContext, useContext, useState, useCallback } from 'react';
+import { mergeTranslations } from '../i18n';
 
 const LanguageContext = createContext(null);
 export const LANGUAGES = { IT: 'it', FR: 'fr', EN: 'en' };
 export const LANGUAGE_LABELS = { [LANGUAGES.IT]: 'Italiano', [LANGUAGES.FR]: 'Français', [LANGUAGES.EN]: 'English' };
 
-const translations = {
+const baseTranslations = {
   fr: {
     appTitle: 'CAMI ALUMINIUM', appSubtitle: 'PAR HB',
     navInventory: 'Inventaire', navOrders: 'Commandes', navProjects: 'Projets',
@@ -611,12 +612,42 @@ const translations = {
   }
 };
 
+// Base keys above + one dictionary per area in src/i18n/
+const translations = mergeTranslations(baseTranslations);
+
+const LS_LANG = 'app_language';
+const savedLanguage = () => {
+  try {
+    const l = localStorage.getItem(LS_LANG);
+    return Object.values(LANGUAGES).includes(l) ? l : LANGUAGES.FR;
+  } catch { return LANGUAGES.FR; }
+};
+
+/** Replaces {name} placeholders: t('lineMissing', { n: 3 }) */
+const interpolate = (text, vars) =>
+  vars ? String(text).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : m)) : text;
+
+/** For code outside components (PDF / print builders): translate('it', 'labelProject') */
+export const translate = (lang, key, vars) =>
+  interpolate(translations[lang]?.[key] || translations.fr?.[key] || key, vars);
+
+/** Active language for code outside components (persisted by LanguageProvider) */
+export const activeLanguage = () => savedLanguage();
+/** Translate in the active language, for code outside components (exports, print HTML) */
+export const tx = (key, vars) => translate(activeLanguage(), key, vars);
+
 export const LanguageProvider = ({ children }) => {
-  const [currentLanguage, setCurrentLanguage] = useState(LANGUAGES.FR);
+  const [currentLanguage, setCurrentLanguage] = useState(savedLanguage);
   const changeLanguage = useCallback((lang) => {
-    if (Object.values(LANGUAGES).includes(lang)) setCurrentLanguage(lang);
+    if (Object.values(LANGUAGES).includes(lang)) {
+      setCurrentLanguage(lang);
+      try { localStorage.setItem(LS_LANG, lang); } catch { /* private mode */ }
+    }
   }, []);
-  const t = useCallback((key) => translations[currentLanguage]?.[key] || translations.fr?.[key] || key, [currentLanguage]);
+  const t = useCallback(
+    (key, vars) => interpolate(translations[currentLanguage]?.[key] || translations.fr?.[key] || key, vars),
+    [currentLanguage]
+  );
   return (
     <LanguageContext.Provider value={{ currentLanguage, changeLanguage, t, languages: LANGUAGES, languageLabels: LANGUAGE_LABELS }}>
       {children}

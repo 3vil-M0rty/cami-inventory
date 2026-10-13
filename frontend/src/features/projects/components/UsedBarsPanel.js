@@ -12,10 +12,10 @@ import { useAuth } from '../../../context/AuthContext';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const SUPER_CATS = [
-  { key: 'aluminium', color: '#dfdfdf', icon: <Layers size={13} color='#000' strokeWidth={2.5} />, labelKey: 'superCatAluminium', label: 'Aluminium' },
-  { key: 'verre', color: 'lightblue', icon: <MirrorRectangular size={13} color='black' strokeWidth={2.5} />, labelKey: 'superCatVerre', label: 'Verre' },
-  { key: 'accessoires', color: 'red', icon: <Wrench size={13} color='black' strokeWidth={2.5} />, labelKey: 'superCatAccessoires', label: 'Accessoires' },
-  { key: 'poudre', color: 'orange', icon: <Paintbrush size={13} color='black' strokeWidth={2.5} />, labelKey: 'superCatPoudre', label: 'Poudre' }
+  { key: 'aluminium', color: '#dfdfdf', icon: <Layers size={13} color='currentColor' strokeWidth={2.5} />, labelKey: 'superCatAluminium', label: 'Aluminium' },
+  { key: 'verre', color: 'lightblue', icon: <MirrorRectangular size={13} color='currentColor' strokeWidth={2.5} />, labelKey: 'superCatVerre', label: 'Verre' },
+  { key: 'accessoires', color: 'red', icon: <Wrench size={13} color='currentColor' strokeWidth={2.5} />, labelKey: 'superCatAccessoires', label: 'Accessoires' },
+  { key: 'poudre', color: 'orange', icon: <Paintbrush size={13} color='currentColor' strokeWidth={2.5} />, labelKey: 'superCatPoudre', label: 'Poudre' }
 ];
 
 function fmt(val) {
@@ -25,7 +25,7 @@ function fmt(val) {
   return parseFloat(n.toFixed(2)).toString();
 }
 
-function formatMovementDate(dateStr) {
+function formatMovementDate(dateStr, t) {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
   const now = new Date();
@@ -34,12 +34,13 @@ function formatMovementDate(dateStr) {
   yesterday.setDate(now.getDate() - 1);
   const isYesterday = d.toDateString() === yesterday.toDateString();
   const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (isToday) return `Aujourd'hui à ${timeStr}`;
-  if (isYesterday) return `Hier à ${timeStr}`;
-  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ` à ${timeStr}`;
+  if (isToday) return t('ubToday', { time: timeStr });
+  if (isYesterday) return t('ubYesterday', { time: timeStr });
+  return t('ubDateAt', { date: d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }), time: timeStr });
 }
 
 function MovementModal({ item, projectId, onClose, language }) {
+  const { t } = useLanguage();
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -62,7 +63,7 @@ function MovementModal({ item, projectId, onClose, language }) {
         }));
         setMovements(signed);
       })
-      .catch(() => setError('Impossible de charger les mouvements'))
+      .catch(() => setError(t('ubLoadError')))
       .finally(() => setLoading(false));
   }, [item, projectId]);
 
@@ -91,7 +92,7 @@ function MovementModal({ item, projectId, onClose, language }) {
               <div className="ubp-modal__title">{designation}</div>
               <div className="ubp-modal__subtitle">
                 <TrendingDown size={11} />
-                Historique des consommations
+                {t('ubHistory')}
               </div>
             </div>
           </div>
@@ -105,23 +106,23 @@ function MovementModal({ item, projectId, onClose, language }) {
           {loading && (
             <div className="ubp-modal__state">
               <div className="ubp-modal__spinner" />
-              Chargement…
+              {t('loadingShort')}
             </div>
           )}
           {error && !loading && (
             <div className="ubp-modal__state ubp-modal__state--error">{error}</div>
           )}
           {!loading && !error && movements.length === 0 && (
-            <div className="ubp-modal__state">Aucun mouvement enregistré pour ce projet.</div>
+            <div className="ubp-modal__state">{t('ubNoMovement')}</div>
           )}
           {!loading && !error && withRunning.length > 0 && (
             <table className="ubp-modal__table">
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>Date / Heure</th>
-                  <th style={{ textAlign: 'center' }}>Qté</th>
-                  <th style={{ textAlign: 'center' }}>Cumulé</th>
+                  <th>{t('ubColDate')}</th>
+                  <th style={{ textAlign: 'center' }}>{t('ubColQty')}</th>
+                  <th style={{ textAlign: 'center' }}>{t('ubColCumul')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -131,8 +132,8 @@ function MovementModal({ item, projectId, onClose, language }) {
                     <tr key={m._id || i} className={isReturn ? 'ubp-modal__row--return' : ''}>
                       <td className="ubp-modal__row-num">{withRunning.length - i}</td>
                       <td className="ubp-modal__date">
-                        {formatMovementDate(m.createdAt)}
-                        {isReturn && <span className="ubp-modal__return-tag">annulé</span>}
+                        {formatMovementDate(m.createdAt, t)}
+                        {isReturn && <span className="ubp-modal__return-tag">{t('ubCancelled')}</span>}
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <span className={isReturn ? 'ubp-modal__qty-chip ubp-modal__qty-chip--return' : 'ubp-modal__qty-chip'}>
@@ -154,10 +155,10 @@ function MovementModal({ item, projectId, onClose, language }) {
         {!loading && !error && movements.length > 0 && (
           <div className="ubp-modal__footer">
             <span className="ubp-modal__footer-label">
-              {movements.length} entrée{movements.length > 1 ? 's' : ''}
+              {t('ubEntries', { n: movements.length })}
             </span>
             <div className="ubp-modal__footer-total">
-              Total consommé&nbsp;
+              {t('ubTotal')}&nbsp;
               <strong>{fmt(grandTotal)}</strong>
             </div>
           </div>
@@ -226,7 +227,7 @@ function UsedBarsPanel({ project }) {
   const handleAdd = async (item) => {
     const qty = isPoudre ? parseFloat(quantities[item.id]) : parseInt(quantities[item.id], 10);
     if (!qty || isNaN(qty) || qty <= 0) return;
-    if (qty > item.quantity) { setError(t('criticalStock') || 'Quantité insuffisante en stock'); return; }
+    if (qty > item.quantity) { setError(t('criticalStock')); return; }
     setError('');
     const result = await addUsedBar(project.id, item.id, qty);
     if (!result.success) {
@@ -273,10 +274,7 @@ function UsedBarsPanel({ project }) {
               key={sc.key}
               className={`ubp__super-tab ${activeSuperCat === sc.key ? 'active' : ''}`}
               onClick={() => handleSuperCatChange(sc.key)}
-              style={{
-                backgroundColor: activeSuperCat === sc.key ? sc.color : undefined,
-                color: activeSuperCat === sc.key ? '#fff' : undefined
-              }}
+              style={{ '--sc': sc.color }}
             >
               {sc.icon} {getSuperCatLabel(sc)}
               {count > 0 && <span className="ubp__super-count">{count}</span>}
@@ -311,7 +309,7 @@ function UsedBarsPanel({ project }) {
       {searchResults.length > 0 && (
         <div className="ubp__results">
           <div className="ubp__results-header">
-            <span>{searchResults.length} résultats</span>
+            <span>{t('ubResults', { n: searchResults.length })}</span>
           </div>
           {searchResults.map(item => (
             <div key={item.id} className="ubp__result-row">
@@ -335,7 +333,7 @@ function UsedBarsPanel({ project }) {
                   min={isPoudre ? '0.01' : '1'}
                   max={item.quantity}
                   step={isPoudre ? '0.01' : '1'}
-                  placeholder={isPoudre ? '0.00' : 'Qté'}
+                  placeholder={isPoudre ? '0.00' : t('ubColQty')}
                   value={quantities[item.id] || ''}
                   onChange={e => setQuantities(prev => ({ ...prev, [item.id]: e.target.value }))}
                   className="ubp__qty-input"
@@ -373,7 +371,7 @@ function UsedBarsPanel({ project }) {
                 <th>{t('designation')}</th>
                 <th style={{ textAlign: 'center' }}>{t('quantity')}</th>
                 {adminThing && <th style={{ textAlign: 'center' }}>{t('barStockRemaining')}</th>}
-                <th style={{ textAlign: 'center' }}>Mouvements</th>
+                <th style={{ textAlign: 'center' }}>{t('ubColMovements')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -387,7 +385,7 @@ function UsedBarsPanel({ project }) {
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         {item.image && (
-                          <img src={item.image} alt="" style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4 }} />
+                          <img src={item.image} alt="" className="ubp__table-img" />
                         )}
                         <span>{item.designation?.[language] || item.designation?.fr}</span>
                       </div>
@@ -405,11 +403,11 @@ function UsedBarsPanel({ project }) {
                     <td style={{ textAlign: 'center' }}>
                       <button
                         className="ubp__history-btn"
-                        title="Voir les mouvements"
+                        title={t('ubSeeMovements')}
                         onClick={() => setModalItem(item)}
                       >
                         <Clock size={12} />
-                        Détails
+                        {t('ubDetails')}
                       </button>
                     </td>
                     <td>

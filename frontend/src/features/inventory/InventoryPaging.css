@@ -1,9 +1,2 @@
-/* Inventory loaded page by page: counter + "Afficher plus" */
-.inv-count {
-  margin:0 0 10px;font-size:12px;font-weight:600;color:var(--text-3, #6b7280);
-  font-variant-numeric:tabular-nums;
-}
-.inv-load-more {
-  display:flex;justify-content:center;padding:20px 0 32px;
-}
-.inv-load-more .btn-outline { min-width:220px;justify-content:center; }
+/* Inventory loaded page by page — styles live in InventoryPage.css
+   (.inv-count / .inv-load-more); kept as an import target. */

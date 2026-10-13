@@ -173,7 +173,7 @@ const Header = ({ activePage, onNavigate }) => {
             <button
               className={`hdr__hamburger ${mobileOpen ? 'open' : ''}`}
               onClick={() => setMobileOpen(v => !v)}
-              aria-label="Menu"
+              aria-label={t('acMenu')}
               style={{ display: 'flex' }}>
               <span /><span /><span />
             </button>
@@ -207,7 +207,7 @@ const Header = ({ activePage, onNavigate }) => {
               </button>
             </div>
 
-            <div style={{ padding: '10px 12px 4px', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
+            <div style={{ padding: '14px 20px 14px', borderBottom: '1px solid var(--border)' }}>
               <div className="hdr__mobile-label" style={{ marginBottom: 8 }}>{t('company') || 'Société'}</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{companyPills}</div>
             </div>
@@ -242,10 +242,10 @@ const Header = ({ activePage, onNavigate }) => {
                   {user?.displayName?.charAt(0).toUpperCase()}
                 </span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {user?.displayName}
                   </div>
-                  <div style={{ fontSize: 12, opacity: 0.6, color: '#fff' }}>@{user?.username}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-3)' }}>@{user?.username}</div>
                   <div style={{ marginTop: 3 }}>
                     <span className="hdr__role" style={{ fontSize: 10 }}>{user?.role}</span>
                   </div>

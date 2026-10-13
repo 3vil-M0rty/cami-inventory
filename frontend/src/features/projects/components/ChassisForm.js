@@ -177,7 +177,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
           {/* Multi-dim toggle */}
           <div className="chassis-form__section chassis-form__section--toggle">
             <label className="chassis-multidim-toggle">
-              <span className="chassis-multidim-toggle__label">Dimensions multiples</span>
+              <span className="chassis-multidim-toggle__label">{t('cfMultiDim')}</span>
               <span className="chassis-multidim-toggle__hint">
                 Châssis coins, séries avec largeurs/hauteurs différentes…
               </span>
@@ -186,7 +186,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
                 className={`chassis-toggle-btn ${multiDim ? 'chassis-toggle-btn--on' : ''}`}
                 onClick={() => handleToggleMultiDim(!multiDim)}
               >
-                {multiDim ? 'Activé' : 'Désactivé'}
+                {multiDim ? t('cfOn') : t('cfOff')}
               </button>
             </label>
           </div>
@@ -194,11 +194,11 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
           {/* ── SINGLE dimension mode ── */}
           {!multiDim && (
             <div className="chassis-form__section">
-              <label className="chassis-form__section-label">Dimensions & Informations</label>
+              <label className="chassis-form__section-label">{t('cfDimsInfo')}</label>
               <div className="chassis-form__fields">
                 <div className="form-group">
                   <label>{t('repere')}</label>
-                  <input type="text" required placeholder="ex: A1, F01..." value={formData.repere} onChange={e => set('repere', e.target.value)} />
+                  <input type="text" required placeholder={t('cfReperePh')} value={formData.repere} onChange={e => set('repere', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>{t('quantityChassis')}</label>
@@ -206,11 +206,11 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
                 </div>
                 <div className="form-group">
                   <label>{t('largeur')} (mm)</label>
-                  <input type="number" required min="0" step="1" placeholder="ex: 1200" value={formData.largeur} onChange={e => set('largeur', e.target.value)} />
+                  <input type="number" required min="0" step="1" placeholder={t('cfExample', { v: 1200 })} value={formData.largeur} onChange={e => set('largeur', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>{t('hauteur')} (mm)</label>
-                  <input type="number" required min="0" step="1" placeholder="ex: 2100" value={formData.hauteur} onChange={e => set('hauteur', e.target.value)} />
+                  <input type="number" required min="0" step="1" placeholder={t('cfExample', { v: 2100 })} value={formData.hauteur} onChange={e => set('hauteur', e.target.value)} />
                 </div>
               </div>
             </div>
@@ -220,8 +220,8 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
           {multiDim && (
             <div className="chassis-form__section chassis-form__section--variants">
               <div className="chassis-variants-header">
-                <label className="chassis-form__section-label" style={{ margin: 0 }}>Variantes de dimensions</label>
-                <span className="chassis-variants-total">Total : {totalQty} chassis</span>
+                <label className="chassis-form__section-label" style={{ margin: 0 }}>{t('cfVariants')}</label>
+                <span className="chassis-variants-total">{t('cfVariantsTotal', { n: totalQty })}</span>
               </div>
 
               <div className="chassis-variants-table-wrap">
@@ -231,7 +231,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
                       <th>{t('repere')}</th>
                       <th>{t('largeur')} (mm)</th>
                       <th>{t('hauteur')} (mm)</th>
-                      <th>Qté</th>
+                      <th>{t('cfQty')}</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -252,7 +252,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
                             type="number"
                             className="chassis-variant-input"
                             min="0" step="1"
-                            placeholder="ex: 1200"
+                            placeholder={t('cfExample', { v: 1200 })}
                             value={v.largeur}
                             onChange={e => setVariant(idx, 'largeur', e.target.value)}
                           />
@@ -262,7 +262,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
                             type="number"
                             className="chassis-variant-input"
                             min="0" step="1"
-                            placeholder="ex: 2100"
+                            placeholder={t('cfExample', { v: 2100 })}
                             value={v.hauteur}
                             onChange={e => setVariant(idx, 'hauteur', e.target.value)}
                           />
@@ -282,7 +282,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
                               type="button"
                               className="chassis-variant-remove"
                               onClick={() => removeVariant(idx)}
-                              title="Supprimer cette variante"
+                              title={t('cfDeleteVariant')}
                             >×</button>
                           )}
                         </td>
@@ -312,11 +312,11 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
                         <input type="text" value={comp.repere} onChange={e => setComponent(idx, 'repere', e.target.value)} />
                       </div>
                       <div className="form-group form-group--sm">
-                        <label>L (mm)</label>
+                        <label>{t('cfL')}</label>
                         <input type="number" min="0" step="1" value={comp.largeur} onChange={e => setComponent(idx, 'largeur', e.target.value)} />
                       </div>
                       <div className="form-group form-group--sm">
-                        <label>H (mm)</label>
+                        <label>{t('cfH')}</label>
                         <input type="number" min="0" step="1" value={comp.hauteur} onChange={e => setComponent(idx, 'hauteur', e.target.value)} />
                       </div>
                       <div className="form-group form-group--sm">
@@ -334,34 +334,24 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
 
           {/* Only show when qty > 1 */}
           {formData.quantity > 1 && (
-            <div className="form-group">
-              <label>Mode d'affichage</label>
-              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <div className="form-group chassis-form__section chassis-form__section--mode">
+              <label className="chassis-form__section-label">{t('cfDisplayMode')}</label>
+              <div className="chassis-mode-choices">
                 <button
                   type="button"
                   onClick={() => setKeepAsOne(false)}
-                  style={{
-                    flex: 1, padding: '7px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                    border: '2px solid ' + (!keepAsOne ? '#3b82f6' : '#e5e7eb'),
-                    background: !keepAsOne ? '#eff6ff' : '#f9fafb',
-                    color: !keepAsOne ? '#1d4ed8' : '#6b7280',
-                  }}
+                  className={`chassis-mode-choice chassis-mode-choice--spread ${!keepAsOne ? 'chassis-mode-choice--active' : ''}`}
                 >
-                  📋 Diffuser en {formData.quantity} lignes
-                  <div style={{ fontWeight: 400, fontSize: 11, marginTop: 2 }}>Une ligne par unité (défaut aluminium/vitrage)</div>
+                  📋 {t('cfSpread', { n: formData.quantity })}
+                  <div className="chassis-mode-choice__hint">{t('cfSpreadHint')}</div>
                 </button>
                 <button
                   type="button"
                   onClick={() => setKeepAsOne(true)}
-                  style={{
-                    flex: 1, padding: '7px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                    border: '2px solid ' + (keepAsOne ? '#f59e0b' : '#e5e7eb'),
-                    background: keepAsOne ? '#fffbeb' : '#f9fafb',
-                    color: keepAsOne ? '#92400e' : '#6b7280',
-                  }}
+                  className={`chassis-mode-choice chassis-mode-choice--keep ${keepAsOne ? 'chassis-mode-choice--active' : ''}`}
                 >
-                  📦 Garder en 1 ligne (qté {formData.quantity})
-                  <div style={{ fontWeight: 400, fontSize: 11, marginTop: 2 }}>Ligne unique avec quantité (défaut laquage)</div>
+                  📦 {t('cfKeepOne', { n: formData.quantity })}
+                  <div className="chassis-mode-choice__hint">{t('cfKeepOneHint')}</div>
                 </button>
               </div>
             </div>
@@ -380,6 +370,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
 
 // ── Inline search-and-select for chassis type ───────────────────────────────
 function ChassisTypeSearch({ chassisTypes, value, lang, onChange }) {
+  const { t } = useLanguage();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -415,7 +406,7 @@ function ChassisTypeSearch({ chassisTypes, value, lang, onChange }) {
             {selected.composite && <span className="ct-search__badge">{selected.vantaux}V</span>}
           </span>
         ) : (
-          <span className="ct-search__placeholder">Sélectionner un type…</span>
+          <span className="ct-search__placeholder">{t('cfSelectType')}</span>
         )}
         <span className="ct-search__arrow">{open ? '▲' : '▼'}</span>
       </div>
@@ -426,7 +417,7 @@ function ChassisTypeSearch({ chassisTypes, value, lang, onChange }) {
               autoFocus
               type="text"
               className="ct-search__input"
-              placeholder="Rechercher un type…"
+              placeholder={t('cfSearchType')}
               value={query}
               onChange={e => setQuery(e.target.value)}
               onClick={e => e.stopPropagation()}
@@ -434,7 +425,7 @@ function ChassisTypeSearch({ chassisTypes, value, lang, onChange }) {
           </div>
           <div className="ct-search__list">
             {filtered.length === 0
-              ? <div className="ct-search__empty">Aucun résultat</div>
+              ? <div className="ct-search__empty">{t('cfNoResult')}</div>
               : filtered.map(ct => (
                 <div
                   key={ct.value}

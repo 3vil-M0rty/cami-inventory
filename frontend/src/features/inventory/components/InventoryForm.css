@@ -59,7 +59,7 @@
   margin-top: 10px;
   width: 28px; height: 28px;
   display: flex; align-items: center; justify-content: center;
-  background: var(--900); color: #fff;
+  background: var(--900); color: var(--text-inv);
   font-size: 9px; font-weight: 800;
   border-radius: 6px; letter-spacing: .06em;
 }
@@ -108,7 +108,7 @@
 .inv-form__btn-save {
   background: var(--900);
   border: 1.5px solid var(--900);
-  color: #fff;
+  color: var(--text-inv);
 }
 .inv-form__btn-save:hover { background: var(--800); border-color: var(--800); }
 

@@ -1,29 +1,32 @@
 // ProjectsPage.jsx — same as before but drop `limit`/`onLoadMore` entirely
 import { useMemo, useState } from 'react';
 import CategoryPage from './categories/CategoryPage';
+import { useLanguage } from '../../context/LanguageContext';
 import './ProjectsPage.css';
 
+// label = translation key
 const MAIN_CATEGORIES = [
-  { key: 'particuliers', label: 'Particuliers' },
-  { key: 'tgalu', label: 'TGALU' },
+  { key: 'particuliers', label: 'pjParticuliers' },
+  { key: 'tgalu', label: 'pjTGALU' },
 ];
 const PROJECT_STATUS_FILTERS = [
-  { key: 'all', label: 'Tous' },
-  { key: 'non_entame', label: 'Non entamé' },
-  { key: 'en_cours', label: 'En cours' },
-  { key: 'fabrique', label: 'Fabriqué' },
-  { key: 'pret_a_livrer', label: 'Prêt à livrer' },
-  { key: 'cloture', label: 'Clôturé' },
-  { key: 'non_vitre', label: 'Non vitré' },
+  { key: 'all', label: 'pjAll' },
+  { key: 'non_entame', label: 'etat_non_entame' },
+  { key: 'en_cours', label: 'etat_en_cours' },
+  { key: 'fabrique', label: 'etat_fabrique' },
+  { key: 'pret_a_livrer', label: 'etat_pret_a_livrer' },
+  { key: 'cloture', label: 'chStCloture' },
+  { key: 'non_vitre', label: 'etat_non_vitre' },
 ];
 
 export default function ProjectsPage() {
+  const { t } = useLanguage();
   const [activeCategory, setActiveCategory] = useState('particuliers');
   const [statusFilter, setStatusFilter] = useState('all');
 
   const currentStatusLabel = useMemo(() => {
-    return PROJECT_STATUS_FILTERS.find(s => s.key === statusFilter)?.label || 'Tous';
-  }, [statusFilter]);
+    return t(PROJECT_STATUS_FILTERS.find(s => s.key === statusFilter)?.label || 'pjAll');
+  }, [statusFilter, t]);
 
   return (
     <div className="projects-page-shell">
@@ -34,7 +37,7 @@ export default function ProjectsPage() {
             className={`projects-category-tab ${activeCategory === cat.key ? 'active' : ''}`}
             onClick={() => setActiveCategory(cat.key)}
           >
-            {cat.label}
+            {t(cat.label)}
           </button>
         ))}
       </div>
@@ -46,12 +49,12 @@ export default function ProjectsPage() {
               className={`project-status-tab ${statusFilter === status.key ? 'active' : ''}`}
               onClick={() => setStatusFilter(status.key)}
             >
-              {status.label}
+              {t(status.label)}
             </button>
           ))}
         </div>
         <div className="projects-page-shell__filter-label">
-          État: <strong>{currentStatusLabel}</strong>
+          {t('pjState')} <strong>{currentStatusLabel}</strong>
         </div>
       </div>
       <div className="projects-page-shell__body">

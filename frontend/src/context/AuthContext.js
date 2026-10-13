@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { tx } from './LanguageContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 const AuthContext = createContext(null);
@@ -41,7 +42,7 @@ export const AuthProvider = ({ children }) => {
       body: JSON.stringify({ username, password })
     });
     const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'Erreur de connexion');
+    if (!r.ok) throw new Error(data.error || tx('anLoginError'));
     localStorage.setItem('auth_token', data.token);
     setUser(data.user);
     return data.user;

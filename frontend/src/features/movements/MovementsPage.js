@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { useLanguage } from '../../context/LanguageContext';
+import { dialog } from '../../components/common/dialog';
 import './MovementsPage.css';
-import { PackageOpen, ChartNetwork } from 'lucide-react';
+import { PackageOpen, ChartNetwork, LineChart, X, RotateCw, Trash2, Inbox } from 'lucide-react';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -18,27 +19,28 @@ function fmt(val) {
 }
 
 const TYPE_META = {
-  entree: { color: '#16a34a', bg: '#f0fdf4', icon: '↑' },
-  sortie: { color: '#ef4444', bg: '#fef2f2', icon: '↓' },
-  project_use: { color: '#f59e0b', bg: '#eff6ff', icon: '↙' },
-  project_return: { color: '#3b82f6', bg: '#fffbeb', icon: '↗' },
-  order_reception: { color: '#d410c4', bg: '#f0fdf4', icon: '↑' },
+  entree: { color: '#4ade80', bg: 'rgba(74,222,128,.10)', icon: '↑' },
+  sortie: { color: '#f87171', bg: 'rgba(248,113,113,.10)', icon: '↓' },
+  project_use: { color: '#fbbf24', bg: 'rgba(251,191,36,.10)', icon: '↙' },
+  project_return: { color: '#60a5fa', bg: 'rgba(96,165,250,.10)', icon: '↗' },
+  order_reception: { color: '#e879f9', bg: 'rgba(232,121,249,.10)', icon: '↑' },
 };
 
 const PAGE_SIZE = 200;
 
+// label = translation key
 const SUPER_CATS = [
-  { key: 'all', labelFr: 'Toutes catégories' },
-  { key: 'aluminium', labelFr: '🔩 Aluminium' },
-  { key: 'verre', labelFr: '💎 Verre' },
-  { key: 'accessoires', labelFr: '🔧 Accessoires' },
-  { key: 'poudre', labelFr: '🎨 Poudre' },
+  { key: 'all', icon: '', label: 'superCatAll' },
+  { key: 'aluminium', icon: '🔩 ', label: 'superCatAluminium' },
+  { key: 'verre', icon: '💎 ', label: 'superCatVerre' },
+  { key: 'accessoires', icon: '🔧 ', label: 'superCatAccessoires' },
+  { key: 'poudre', icon: '🎨 ', label: 'superCatPoudre' },
 ];
 
 const GROUP_OPTIONS = [
-  { value: 'day', label: 'Jour' },
-  { value: 'week', label: 'Semaine' },
-  { value: 'month', label: 'Mois' },
+  { value: 'day', label: 'mvGroupDay' },
+  { value: 'week', label: 'mvGroupWeek' },
+  { value: 'month', label: 'mvGroupMonth' },
 ];
 
 function fmtDate(d) {
@@ -86,7 +88,9 @@ function buildChartData(movements, groupBy, activeTypes) {
   };
 }
 
-function MovementsChart({ movements, groupBy, activeTypes, chartType }) {
+function MovementsChart({ movements, groupBy, activeTypes, chartType, typeLabels = {} }) {
+  const { t } = useLanguage();
+  const ariaLabel = t('mvChartAria');
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
 
@@ -109,6 +113,7 @@ function MovementsChart({ movements, groupBy, activeTypes, chartType }) {
         labels: data.labels,
         datasets: data.datasets.map(ds => ({
           ...ds,
+          label: typeLabels[ds.label] || ds.label,
           ...(isBar ? { borderRadius: 3, borderSkipped: false } : {}),
         })),
       },
@@ -119,10 +124,13 @@ function MovementsChart({ movements, groupBy, activeTypes, chartType }) {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#1f2937',
-            titleColor: '#f9fafb',
-            bodyColor: '#d1d5db',
+            backgroundColor: '#222227',
+            borderColor: '#34343b',
+            borderWidth: 1,
+            titleColor: '#f4f4f5',
+            bodyColor: '#b4b4bd',
             padding: 10,
+            cornerRadius: 8,
             callbacks: {
               label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)}`,
             },
@@ -130,28 +138,28 @@ function MovementsChart({ movements, groupBy, activeTypes, chartType }) {
         },
         scales: {
           x: {
-            grid: { color: 'rgba(156,163,175,0.15)' },
-            ticks: { color: '#6b7280', font: { size: 11 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 12 },
+            grid: { color: 'rgba(255,255,255,0.06)' }, border: { color: '#27272c' },
+            ticks: { color: '#8b8b94', font: { size: 11 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 12 },
           },
           y: {
             beginAtZero: true,
-            grid: { color: 'rgba(156,163,175,0.15)' },
-            ticks: { color: '#6b7280', font: { size: 11 } },
+            grid: { color: 'rgba(255,255,255,0.06)' }, border: { color: '#27272c' },
+            ticks: { color: '#8b8b94', font: { size: 11 } },
           },
         },
       },
     });
     return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
-  }, [movements, groupBy, activeTypes, chartType]);
+  }, [movements, groupBy, activeTypes, chartType, JSON.stringify(typeLabels)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ position: 'relative', width: '100%', height: 280 }}>
       <canvas
         ref={canvasRef}
         role="img"
-        aria-label="Graphique des mouvements de stock par période"
+        aria-label={ariaLabel}
       >
-        Graphique des mouvements de stock.
+        {ariaLabel}
       </canvas>
     </div>
   );
@@ -193,9 +201,9 @@ export default function MovementsPage() {
   // Detail modal
   const [selectedMovement, setSelectedMovement] = useState(null);
 
-  const hideMovement = (id, e) => {
+  const hideMovement = async (id, e) => {
     e.stopPropagation();
-    if (!window.confirm('Masquer ce mouvement ? Il ne sera plus affiché dans le tableau.')) return;
+    if (!(await dialog.confirm({ title: t('mvHideTitle'), message: t('mvHideConfirm'), confirmLabel: t('mvHideAction') }))) return;
     setHiddenIds(prev => {
       const next = new Set(prev);
       next.add(id);
@@ -322,14 +330,14 @@ export default function MovementsPage() {
   };
 
   const TABLE_TYPE_LABELS = {
-    chassis_assignment: 'Affectation châssis',
-    manual_in: 'Appro. manuel',
-    manual_out: 'Retrait manuel',
+    chassis_assignment: t('mvChassisAssign'),
+    manual_in: t('mvManualIn'),
+    manual_out: t('mvManualOut'),
   };
   const TABLE_TYPE_META = {
-    chassis_assignment: { color: '#f59e0b', bg: '#fffbeb', icon: '🔧' },
-    manual_in: { color: '#16a34a', bg: '#f0fdf4', icon: '↑' },
-    manual_out: { color: '#ef4444', bg: '#fef2f2', icon: '↓' },
+    chassis_assignment: { color: '#fbbf24', bg: 'rgba(251,191,36,.10)', icon: '⚙' },
+    manual_in: { color: '#4ade80', bg: 'rgba(74,222,128,.10)', icon: '↑' },
+    manual_out: { color: '#f87171', bg: 'rgba(248,113,113,.10)', icon: '↓' },
   };
 
   const filteredTableMovements = tableMovements.filter(m => {
@@ -350,56 +358,46 @@ export default function MovementsPage() {
   return (
     <div className="mv-page">
       <div className="mv-header">
-        <h2 className="mv-header__title">{t('navMovements') || 'Mouvements'}</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="mv-header__heading">
+          <span className="mv-header__icon"><ChartNetwork size={18} strokeWidth={2} /></span>
+          <h2 className="mv-header__title">{t('navMovements') || 'Mouvements'}</h2>
+        </div>
+        <div className="mv-header__actions">
           {mainTab === 'inventory' && (
             <>
               <button
-                className="mv-refresh-btn"
+                className={`mv-refresh-btn ${showGraph ? 'is-active' : ''}`}
                 onClick={() => setShowGraph(g => !g)}
-                style={{
-                  background: showGraph ? '#3b82f6' : '#ffffff',
-                  color: showGraph ? '#ffffff' : '#000000',
-                  borderColor: showGraph ? '#3b82f6' : '#d1d5db'
-                }}
               >
-                {showGraph ? '✕ Masquer graphique' : '📈 Graphique'}
+                {showGraph ? <X /> : <LineChart />}
+                {showGraph ? t('mvHideChart') : t('mvChart')}
               </button>
               {/* {hiddenCount > 0 && (
                 <button className="mv-refresh-btn" onClick={restoreAll} style={{ background: '#6b7280' }}>
                   ↩ Restaurer ({hiddenCount})
                 </button>
               )} */}
-              <button className="mv-refresh-btn" onClick={load}>↻ {t('refresh') || 'Actualiser'}</button>
+              <button className="mv-refresh-btn" onClick={load}><RotateCw />{t('refresh') || 'Actualiser'}</button>
             </>
           )}
           {mainTab === 'tables' && (
-            <button className="mv-refresh-btn" onClick={loadTableMovements}>↻ {t('refresh') || 'Actualiser'}</button>
+            <button className="mv-refresh-btn" onClick={loadTableMovements}><RotateCw />{t('refresh') || 'Actualiser'}</button>
           )}
         </div>
       </div>
 
       {/* Main tab switcher */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '2px solid #e5e7eb', paddingBottom: 0, backgroundColor: '#222' }}>
+      <div className="mv-tabs" role="tablist">
         {[
-          { key: 'inventory', label: 'Inventaire' },
-          { key: 'tables', label: 'Mouvements Atelier' },
+          { key: 'inventory', label: t('mvTabInventory') },
+          { key: 'tables', label: t('mvTabWorkshop') },
         ].map(tab => (
           <button
             key={tab.key}
+            role="tab"
+            aria-selected={mainTab === tab.key}
+            className={`mv-tab ${mainTab === tab.key ? 'active' : ''}`}
             onClick={() => setMainTab(tab.key)}
-            style={{
-              padding: '8px 18px',
-              fontSize: 13,
-              fontWeight: mainTab === tab.key ? 700 : 500,
-              color: mainTab === tab.key ? '#3b82f6' : '#6b7280',
-              background: 'none',
-              border: 'none',
-              borderBottom: mainTab === tab.key ? '2.5px solid #3b82f6' : '2.5px solid transparent',
-              cursor: 'pointer',
-              marginBottom: -2,
-              transition: 'all .15s',
-            }}
           >
             {tab.label}
           </button>
@@ -412,10 +410,10 @@ export default function MovementsPage() {
         {/* Summary chips */}
         <div className="mv-summary">
           {Object.entries(TYPE_META).map(([type, meta]) => (
-            <div key={type} className="mv-chip" style={{ borderColor: meta.color, background: meta.bg }}>
-              <span className="mv-chip__icon" style={{ color: meta.color }}>{meta.icon}</span>
-              <span className="mv-chip__label" style={{ color: meta.color }}>{TYPE_LABELS[type]}</span>
-              <span className="mv-chip__val" style={{ color: meta.color }}>
+            <div key={type} className="mv-chip" style={{ '--mv-c': meta.color, '--mv-bg': meta.bg }}>
+              <span className="mv-chip__icon">{meta.icon}</span>
+              <span className="mv-chip__label">{TYPE_LABELS[type]}</span>
+              <span className="mv-chip__val">
                 {fmt(totals[type] || 0)}
               </span>
             </div>
@@ -429,10 +427,9 @@ export default function MovementsPage() {
             className="mv-select"
             value={superCat}
             onChange={e => setSuperCat(e.target.value)}
-            style={{ minWidth: 160 }}
           >
             {SUPER_CATS.map(sc => (
-              <option key={sc.key} value={sc.key}>{sc.labelFr}</option>
+              <option key={sc.key} value={sc.key}>{sc.icon}{t(sc.label)}</option>
             ))}
           </select>
 
@@ -458,7 +455,7 @@ export default function MovementsPage() {
             <button className="mv-clear-btn" onClick={() => {
               setFromDate(''); setToDate(''); setTypeFilter('all'); setSearch(''); setSuperCat('all');
             }}>
-              ✕ {t('mvClear') || 'Effacer'}
+              <X size={13} />{t('mvClear') || 'Effacer'}
             </button>
           )}
         </div>
@@ -470,7 +467,7 @@ export default function MovementsPage() {
             <div className="mv-graph-controls">
               {/* Grouping */}
               <div className="mv-graph-control-group">
-                <span className="mv-graph-label">Regrouper par</span>
+                <span className="mv-graph-label">{t('mvGroupBy')}</span>
                 <div className="mv-graph-toggle-row">
                   {GROUP_OPTIONS.map(g => (
                     <button
@@ -478,7 +475,7 @@ export default function MovementsPage() {
                       className={`mv-toggle-btn ${groupBy === g.value ? 'active' : ''}`}
                       onClick={() => setGroupBy(g.value)}
                     >
-                      {g.label}
+                      {t(g.label)}
                     </button>
                   ))}
                 </div>
@@ -486,22 +483,22 @@ export default function MovementsPage() {
 
               {/* Chart type */}
               <div className="mv-graph-control-group">
-                <span className="mv-graph-label">Type de graphique</span>
+                <span className="mv-graph-label">{t('mvChartType')}</span>
                 <div className="mv-graph-toggle-row">
                   <button
                     className={`mv-toggle-btn ${chartType === 'line' ? 'active' : ''}`}
                     onClick={() => setChartType('line')}
-                  >Courbe</button>
+                  >{t('mvLine')}</button>
                   <button
                     className={`mv-toggle-btn ${chartType === 'bar' ? 'active' : ''}`}
                     onClick={() => setChartType('bar')}
-                  >Barres</button>
+                  >{t('mvBars')}</button>
                 </div>
               </div>
 
               {/* Series toggles */}
               <div className="mv-graph-control-group">
-                <span className="mv-graph-label">Séries</span>
+                <span className="mv-graph-label">{t('mvSeries')}</span>
                 <div className="mv-graph-toggle-row">
                   {Object.entries(TYPE_META).map(([type, meta]) => (
                     <button
@@ -509,7 +506,7 @@ export default function MovementsPage() {
                       className={`mv-toggle-btn mv-series-btn ${activeTypes.includes(type) ? 'active' : ''}`}
                       style={activeTypes.includes(type)
                         ? { borderColor: meta.color, color: meta.color, background: meta.bg }
-                        : {}}
+                        : undefined}
                       onClick={() => toggleType(type)}
                     >
                       {meta.icon} {TYPE_LABELS[type]}
@@ -520,24 +517,24 @@ export default function MovementsPage() {
             </div>
 
             {/* Custom legend */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
+            <div className="mv-legend">
               {Object.entries(TYPE_META)
                 .filter(([t]) => activeTypes.includes(t))
                 .map(([type, meta]) => (
-                  <span key={type} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 2, background: meta.color, display: 'inline-block' }}></span>
+                  <span key={type} className="mv-legend__item">
+                    <span className="mv-legend__swatch" style={{ background: meta.color }}></span>
                     {TYPE_LABELS[type]}
                   </span>
                 ))}
             </div>
 
             {!chartJsReady ? (
-              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)', fontSize: 14 }}>
-                Chargement du graphique…
+              <div className="mv-graph-empty">
+                {t('mvChartLoading')}
               </div>
             ) : filtered.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)', fontSize: 14 }}>
-                Aucune donnée à afficher pour les filtres sélectionnés.
+              <div className="mv-graph-empty">
+                {t('mvNoChartData')}
               </div>
             ) : (
               <MovementsChart
@@ -545,6 +542,7 @@ export default function MovementsPage() {
                 groupBy={groupBy}
                 activeTypes={activeTypes}
                 chartType={chartType}
+                typeLabels={TYPE_LABELS}
               />
             )}
           </div>
@@ -554,9 +552,9 @@ export default function MovementsPage() {
         {loading ? (
           <div className="mv-state">{t('loading') || 'Chargement…'}</div>
         ) : error ? (
-          <div className="mv-state mv-state--error">Erreur: {error}</div>
+          <div className="mv-state mv-state--error">{t('errorWithMsg', { msg: error })}</div>
         ) : filtered.length === 0 ? (
-          <div className="mv-state">{t('noData') || 'Aucun mouvement'}</div>
+          <div className="mv-state"><span className="mv-state__icon"><Inbox size={20} strokeWidth={1.8} /></span>{t('mvNoMovement')}</div>
         ) : (
           <div className="mv-table-wrap">
             <table className="mv-table">
@@ -564,7 +562,7 @@ export default function MovementsPage() {
                 <tr>
                   <th>{t('mvColDate') || 'Date'}</th>
                   <th>{t('mvColType') || 'Type'}</th>
-                  <th>Catégorie</th>
+                  <th>{t('mvColCategory')}</th>
                   <th>{t('mvColItem') || 'Article'}</th>
                   <th className="td-right">{t('mvColQty') || 'Qté'}</th>
                   <th className="td-right">{t('mvColBalance') || 'Solde'}</th>
@@ -575,7 +573,7 @@ export default function MovementsPage() {
               </thead>
               <tbody>
                 {filtered.map((m, i) => {
-                  const meta = TYPE_META[m.type] || { color: '#888', bg: '#f9f9f9', icon: '•' };
+                  const meta = TYPE_META[m.type] || { color: '#a1a1aa', bg: 'rgba(161,161,170,.10)', icon: '•' };
                   const designation = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '—';
                   const sc = m.itemId?.superCategory || null;
                   const scMeta = SUPER_CATS.find(s => s.key === sc);
@@ -590,13 +588,13 @@ export default function MovementsPage() {
                     >
                       <td className="mv-col-date">{fmtDate(m.createdAt)}</td>
                       <td>
-                        <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg }}>
+                        <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '4d' }}>
                           {meta.icon} {TYPE_LABELS[m.type] || m.type}
                         </span>
                       </td>
                       <td>
                         <span className="mv-supercat-badge">
-                          {scMeta ? scMeta.labelFr : (sc || '—')}
+                          {scMeta ? t(scMeta.label) : (sc || '—')}
                         </span>
                       </td>
                       <td className="mv-col-item">{designation}</td>
@@ -612,9 +610,9 @@ export default function MovementsPage() {
                         <button
                           className="mv-delete-btn"
                           onClick={(e) => hideMovement(m._id || m.id, e)}
-                          title="Masquer ce mouvement"
+                          title={t('mvHideBtn')}
                         >
-                          ✕
+                          <X size={13} />
                         </button>
                       </td>
                     </tr>
@@ -624,12 +622,12 @@ export default function MovementsPage() {
             </table>
             <div className="mv-count">
               {filtered.length} {t('mvRows') || 'lignes'}
-              {totalCount > movements.length && ` (chargées: ${movements.length} sur ${totalCount} au total)`}
+              {totalCount > movements.length && t('mvLoaded', { n: movements.length, total: totalCount })}
             </div>
             {hasMore && (
-              <div style={{ textAlign: 'center', padding: '12px 0' }}>
+              <div className="mv-load-more">
                 <button className="mv-refresh-btn" onClick={loadMore} disabled={loadingMore}>
-                  {loadingMore ? 'Chargement…' : `↓ Charger plus (${totalCount - movements.length} restants)`}
+                  {loadingMore ? t('loadingShort') : t('mvLoadMore', { n: totalCount - movements.length })}
                 </button>
               </div>
             )}
@@ -639,7 +637,7 @@ export default function MovementsPage() {
         {/* Detail modal */}
         {selectedMovement && (() => {
           const m = selectedMovement;
-          const meta = TYPE_META[m.type] || { color: '#888', bg: '#f9f9f9', icon: '•' };
+          const meta = TYPE_META[m.type] || { color: '#a1a1aa', bg: 'rgba(161,161,170,.10)', icon: '•' };
           const designation = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '—';
           const sc = m.itemId?.superCategory || null;
           const scMeta = SUPER_CATS.find(s => s.key === sc);
@@ -649,44 +647,44 @@ export default function MovementsPage() {
             <div className="mv-modal-overlay" onClick={() => setSelectedMovement(null)}>
               <div className="mv-modal" onClick={e => e.stopPropagation()}>
                 <div className="mv-modal-header">
-                  <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg, fontSize: 14, padding: '5px 12px' }}>
+                  <span className="mv-type-badge mv-type-badge--lg" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '4d' }}>
                     {meta.icon} {TYPE_LABELS[m.type] || m.type}
                   </span>
-                  <button className="mv-modal-close" onClick={() => setSelectedMovement(null)}>✕</button>
+                  <button className="mv-modal-close" onClick={() => setSelectedMovement(null)} aria-label={t('close')}><X size={16} /></button>
                 </div>
 
                 <div className="mv-modal-title">{designation}</div>
 
                 <div className="mv-modal-grid">
                   <div className="mv-modal-field">
-                    <span className="mv-modal-field__label">Date</span>
+                    <span className="mv-modal-field__label">{t('mvColDate')}</span>
                     <span className="mv-modal-field__val">{fmtDate(m.createdAt)}</span>
                   </div>
                   <div className="mv-modal-field">
-                    <span className="mv-modal-field__label">Catégorie</span>
+                    <span className="mv-modal-field__label">{t('mvColCategory')}</span>
                     <span className="mv-modal-field__val">
-                      <span className="mv-supercat-badge">{scMeta ? scMeta.labelFr : (sc || '—')}</span>
+                      <span className="mv-supercat-badge">{scMeta ? t(scMeta.label) : (sc || '—')}</span>
                     </span>
                   </div>
                   <div className="mv-modal-field">
-                    <span className="mv-modal-field__label">Quantité</span>
+                    <span className="mv-modal-field__label">{t('mvQuantity')}</span>
                     <span className="mv-modal-field__val mv-qty" style={{ color: meta.color }}>
                       {isPositive ? '+' : '−'}{fmt(m.quantity)}
                     </span>
                   </div>
                   <div className="mv-modal-field">
-                    <span className="mv-modal-field__label">Solde après</span>
+                    <span className="mv-modal-field__label">{t('mvBalanceAfter')}</span>
                     <span className="mv-modal-field__val mv-balance">{fmt(m.balanceAfter)}</span>
                   </div>
                   {m.projectName && (
                     <div className="mv-modal-field">
-                      <span className="mv-modal-field__label">Projet</span>
+                      <span className="mv-modal-field__label">{t('mvProject')}</span>
                       <span className="mv-modal-field__val mv-col-project">{m.projectName}</span>
                     </div>
                   )}
                   {m.user && (
                     <div className="mv-modal-field">
-                      <span className="mv-modal-field__label">Utilisateur</span>
+                      <span className="mv-modal-field__label">{t('mvUser')}</span>
                       <span className="mv-modal-field__val">{m.user}</span>
                     </div>
                   )}
@@ -694,7 +692,7 @@ export default function MovementsPage() {
 
                 {m.note && (
                   <div className="mv-modal-note">
-                    <div className="mv-modal-field__label" style={{ marginBottom: 6 }}>Note</div>
+                    <div className="mv-modal-field__label mv-modal-note__label">{t('mvNote')}</div>
                     <div className="mv-modal-note__body">{m.note}</div>
                   </div>
                 )}
@@ -702,8 +700,8 @@ export default function MovementsPage() {
                 <div className="mv-modal-actions">
                   <button
                     className="mv-modal-hide-btn"
-                    onClick={() => {
-                      if (!window.confirm('Masquer ce mouvement ?')) return;
+                    onClick={async () => {
+                      if (!(await dialog.confirm({ title: t('mvHideTitle'), message: t('mvHideConfirm'), confirmLabel: t('mvHideAction') }))) return;
                       setHiddenIds(prev => {
                         const next = new Set(prev);
                         next.add(mid);
@@ -713,10 +711,10 @@ export default function MovementsPage() {
                       setSelectedMovement(null);
                     }}
                   >
-                    🗑 Masquer ce mouvement
+                    <Trash2 size={14} />{t('mvHideBtn')}
                   </button>
                   <button className="mv-modal-close-btn" onClick={() => setSelectedMovement(null)}>
-                    Fermer
+                    {t('close')}
                   </button>
                 </div>
               </div>
@@ -736,10 +734,10 @@ export default function MovementsPage() {
                 .filter(m => m.type === type)
                 .reduce((s, m) => s + (m.quantity || 0), 0);
               return (
-                <div key={type} className="mv-chip" style={{ borderColor: meta.color, background: meta.bg }}>
-                  <span className="mv-chip__icon" style={{ color: meta.color }}>{meta.icon}</span>
-                  <span className="mv-chip__label" style={{ color: meta.color }}>{TABLE_TYPE_LABELS[type]}</span>
-                  <span className="mv-chip__val" style={{ color: meta.color }}>{fmt(total)}</span>
+                <div key={type} className="mv-chip" style={{ '--mv-c': meta.color, '--mv-bg': meta.bg }}>
+                  <span className="mv-chip__icon">{meta.icon}</span>
+                  <span className="mv-chip__label">{TABLE_TYPE_LABELS[type]}</span>
+                  <span className="mv-chip__val">{fmt(total)}</span>
                 </div>
               );
             })}
@@ -750,54 +748,54 @@ export default function MovementsPage() {
             <input
               className="mv-search"
               type="text"
-              placeholder="Rechercher accessoire, table, projet, châssis…"
+              placeholder={t('mvWsSearch')}
               value={tableSearch}
               onChange={e => setTableSearch(e.target.value)}
             />
             <select className="mv-select" value={tableTypeFilter} onChange={e => setTableTypeFilter(e.target.value)}>
-              <option value="all">Tous les types</option>
+              <option value="all">{t('mvAllTypes')}</option>
               {Object.entries(TABLE_TYPE_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
             </select>
             {(tableSearch || tableTypeFilter !== 'all') && (
               <button className="mv-clear-btn" onClick={() => { setTableSearch(''); setTableTypeFilter('all'); }}>
-                ✕ Effacer
+                <X size={13} />{t('mvClear')}
               </button>
             )}
           </div>
 
           {/* Table */}
           {tableLoading ? (
-            <div className="mv-state">Chargement…</div>
+            <div className="mv-state">{t('loadingShort')}</div>
           ) : tableError ? (
-            <div className="mv-state mv-state--error">Erreur: {tableError}</div>
+            <div className="mv-state mv-state--error">{t('errorWithMsg', { msg: tableError })}</div>
           ) : filteredTableMovements.length === 0 ? (
-            <div className="mv-state">Aucun mouvement atelier</div>
+            <div className="mv-state"><span className="mv-state__icon"><Inbox size={20} strokeWidth={1.8} /></span>{t('mvNoWorkshop')}</div>
           ) : (
             <div className="mv-table-wrap">
               <table className="mv-table">
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Type</th>
-                    <th>Table</th>
-                    <th>Accessoire</th>
-                    <th className="td-right">Qté</th>
-                    <th>Unité</th>
-                    <th>Projet</th>
-                    <th>Châssis</th>
+                    <th>{t('mvColDate')}</th>
+                    <th>{t('mvColType')}</th>
+                    <th>{t('mvColTable')}</th>
+                    <th>{t('mvColAccessory')}</th>
+                    <th className="td-right">{t('mvColQty')}</th>
+                    <th>{t('mvColUnit')}</th>
+                    <th>{t('mvColProject')}</th>
+                    <th>{t('mvColChassis')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredTableMovements.map((m, i) => {
-                    const meta = TABLE_TYPE_META[m.type] || { color: '#888', bg: '#f9f9f9', icon: '•' };
+                    const meta = TABLE_TYPE_META[m.type] || { color: '#a1a1aa', bg: 'rgba(161,161,170,.10)', icon: '•' };
                     const isOut = m.type === 'chassis_assignment' || m.type === 'manual_out';
                     return (
                       <tr key={m._id || i}>
                         <td className="mv-col-date">{fmtDate(m.date || m.createdAt)}</td>
                         <td>
-                          <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg }}>
+                          <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '4d' }}>
                             {meta.icon} {TABLE_TYPE_LABELS[m.type] || m.type}
                           </span>
                         </td>
@@ -810,13 +808,13 @@ export default function MovementsPage() {
                         </td>
                         <td>{m.unit || '—'}</td>
                         <td className="mv-col-project">{m.projectName || '—'}</td>
-                        <td>{m.chassisRef ? <code style={{ fontSize: 11, background: '#f3f4f6', padding: '2px 5px', borderRadius: 3 }}>{m.chassisRef}</code> : '—'}</td>
+                        <td>{m.chassisRef ? <code className="mv-code">{m.chassisRef}</code> : '—'}</td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-              <div className="mv-count">{filteredTableMovements.length} lignes</div>
+              <div className="mv-count">{t('mvLines', { n: filteredTableMovements.length })}</div>
             </div>
           )}
         </div>

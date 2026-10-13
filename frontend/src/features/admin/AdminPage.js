@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { dialog } from '../../components/common/dialog';
 import CompanyManager from './CompanyManager';
 import AtelierTablesPage from '../AtelierTables';
 
@@ -53,18 +54,28 @@ export default function AdminPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const deleteUser = async (id) => {
-    if (!window.confirm('Supprimer cet utilisateur ?')) return;
-    await authFetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
+  const confirmDelete = (message) =>
+    dialog.confirm({ title: t('deleteTitle'), message, danger: true, confirmLabel: t('deleteAction') });
+
+  // DELETE + error shown in a dialog
+  const removeAt = async (url) => {
+    const r = await authFetch(url, { method: 'DELETE' });
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      dialog.alert(data.error || t('errDelete'));
+      return;
+    }
     load();
   };
 
-  const deleteRole = async (id) => {
-    if (!window.confirm('Supprimer ce rôle ?')) return;
-    const r = await authFetch(`${API_URL}/roles/${id}`, { method: 'DELETE' });
-    const data = await r.json();
-    if (!r.ok) { alert(data.error); return; }
-    load();
+  const deleteUser = async (u) => {
+    if (!(await confirmDelete(t('adDeleteUserConfirm', { name: u.displayName || u.username })))) return;
+    removeAt(`${API_URL}/users/${u.id}`);
+  };
+
+  const deleteRole = async (role) => {
+    if (!(await confirmDelete(t('adDeleteRoleConfirm', { name: role.name })))) return;
+    removeAt(`${API_URL}/roles/${role.id}`);
   };
 
   const toggleUserActive = async (user) => {
@@ -86,28 +97,32 @@ export default function AdminPage() {
     <div className="admin-page">
       <AtelierTablesPage/>
 
+      <div className="admin-header">
+        <h1>{t('adminTitle')}</h1>
+      </div>
+
       <div className="admin-tabs">
         <button className={`admin-tab ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>
-          👤 {t('tabUsers')} <span className="tab-count">{users.length}</span>
+          {t('tabUsers')} <span className="tab-count">{users.length}</span>
         </button>
         <button className={`admin-tab ${activeTab === 'roles' ? 'active' : ''}`} onClick={() => setActiveTab('roles')}>
-          🔑 {t('tabRoles')} <span className="tab-count">{roles.length}</span>
+          {t('tabRoles')} <span className="tab-count">{roles.length}</span>
         </button>
         <button className={`admin-tab ${activeTab === 'teams' ? 'active' : ''}`} onClick={() => setActiveTab('teams')}>
-          👷 Équipes <span className="tab-count">{teams.length}</span>
+          {t('adTeams')} <span className="tab-count">{teams.length}</span>
         </button>
         <button className={`admin-tab ${activeTab === 'chantier_states' ? 'active' : ''}`} onClick={() => setActiveTab('chantier_states')}>
-          🏷️ États chantier <span className="tab-count">{chantierStates.length}</span>
+          {t('adChantierStates')} <span className="tab-count">{chantierStates.length}</span>
         </button>
       </div>
 
-      {loading ? <div className="admin-loading">Chargement...</div> : (
+      {loading ? <div className="admin-loading">{t('loadingShort')}</div> : (
         <>
           {/* ── USERS TAB ── */}
           {activeTab === 'users' && (
             <div className="admin-section">
               <div className="admin-section-header">
-                <h2>{users.length} compte(s)</h2>
+                <h2>{t('adAccounts', { n: users.length })}</h2>
                 <button className="btn-primary" onClick={() => { setEditUser(null); setShowUserForm(true); }}>
                   + {t('newUser')}
                 </button>
@@ -116,12 +131,12 @@ export default function AdminPage() {
                 <table className="admin-table">
                   <thead>
                     <tr>
-                      <th>Nom d'affichage</th>
-                      <th>Username</th>
-                      <th>Rôle</th>
-                      <th>Société</th>
-                      <th>Statut</th>
-                      <th>Actions</th>
+                      <th>{t('adColDisplayName')}</th>
+                      <th>{t('adColUsername')}</th>
+                      <th>{t('adColRole')}</th>
+                      <th>{t('adColCompany')}</th>
+                      <th>{t('adColStatus')}</th>
+                      <th>{t('adColActions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -130,23 +145,23 @@ export default function AdminPage() {
                         <td><strong>{u.displayName}</strong></td>
                         <td><code className="username-code">{u.username}</code></td>
                         <td>
-                          <span className="role-badge" style={{ background: u.roleId?.color || '#6b7280' }}>
+                          <span className="role-badge" style={{ '--c': u.roleId?.color || '#a1a1aa' }}>
                             {u.roleId?.name || '—'}
                           </span>
                         </td>
-                        <td>{u.companyId?.name || <span style={{ color: '#aaa' }}>Toutes</span>}</td>
+                        <td>{u.companyId?.name || <span className="admin-muted">{t('adAllCompaniesShort')}</span>}</td>
                         <td>
                           <span className={`status-pill ${u.active ? 'pill-active' : 'pill-inactive'}`}>
-                            {u.active ? '● Actif' : '● Inactif'}
+                            {u.active ? t('adActive') : t('adInactive')}
                           </span>
                         </td>
                         <td>
                           <div className="table-actions">
-                            <button className="btn-sm" onClick={() => { setEditUser(u); setShowUserForm(true); }}>Modifier</button>
+                            <button className="btn-sm" onClick={() => { setEditUser(u); setShowUserForm(true); }}>{t('edit')}</button>
                             <button className={`btn-sm ${u.active ? 'btn-sm-warn' : 'btn-sm-ok'}`} onClick={() => toggleUserActive(u)}>
-                              {u.active ? 'Désactiver' : 'Activer'}
+                              {u.active ? t('adDeactivate') : t('adActivate')}
                             </button>
-                            <button className="btn-sm btn-sm-danger" onClick={() => deleteUser(u.id)}>Supprimer</button>
+                            <button className="btn-sm btn-sm-danger" onClick={() => deleteUser(u)}>{t('delete')}</button>
                           </div>
                         </td>
                       </tr>
@@ -161,7 +176,7 @@ export default function AdminPage() {
           {activeTab === 'roles' && (
             <div className="admin-section">
               <div className="admin-section-header">
-                <h2>{roles.length} rôle(s)</h2>
+                <h2>{t('adRolesCount', { n: roles.length })}</h2>
                 <button className="btn-primary" onClick={() => { setEditRole(null); setShowRoleForm(true); }}>
                   + {t('newRole')}
                 </button>
@@ -172,7 +187,7 @@ export default function AdminPage() {
                     <div className="role-card-header">
                       <div className="role-color-dot" style={{ background: role.color }}></div>
                       <h3>{role.name}</h3>
-                      {role.isSystem && <span className="system-badge">Système</span>}
+                      {role.isSystem && <span className="system-badge">{t('adSystem')}</span>}
                     </div>
                     <div className="role-perms">
                       {Object.entries(grouped).map(([group, perms]) => {
@@ -189,11 +204,11 @@ export default function AdminPage() {
                           </div>
                         );
                       })}
-                      {role.permissions.length === 0 && <p className="no-perms">Aucune permission</p>}
+                      {role.permissions.length === 0 && <p className="no-perms">{t('adNoPerms')}</p>}
                     </div>
                     <div className="role-card-actions">
-                      <button className="btn-sm" onClick={() => { setEditRole(role); setShowRoleForm(true); }}>Modifier</button>
-                      {!role.isSystem && <button className="btn-sm btn-sm-danger" onClick={() => deleteRole(role.id)}>Supprimer</button>}
+                      <button className="btn-sm" onClick={() => { setEditRole(role); setShowRoleForm(true); }}>{t('edit')}</button>
+                      {!role.isSystem && <button className="btn-sm btn-sm-danger" onClick={() => deleteRole(role)}>{t('delete')}</button>}
                     </div>
                   </div>
                 ))}
@@ -205,9 +220,9 @@ export default function AdminPage() {
           {activeTab === 'teams' && (
             <div className="admin-section">
               <div className="admin-section-header">
-                <h2 style={{color: 'white'}}>{teams.length} équipe(s)</h2>
+                <h2>{t('adTeamsCount', { n: teams.length })}</h2>
                 <button className="btn-primary" onClick={() => { setEditTeam(null); setShowTeamForm(true); }}>
-                  + Nouvelle équipe
+                  {t('adNewTeam')}
                 </button>
               </div>
               <div className="roles-grid">
@@ -217,23 +232,20 @@ export default function AdminPage() {
                       <div className="role-color-dot" style={{ background: team.color }}></div>
                       <h3>{team.name}</h3>
                     </div>
-                    {team.description && <p style={{ fontSize: 12, color: '#888', margin: '6px 0 0' }}>{team.description}</p>}
-                    <div style={{ fontSize: 12, color: '#aaa', marginTop: 8 }}>
-                      📦 {(team.stock || []).length} article(s) en stock
+                    {team.description && <p className="team-desc">{team.description}</p>}
+                    <div className="team-stock">
+                      {t('adTeamStock', { n: (team.stock || []).length })}
                     </div>
                     <div className="role-card-actions">
-                      <button className="btn-sm" onClick={() => { setEditTeam(team); setShowTeamForm(true); }}>Modifier</button>
+                      <button className="btn-sm" onClick={() => { setEditTeam(team); setShowTeamForm(true); }}>{t('edit')}</button>
                       <button className="btn-sm btn-sm-danger" onClick={async () => {
-                        if (!window.confirm('Supprimer cette équipe ?')) return;
-                        const r = await authFetch(`${API_URL}/teams/${team.id}`, { method: 'DELETE' });
-                        const d = await r.json();
-                        if (!r.ok) { alert(d.error); return; }
-                        load();
-                      }}>Supprimer</button>
+                        if (!(await confirmDelete(t('adDeleteTeamConfirm', { name: team.name })))) return;
+                        removeAt(`${API_URL}/teams/${team.id}`);
+                      }}>{t('delete')}</button>
                     </div>
                   </div>
                 ))}
-                {teams.length === 0 && <div style={{ color: '#aaa', padding: 20 }}>Aucune équipe.</div>}
+                {teams.length === 0 && <div className="admin-empty">{t('adNoTeam')}</div>}
               </div>
             </div>
           )}
@@ -242,29 +254,28 @@ export default function AdminPage() {
           {activeTab === 'chantier_states' && (
             <div className="admin-section">
               <div className="admin-section-header">
-                <h2>{chantierStates.length} état(s) de chantier</h2>
+                <h2>{t('adStatesCount', { n: chantierStates.length })}</h2>
                 <button className="btn-primary" onClick={() => { setEditState(null); setShowStateForm(true); }}>
-                  + Nouvel état
+                  {t('adNewState')}
                 </button>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="state-list">
                 {chantierStates.map(s => (
-                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10 }}>
-                    <span style={{ width: 14, height: 14, borderRadius: '50%', background: s.color, flexShrink: 0, display: 'inline-block' }} />
-                    <strong style={{ flex: 1, fontSize: 13 }}>{s.label}</strong>
-                    <code style={{ fontSize: 11, color: '#888', background: 'var(--100)', padding: '2px 7px', borderRadius: 5 }}>{s.key}</code>
-                    {s.isDefault && <span style={{ background: '#16a34a', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>DÉFAUT</span>}
+                  <div key={s.id} className="state-row">
+                    <span className="state-dot" style={{ background: s.color }} />
+                    <strong className="state-label">{s.label}</strong>
+                    <code className="username-code">{s.key}</code>
+                    {s.isDefault && <span className="state-default">{t('adDefault')}</span>}
                     <div className="table-actions">
-                      <button className="btn-sm" onClick={() => { setEditState(s); setShowStateForm(true); }}>Modifier</button>
+                      <button className="btn-sm" onClick={() => { setEditState(s); setShowStateForm(true); }}>{t('edit')}</button>
                       <button className="btn-sm btn-sm-danger" onClick={async () => {
-                        if (!window.confirm('Supprimer cet état ?')) return;
-                        await authFetch(`${API_URL}/chantier-states/${s.id}`, { method: 'DELETE' });
-                        load();
-                      }}>Supprimer</button>
+                        if (!(await confirmDelete(t('adDeleteStateConfirm', { name: s.label })))) return;
+                        removeAt(`${API_URL}/chantier-states/${s.id}`);
+                      }}>{t('delete')}</button>
                     </div>
                   </div>
                 ))}
-                {chantierStates.length === 0 && <div style={{ color: '#aaa', padding: 20 }}>Aucun état.</div>}
+                {chantierStates.length === 0 && <div className="admin-empty">{t('adNoState')}</div>}
               </div>
             </div>
           )}
@@ -317,6 +328,7 @@ export default function AdminPage() {
 
 // ─── User Form Modal ──────────────────────────────────────────────────────────
 function UserForm({ user, roles, companies, authFetch, onClose, onSave }) {
+  const { t } = useLanguage();
   const [form, setForm] = useState({
     username:    user?.username    || '',
     displayName: user?.displayName || '',
@@ -336,7 +348,7 @@ function UserForm({ user, roles, companies, authFetch, onClose, onSave }) {
       const url = user ? `${API_URL}/users/${user.id}` : `${API_URL}/users`;
       const r = await authFetch(url, { method: user ? 'PUT' : 'POST', body: JSON.stringify(body) });
       const data = await r.json();
-      if (!r.ok) { setError(data.error || 'Erreur'); return; }
+      if (!r.ok) { setError(data.error || t('errSave')); return; }
       onSave();
     } catch (e) { setError(e.message); }
   };
@@ -344,51 +356,51 @@ function UserForm({ user, roles, companies, authFetch, onClose, onSave }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal large" onClick={e => e.stopPropagation()}>
-        <h2>{user ? 'Modifier le compte' : 'Nouveau compte'}</h2>
+        <h2>{user ? t('adEditAccount') : t('adNewAccount')}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-grid-2">
             <div className="form-group">
-              <label>Nom d'affichage *</label>
-              <input required type="text" placeholder="ex: Jean Dupont" value={form.displayName}
+              <label>{t('adDisplayName')}</label>
+              <input required type="text" placeholder={t('adDisplayNamePh')} value={form.displayName}
                 onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label>Nom d'utilisateur *</label>
-              <input required type="text" placeholder="ex: jean.dupont" value={form.username}
+              <label>{t('adUsername')}</label>
+              <input required type="text" placeholder={t('adUsernamePh')} value={form.username}
                 onChange={e => setForm(f => ({ ...f, username: e.target.value.toLowerCase() }))}
                 disabled={!!user} style={user ? { opacity: 0.6 } : {}} />
-              {user && <small style={{ color: '#888' }}>Le username ne peut pas être modifié</small>}
+              {user && <small className="admin-hint">{t('adUsernameLocked')}</small>}
             </div>
             <div className="form-group">
-              <label>{user ? 'Nouveau mot de passe (laisser vide = inchangé)' : 'Mot de passe *'}</label>
-              <input type="password" placeholder={user ? '••••••••' : 'min 4 caractères'}
+              <label>{user ? t('adNewPassword') : t('adPassword')}</label>
+              <input type="password" placeholder={user ? '••••••••' : t('adPasswordPh')}
                 value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                 required={!user} />
             </div>
             <div className="form-group">
-              <label>Rôle *</label>
+              <label>{t('adRole')}</label>
               <select required value={form.roleId} onChange={e => setForm(f => ({ ...f, roleId: e.target.value }))}>
-                <option value="">Choisir un rôle...</option>
+                <option value="">{t('adChooseRole')}</option>
                 {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </div>
             <div className="form-group">
-              <label>Société (optionnel — restreint l'accès à une société)</label>
+              <label>{t('adCompanyRestrict')}</label>
               <select value={form.companyId} onChange={e => setForm(f => ({ ...f, companyId: e.target.value }))}>
-                <option value="">Toutes les sociétés</option>
+                <option value="">{t('adAllCompanies')}</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 24 }}>
+            <div className="form-group admin-check-row">
               <input type="checkbox" id="active-check" checked={form.active}
-                onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} style={{ width: 18, height: 18 }} />
-              <label htmlFor="active-check" style={{ fontWeight: 600 }}>Compte actif</label>
+                onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} />
+              <label htmlFor="active-check">{t('adAccountActive')}</label>
             </div>
           </div>
           {error && <div className="form-error">{error}</div>}
           <div className="modal-actions">
-            <button type="button" onClick={onClose}>Annuler</button>
-            <button type="submit" className="primary">{user ? 'Mettre à jour' : 'Créer le compte'}</button>
+            <button type="button" onClick={onClose}>{t('cancel')}</button>
+            <button type="submit" className="primary">{user ? t('update') : t('adCreateAccount')}</button>
           </div>
         </form>
       </div>
@@ -398,6 +410,7 @@ function UserForm({ user, roles, companies, authFetch, onClose, onSave }) {
 
 // ─── Role Form Modal ──────────────────────────────────────────────────────────
 function RoleForm({ role, permissions, grouped, authFetch, onClose, onSave }) {
+  const { t } = useLanguage();
   const [form, setForm] = useState({
     name:        role?.name        || '',
     color:       role?.color       || '#3b82f6',
@@ -431,7 +444,7 @@ function RoleForm({ role, permissions, grouped, authFetch, onClose, onSave }) {
       const url = role ? `${API_URL}/roles/${role.id}` : `${API_URL}/roles`;
       const r = await authFetch(url, { method: role ? 'PUT' : 'POST', body: JSON.stringify(form) });
       const data = await r.json();
-      if (!r.ok) { setError(data.error || 'Erreur'); return; }
+      if (!r.ok) { setError(data.error || t('errSave')); return; }
       onSave();
     } catch (e) { setError(e.message); }
   };
@@ -439,29 +452,29 @@ function RoleForm({ role, permissions, grouped, authFetch, onClose, onSave }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal xlarge" onClick={e => e.stopPropagation()}>
-        <h2>{role ? `Modifier le rôle "${role.name}"` : 'Nouveau rôle'}</h2>
+        <h2>{role ? t('adEditRole', { name: role.name }) : t('adNewRole')}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-grid-2" style={{ marginBottom: 20 }}>
             <div className="form-group">
-              <label>Nom du rôle *</label>
-              <input required type="text" placeholder="ex: Magasinier, Vendeur..." value={form.name}
+              <label>{t('adRoleName')}</label>
+              <input required type="text" placeholder={t('adRoleNamePh')} value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label>Couleur d'identification</label>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} style={{ width: 48, height: 38, border: 'none', cursor: 'pointer', borderRadius: 6 }} />
-                <span className="role-badge" style={{ background: form.color }}>Aperçu: {form.name || 'Rôle'}</span>
+              <label>{t('adColor')}</label>
+              <div className="admin-color-row">
+                <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} className="admin-color-input" />
+                <span className="role-badge" style={{ '--c': form.color }}>{t('adPreview', { name: form.name || t('adRoleWord') })}</span>
               </div>
             </div>
           </div>
 
           <div className="permissions-editor">
             <div className="perms-header">
-              <h3>Permissions ({form.permissions.length} activées)</h3>
+              <h3>{t('adPermsTitle', { n: form.permissions.length })}</h3>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" className="btn-sm" onClick={() => setForm(f => ({ ...f, permissions: permissions.map(p => p.key) }))}>Tout cocher</button>
-                <button type="button" className="btn-sm" onClick={() => setForm(f => ({ ...f, permissions: [] }))}>Tout décocher</button>
+                <button type="button" className="btn-sm" onClick={() => setForm(f => ({ ...f, permissions: permissions.map(p => p.key) }))}>{t('adCheckAll')}</button>
+                <button type="button" className="btn-sm" onClick={() => setForm(f => ({ ...f, permissions: [] }))}>{t('adUncheckAll')}</button>
               </div>
             </div>
 
@@ -504,8 +517,8 @@ function RoleForm({ role, permissions, grouped, authFetch, onClose, onSave }) {
 
           {error && <div className="form-error">{error}</div>}
           <div className="modal-actions">
-            <button type="button" onClick={onClose}>Annuler</button>
-            <button type="submit" className="primary">{role ? 'Mettre à jour' : 'Créer le rôle'}</button>
+            <button type="button" onClick={onClose}>{t('cancel')}</button>
+            <button type="submit" className="primary">{role ? t('update') : t('adCreateRole')}</button>
           </div>
         </form>
       </div>
@@ -514,6 +527,7 @@ function RoleForm({ role, permissions, grouped, authFetch, onClose, onSave }) {
 }
 // ─── Team Form Modal ──────────────────────────────────────────────────────────
 function TeamFormModal({ team, authFetch, onClose, onSave }) {
+  const { t } = useLanguage();
   const [form, setForm] = React.useState({
     name:        team?.name        || '',
     color:       team?.color       || '#3b82f6',
@@ -527,7 +541,7 @@ function TeamFormModal({ team, authFetch, onClose, onSave }) {
       const url = team ? `${API_URL}/teams/${team.id}` : `${API_URL}/teams`;
       const r = await authFetch(url, { method: team ? 'PUT' : 'POST', body: JSON.stringify(form) });
       const data = await r.json();
-      if (!r.ok) { setError(data.error || 'Erreur'); return; }
+      if (!r.ok) { setError(data.error || t('errSave')); return; }
       onSave();
     } catch (e) { setError(e.message); }
   };
@@ -535,36 +549,36 @@ function TeamFormModal({ team, authFetch, onClose, onSave }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal large" onClick={e => e.stopPropagation()}>
-        <h2>{team ? `Modifier l'équipe "${team.name}"` : 'Nouvelle équipe'}</h2>
+        <h2>{team ? t('adEditTeam', { name: team.name }) : t('adNewTeamTitle')}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-grid-2">
             <div className="form-group">
-              <label>Nom de l'équipe *</label>
-              <input required type="text" placeholder="ex: Équipe Nord" value={form.name}
+              <label>{t('adTeamName')}</label>
+              <input required type="text" placeholder={t('adTeamNamePh')} value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label>Couleur d'identification</label>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label>{t('adColor')}</label>
+              <div className="admin-color-row">
                 <input type="color" value={form.color}
                   onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
-                  style={{ width: 48, height: 38, border: 'none', cursor: 'pointer', borderRadius: 6 }} />
-                <span className="role-badge" style={{ background: form.color }}>
-                  Aperçu: {form.name || 'Équipe'}
+                  className="admin-color-input" />
+                <span className="role-badge" style={{ '--c': form.color }}>
+                  {t('adPreview', { name: form.name || t('adTeamWord') })}
                 </span>
               </div>
             </div>
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-              <label>Description</label>
-              <input type="text" placeholder="ex: Équipe spécialisée en menuiserie aluminium"
+              <label>{t('adDescription')}</label>
+              <input type="text" placeholder={t('adTeamDescPh')}
                 value={form.description}
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
             </div>
           </div>
           {error && <div className="form-error">{error}</div>}
           <div className="modal-actions">
-            <button type="button" onClick={onClose}>Annuler</button>
-            <button type="submit" className="primary">{team ? 'Mettre à jour' : "Créer l'équipe"}</button>
+            <button type="button" onClick={onClose}>{t('cancel')}</button>
+            <button type="submit" className="primary">{team ? t('update') : t('adCreateTeam')}</button>
           </div>
         </form>
       </div>
@@ -574,6 +588,7 @@ function TeamFormModal({ team, authFetch, onClose, onSave }) {
 
 // ─── Chantier State Form Modal ────────────────────────────────────────────────
 function ChantierStateFormModal({ state, authFetch, onClose, onSave }) {
+  const { t } = useLanguage();
   const [form, setForm] = React.useState({
     key:       state?.key       || '',
     label:     state?.label     || '',
@@ -589,7 +604,7 @@ function ChantierStateFormModal({ state, authFetch, onClose, onSave }) {
       const url = state ? `${API_URL}/chantier-states/${state.id}` : `${API_URL}/chantier-states`;
       const r = await authFetch(url, { method: state ? 'PUT' : 'POST', body: JSON.stringify(form) });
       const data = await r.json();
-      if (!r.ok) { setError(data.error || 'Erreur'); return; }
+      if (!r.ok) { setError(data.error || t('errSave')); return; }
       onSave();
     } catch (e) { setError(e.message); }
   };
@@ -597,51 +612,51 @@ function ChantierStateFormModal({ state, authFetch, onClose, onSave }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal large" onClick={e => e.stopPropagation()}>
-        <h2>{state ? `Modifier l'état "${state.label}"` : 'Nouvel état de chantier'}</h2>
+        <h2>{state ? t('adEditState', { name: state.label }) : t('adNewStateTitle')}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-grid-2">
             <div className="form-group">
-              <label>Clé (identifiant technique) *</label>
-              <input required type="text" placeholder="ex: pose_partielle"
+              <label>{t('adStateKey')}</label>
+              <input required type="text" placeholder={t('adStateKeyPh')}
                 value={form.key} disabled={!!state}
                 style={state ? { opacity: 0.6 } : {}}
                 onChange={e => setForm(f => ({ ...f, key: e.target.value.toLowerCase().replace(/\s+/g, '_') }))} />
-              {state && <small style={{ color: '#888' }}>La clé ne peut pas être modifiée</small>}
+              {state && <small className="admin-hint">{t('adStateKeyLocked')}</small>}
             </div>
             <div className="form-group">
-              <label>Libellé *</label>
-              <input required type="text" placeholder="ex: Posé partiellement"
+              <label>{t('adStateLabel')}</label>
+              <input required type="text" placeholder={t('adStateLabelPh')}
                 value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label>Couleur</label>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label>{t('adColorShort')}</label>
+              <div className="admin-color-row">
                 <input type="color" value={form.color}
                   onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
-                  style={{ width: 48, height: 38, border: 'none', cursor: 'pointer', borderRadius: 6 }} />
-                <span style={{ background: form.color, color: '#fff', fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 999 }}>
-                  {form.label || 'Aperçu'}
+                  className="admin-color-input" />
+                <span className="role-badge" style={{ '--c': form.color }}>
+                  {form.label || t('adPreviewShort')}
                 </span>
               </div>
             </div>
             <div className="form-group">
-              <label>Ordre d'affichage</label>
+              <label>{t('adOrder')}</label>
               <input type="number" min={0} value={form.order}
                 onChange={e => setForm(f => ({ ...f, order: Number(e.target.value) }))} />
             </div>
-            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 24 }}>
+            <div className="form-group admin-check-row">
               <input type="checkbox" id="default-check" checked={form.isDefault}
                 onChange={e => setForm(f => ({ ...f, isDefault: e.target.checked }))}
-                style={{ width: 18, height: 18 }} />
-              <label htmlFor="default-check" style={{ fontWeight: 600 }}>
-                État par défaut (pour les nouvelles unités)
+                />
+              <label htmlFor="default-check">
+                {t('adDefaultState')}
               </label>
             </div>
           </div>
           {error && <div className="form-error">{error}</div>}
           <div className="modal-actions">
-            <button type="button" onClick={onClose}>Annuler</button>
-            <button type="submit" className="primary">{state ? 'Mettre à jour' : "Créer l'état"}</button>
+            <button type="button" onClick={onClose}>{t('cancel')}</button>
+            <button type="submit" className="primary">{state ? t('update') : t('adCreateState')}</button>
           </div>
         </form>
       </div>

@@ -30,6 +30,7 @@ export default function LoginPage() {
       {Object.keys(languageLabels).map(code => (
         <button key={code}
           className={`hdr__lang-btn ${currentLanguage === code ? 'active' : ''}`}
+          type="button" title={languageLabels[code]}
           onClick={() => changeLanguage(code)}>
           {code.toUpperCase()}
         </button>
@@ -40,8 +41,16 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        
-        <h1 className="login-title">CAMI ALUMINIUM</h1>
+        <div className="login-logo" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <rect x="2" y="2" width="28" height="28" rx="5" stroke="currentColor" strokeWidth="2" />
+            <path d="M8 16L14 10L18 14L24 8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="14" cy="10" r="1.8" fill="currentColor" />
+            <circle cx="18" cy="14" r="1.8" fill="currentColor" />
+            <circle cx="24" cy="8" r="1.8" fill="currentColor" />
+          </svg>
+        </div>
+        <h1 className="login-title">{t('appTitle')}</h1>
         <p className="login-subtitle">{t('connectez')}</p>
 
         <form onSubmit={handleSubmit} className="login-form">
@@ -51,7 +60,7 @@ export default function LoginPage() {
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              placeholder="admin"
+              placeholder={t('anLoginUserPlaceholder')}
               autoFocus
               autoComplete="username"
               required

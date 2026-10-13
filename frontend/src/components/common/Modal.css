@@ -1,16 +1,18 @@
-/* Modal.css — uses App.css modal system */
-.modal-overlay { position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:var(--sp-5);animation:fadeUp .18s ease-out; }
+/* Modal.css — <Modal> component (shares .modal-overlay/.modal with App.css) */
+.modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:var(--sp-4);animation:fadeUp .18s ease-out; }
 .modal { background:var(--surface);border-radius:var(--r-xl);box-shadow:var(--sh-xl);max-height:90vh;overflow:hidden;display:flex;flex-direction:column;animation:modalIn .22s cubic-bezier(.4,0,.2,1);border:1px solid var(--border); }
+.modal--small, .modal--medium, .modal--large { border-radius:14px;padding:0;box-shadow:var(--sh-xl), inset 0 1px 0 rgba(255,255,255,.04); }
 .modal--small { width:100%;max-width:400px; }
 .modal--medium { width:100%;max-width:600px; }
 .modal--large { width:100%;max-width:900px; }
 /* Mobile-first: smaller defaults, expand at 769px+ */
-.modal__header { padding:18px 20px;border-bottom:1px solid var(--150);display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);background:var(--surface); }
+.modal__header { padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);background:var(--surface); }
 .modal__title { font-family:var(--font);font-size:16px;font-weight:800;margin:0;color:var(--text);letter-spacing:-.02em; }
-.modal__close { background:none;border:none;cursor:pointer;color:var(--text-3);padding:4px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:var(--r);transition:all var(--t); }
-.modal__close:hover { background:var(--100);color:var(--text); }
+.modal__close { background:transparent;border:1px solid transparent;cursor:pointer;color:var(--text-3);padding:0 !important;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:var(--r-md);font-size:20px;line-height:1;transition:all var(--t); }
+.modal__close:hover { background:var(--surface-2);border-color:var(--border-2);color:var(--text); }
 .modal__close svg { width:18px;height:18px; }
-.modal__content { padding:20px;overflow-y:auto;flex:1; }
-.modal__content::-webkit-scrollbar { width:5px; }
+.modal__content { padding:20px;overflow-y:auto;flex:1;color:var(--text-2); }
+.modal__content::-webkit-scrollbar { width:6px; }
 .modal__content::-webkit-scrollbar-thumb { background:var(--300);border-radius:var(--r-full); }
-@media (min-width:769px) { .modal__header { padding:22px 26px; } .modal__content { padding:26px; } .modal__title { font-size:18px; } }
+@media (min-width:769px) { .modal__header { padding:18px 24px; } .modal__content { padding:24px; } .modal__title { font-size:18px; } }
+.modal .modal__title { margin:0; }

@@ -6,6 +6,8 @@ import {
 } from './ChassisTypesConfig';
 import './ChassisTypeManager.css';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
+import { dialog, errorMessage } from '../../../components/common/dialog';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -20,6 +22,7 @@ const EMPTY_NEW_ACC = { label: '', unit: 'UN', quantity: 1, formula: '', itemId:
 
 // ─── Inventory Autocomplete Input ─────────────────────────────────────────────
 function InventoryAutocompleteInput({ value, onChange, onSelect, placeholder, categories }) {
+  const { t } = useLanguage();
   const [suggestions, setSuggestions] = useState([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -74,34 +77,28 @@ function InventoryAutocompleteInput({ value, onChange, onSelect, placeholder, ca
       <div style={{ position: 'relative' }}>
         <span style={{
           position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)',
-          fontSize: 15, color: '#9ca3af', pointerEvents: 'none', lineHeight: 1,
+          fontSize: 15, color: 'var(--text-4)', pointerEvents: 'none', lineHeight: 1,
         }}>🔍</span>
         <input
           className="ct-acc-search-input"
-          onFocus={e => {
-            e.target.style.borderColor = '#1a1a1a';
-            e.target.style.boxShadow = '0 0 0 3px rgba(26,26,26,0.08)';
+          onFocus={() => {
             if (value.length >= 2 && suggestions.length > 0) setOpen(true);
-          }}
-          onBlur={e => {
-            e.target.style.borderColor = '#d1d5db';
-            e.target.style.boxShadow = 'none';
           }}
           value={value}
           onChange={handleChange}
-          placeholder={placeholder || 'Rechercher ou saisir…'}
+          placeholder={placeholder || t('ctSearchOrType')}
           autoComplete="off"
         />
         {loading ? (
           <span style={{
             position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)',
-            fontSize: 12, color: '#555', fontWeight: 600,
+            fontSize: 12, color: 'var(--text-3)', fontWeight: 600,
           }}>⏳</span>
         ) : value && (
           <span
             style={{
               position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)',
-              fontSize: 15, color: '#9ca3af', cursor: 'pointer', lineHeight: 1,
+              fontSize: 15, color: 'var(--text-3)', cursor: 'pointer', lineHeight: 1,
             }}
             onMouseDown={() => { onChange(''); setSuggestions([]); setOpen(false); }}
           >✕</span>
@@ -110,7 +107,7 @@ function InventoryAutocompleteInput({ value, onChange, onSelect, placeholder, ca
       {open && suggestions.length > 0 && (
         <div className="ct-acc-dropdown">
           <div className="ct-acc-dropdown__header">
-            {suggestions.length} résultat{suggestions.length > 1 ? 's' : ''} trouvé{suggestions.length > 1 ? 's' : ''}
+            {t('ctFound', { n: suggestions.length })}
           </div>
           {suggestions.map(item => {
             const id = item.id || item._id;
@@ -121,8 +118,6 @@ function InventoryAutocompleteInput({ value, onChange, onSelect, placeholder, ca
                 key={id}
                 onMouseDown={() => handleSelect(item)}
                 className="ct-acc-dropdown__item"
-                onMouseEnter={e => { e.currentTarget.style.background = '#f5f5f5'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = ''; }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14 }}>📦</span>
@@ -140,6 +135,7 @@ function InventoryAutocompleteInput({ value, onChange, onSelect, placeholder, ca
 
 // ─── Accessory Editor ─────────────────────────────────────────────────────────
 function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
+  const { t } = useLanguage();
   const [linked, setLinked] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -156,7 +152,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
         const data = assocRes.data || [];
         setLinked(data.map(a => ({ ...a, mode: a.formula ? 'formula' : 'fixed' })));
       } catch {
-        setError('Erreur lors du chargement des accessoires');
+        setError(t('ctLoadAccError'));
       } finally {
         setLoading(false);
       }
@@ -177,7 +173,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
 
   // Called when user submits the add form
   const handleAddNew = () => {
-    if (!newAcc.label.trim()) return setError('Le nom de l\'accessoire est requis');
+    if (!newAcc.label.trim()) return setError(t('ctAccNameReq'));
     setError('');
     const acc = {
       itemId: newAcc.itemId || `manual_${Date.now()}`,
@@ -199,7 +195,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
       await axios.put(`${API_URL}/chassis-type-accessories/${chassisTypeId}`, { accessories: payload });
       onClose();
     } catch (e) {
-      setError(e.response?.data?.error || 'Erreur lors de la sauvegarde');
+      setError(e.response?.data?.error || t('errSave'));
     } finally {
       setSaving(false);
     }
@@ -213,35 +209,30 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
 
         {/* Header */}
         <div className="ct-manager__header">
-          <h2>🔧 Accessoires — {chassisTypeName}</h2>
+          <h2>🔧 {t('ctAccTitle', { name: chassisTypeName })}</h2>
           <button className="chassis-form__close" onClick={onClose}>×</button>
         </div>
 
         {error && <div className="ct-manager__error">{error}</div>}
 
         {loading ? (
-          <div className="ct-manager__loading">Chargement…</div>
+          <div className="ct-manager__loading">{t('loadingShort')}</div>
         ) : (
           <>
-            <p className="ct-acc-hint">
-              Définissez les accessoires par défaut pour ce type de châssis. Ils seront
-              proposés automatiquement lors de la configuration des lignes dans les projets.
-              La quantité peut être <strong>fixe</strong> ou calculée via une <strong>formule</strong>{' '}
-              utilisant <strong>L</strong> (largeur) et <strong>H</strong> (hauteur) en mm.
-            </p>
+            <p className="ct-acc-hint">{t('ctAccHint')}</p>
 
             {/* ── Configured accessories table ── */}
             {linked.length > 0 ? (
               <div className="ct-acc-linked">
-                <h3>✅ Accessoires configurés ({linked.length})</h3>
+                <h3>✅ {t('ctConfigured', { n: linked.length })}</h3>
                 <table className="proj-acc-table ct-acc-linked-table">
                   <thead>
                     <tr>
-                      <th>Désignation</th>
-                      <th style={{ width: 90 }}>Unité</th>
-                      <th style={{ width: 80 }}>Mode</th>
-                      <th style={{ width: 110 }}>Qté fixe</th>
-                      <th style={{ width: 200 }}>Formule (L, H)</th>
+                      <th>{t('ctColDesignation')}</th>
+                      <th style={{ width: 90 }}>{t('ctColUnit')}</th>
+                      <th style={{ width: 80 }}>{t('ctColMode')}</th>
+                      <th style={{ width: 110 }}>{t('ctColFixedQty')}</th>
+                      <th style={{ width: 200 }}>{t('ctColFormula')}</th>
                       <th style={{ width: 40 }}></th>
                     </tr>
                   </thead>
@@ -254,7 +245,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
                             style={{ width: '100%' }}
                             value={l.label}
                             onChange={e => updateLinked(idx, 'label', e.target.value)}
-                            placeholder="Nom accessoire"
+                            placeholder={t('ctAccNamePh')}
                           />
                         </td>
                         <td>
@@ -272,8 +263,8 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
                             value={l.mode || 'fixed'}
                             onChange={e => setMode(idx, e.target.value)}
                           >
-                            <option value="fixed">Fixe</option>
-                            <option value="formula">Formule</option>
+                            <option value="fixed">{t('ctFixed')}</option>
+                            <option value="formula">{t('ctFormula')}</option>
                           </select>
                         </td>
                         <td>
@@ -293,7 +284,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
                             value={l.formula || ''}
                             disabled={l.mode === 'fixed'}
                             onChange={e => updateLinked(idx, 'formula', e.target.value)}
-                            placeholder="ex: 2*(L+H)/1000"
+                            placeholder={t('ctFormulaPh')}
                           />
                         </td>
                         <td>
@@ -306,14 +297,14 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
               </div>
             ) : (
               <div className="proj-acc-empty">
-                Aucun accessoire configuré. Utilisez le formulaire ci-dessous pour en ajouter.
+                {t('ctNoAcc')}
               </div>
             )}
 
             {/* ── Add new accessory form (same as ProjectDetail) ── */}
             <div className="proj-acc-add-form">
               <div className="proj-acc-add-form__title">
-                ➕ Ajouter un accessoire
+                ➕ {t('ctAddAcc')}
               </div>
 
               <div className="proj-acc-add-form__grid">
@@ -321,9 +312,9 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
                 {/* Search / name — full width */}
                 <div className="form-group proj-acc-add-form__search" style={{ marginBottom: 0 }}>
                   <label>
-                    Désignation *
-                    <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6, fontSize: 11 }}>
-                      (tapez pour chercher dans l'inventaire)
+                    {t('ctDesignationReq')}
+                    <span style={{ fontWeight: 400, color: 'var(--text-4)', marginLeft: 6, fontSize: 11 }}>
+                      {t('ctTypeToSearch')}
                     </span>
                   </label>
                   <InventoryAutocompleteInput
@@ -332,7 +323,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
                     onSelect={({ label, unit, itemId }) =>
                       setNewAcc(p => ({ ...p, label, unit: UNIT_OPTIONS.includes(unit) ? unit : (unit || 'UN'), itemId }))
                     }
-                    placeholder="ex: Joint, Vis inox, Poignée…"
+                    placeholder={t('ctAccExamplesPh')}
                   />
                 </div>
 
@@ -345,7 +336,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
                   >
                     <div className="proj-acc-mode-card__label">
                       <span className="proj-acc-mode-dot" />
-                      Quantité fixe
+                      {t('ctFixedQty')}
                     </div>
                     <div className="proj-acc-qty-unit-row">
                       <input
@@ -377,7 +368,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
                   >
                     <div className="proj-acc-mode-card__label">
                       <span className="proj-acc-mode-dot" />
-                      Formule (L, H)
+                      {t('ctColFormula')}
                     </div>
                     <input
                       className="proj-acc-formula-input"
@@ -385,7 +376,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
                       disabled={newAcc.mode !== 'formula'}
                       onChange={e => setN('formula', e.target.value)}
                       onClick={e => { e.stopPropagation(); setN('mode', 'formula'); }}
-                      placeholder="ex: 2*(L+H)/1000"
+                      placeholder={t('ctFormulaPh')}
                     />
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
                       <select
@@ -396,9 +387,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
                       >
                         {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
                       </select>
-                      <p className="proj-acc-formula-hint" style={{ margin: 0 }}>
-                        <strong>L</strong> = largeur &nbsp;·&nbsp; <strong>H</strong> = hauteur (mm)
-                      </p>
+                      <p className="proj-acc-formula-hint" style={{ margin: 0 }}>{t('ctLHHint')}</p>
                     </div>
                   </div>
                 </div>
@@ -406,19 +395,19 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
                 {/* Actions */}
                 <div className="proj-acc-add-form__actions">
                   <button type="button" onClick={() => { setNewAcc(EMPTY_NEW_ACC); setError(''); }}>
-                    Réinitialiser
+                    {t('ctReset')}
                   </button>
                   <button type="button" className="primary" onClick={handleAddNew}>
-                    + Ajouter
+                    {t('add')}
                   </button>
                 </div>
               </div>
             </div>
 
             <div className="modal-actions">
-              <button onClick={onClose}>Annuler</button>
+              <button onClick={onClose}>{t('cancel')}</button>
               <button className="primary" onClick={handleSave} disabled={saving}>
-                {saving ? '…' : '💾 Enregistrer'}
+                {saving ? '…' : `💾 ${t('save')}`}
               </button>
             </div>
           </>
@@ -430,6 +419,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
 
 // ─── Main ChassisTypeManager ──────────────────────────────────────────────────
 function ChassisTypeManager({ onClose }) {
+  const { t } = useLanguage();
   const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -456,7 +446,7 @@ function ChassisTypeManager({ onClose }) {
   const handleSave = async (e) => {
     e.preventDefault();
     setError('');
-    if (!form.fr.trim()) return setError('Le nom français est requis');
+    if (!form.fr.trim()) return setError(t('ctFrNameRequired'));
     setSaving(true);
     try {
       const payload = {
@@ -488,8 +478,10 @@ function ChassisTypeManager({ onClose }) {
   };
 
   const handleDelete = async (ct) => {
-    if (!window.confirm(`Supprimer "${ct.fr}" ?`)) return;
-    await deleteChassisType(ct._id || ct.id);
+    if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('ctDeleteConfirm', { name: ct.fr }), danger: true, confirmLabel: t('deleteAction') }))) return;
+    try {
+      await deleteChassisType(ct._id || ct.id);
+    } catch (err) { dialog.alert(errorMessage(err, t('errDelete'))); return; }
     load();
   };
 
@@ -503,53 +495,53 @@ function ChassisTypeManager({ onClose }) {
       <div className="modal-overlay modal-ctt" onClick={onClose}>
         <div className="modal ct-manager-modal" onClick={e => e.stopPropagation()}>
           <div className="ct-manager__header">
-            <h2>🪟 Gestion des types de chassis</h2>
+            <h2>🪟 {t('ctTitle')}</h2>
             <button className="chassis-form__close" onClick={onClose}>×</button>
           </div>
 
           {/* Form */}
           <form className="ct-manager__form" onSubmit={handleSave}>
-            <h3>{editingId ? '✏️ Modifier le type' : '➕ Nouveau type'}</h3>
+            <h3>{editingId ? `✏️ ${t('ctEditType')}` : `➕ ${t('ctNewType')}`}</h3>
             {error && <div className="ct-manager__error">{error}</div>}
             <div className="ct-manager__fields">
               <div className="form-group">
-                <label>Nom (Français) *</label>
-                <input type="text" required value={form.fr} onChange={e => setF('fr', e.target.value)} placeholder="ex: Porte 2 vantaux" />
+                <label>{t('ctNameFr')}</label>
+                <input type="text" required value={form.fr} onChange={e => setF('fr', e.target.value)} placeholder={t('ctNameFrPh')} />
               </div>
               <div className="form-group">
-                <label>Nom (Italien)</label>
-                <input type="text" value={form.it} onChange={e => setF('it', e.target.value)} placeholder="ex: Porta 2 ante" />
+                <label>{t('ctNameIt')}</label>
+                <input type="text" value={form.it} onChange={e => setF('it', e.target.value)} placeholder={t('ctNameItPh')} />
               </div>
               <div className="form-group">
-                <label>Nom (Anglais)</label>
-                <input type="text" value={form.en} onChange={e => setF('en', e.target.value)} placeholder="ex: Door 2 leaves" />
+                <label>{t('ctNameEn')}</label>
+                <input type="text" value={form.en} onChange={e => setF('en', e.target.value)} placeholder={t('ctNameEnPh')} />
               </div>
               {adminOnly && (
                 <div className="form-group ct-manager__composite-toggle">
                   <label>
                     <input type="checkbox" checked={form.composite} onChange={e => setF('composite', e.target.checked)} />
-                    &nbsp; Chassis composé (dormant + vantaux)
+                    &nbsp; {t('ctComposite')}
                   </label>
                 </div>
 
               )}
               {form.composite && (
                 <div className="form-group">
-                  <label>Nombre de vantaux</label>
+                  <label>{t('ctLeaves')}</label>
                   <input type="number" min="1" max="10" value={form.vantaux} onChange={e => setF('vantaux', e.target.value)} />
                 </div>
               )}
               {!editingId && (
                 <div className="ct-manager__preview">
-                  <span className="ct-manager__preview-label">Identifiant généré :</span>
+                  <span className="ct-manager__preview-label">{t('ctGeneratedId')}</span>
                   <code>{form.fr ? generateValue(form.fr) : '—'}</code>
                 </div>
               )}
             </div>
             <div className="modal-actions">
-              {editingId && <button type="button" onClick={handleCancel}>Annuler</button>}
+              {editingId && <button type="button" onClick={handleCancel}>{t('cancel')}</button>}
               <button type="submit" className="primary" disabled={saving}>
-                {saving ? '...' : (editingId ? 'Mettre à jour' : 'Créer le type')}
+                {saving ? '...' : (editingId ? t('update') : t('ctCreateType'))}
               </button>
             </div>
           </form>
@@ -557,17 +549,17 @@ function ChassisTypeManager({ onClose }) {
           {/* List */}
           {adminOnly && (
             <div className="ct-manager__list">
-              <h3>Types existants ({types.length})</h3>
-              {loading ? <div className="ct-manager__loading">Chargement…</div> : (
+              <h3>{t('ctExisting', { n: types.length })}</h3>
+              {loading ? <div className="ct-manager__loading">{t('loadingShort')}</div> : (
                 <table className="ct-manager__table">
                   <thead>
                     <tr>
-                      <th>Nom (FR)</th>
-                      <th>Identifiant</th>
-                      <th>Composé</th>
-                      <th>Vantaux</th>
-                      <th>Accessoires</th>
-                      <th>Actions</th>
+                      <th>{t('ctColNameFr')}</th>
+                      <th>{t('ctColId')}</th>
+                      <th>{t('ctColComposite')}</th>
+                      <th>{t('ctColLeaves')}</th>
+                      <th>{t('ctColAcc')}</th>
+                      <th>{t('ctColActions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -575,13 +567,13 @@ function ChassisTypeManager({ onClose }) {
                       <tr key={ct._id || ct.id} className={editingId === (ct._id || ct.id) ? 'ct-manager__row--editing' : ''}>
                         <td><strong>{ct.fr}</strong></td>
                         <td><code className="ct-manager__code">{ct.value}</code></td>
-                        <td>{ct.composite ? <span className="ct-badge ct-badge--composite">Oui</span> : <span className="ct-badge">Non</span>}</td>
+                        <td>{ct.composite ? <span className="ct-badge ct-badge--composite">{t('yes')}</span> : <span className="ct-badge">{t('no')}</span>}</td>
                         <td>{ct.composite ? ct.vantaux : '—'}</td>
                         <td>
                           <button
                             className="ct-acc-btn"
                             onClick={() => setAccEditor({ id: ct._id || ct.id, name: ct.fr })}
-                            title="Configurer les accessoires"
+                            title={t('ctConfigureAcc')}
                           >
                             🔧 {ct.accessoryCount > 0 ? `${ct.accessoryCount}` : ''}
                           </button>

@@ -41,12 +41,12 @@ export default function ProjectFormModal({ language, project, companies, tab, t,
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal large" onClick={e => e.stopPropagation()}>
+      <div className="modal large project-form-modal" onClick={e => e.stopPropagation()}>
         <h2>{project ? t('edit') : t('addProject')}</h2>
 
         {/* Company selector */}
         <div className="project-form-company-selector">
-          <label style={{ fontWeight: 700, marginBottom: 8, display: 'block' }}>{t('society')} *</label>
+          <label className="project-form-company-selector__label">{t('society')} *</label>
           <div className="company-choice-btns">
             {companies.map(c => (
               <button key={c.id} type="button"

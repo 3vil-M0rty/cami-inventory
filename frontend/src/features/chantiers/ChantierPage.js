@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { dialog } from '../../components/common/dialog';
 import { useCompany } from '../../context/CompanyContext';
 import './ChantierPage.css';
 
@@ -23,7 +24,7 @@ async function uploadToCloudinary(file) {
         `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
         { method: 'POST', body: data }
     );
-    if (!res.ok) throw new Error('Upload Cloudinary échoué');
+    if (!res.ok) throw new Error(`Cloudinary ${res.status}`);
     const json = await res.json();
     return json.secure_url;
 }
@@ -36,6 +37,7 @@ const _projectsCache = { data: null };
 
 // ─── Camera Cell Component ────────────────────────────────────────────────────
 function CameraCell({ chassisId, unitIndex, chantier, authFetch, onPhotoAdded, onPhotoDeleted }) {
+    const { t } = useLanguage();
     const [uploading, setUploading] = useState(false);
     const [lightbox, setLightbox] = useState(null);
     const inputRef = useRef(null);
@@ -60,7 +62,7 @@ function CameraCell({ chassisId, unitIndex, chantier, authFetch, onPhotoAdded, o
             // Optimistic: notify parent with new photo entry
             onPhotoAdded && onPhotoAdded({ chassisId, unitIndex, url });
         } catch (err) {
-            alert('Erreur lors de l\'upload : ' + err.message);
+            dialog.alert(t('errUpload', { msg: err.message || t('chUploadFailed') }));
         } finally {
             setUploading(false);
             if (inputRef.current) inputRef.current.value = '';
@@ -80,7 +82,7 @@ function CameraCell({ chassisId, unitIndex, chantier, authFetch, onPhotoAdded, o
 
     return (
         <div className="ch-camera-cell">
-            <label className={`ch-camera-btn ${uploading ? 'uploading' : ''}`} title="Prendre une photo">
+            <label className={`ch-camera-btn ${uploading ? 'uploading' : ''}`} title={t('chTakePhoto')}>
                 <input
                     ref={inputRef}
                     type="file"
@@ -99,7 +101,7 @@ function CameraCell({ chassisId, unitIndex, chantier, authFetch, onPhotoAdded, o
             {existing.length > 0 && (
                 <button
                     className="ch-camera-count"
-                    title={`${existing.length} photo(s)`}
+                    title={t('chPhotos', { n: existing.length })}
                     onClick={() => setLightbox(existing)}
                     type="button"
                 >
@@ -121,6 +123,7 @@ function CameraCell({ chassisId, unitIndex, chantier, authFetch, onPhotoAdded, o
 
 // ─── Photo Lightbox ───────────────────────────────────────────────────────────
 function PhotoLightbox({ photos, onClose, onDelete }) {
+    const { t } = useLanguage();
     const [idx, setIdx] = useState(0);
 
     useEffect(() => {
@@ -129,8 +132,8 @@ function PhotoLightbox({ photos, onClose, onDelete }) {
         return () => document.removeEventListener('keydown', handler);
     }, [onClose]);
 
-    const handleDelete = () => {
-        if (!window.confirm('Supprimer cette photo ?')) return;
+    const handleDelete = async () => {
+        if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('chDeletePhotoConfirm'), danger: true, confirmLabel: t('deleteAction') }))) return;
         onDelete(photos[idx].url);
     };
 
@@ -138,13 +141,13 @@ function PhotoLightbox({ photos, onClose, onDelete }) {
         <div className="ch-lightbox-overlay" onClick={onClose}>
             <div className="ch-lightbox" onClick={e => e.stopPropagation()}>
                 <div className="ch-lightbox-topbar">
-                    <button className="ch-lightbox-delete" onClick={handleDelete} title="Supprimer cette photo">
-                        <Trash2 size={14} /> Supprimer
+                    <button className="ch-lightbox-delete" onClick={handleDelete} title={t('chDeletePhoto')}>
+                        <Trash2 size={14} /> {t('delete')}
                     </button>
                     <button className="ch-lightbox-close" onClick={onClose}><X size={18} /></button>
                 </div>
                 <div className="ch-lightbox-img-wrap">
-                    <img src={photos[idx].url} alt={`Photo ${idx + 1}`} className="ch-lightbox-img" />
+                    <img src={photos[idx].url} alt={t('chPhotoN', { n: idx + 1 })} className="ch-lightbox-img" />
                 </div>
                 {photos.length > 1 && (
                     <div className="ch-lightbox-nav">
@@ -154,7 +157,7 @@ function PhotoLightbox({ photos, onClose, onDelete }) {
                     </div>
                 )}
                 <a href={photos[idx].url} target="_blank" rel="noopener noreferrer" className="ch-lightbox-open">
-                    <ExternalLink size={13} /> Ouvrir dans un nouvel onglet
+                    <ExternalLink size={13} /> {t('chOpenNewTab')}
                 </a>
             </div>
         </div>
@@ -162,10 +165,10 @@ function PhotoLightbox({ photos, onClose, onDelete }) {
 }
 
 const CHANTIER_STATUS_META = {
-    planifie: { label: 'Planifié', color: '#6b7280', bg: 'rgba(107,114,128,.12)' },
-    en_cours: { label: 'En cours', color: '#d97706', bg: 'rgba(217,119,6,.12)' },
-    suspendu: { label: 'Suspendu', color: '#dc2626', bg: 'rgba(220,38,38,.12)' },
-    cloture: { label: 'Clôturé', color: '#16a34a', bg: 'rgba(22,163,74,.12)' },
+    planifie: { label: 'chStPlanifie', color: '#a1a1aa', bg: 'rgba(161,161,170,.12)' },
+    en_cours: { label: 'chStEnCours', color: '#fbbf24', bg: 'rgba(251,191,36,.12)' },
+    suspendu: { label: 'chStSuspendu', color: '#f87171', bg: 'rgba(248,113,113,.12)' },
+    cloture: { label: 'chStCloture', color: '#4ade80', bg: 'rgba(74,222,128,.12)' },
 };
 
 function fmt(d) {
@@ -176,6 +179,7 @@ function fmt(d) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ChantierPage() {
     const { authFetch, can, user } = useAuth();
+    const { t } = useLanguage();
     const isAdmin = user?.role === 'Admin' || can('chantiers.edit');
 
     const [chantiers, setChantiers] = useState([]);
@@ -248,8 +252,10 @@ export default function ChantierPage() {
     useEffect(() => { load(); }, [load]);
 
     const deleteChantier = async (id) => {
-        if (!window.confirm('Supprimer ce chantier ?')) return;
-        await authFetch(`${API_URL}/chantiers/${id}`, { method: 'DELETE' });
+        const ch = chantiers.find(c => c.id === id);
+        if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('chDeleteConfirm', { name: ch?.name || '' }), danger: true, confirmLabel: t('deleteAction') }))) return;
+        const r = await authFetch(`${API_URL}/chantiers/${id}`, { method: 'DELETE' });
+        if (!r.ok) { const d = await r.json().catch(() => ({})); dialog.alert(d.error || t('errDelete')); return; }
         setView('chantiers'); setDetailId(null);
         setChantiers(prev => prev.filter(c => c.id !== id));
     };
@@ -318,36 +324,36 @@ export default function ChantierPage() {
         <div className="ch-page">
             <div className="ch-page__header">
                 <div className="ch-page__header-left">
-                    <HardHat size={20} strokeWidth={2} className="ch-page__icon" />
-                    <h2 className="ch-page__title">Chantiers</h2>
+                    <span className="ch-page__icon"><HardHat size={20} strokeWidth={2} /></span>
+                    <h2 className="ch-page__title">{t('chTitle')}</h2>
                     <span className="ch-page__count">{view === 'teams' ? teams.length : chantiers.length}</span>
                 </div>
                 <div className="ch-page__header-right">
+                    {adminThing && (
+                        <button className="ch-new-btn" onClick={openNewChantier}>
+                            <Plus size={15} /> {t('chNew')}
+                        </button>
+                    )}
                     <div className="ch-tab-toggle">
-                        {adminThing && (
-                            <button className="ch-new-btn" onClick={openNewChantier}>
-                                <Plus size={14} /> Nouveau chantier
-                            </button>
-                        )}
                         <button className={`ch-tab-btn ${view === 'chantiers' ? 'active' : ''}`} onClick={() => setView('chantiers')}>
-                            <ClipboardList size={13} /> Chantiers
+                            <ClipboardList size={13} /> {t('chTabChantiers')}
                         </button>
                         <button className={`ch-tab-btn ${view === 'teams' ? 'active' : ''}`} onClick={() => setView('teams')}>
-                            <Users size={13} /> Équipes
+                            <Users size={13} /> {t('chTabTeams')}
                         </button>
                     </div>
                 </div>
             </div>
 
             {loading ? (
-                <div className="ch-loading">Chargement...</div>
+                <div className="ch-loading">{t('loadingShort')}</div>
             ) : view === 'chantiers' ? (
                 chantiers.length === 0 ? (
                     <div className="ch-empty-page">
-                        <HardHat size={44} strokeWidth={1.2} />
-                        <p>Aucun chantier pour l'instant.</p>
+                        <span className="ch-empty-icon"><HardHat size={20} strokeWidth={1.8} /></span>
+                        <p>{t('chNone')}</p>
                         {adminThing && (
-                            <button className="ch-new-btn" onClick={openNewChantier}>+ Créer un chantier</button>
+                            <button className="ch-new-btn" onClick={openNewChantier}>{t('chCreate')}</button>
                         )}
                     </div>
                 ) : (
@@ -369,8 +375,8 @@ export default function ChantierPage() {
             ) : (
                 teams.length === 0 ? (
                     <div className="ch-empty-page">
-                        <Users size={44} strokeWidth={1.2} />
-                        <p>Aucune équipe. Créez-en depuis l'administration.</p>
+                        <span className="ch-empty-icon"><Users size={20} strokeWidth={1.8} /></span>
+                        <p>{t('chNoTeam')}</p>
                     </div>
                 ) : (
                     <div className="ch-cards-grid">
@@ -404,6 +410,7 @@ export default function ChantierPage() {
 
 // ─── Chantier Grid Card ───────────────────────────────────────────────────────
 function ChantierGridCard({ chantier, teams, chantierStates, isAdmin, onClick, onEdit, onDelete }) {
+    const { t } = useLanguage();
     const meta = CHANTIER_STATUS_META[chantier.status] || CHANTIER_STATUS_META.planifie;
     const team = teams.find(t => t.id === (chantier.teamId?.id || chantier.teamId));
     const assignedProjects = chantier.projectIds || [];
@@ -447,24 +454,24 @@ function ChantierGridCard({ chantier, teams, chantierStates, isAdmin, onClick, o
                         <h3 className="ch-card__name">{chantier.name}</h3>
                         <span className="ch-card__ref">{chantier.reference}</span>
                     </div>
-                    <span className="ch-card__status-pill" style={{ color: meta.color, background: meta.bg }}>{meta.label}</span>
+                    <span className="ch-card__status-pill" style={{ color: meta.color, background: meta.bg }}>{t(meta.label)}</span>
                 </div>
                 <div className="ch-card__rows">
                     {team && (
                         <div className="ch-card__row">
                             <Users size={12} />
-                            <span style={{ color: team.color, fontWeight: 600 }}>{team.name}</span>
+                            <span className="ch-team-chip"><span className="ch-team-dot" style={{ background: team.color }} />{team.name}</span>
                         </div>
                     )}
                     <div className="ch-card__row">
                         <Calendar size={12} />
                         <span>{fmt(chantier.dateDebut)}</span>
-                        <ArrowRight size={9} style={{ opacity: 0.35 }} />
+                        <ArrowRight size={10} className="ch-card__arrow" />
                         <span>{fmt(chantier.dateCloture)}</span>
                     </div>
                     <div className="ch-card__row">
                         <Layers size={12} />
-                        <span>{assignedProjects.length} projet(s) · {totalUnits} unité(s) livrée(s)</span>
+                        <span>{t('chCardSummary', { p: assignedProjects.length, u: totalUnits })}</span>
                     </div>
                 </div>
                 {totalUnits > 0 && (
@@ -480,9 +487,9 @@ function ChantierGridCard({ chantier, teams, chantierStates, isAdmin, onClick, o
                 {chantier.notes && <p className="ch-card__notes">{chantier.notes}</p>}
             </div>
             <div className="ch-card__actions" onClick={e => e.stopPropagation()}>
-                <button className="ch-card__act" onClick={onEdit} title="Modifier"><Edit2 size={13} /></button>
+                <button className="ch-card__act" onClick={onEdit} title={t('edit')}><Edit2 size={13} /></button>
                 {adminThing && (
-                    <button className="ch-card__act danger" onClick={onDelete} title="Supprimer"><Trash2 size={13} /></button>
+                    <button className="ch-card__act danger" onClick={onDelete} title={t('delete')}><Trash2 size={13} /></button>
                 )}
             </div>
         </div>
@@ -495,6 +502,7 @@ function ChantierDetail({
     isAdmin, authFetch, onBack, onEdit, onDelete, onRefreshFull, patchChantier,
     showForm, editItem, onCloseForm
 }) {
+    const { t } = useLanguage();
     const meta = CHANTIER_STATUS_META[chantier.status] || CHANTIER_STATUS_META.planifie;
     const team = teams.find(t => t.id === (chantier.teamId?.id || chantier.teamId));
     const assignedProjects = chantier.projectIds || [];
@@ -505,13 +513,13 @@ function ChantierDetail({
         <div className="ch-detail">
             <div className="ch-detail__topbar">
                 <button className="ch-back-btn" onClick={onBack}>
-                    <StepBack size={15} /> Retour aux chantiers
+                    <StepBack size={15} /> {t('chBack')}
                 </button>
                 {isAdmin && (
-                    <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="ch-icon-btn" onClick={onEdit}><Edit2 size={15} /> Modifier</button>
+                    <div className="ch-detail__actions">
+                        <button className="ch-icon-btn" onClick={onEdit}><Edit2 size={15} /> {t('edit')}</button>
                         {adminThing &&
-                            <button className="ch-icon-btn danger" onClick={onDelete}><Trash2 size={15} /> Supprimer</button>
+                            <button className="ch-icon-btn danger" onClick={onDelete}><Trash2 size={15} /> {t('delete')}</button>
                         }
                     </div>
                 )}
@@ -523,21 +531,21 @@ function ChantierDetail({
                         <h1 className="ch-detail__name">{chantier.name}</h1>
                         <span className="ch-detail__ref">{chantier.reference}</span>
                     </div>
-                    <span className="ch-detail__status-pill" style={{ color: meta.color, background: meta.bg }}>{meta.label}</span>
+                    <span className="ch-detail__status-pill" style={{ color: meta.color, background: meta.bg }}>{t(meta.label)}</span>
                 </div>
                 <div className="ch-detail__meta-row">
-                    {team && <span className="ch-detail__meta-item" style={{ color: team.color, fontWeight: 700 }}><Users size={13} /> {team.name}</span>}
+                    {team && <span className="ch-detail__meta-item ch-detail__meta-item--team"><span className="ch-team-dot" style={{ background: team.color }} /> {team.name}</span>}
                     <span className="ch-detail__meta-item"><Calendar size={13} /> {fmt(chantier.dateDebut)} → {fmt(chantier.dateCloture)}</span>
-                    <span className="ch-detail__meta-item"><Layers size={13} /> {assignedProjects.length} projet(s)</span>
+                    <span className="ch-detail__meta-item"><Layers size={13} /> {t('chProjects', { n: assignedProjects.length })}</span>
                 </div>
                 {chantier.notes && <p className="ch-detail__notes">{chantier.notes}</p>}
             </div>
 
             <div className="ch-detail__content">
                 {assignedProjects.length === 0 ? (
-                    <div className="ch-empty-page" style={{ minHeight: 200 }}>
-                        <Layers size={36} strokeWidth={1.2} />
-                        <p>Aucun projet assigné à ce chantier.</p>
+                    <div className="ch-empty-page ch-empty-page--sm">
+                        <span className="ch-empty-icon"><Layers size={20} strokeWidth={1.8} /></span>
+                        <p>{t('chNoProject')}</p>
                     </div>
                 ) : assignedProjects.map(proj => (
                     <ChantierProjectBlock
@@ -598,6 +606,7 @@ function deriveCompositeChantierState(unitStates, chassisId, unitIndex, numCompo
 
 // ─── Project block ────────────────────────────────────────────────────────────
 function ChantierProjectBlock({ project, chantier, chantierStates, defaultState, isAdmin, authFetch, patchChantier, chassisTypes }) {
+    const { t } = useLanguage();
     const chassis = project.chassis || [];
     // Local copy of unitStates for optimistic updates within this block
     const [localUnitStates, setLocalUnitStates] = useState(chantier.unitStates || []);
@@ -738,11 +747,11 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                 })
                 .map(({ comp, ci }) => ({
                     kind: 'component', ch, chId, unitIndex, typeLabel, comp, ci,
-                    label: comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${ci + 1}`),
+                    label: comp.repere || (comp.role === 'dormant' ? t('chDormant') : t('chVantail', { n: ci + 1 })),
                 }));
             return [head, ...compRows];
         });
-    }).flat(), [chassis, chassisTypes]);
+    }).flat(), [chassis, chassisTypes, t]);
 
     const { stateCounts, totalUnits } = useMemo(() => {
         const counts = {};
@@ -775,8 +784,8 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                         {project.companyId && <span className="ch-proj-block__co">{project.companyId.name}</span>}
                     </div>
                 </div>
-                <div className="ch-empty-inline" style={{ padding: '20px' }}>
-                    Aucun chassis livré dans ce projet.
+                <div className="ch-empty-inline">
+                    {t('chNoDelivered')}
                 </div>
             </div>
         );
@@ -808,13 +817,13 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                 <table className="ch-chassis-table">
                     <thead>
                         <tr>
-                            <th>Repère</th>
-                            <th>Désignation</th>
-                            <th>L (mm)</th>
-                            <th>H (mm)</th>
-                            <th>Dimension</th>
+                            <th>{t('chColRepere')}</th>
+                            <th>{t('chColDesignation')}</th>
+                            <th>{t('chColL')}</th>
+                            <th>{t('chColH')}</th>
+                            <th>{t('chColDimension')}</th>
                             <th>m²</th>
-                            <th>État chantier</th>
+                            <th>{t('chColState')}</th>
                             <th className="ch-ct-photo-th"><Camera size={13} /></th>
                         </tr>
                     </thead>
@@ -830,10 +839,10 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                                     <tr key={`${row.chId}-${row.unitIndex}-head`} className="ch-ct-row ch-ct-row--head">
                                         <td>
                                             <strong>{row.label}</strong>
-                                            <span className="ch-ct-composite-badge" title="Composite">⊞</span>
+                                            <span className="ch-ct-composite-badge" title={t('chComposite')}>⊞</span>
                                             {isPartial && (
-                                                <span className="ch-ct-partial-badge" title={`${row.deliveredCount}/${row.totalComps} composants livrés`}>
-                                                    {row.deliveredCount}/{row.totalComps} livrés
+                                                <span className="ch-ct-partial-badge" title={t('chDeliveredOf', { a: row.deliveredCount, b: row.totalComps })}>
+                                                    {t('chDeliveredShort', { a: row.deliveredCount, b: row.totalComps })}
                                                 </span>
                                             )}
                                         </td>
@@ -843,10 +852,10 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                                         <td className="ch-ct-dim">{row.ch.dimension || `${row.ch.largeur}×${row.ch.hauteur}`}</td>
                                         <td className="ch-ct-num">{chM2} m²</td>
                                         <td>
-                                            <span className="ch-state-badge--derived" title="État dérivé des composants">
+                                            <span className="ch-state-badge--derived" title={t('chDerived')}>
                                                 <span className="ch-state-badge-dot" style={{ background: derivedState?.color || '#6b7280' }} />
                                                 {derivedState?.label || '—'}
-                                                <span className="ch-state-badge-hint">↓ hérité</span>
+                                                <span className="ch-state-badge-hint">{t('chInherited')}</span>
                                             </span>
                                         </td>
                                         <td className="ch-ct-photo-td">
@@ -981,7 +990,8 @@ function ChantierStateSelect({ state, allStates, editable, onChange }) {
 
     if (!editable) {
         return (
-            <span className="ch-state-badge" style={{ background: state?.color || '#6b7280' }}>
+            <span className="ch-state-badge" style={{ '--c': state?.color || '#a1a1aa' }}>
+                <span className="ch-state-badge-dot" style={{ background: state?.color || '#a1a1aa' }} />
                 {state?.label || '—'}
             </span>
         );
@@ -1017,9 +1027,9 @@ function ChantierStateSelect({ state, allStates, editable, onChange }) {
                                 setOpen(false);
                             }}
                         >
-                            <span style={{ width: 10, height: 10, borderRadius: '50%', background: s.color, display: 'inline-block', flexShrink: 0 }} />
+                            <span className="ch-state-select-dot" style={{ background: s.color }} />
                             {s.label}
-                            {state?.key === s.key && <Check size={11} style={{ marginLeft: 'auto', color: '#22c55e' }} />}
+                            {state?.key === s.key && <Check size={12} className="ch-check" />}
                         </button>
                     ))}
                 </div>
@@ -1030,6 +1040,7 @@ function ChantierStateSelect({ state, allStates, editable, onChange }) {
 
 // ─── Team Card ────────────────────────────────────────────────────────────────
 function TeamCard({ team, chantiers, onViewStock }) {
+    const { t } = useLanguage();
     const { user } = useAuth();
     const adminThing = user?.role === 'Admin';
     const totalQty = (team.stock || []).reduce((a, s) => a + s.quantity, 0);
@@ -1046,10 +1057,10 @@ function TeamCard({ team, chantiers, onViewStock }) {
                     </div>
                 </div>
                 <div className="ch-card__rows">
-                    <div className="ch-card__row"><ClipboardList size={12} /><span>{chantiers.length} chantier(s)</span></div>
-                    <div className="ch-card__row"><Package size={12} /><span>{(team.stock || []).length} articles · {totalQty} unités</span></div>
+                    <div className="ch-card__row"><ClipboardList size={12} /><span>{t('chTeamChantiers', { n: chantiers.length })}</span></div>
+                    <div className="ch-card__row"><Package size={12} /><span>{t('chTeamStockSummary', { a: (team.stock || []).length, q: totalQty })}</span></div>
                 </div>
-                {adminThing && <div className="ch-card__cta"><BarChart2 size={13} /> Voir le stock</div>}
+                {adminThing && <div className="ch-card__cta"><BarChart2 size={13} /> {t('chSeeStock')}</div>}
             </div>
         </div>
     );
@@ -1057,6 +1068,7 @@ function TeamCard({ team, chantiers, onViewStock }) {
 
 // ─── Team Stock Panel ─────────────────────────────────────────────────────────
 function TeamStockPanel({ team, chantiers, authFetch, isAdmin, onBack }) {
+    const { t } = useLanguage();
     const [teamData, setTeamData] = useState(team);
     const [inventory, setInventory] = useState([]);
     const [movements, setMovements] = useState([]);
@@ -1076,18 +1088,18 @@ function TeamStockPanel({ team, chantiers, authFetch, isAdmin, onBack }) {
 
     useEffect(() => { refresh(); }, [refresh]);
 
-    const MOV_LABELS = { entree: 'Entrée', sortie: 'Sortie', chantier_use: 'Utilisation chantier', chantier_return: 'Retour chantier' };
-    const MOV_COLORS = { entree: '#16a34a', sortie: '#dc2626', chantier_use: '#d97706', chantier_return: '#2563eb' };
+    const MOV_LABELS = { entree: t('chMovIn'), sortie: t('chMovOut'), chantier_use: t('chMovUse'), chantier_return: t('chMovReturn') };
+    const MOV_COLORS = { entree: '#4ade80', sortie: '#f87171', chantier_use: '#fbbf24', chantier_return: '#60a5fa' };
 
     return (
         <div className="ch-detail">
             <div className="ch-detail__topbar">
-                <button className="ch-back-btn" onClick={onBack}><ChevronLeft size={16} /> Retour aux équipes</button>
+                <button className="ch-back-btn" onClick={onBack}><ChevronLeft size={16} /> {t('chBackTeams')}</button>
                 {isAdmin && (
-                    <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="ch-icon-btn green" onClick={() => setShowAllocate(true)}><Plus size={13} /> Allouer</button>
-                        <button className="ch-icon-btn orange" onClick={() => setShowConsume(true)}><Wrench size={13} /> Consommer</button>
-                        <button className="ch-icon-btn blue" onClick={() => setShowReturn(true)}><ArrowRight size={13} /> Retourner</button>
+                    <div className="ch-detail__actions">
+                        <button className="ch-icon-btn green" onClick={() => setShowAllocate(true)}><Plus size={13} /> {t('chAllocate')}</button>
+                        <button className="ch-icon-btn orange" onClick={() => setShowConsume(true)}><Wrench size={13} /> {t('chConsume')}</button>
+                        <button className="ch-icon-btn blue" onClick={() => setShowReturn(true)}><ArrowRight size={13} /> {t('chReturn')}</button>
                     </div>
                 )}
             </div>
@@ -1097,51 +1109,52 @@ function TeamStockPanel({ team, chantiers, authFetch, isAdmin, onBack }) {
                     {team.description && <span className="ch-detail__ref">{team.description}</span>}
                 </div>
                 <div className="ch-detail__meta-row">
-                    <span className="ch-detail__meta-item"><Package size={13} /> {(teamData.stock || []).length} article(s)</span>
-                    <span className="ch-detail__meta-item"><ClipboardList size={13} /> {chantiers.length} chantier(s)</span>
+                    <span className="ch-detail__meta-item"><Package size={13} /> {t('chArticles', { n: (teamData.stock || []).length })}</span>
+                    <span className="ch-detail__meta-item"><ClipboardList size={13} /> {t('chTeamChantiers', { n: chantiers.length })}</span>
                 </div>
             </div>
             <div className="ch-detail__content">
                 <div className="ch-section">
-                    <h3 className="ch-section__title">Stock actuel</h3>
+                    <h3 className="ch-section__title">{t('chCurrentStock')}</h3>
                     {(!teamData.stock || teamData.stock.length === 0)
-                        ? <div className="ch-empty-inline">Aucun stock alloué à cette équipe.</div>
-                        : <table className="ch-table"><thead><tr><th>Article</th><th>Quantité</th></tr></thead><tbody>
+                        ? <div className="ch-empty-inline">{t('chNoTeamStock')}</div>
+                        : <div className="ch-table-wrap"><table className="ch-table"><thead><tr><th>{t('chColArticle')}</th><th>{t('chColQuantity')}</th></tr></thead><tbody>
                             {(teamData.stock || []).map((s, i) => {
                                 const item = s.itemId || {};
-                                return <tr key={i}><td>{item.designation?.fr || item.designation?.en || '—'}</td><td><strong>{s.quantity}</strong></td></tr>;
+                                return <tr key={i}><td>{item.designation?.fr || item.designation?.en || '—'}</td><td className="ch-td-num"><strong>{s.quantity}</strong></td></tr>;
                             })}
-                        </tbody></table>
+                        </tbody></table></div>
                     }
                 </div>
                 <div className="ch-section">
-                    <h3 className="ch-section__title">Historique des mouvements</h3>
+                    <h3 className="ch-section__title">{t('chHistory')}</h3>
                     {movements.length === 0
-                        ? <div className="ch-empty-inline">Aucun mouvement enregistré.</div>
-                        : <table className="ch-table"><thead><tr><th>Date</th><th>Type</th><th>Article</th><th>Qté</th><th>Chantier</th><th>Note</th></tr></thead><tbody>
+                        ? <div className="ch-empty-inline">{t('chNoMovement')}</div>
+                        : <div className="ch-table-wrap"><table className="ch-table"><thead><tr><th>{t('chColDate')}</th><th>{t('chColType')}</th><th>{t('chColArticle')}</th><th>{t('chColQty')}</th><th>{t('chColChantier')}</th><th>{t('chColNote')}</th></tr></thead><tbody>
                             {movements.map((m, i) => (
                                 <tr key={i}>
-                                    <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmt(m.createdAt)}</td>
-                                    <td><span style={{ background: MOV_COLORS[m.type] || '#888', color: '#fff', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{MOV_LABELS[m.type] || m.type}</span></td>
+                                    <td className="ch-td-date">{fmt(m.createdAt)}</td>
+                                    <td><span className="ch-mov-badge" style={{ '--c': MOV_COLORS[m.type] || '#a1a1aa' }}>{MOV_LABELS[m.type] || m.type}</span></td>
                                     <td>{m.itemId?.designation?.fr || '—'}</td>
-                                    <td>{m.quantity}</td>
-                                    <td style={{ fontSize: 12 }}>{m.chantierName || '—'}</td>
-                                    <td style={{ fontSize: 12, color: '#888' }}>{m.note || '—'}</td>
+                                    <td className="ch-td-num">{m.quantity}</td>
+                                    <td className="ch-td-sm">{m.chantierName || '—'}</td>
+                                    <td className="ch-td-sm ch-td-muted">{m.note || '—'}</td>
                                 </tr>
                             ))}
-                        </tbody></table>
+                        </tbody></table></div>
                     }
                 </div>
             </div>
-            {showAllocate && <TeamStockActionModal title="Allouer depuis l'inventaire principal" inventory={inventory} chantiers={chantiers} showChantier={false} onClose={() => setShowAllocate(false)} onConfirm={async (itemId, qty) => { await authFetch(`${API_URL}/teams/${team.id}/stock/allocate`, { method: 'POST', body: JSON.stringify({ itemId, quantity: qty }) }); setShowAllocate(false); refresh(); }} />}
-            {showConsume && <TeamStockActionModal title="Enregistrer une consommation" inventory={(teamData.stock || []).map(s => s.itemId).filter(Boolean)} chantiers={chantiers} showChantier={true} onClose={() => setShowConsume(false)} onConfirm={async (itemId, qty, chantierId, note) => { await authFetch(`${API_URL}/teams/${team.id}/stock/consume`, { method: 'POST', body: JSON.stringify({ itemId, quantity: qty, chantierId, note }) }); setShowConsume(false); refresh(); }} />}
-            {showReturn && <TeamStockActionModal title="Retourner vers l'inventaire" inventory={(teamData.stock || []).map(s => s.itemId).filter(Boolean)} chantiers={chantiers} showChantier={false} onClose={() => setShowReturn(false)} onConfirm={async (itemId, qty) => { await authFetch(`${API_URL}/teams/${team.id}/stock/return`, { method: 'POST', body: JSON.stringify({ itemId, quantity: qty }) }); setShowReturn(false); refresh(); }} />}
+            {showAllocate && <TeamStockActionModal title={t('chAllocateTitle')} inventory={inventory} chantiers={chantiers} showChantier={false} onClose={() => setShowAllocate(false)} onConfirm={async (itemId, qty) => { await authFetch(`${API_URL}/teams/${team.id}/stock/allocate`, { method: 'POST', body: JSON.stringify({ itemId, quantity: qty }) }); setShowAllocate(false); refresh(); }} />}
+            {showConsume && <TeamStockActionModal title={t('chConsumeTitle')} inventory={(teamData.stock || []).map(s => s.itemId).filter(Boolean)} chantiers={chantiers} showChantier={true} onClose={() => setShowConsume(false)} onConfirm={async (itemId, qty, chantierId, note) => { await authFetch(`${API_URL}/teams/${team.id}/stock/consume`, { method: 'POST', body: JSON.stringify({ itemId, quantity: qty, chantierId, note }) }); setShowConsume(false); refresh(); }} />}
+            {showReturn && <TeamStockActionModal title={t('chReturnTitle')} inventory={(teamData.stock || []).map(s => s.itemId).filter(Boolean)} chantiers={chantiers} showChantier={false} onClose={() => setShowReturn(false)} onConfirm={async (itemId, qty) => { await authFetch(`${API_URL}/teams/${team.id}/stock/return`, { method: 'POST', body: JSON.stringify({ itemId, quantity: qty }) }); setShowReturn(false); refresh(); }} />}
         </div>
     );
 }
 
 // ─── Team Stock Action Modal ──────────────────────────────────────────────────
 function TeamStockActionModal({ title, inventory, chantiers, showChantier, onClose, onConfirm }) {
+    const { t } = useLanguage();
     const [itemId, setItemId] = useState('');
     const [quantity, setQuantity] = useState(1);
     const [chantierId, setChantierId] = useState('');
@@ -1150,10 +1163,10 @@ function TeamStockActionModal({ title, inventory, chantiers, showChantier, onClo
 
     const handleSubmit = async (e) => {
         e.preventDefault(); setError('');
-        if (!itemId) { setError('Sélectionnez un article'); return; }
-        if (quantity <= 0) { setError('Quantité invalide'); return; }
+        if (!itemId) { setError(t('chSelectItem')); return; }
+        if (quantity <= 0) { setError(t('chInvalidQty')); return; }
         try { await onConfirm(itemId, quantity, chantierId || null, note); }
-        catch (err) { setError(err.message || 'Erreur'); }
+        catch (err) { setError(err.message || t('errGeneric')); }
     };
 
     return (
@@ -1161,17 +1174,17 @@ function TeamStockActionModal({ title, inventory, chantiers, showChantier, onClo
             <div className="modal large" onClick={e => e.stopPropagation()}>
                 <h2>{title}</h2>
                 <form onSubmit={handleSubmit}>
-                    <div className="form-group"><label>Article *</label>
+                    <div className="form-group"><label>{t('chArticleReq')}</label>
                         <select required value={itemId} onChange={e => setItemId(e.target.value)}>
-                            <option value="">— Choisir —</option>
+                            <option value="">{t('chChoose')}</option>
                             {inventory.map(item => <option key={item.id || item._id} value={item.id || item._id}>{item.designation?.fr || '—'}</option>)}
                         </select>
                     </div>
-                    <div className="form-group"><label>Quantité *</label><input type="number" min={1} required value={quantity} onChange={e => setQuantity(Number(e.target.value))} /></div>
-                    {showChantier && <div className="form-group"><label>Chantier (optionnel)</label><select value={chantierId} onChange={e => setChantierId(e.target.value)}><option value="">— Aucun —</option>{chantiers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
-                    <div className="form-group"><label>Note</label><input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="Optionnel..." /></div>
+                    <div className="form-group"><label>{t('chQuantityReq')}</label><input type="number" min={1} required value={quantity} onChange={e => setQuantity(Number(e.target.value))} /></div>
+                    {showChantier && <div className="form-group"><label>{t('chChantierOpt')}</label><select value={chantierId} onChange={e => setChantierId(e.target.value)}><option value="">{t('chNoneOpt')}</option>{chantiers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
+                    <div className="form-group"><label>{t('chNote')}</label><input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder={t('chOptional')} /></div>
                     {error && <div className="form-error">{error}</div>}
-                    <div className="modal-actions"><button type="button" onClick={onClose}>Annuler</button><button type="submit" className="primary">Confirmer</button></div>
+                    <div className="modal-actions"><button type="button" onClick={onClose}>{t('cancel')}</button><button type="submit" className="primary">{t('confirm')}</button></div>
                 </form>
             </div>
         </div>
@@ -1180,6 +1193,7 @@ function TeamStockActionModal({ title, inventory, chantiers, showChantier, onClo
 
 // ─── Project Search Picker ────────────────────────────────────────────────────
 function ProjectSearchPicker({ projects, selectedIds, onChange, loading }) {
+    const { t } = useLanguage();
     const [query, setQuery] = useState('');
     const [open, setOpen] = useState(false);
     const wrapRef = useRef(null);
@@ -1218,7 +1232,7 @@ function ProjectSearchPicker({ projects, selectedIds, onChange, loading }) {
             )}
             <div className="ch-proj-picker__input-wrap">
                 <input type="text" className="ch-proj-picker__input"
-                    placeholder={loading ? 'Chargement des projets...' : (selected.length ? 'Ajouter un projet...' : 'Rechercher par nom, référence, RAL, société...')}
+                    placeholder={loading ? t('chLoadingProjects') : (selected.length ? t('chAddProject') : t('chSearchProjects'))}
                     value={query}
                     disabled={loading}
                     onChange={e => { setQuery(e.target.value); setOpen(true); }}
@@ -1229,7 +1243,7 @@ function ProjectSearchPicker({ projects, selectedIds, onChange, loading }) {
             {open && !loading && (
                 <div className="ch-proj-picker__dropdown">
                     {filtered.length === 0
-                        ? <div className="ch-proj-picker__empty">Aucun résultat</div>
+                        ? <div className="ch-proj-picker__empty">{t('chNoResult')}</div>
                         : filtered.map(p => {
                             const isSel = selectedIds.includes(p.id);
                             return (
@@ -1240,7 +1254,7 @@ function ProjectSearchPicker({ projects, selectedIds, onChange, loading }) {
                                     <span className="ch-proj-picker__opt-name">{p.name}</span>
                                     <span className="ch-proj-picker__opt-ref">{p.reference}</span>
                                     {p.companyId && <span className="ch-proj-picker__opt-co">{p.companyId.name}</span>}
-                                    {isSel && <Check size={12} style={{ marginLeft: 'auto', color: '#22c55e', flexShrink: 0 }} />}
+                                    {isSel && <Check size={12} className="ch-check" />}
                                 </button>
                             );
                         })
@@ -1253,6 +1267,7 @@ function ProjectSearchPicker({ projects, selectedIds, onChange, loading }) {
 
 // ─── Chantier Form Modal ──────────────────────────────────────────────────────
 function ChantierFormModal({ chantier, projects, projectsLoading, teams, isAdmin, authFetch, onClose, onSave }) {
+    const { t } = useLanguage();
     const [form, setForm] = useState({
         name: chantier?.name || '',
         reference: chantier?.reference || '',
@@ -1272,7 +1287,7 @@ function ChantierFormModal({ chantier, projects, projectsLoading, teams, isAdmin
             const url = chantier ? `${API_URL}/chantiers/${chantier.id}` : `${API_URL}/chantiers`;
             const res = await authFetch(url, { method: chantier ? 'PUT' : 'POST', body: JSON.stringify(form) });
             const data = await res.json();
-            if (!res.ok) { setError(data.error || 'Erreur'); return; }
+            if (!res.ok) { setError(data.error || t('errSave')); return; }
             onSave();
         } catch (e) { setError(e.message); }
     };
@@ -1281,7 +1296,7 @@ function ChantierFormModal({ chantier, projects, projectsLoading, teams, isAdmin
     const adminThing = user?.role === 'Admin';
 
     const ReadOnly = ({ value }) => (
-        <div style={{ padding: '8px 12px', background: 'var(--50)', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13.5, color: 'var(--text-2)', opacity: 0.8, minHeight: 38 }}>
+        <div className="ch-readonly">
             {value || '—'}
         </div>
     );
@@ -1289,38 +1304,38 @@ function ChantierFormModal({ chantier, projects, projectsLoading, teams, isAdmin
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal xlarge" onClick={e => e.stopPropagation()}>
-                <h2>{chantier ? 'Modifier le chantier' : 'Nouveau chantier'}</h2>
+                <h2>{chantier ? t('chEditTitle') : t('chNewTitle')}</h2>
                 <form onSubmit={handleSubmit}>
                     <div className="form-grid-2">
                         <div className="form-group">
-                            <label>Nom *</label>
-                            {adminThing ? <input required type="text" value={form.name} onChange={e => set('name', e.target.value)} placeholder="ex: Résidence Al Nour" /> : <ReadOnly value={form.name} />}
+                            <label>{t('chName')}</label>
+                            {adminThing ? <input required type="text" value={form.name} onChange={e => set('name', e.target.value)} placeholder={t('chNamePh')} /> : <ReadOnly value={form.name} />}
                         </div>
                         <div className="form-group">
-                            <label>Référence *</label>
-                            {adminThing ? <input required type="text" value={form.reference} onChange={e => set('reference', e.target.value)} placeholder="ex: CH-2025-001" /> : <ReadOnly value={form.reference} />}
+                            <label>{t('chReference')}</label>
+                            {adminThing ? <input required type="text" value={form.reference} onChange={e => set('reference', e.target.value)} placeholder={t('chReferencePh')} /> : <ReadOnly value={form.reference} />}
                         </div>
-                        <div className="form-group"><label>Équipe</label>
+                        <div className="form-group"><label>{t('chTeam')}</label>
                             <select value={form.teamId} onChange={e => set('teamId', e.target.value)}>
-                                <option value="">— Aucune équipe —</option>
-                                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                <option value="">{t('chNoTeamOpt')}</option>
+                                {teams.map(tm => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
                             </select>
                         </div>
-                        <div className="form-group"><label>Statut</label>
+                        <div className="form-group"><label>{t('chStatus')}</label>
                             <select value={form.status} onChange={e => set('status', e.target.value)}>
-                                {Object.entries(CHANTIER_STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                                {Object.entries(CHANTIER_STATUS_META).map(([k, v]) => <option key={k} value={k}>{t(v.label)}</option>)}
                             </select>
                         </div>
-                        <div className="form-group"><label>Date de commencement</label><input type="date" value={form.dateDebut} onChange={e => set('dateDebut', e.target.value)} /></div>
-                        <div className="form-group"><label>Date de clôture</label><input type="date" value={form.dateCloture} onChange={e => set('dateCloture', e.target.value)} /></div>
+                        <div className="form-group"><label>{t('chStartDate')}</label><input type="date" value={form.dateDebut} onChange={e => set('dateDebut', e.target.value)} /></div>
+                        <div className="form-group"><label>{t('chEndDate')}</label><input type="date" value={form.dateCloture} onChange={e => set('dateCloture', e.target.value)} /></div>
                     </div>
-                    <div className="form-group"><label>Notes</label><textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Remarques..." /></div>
+                    <div className="form-group"><label>{t('chNotes')}</label><textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder={t('chNotesPh')} /></div>
                     {adminThing && (
                         <div className="form-group">
                             <label>
-                                Projets assignés à ce chantier
+                                {t('chAssignedProjects')}
                                 {form.projectIds.length > 0 && (
-                                    <span className="ch-form-count">{form.projectIds.length} sélectionné(s)</span>
+                                    <span className="ch-form-count">{t('chSelected', { n: form.projectIds.length })}</span>
                                 )}
                             </label>
                             <ProjectSearchPicker projects={projects || []} selectedIds={form.projectIds} onChange={ids => set('projectIds', ids)} loading={!!projectsLoading} />
@@ -1328,8 +1343,8 @@ function ChantierFormModal({ chantier, projects, projectsLoading, teams, isAdmin
                     )}
                     {error && <div className="form-error">{error}</div>}
                     <div className="modal-actions">
-                        <button type="button" onClick={onClose}>Annuler</button>
-                        <button type="submit" className="primary">{chantier ? 'Mettre à jour' : 'Créer'}</button>
+                        <button type="button" onClick={onClose}>{t('cancel')}</button>
+                        <button type="submit" className="primary">{chantier ? t('update') : t('create')}</button>
                     </div>
                 </form>
             </div>

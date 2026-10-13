@@ -20,6 +20,24 @@ const L = {
   totalTTC:  { fr: 'Total TTC',       it: 'Totale IVA incl.',   en: 'Total incl. VAT' },
   notes:     { fr: 'Notes',           it: 'Note',               en: 'Notes' },
   draft:     { fr: 'BROUILLON — non envoyé', it: 'BOZZA', en: 'DRAFT' },
+  code:      { fr: 'Code',            it: 'Codice',             en: 'Code' },
+  article:   { fr: 'Article',         it: 'Articolo',           en: 'Item' },
+  draftFile: { fr: 'brouillon',       it: 'bozza',              en: 'draft' },
+  // Excel export
+  xBcNo:     { fr: 'N° BC',           it: 'N° ordine',          en: 'PO no.' },
+  xStatus:   { fr: 'Statut',          it: 'Stato',              en: 'Status' },
+  xCompany:  { fr: 'Société',         it: 'Società',            en: 'Company' },
+  xSupCode:  { fr: 'Code fournisseur',it: 'Codice fornitore',   en: 'Supplier code' },
+  xCodeInt:  { fr: 'Code interne',    it: 'Codice interno',     en: 'Internal code' },
+  xQtyOrd:   { fr: 'Qté commandée',   it: 'Q.tà ordinata',      en: 'Qty ordered' },
+  xQtyRec:   { fr: 'Qté reçue',       it: 'Q.tà ricevuta',      en: 'Qty received' },
+  xSheet:    { fr: 'Commandes',       it: 'Ordini',             en: 'Orders' },
+  xFile:     { fr: 'commandes',       it: 'ordini',             en: 'orders' },
+  st_brouillon: { fr: 'Brouillon', it: 'Bozza',     en: 'Draft' },
+  st_envoye:    { fr: 'Envoyé',    it: 'Inviato',   en: 'Sent' },
+  st_partielle: { fr: 'Partielle', it: 'Parziale',  en: 'Partial' },
+  st_recue:     { fr: 'Reçue',     it: 'Ricevuta',  en: 'Received' },
+  st_annulee:   { fr: 'Annulée',   it: 'Annullata', en: 'Cancelled' },
 };
 const tr = (k, lang) => (L[k]?.[lang] || L[k]?.fr || k);
 
@@ -70,7 +88,7 @@ export async function exportOrderPDF(order, lang = 'fr', company = null) {
   doc.setFont('helvetica', 'normal').setTextColor(60);
   const supLines = [
     supplier?.name || order.supplier || '—',
-    supplier?.code && `Code: ${supplier.code}`,
+    supplier?.code && `${tr('code', lang)}: ${supplier.code}`,
     supplier?.address, supplier?.phone,
     [supplier?.ice && `ICE: ${supplier.ice}`, supplier?.rc && `RC: ${supplier.rc}`].filter(Boolean).join('   '),
   ].filter(Boolean);
@@ -85,7 +103,7 @@ export async function exportOrderPDF(order, lang = 'fr', company = null) {
     return [
       it.codeInterne || '',
       supplierCodeFor(it, supplier),
-      (it.designation?.[lang] || it.designation?.fr || 'Article') + (l.note ? `\n${l.note}` : ''),
+      (it.designation?.[lang] || it.designation?.fr || tr('article', lang)) + (l.note ? `\n${l.note}` : ''),
       String(l.quantityOrdered || 0),
       money(l.unitPrice),
       money(lineTotal),
@@ -133,7 +151,7 @@ export async function exportOrderPDF(order, lang = 'fr', company = null) {
     doc.text(doc.splitTextToSize(order.notes, pageW - 28), 14, ty + 5);
   }
 
-  doc.save(`${tr('bc', lang)}_${order.number || order.reference || 'brouillon'}.pdf`);
+  doc.save(`${tr('bc', lang)}_${order.number || order.reference || tr('draftFile', lang)}.pdf`);
 }
 
 export function exportOrdersExcel(orders, lang = 'fr') {
@@ -142,24 +160,24 @@ export function exportOrdersExcel(orders, lang = 'fr') {
     (o.lines || []).forEach(l => {
       const it = l.itemId || {};
       rows.push({
-        'N° BC': o.number || '',
-        'Statut': o.status,
-        'Société': o.companyId?.name || '',
-        'Fournisseur': o.supplierId?.name || o.supplier || '',
-        'Date': fmtDate(o.orderDate),
-        'Code interne': it.codeInterne || '',
-        'Code fournisseur': supplierCodeFor(it, o.supplierId),
-        'Désignation': it.designation?.[lang] || it.designation?.fr || '',
-        'Qté commandée': l.quantityOrdered,
-        'Qté reçue': l.quantityReceived || 0,
-        'P.U. HT': l.unitPrice || 0,
-        'Total HT': (l.quantityOrdered || 0) * (l.unitPrice || 0),
+        [tr('xBcNo', lang)]: o.number || '',
+        [tr('xStatus', lang)]: L[`st_${o.status}`] ? tr(`st_${o.status}`, lang) : o.status,
+        [tr('xCompany', lang)]: o.companyId?.name || '',
+        [tr('supplier', lang)]: o.supplierId?.name || o.supplier || '',
+        [tr('date', lang)]: fmtDate(o.orderDate),
+        [tr('xCodeInt', lang)]: it.codeInterne || '',
+        [tr('xSupCode', lang)]: supplierCodeFor(it, o.supplierId),
+        [tr('desig', lang)]: it.designation?.[lang] || it.designation?.fr || '',
+        [tr('xQtyOrd', lang)]: l.quantityOrdered,
+        [tr('xQtyRec', lang)]: l.quantityReceived || 0,
+        [tr('pu', lang)]: l.unitPrice || 0,
+        [tr('total', lang)]: (l.quantityOrdered || 0) * (l.unitPrice || 0),
       });
     });
   });
   const ws = XLSX.utils.json_to_sheet(rows);
   ws['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 20 }, { wch: 11 }, { wch: 14 }, { wch: 16 }, { wch: 36 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Commandes');
-  XLSX.writeFile(wb, `commandes_${new Date().toISOString().split('T')[0]}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, tr('xSheet', lang));
+  XLSX.writeFile(wb, `${tr('xFile', lang)}_${new Date().toISOString().split('T')[0]}.xlsx`);
 }

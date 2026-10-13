@@ -6,6 +6,7 @@ import {
   ChevronUp, History, MousePointerClick, Plus, Package
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage, tx, activeLanguage } from '../../../context/LanguageContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -15,11 +16,11 @@ const ROLE_LAQUAGE = 'Laquage';
 const ROLE_COORDINATEUR = 'Coordinateur';
 
 const LOT_STATUSES = {
-  draft: { label: 'Brouillon', color: '#9ca3af' },
-  sent_to_laquage: { label: 'Envoyé au laquage', color: '#f59e0b' },
-  received_laquage: { label: 'Reçu au laquage', color: '#3b82f6' },
-  returned_to_coord: { label: 'Retourné au coordinateur', color: '#8b5cf6' },
-  received_coord: { label: 'Reçu par coordinateur', color: '#16a34a' },
+  draft: { label: 'lqStDraft', color: '#9ca3af', ink: '#d4d4d8' },
+  sent_to_laquage: { label: 'lqStSent', color: '#f59e0b', ink: '#fcd34d' },
+  received_laquage: { label: 'lqStRecvLaq', color: '#3b82f6', ink: '#93c5fd' },
+  returned_to_coord: { label: 'lqStReturned', color: '#8b5cf6', ink: '#c4b5fd' },
+  received_coord: { label: 'lqStRecvCoord', color: '#16a34a', ink: '#86efac' },
 };
 
 function fmtDT(d) {
@@ -65,36 +66,39 @@ export function useToast() {
 
 /* ── Status badge ────────────────────────────────────────────── */
 function StatusBadge({ status }) {
+  const { t } = useLanguage();
   const s = LOT_STATUSES[status] || LOT_STATUSES.draft;
   return (
-    <span className="laq-status-badge" style={{ background: s.color + '20', color: s.color, border: `1px solid ${s.color}40` }}>
-      {s.label}
+    <span className="laq-status-badge" style={{ background: s.color + '1f', color: s.ink, border: `1px solid ${s.color}59` }}>
+      {t(s.label)}
     </span>
   );
 }
 
 /* ── Lot badge ───────────────────────────────────────────────── */
 function LotBadge({ lotIndex }) {
+  const { t } = useLanguage();
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
       padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-      background: '#f0f4ff', color: '#3b5bdb', border: '1px solid #c5d0f5'
+      background: 'rgba(99,102,241,.12)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.3)'
     }}>
-      <Package size={10} /> Lot {lotIndex + 1}
+      <Package size={10} /> {t('lqLot', { n: lotIndex + 1 })}
     </span>
   );
 }
 
 /* ── Confirm modal ───────────────────────────────────────────── */
 function ConfirmModal({ message, onConfirm, onCancel }) {
+  const { t } = useLanguage();
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
         <p style={{ marginBottom: 20, fontSize: 14, lineHeight: 1.6 }}>{message}</p>
         <div className="modal-actions">
-          <button onClick={onCancel}>Annuler</button>
-          <button className="primary" onClick={onConfirm}>Confirmer</button>
+          <button onClick={onCancel}>{t('cancel')}</button>
+          <button className="primary" onClick={onConfirm}>{t('confirm')}</button>
         </div>
       </div>
     </div>
@@ -103,6 +107,7 @@ function ConfirmModal({ message, onConfirm, onCancel }) {
 
 /* ── Incomplete modal ────────────────────────────────────────── */
 function IncompleteModal({ lineLabel, onConfirm, onCancel }) {
+  const { t } = useLanguage();
   const [note, setNote] = useState('');
   const [partial, setPartial] = useState('');
   return (
@@ -110,27 +115,27 @@ function IncompleteModal({ lineLabel, onConfirm, onCancel }) {
       <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
         <div className="modal-head">
           <span className="modal-head__icon"><AlertTriangle size={14} /></span>
-          <h2>Signaler incomplet</h2>
+          <h2>{t('lqIncTitle')}</h2>
         </div>
-        <p style={{ fontSize: 13, color: '#555', marginBottom: 16 }}>Ligne : <strong>{lineLabel}</strong></p>
+        <p style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 16 }}>{t('lqLineLabel')} <strong>{lineLabel}</strong></p>
         <div className="form-group">
-          <label>Quantité réellement reçue (optionnel)</label>
+          <label>{t('lqPartialQty')}</label>
           <input type="number" min="0" step="0.01" className="qty-input"
-            placeholder="ex: 8 sur 10 prévus"
+            placeholder={t('lqPartialPh')}
             value={partial} onChange={e => setPartial(e.target.value)} autoFocus />
         </div>
         <div className="form-group">
-          <label>Raison / remarque *</label>
-          <textarea rows={3} placeholder="Ex: 3 barres rayées, couleur RAL incorrecte…"
+          <label>{t('lqReasonLabel')}</label>
+          <textarea rows={3} placeholder={t('lqReasonPh')}
             value={note} onChange={e => setNote(e.target.value)}
-            style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #e0e0e0', fontFamily: 'inherit', fontSize: 13, resize: 'vertical', background: '#f3f6fb' }} />
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-2)', fontFamily: 'inherit', fontSize: 13, resize: 'vertical', background: 'var(--surface-2)', color: 'var(--text)' }} />
         </div>
         <div className="modal-actions">
-          <button className="btn-cancel" onClick={onCancel}>Annuler</button>
+          <button className="btn-cancel" onClick={onCancel}>{t('cancel')}</button>
           <button className="btn-confirm btn-confirm--danger"
             disabled={!note.trim()}
             onClick={() => onConfirm({ note, partialQty: partial ? parseFloat(partial) : null })}>
-            Marquer incomplet
+            {t('lqMarkIncomplete')}
           </button>
         </div>
       </div>
@@ -140,6 +145,7 @@ function IncompleteModal({ lineLabel, onConfirm, onCancel }) {
 
 /* ── Reception note modal ────────────────────────────────────── */
 function ReceptionNoteModal({ title, onConfirm, onCancel }) {
+  const { t } = useLanguage();
   const [note, setNote] = useState('');
   const [qty, setQty] = useState('');
   return (
@@ -147,28 +153,28 @@ function ReceptionNoteModal({ title, onConfirm, onCancel }) {
       <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
         <div className="modal-head">
           <span className="modal-head__icon"><PackageCheck size={14} /></span>
-          <h2>{title || 'Réceptionner tout'}</h2>
+          <h2>{title || t('lqReceiveAll')}</h2>
         </div>
         <div className="form-group">
-          <label>Quantité totale reçue (optionnel)</label>
+          <label>{t('lqTotalQty')}</label>
           <input type="number" min="0" step="0.01" className="qty-input"
-            placeholder="Laissez vide si conforme au bon"
+            placeholder={t('lqTotalQtyPh')}
             value={qty} onChange={e => setQty(e.target.value)} autoFocus />
-          <small style={{ color: '#888', fontSize: 11 }}>
-            Remplissez si vous avez reçu plus ou moins que prévu (ex: surplus, manque).
+          <small style={{ color: 'var(--text-3)', fontSize: 11 }}>
+            {t('lqTotalQtyHint')}
           </small>
         </div>
         <div className="form-group">
-          <label>Note / observation (optionnel)</label>
-          <textarea rows={3} placeholder="Ex: Livraison conforme, quelques rayures mineures acceptées…"
+          <label>{t('lqNoteLabel')}</label>
+          <textarea rows={3} placeholder={t('lqNotePh')}
             value={note} onChange={e => setNote(e.target.value)}
-            style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #e0e0e0', fontFamily: 'inherit', fontSize: 13, resize: 'vertical', background: '#f3f6fb' }} />
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-2)', fontFamily: 'inherit', fontSize: 13, resize: 'vertical', background: 'var(--surface-2)', color: 'var(--text)' }} />
         </div>
         <div className="modal-actions">
-          <button className="btn-cancel" onClick={onCancel}>Annuler</button>
+          <button className="btn-cancel" onClick={onCancel}>{t('cancel')}</button>
           <button className="btn-confirm primary"
             onClick={() => onConfirm({ note: note.trim(), partialQty: qty ? parseFloat(qty) : null })}>
-            Confirmer la réception
+            {t('lqConfirmReception')}
           </button>
         </div>
       </div>
@@ -177,29 +183,35 @@ function ReceptionNoteModal({ title, onConfirm, onCancel }) {
 }
 
 /* ── Action history log ──────────────────────────────────────── */
+/** History action → { label (translated), color }. `tr` is t() or tx() */
+const HISTORY_META = {
+  add_lot: { label: 'lqHAddLot', color: '#818cf8' },
+  send_to_laquage: { label: 'lqStSent', color: '#fbbf24' },
+  receive_all_laquage: { label: 'lqHRecvAllLaq', color: '#60a5fa' },
+  return_to_coord: { label: 'lqStReturned', color: '#a78bfa' },
+  receive_all_coord: { label: 'lqHRecvAllCoord', color: '#4ade80' },
+  incomplete_line: { label: 'lqHIncomplete', color: '#f87171' },
+};
+function historyMeta(action, tr) {
+  const a = String(action || '');
+  if (a.startsWith('receive_line_laquage:')) return { label: tr('lqHLineLaq'), color: '#60a5fa' };
+  if (a.startsWith('receive_line_coord:')) return { label: tr('lqHLineCoord'), color: '#4ade80' };
+  const m = HISTORY_META[a];
+  return m ? { label: tr(m.label), color: m.color } : { label: action, color: '#a1a1aa' };
+}
+
 function HistoryLog({ history }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   if (!history || history.length === 0) return null;
 
-  const getMeta = (action) => {
-    const MAP = {
-      add_lot: { label: 'Nouveau lot ajouté', color: '#3b5bdb' },
-      send_to_laquage: { label: 'Envoyé au laquage', color: '#f59e0b' },
-      receive_all_laquage: { label: 'Tout réceptionné (Laquage)', color: '#3b82f6' },
-      return_to_coord: { label: 'Retourné au coordinateur', color: '#8b5cf6' },
-      receive_all_coord: { label: 'Tout réceptionné (Coordinateur)', color: '#16a34a' },
-      incomplete_line: { label: 'Ligne signalée incomplète', color: '#dc2626' },
-    };
-    if (action.startsWith('receive_line_laquage:')) return { label: 'Réception ligne — Laquage', color: '#3b82f6' };
-    if (action.startsWith('receive_line_coord:')) return { label: 'Réception ligne — Coordinateur', color: '#16a34a' };
-    return MAP[action] || { label: action, color: '#9ca3af' };
-  };
+  const getMeta = (action) => historyMeta(action, t);
 
   return (
     <div className="laq-history">
       <button className="laq-history__toggle" onClick={() => setOpen(v => !v)}>
         <History size={14} />
-        Historique des actions ({history.length})
+        {t('lqHistory', { n: history.length })}
         {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
       </button>
       {open && (
@@ -215,10 +227,10 @@ function HistoryLog({ history }) {
                     {h.lotIndex != null && <LotBadge lotIndex={h.lotIndex} />}
                   </div>
                   <span className="laq-history__meta">
-                    par <strong>{h.by || '—'}</strong> · <Clock size={10} /> {fmtDT(h.at)}
+                    {t('lqBy')} <strong>{h.by || '—'}</strong> · <Clock size={10} /> {fmtDT(h.at)}
                   </span>
                   {h.note && <span className="laq-history__note">📝 {h.note}</span>}
-                  {h.partialQty != null && <span className="laq-history__note">Qté reçue : <strong>{h.partialQty}</strong></span>}
+                  {h.partialQty != null && <span className="laq-history__note">{t('lqQtyReceived')} <strong>{h.partialQty}</strong></span>}
                 </div>
               </div>
             );
@@ -231,12 +243,13 @@ function HistoryLog({ history }) {
 
 /* ── Per-lot workflow timeline ───────────────────────────────── */
 function LotTimeline({ lot, history }) {
+  const { t } = useLanguage();
   const steps = [
-    { key: 'draft', label: 'Brouillon', action: null },
-    { key: 'sent_to_laquage', label: 'Envoyé', action: 'send_to_laquage' },
-    { key: 'received_laquage', label: 'Reçu (Laquage)', action: 'receive_all_laquage' },
-    { key: 'returned_to_coord', label: 'Retourné', action: 'return_to_coord' },
-    { key: 'received_coord', label: 'Reçu (Coord.)', action: 'receive_all_coord' },
+    { key: 'draft', label: t('lqStDraft'), action: null },
+    { key: 'sent_to_laquage', label: t('lqTlSent'), action: 'send_to_laquage' },
+    { key: 'received_laquage', label: t('lqTlRecvLaq'), action: 'receive_all_laquage' },
+    { key: 'returned_to_coord', label: t('lqTlReturned'), action: 'return_to_coord' },
+    { key: 'received_coord', label: t('lqTlRecvCoord'), action: 'receive_all_coord' },
   ];
   const keys = steps.map(s => s.key);
   const currentIdx = keys.indexOf(lot.status);
@@ -272,6 +285,7 @@ function LotTimeline({ lot, history }) {
 
 /* ── Inventory search ────────────────────────────────────────── */
 function InvSearch({ value, onChange, onSelect, superCategory, label }) {
+  const { t } = useLanguage();
   const [suggestions, setSuggestions] = useState([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -301,14 +315,14 @@ function InvSearch({ value, onChange, onSelect, superCategory, label }) {
     <div ref={wrapRef} style={{ position: 'relative', flex: 2, minWidth: 220 }}>
       <label>{label}</label>
       <div style={{ position: 'relative' }}>
-        <input className="laq-add-input" value={value} placeholder="Tapez pour chercher…"
+        <input className="laq-add-input" value={value} placeholder={t('lqSearchPh')}
           onChange={e => { onChange(e.target.value); search(e.target.value); }}
           onFocus={() => value.length >= 2 && suggestions.length > 0 && setOpen(true)} />
         {busy && <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12 }}>…</span>}
       </div>
       {open && (
         <div className="laq-dropdown">
-          <div className="laq-dropdown__header">{suggestions.length} résultat(s)</div>
+          <div className="laq-dropdown__header">{t('lqResults', { n: suggestions.length })}</div>
           {suggestions.map(item => {
             const lbl = item.designation?.fr || item.designation || String(item.id);
             return (
@@ -327,6 +341,7 @@ function InvSearch({ value, onChange, onSelect, superCategory, label }) {
 
 /* ── Per-row action buttons ──────────────────────────────────── */
 function RowActions({ lKey, lineLabel, lineStatuses, side, onConfirm, onIncomplete }) {
+  const { t } = useLanguage();
   const ls = lineStatuses[lKey] || {};
   const done = side === 'laq' ? ls.receivedLaquage : ls.receivedCoord;
   const ts = side === 'laq' ? ls.receivedLaquageAt : ls.receivedCoordAt;
@@ -335,16 +350,16 @@ function RowActions({ lKey, lineLabel, lineStatuses, side, onConfirm, onIncomple
       <button className={'laq-line-btn' + (done ? ' laq-line-btn--done' : '')}
         disabled={done} onClick={onConfirm}>
         {done
-          ? <><CheckCircle2 size={12} /> {ts ? fmtDT(ts) : 'Reçu'}</>
-          : 'Confirmer réception'}
+          ? <><CheckCircle2 size={12} /> {ts ? fmtDT(ts) : t('lqReceived')}</>
+          : t('lqConfirmReceptionBtn')}
       </button>
       {!done && (
         <button className="laq-line-btn laq-line-btn--warn" onClick={onIncomplete}>
-          <AlertTriangle size={12} /> Incomplet
+          <AlertTriangle size={12} /> {t('lqIncomplete')}
         </button>
       )}
       {ls.incomplete && (
-        <span className="laq-incomplete-flag" title={ls.incompleteNote || 'Incomplet'}>⚠️
+        <span className="laq-incomplete-flag" title={ls.incompleteNote || t('lqIncomplete')}>⚠️
           {ls.partialQty != null && <span style={{ fontSize: 10, marginLeft: 3 }}>{ls.partialQty}</span>}
         </span>
       )}
@@ -437,7 +452,8 @@ ${histRows ? `<h2>Historique des actions</h2><table><thead><tr><th>Action</th><t
 /* ── PDF printer ─────────────────────────────────────────────── */
 function printPDF(record, project, type, selectedKeys, imageMap, lotIndex, lotOnly = false) {
   const isBarres = type === 'barres';
-  const title = isBarres ? 'Barres à Laquer' : 'Accessoires à Laquer';
+  const title = isBarres ? tx('lqBarresTitle') : tx('lqAccTitle');
+  const lang = activeLanguage();
   const date = new Date().toLocaleDateString('fr-FR');
   const cs = '<' + '/script>';
 
@@ -454,37 +470,37 @@ function printPDF(record, project, type, selectedKeys, imageMap, lotIndex, lotOn
 
   let allRows = [];
   for (const lot of lots) {
-    const lotLabel = `<tr><td colspan="7" style="background:#f0f4ff;color:#3b5bdb;font-weight:700;padding:8px 12px;font-size:12px">Lot ${lot.lotIndex + 1} — ${LOT_STATUSES[lot.status]?.label || ''}</td></tr>`;
+    const lotLabel = `<tr><td colspan="7" style="background:#f0f4ff;color:#3b5bdb;font-weight:700;padding:8px 12px;font-size:12px">${tx('lqLot', { n: lot.lotIndex + 1 })} — ${LOT_STATUSES[lot.status] ? tx(LOT_STATUSES[lot.status].label) : ''}</td></tr>`;
     allRows.push(lotLabel);
 
     if (isBarres) {
       (lot.barresBrutes || []).forEach((r, i) => {
         const k = `bb-${i}`;
         if (selectedKeys.size > 0 && !selectedKeys.has(`${lot.lotIndex}-${k}`)) return;
-        allRows.push(`<tr>${imgCell(r.reference)}<td>Barre Brute</td><td>${r.reference || '—'}</td><td>${r.quantiteBrute || 0}</td><td>—</td><td>—</td><td>—</td></tr>`);
+        allRows.push(`<tr>${imgCell(r.reference)}<td>${tx('lqBarreBrute')}</td><td>${r.reference || '—'}</td><td>${r.quantiteBrute || 0}</td><td>—</td><td>—</td><td>—</td></tr>`);
       });
       (lot.barresLaquees || []).forEach((r, i) => {
         const k = `bl-${i}`;
         if (selectedKeys.size > 0 && !selectedKeys.has(`${lot.lotIndex}-${k}`)) return;
-        allRows.push(`<tr>${imgCell(r.reference)}<td>Barre Laquée</td><td>${r.reference || '—'}</td><td>—</td><td>${r.ral || '—'}</td><td>${r.quantiteLaquee || 0}</td><td>—</td></tr>`);
+        allRows.push(`<tr>${imgCell(r.reference)}<td>${tx('lqBarreLaquee')}</td><td>${r.reference || '—'}</td><td>—</td><td>${r.ral || '—'}</td><td>${r.quantiteLaquee || 0}</td><td>—</td></tr>`);
       });
       (lot.morceauxBruts || []).forEach((r, i) => {
         const k = `mb-${i}`;
         if (selectedKeys.size > 0 && !selectedKeys.has(`${lot.lotIndex}-${k}`)) return;
-        allRows.push(`<tr>${imgCell(r.reference)}<td>Morceau Brut</td><td>${r.reference || '—'}</td><td>—</td><td>—</td><td>—</td><td>${r.mesure || '—'} × ${r.quantite || 0}</td></tr>`);
+        allRows.push(`<tr>${imgCell(r.reference)}<td>${tx('lqMorceauBrut')}</td><td>${r.reference || '—'}</td><td>—</td><td>—</td><td>—</td><td>${r.mesure || '—'} × ${r.quantite || 0}</td></tr>`);
       });
       (lot.morceauxLaques || []).forEach((r, i) => {
         (r.lignes || []).forEach((l, li) => {
           const k = `ml-${i}-${li}`;
           if (selectedKeys.size > 0 && !selectedKeys.has(`${lot.lotIndex}-${k}`)) return;
-          allRows.push(`<tr>${imgCell(r.reference)}<td>Morceau Laqué</td><td>${r.reference || '—'}</td><td>—</td><td>${l.ral || '—'}</td><td>${l.quantite || 0}</td><td>${l.mesure || '—'}</td></tr>`);
+          allRows.push(`<tr>${imgCell(r.reference)}<td>${tx('lqMorceauLaque')}</td><td>${r.reference || '—'}</td><td>—</td><td>${l.ral || '—'}</td><td>${l.quantite || 0}</td><td>${l.mesure || '—'}</td></tr>`);
         });
       });
       if (lot.receptionLaquageNote) {
-        allRows.push(`<tr><td colspan="7" style="color:#3b82f6;font-size:11px;padding:4px 12px">📝 Note Laquage: ${lot.receptionLaquageNote}${lot.receptionLaquageQty != null ? ` (Qté reçue: ${lot.receptionLaquageQty})` : ''}</td></tr>`);
+        allRows.push(`<tr><td colspan="7" style="color:#3b82f6;font-size:11px;padding:4px 12px">📝 ${tx('lqNoteLaq')} ${lot.receptionLaquageNote}${lot.receptionLaquageQty != null ? ` (${tx('lqQtyRecvN', { n: lot.receptionLaquageQty })})` : ''}</td></tr>`);
       }
       if (lot.receptionCoordNote) {
-        allRows.push(`<tr><td colspan="7" style="color:#16a34a;font-size:11px;padding:4px 12px">📝 Note Coord: ${lot.receptionCoordNote}${lot.receptionCoordQty != null ? ` (Qté reçue: ${lot.receptionCoordQty})` : ''}</td></tr>`);
+        allRows.push(`<tr><td colspan="7" style="color:#16a34a;font-size:11px;padding:4px 12px">📝 ${tx('lqNoteCoord')} ${lot.receptionCoordNote}${lot.receptionCoordQty != null ? ` (${tx('lqQtyRecvN', { n: lot.receptionCoordQty })})` : ''}</td></tr>`);
       }
     } else {
       (lot.accessoires || []).forEach((a, i) => {
@@ -496,25 +512,25 @@ function printPDF(record, project, type, selectedKeys, imageMap, lotIndex, lotOn
   }
 
   const thead = isBarres
-    ? '<tr><th>Image</th><th>Type</th><th>Référence</th><th>Qté Brutes</th><th>RAL</th><th>Qté Laquées</th><th>Mesure/Qté</th></tr>'
-    : '<tr><th>Image</th><th>Désignation</th><th>Quantité</th><th>Notes</th></tr>';
+    ? `<tr><th>${tx('image')}</th><th>${tx('lqType')}</th><th>${tx('lqRef')}</th><th>${tx('lqQtyRawCol')}</th><th>RAL</th><th>${tx('lqQtyLaqCol')}</th><th>${tx('lqMesureQty')}</th></tr>`
+    : `<tr><th>${tx('image')}</th><th>${tx('designation')}</th><th>${tx('quantity')}</th><th>${tx('lqNotes')}</th></tr>`;
 
   // Global PDF includes full history; per-lot PDF filters history by lotIndex
   const historyEntries = lotOnly ? [] : (record.history || []);
 
   const histRows = historyEntries.map(h =>
-    `<tr><td>${h.action}</td><td>${h.by || '—'}</td><td>${h.at ? new Date(h.at).toLocaleString('fr-FR') : '—'}</td><td>${h.note || '—'}</td><td>${h.partialQty != null ? h.partialQty : '—'}</td><td>${h.lotIndex != null ? `Lot ${h.lotIndex + 1}` : '—'}</td></tr>`
+    `<tr><td>${historyMeta(h.action, tx).label}</td><td>${h.by || '—'}</td><td>${h.at ? new Date(h.at).toLocaleString(lang === 'en' ? 'en-GB' : lang === 'it' ? 'it-IT' : 'fr-FR') : '—'}</td><td>${h.note || '—'}</td><td>${h.partialQty != null ? h.partialQty : '—'}</td><td>${h.lotIndex != null ? tx('lqLot', { n: h.lotIndex + 1 }) : '—'}</td></tr>`
   ).join('');
   
-  const lotLabel = lotOnly && lotIndex != null ? ` — Lot ${lotIndex + 1}` : ` — Tous les lots (${lots.length})`;
+  const lotLabel = lotOnly && lotIndex != null ? ` — ${tx('lqLot', { n: lotIndex + 1 })}` : ` — ${tx('lqAllLots', { n: lots.length })}`;
 
-  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>${title}${lotLabel}</title>
+  const html = `<!DOCTYPE html><html lang="${lang}"><head><meta charset="utf-8"><title>${title}${lotLabel}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;padding:28px 36px}h1{font-size:18px;font-weight:800;margin-bottom:12px}h2{font-size:14px;font-weight:700;margin:24px 0 10px;padding-bottom:6px;border-bottom:2px solid #1a1a1a}.meta{display:flex;gap:16px;font-size:12px;color:#555;margin-bottom:20px;flex-wrap:wrap}table{width:100%;border-collapse:collapse;margin-bottom:20px}thead tr{background:#1a1a1a;color:#fff}th{padding:9px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em}td{padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:12.5px;vertical-align:middle}tr:nth-child(even) td{background:#f9fafb}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm 16mm}@page{size:A4;margin:0}}</style>
 </head><body>
 <h1>🎨 ${title}${lotLabel}</h1>
-<div class="meta"><span>Projet : <strong>${project.name}</strong></span><span>Réf : <strong>${project.reference}</strong></span><span>RAL : <strong>${project.ralCode}</strong></span><span>Date : <strong>${date}</strong></span><span>Lots : <strong>${lots.length}</strong></span></div>
-<table><thead>${thead}</thead><tbody>${allRows.join('') || '<tr><td colspan="7" style="text-align:center;color:#aaa">Aucune ligne</td></tr>'}</tbody></table>
-${histRows ? `<h2>Historique des actions</h2><table><thead><tr><th>Action</th><th>Par</th><th>Date / Heure</th><th>Remarque</th><th>Qté reçue</th><th>Lot</th></tr></thead><tbody>${histRows}</tbody></table>` : ''}
+<div class="meta"><span>${tx('lqPdfProject')} <strong>${project.name}</strong></span><span>${tx('lqPdfRef')} <strong>${project.reference}</strong></span><span>RAL : <strong>${project.ralCode}</strong></span><span>${tx('lqPdfDate')} <strong>${date}</strong></span><span>${tx('lqPdfLots')} <strong>${lots.length}</strong></span></div>
+<table><thead>${thead}</thead><tbody>${allRows.join('') || `<tr><td colspan="7" style="text-align:center;color:#aaa">${tx('lqNoLine')}</td></tr>`}</tbody></table>
+${histRows ? `<h2>${tx('lqHistoryTitle')}</h2><table><thead><tr><th>${tx('lqAction')}</th><th>${tx('lqByCol')}</th><th>${tx('lqDateTime')}</th><th>${tx('lqRemark')}</th><th>${tx('lqQtyRecvCol')}</th><th>${tx('lqLotCol')}</th></tr></thead><tbody>${histRows}</tbody></table>` : ''}
 <script>window.onload=()=>window.print();${cs}</body></html>`;
 
   const w = window.open('', '_blank');
@@ -523,28 +539,23 @@ ${histRows ? `<h2>Historique des actions</h2><table><thead><tr><th>Action</th><t
 
 /* ─── Shared "Add new lot" banner ────────────────────────────── */
 function AddLotBanner({ canEdit, addingLot, onAdd }) {
+  const { t } = useLanguage();
   if (!canEdit) return null;
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-      background: '#f0f4ff', border: '1.5px dashed #3b5bdb', borderRadius: 10, margin: '8px 0',
-    }}>
-      <Plus size={16} style={{ color: '#3b5bdb', flexShrink: 0 }} />
+    <div className="laq-addlot">
+      <Plus size={16} style={{ color: '#a5b4fc', flexShrink: 0 }} />
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#3b5bdb' }}>Ajouter un nouveau lot</div>
-        <div style={{ fontSize: 12, color: '#666' }}>
-          Créez un nouveau lot pour envoyer des articles supplémentaires au laquage.
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#a5b4fc' }}>{t('lqAddLotTitle')}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+          {t('lqAddLotDesc')}
         </div>
       </div>
       <button
         onClick={onAdd}
         disabled={addingLot}
-        style={{
-          padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-          background: '#3b5bdb', color: '#fff', border: 'none', cursor: 'pointer',
-          opacity: addingLot ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4,
-        }}>
-        <Plus size={12} /> Nouveau lot
+        className="laq-addlot__btn"
+        style={{ opacity: addingLot ? 0.5 : 1 }}>
+        <Plus size={12} /> {t('lqNewLot')}
       </button>
     </div>
   );
@@ -555,6 +566,7 @@ function AddLotBanner({ canEdit, addingLot, onAdd }) {
    ═══════════════════════════════════════════════════════════════ */
 export function BarresLaquerPanel({ project, currentUser }) {
   const { user: authUser } = useAuth();
+  const { t } = useLanguage();
   const _cu = currentUser || authUser;
   const userRole = (typeof _cu?.role === 'string' ? _cu.role : _cu?.role?.name) || _cu?.roleName || '';
   const displayName = _cu?.displayName || userRole;
@@ -640,9 +652,9 @@ export function BarresLaquerPanel({ project, currentUser }) {
         }
       );
       setRecord(res.data);
-      toast('Enregistré ✓');
+      toast(t('lqSaved'));
     } catch (e) {
-      setError(e.response?.data?.error || 'Erreur lors de la sauvegarde.');
+      setError(e.response?.data?.error || t('lqSaveError'));
     } finally { setSaving(false); }
   };
 
@@ -657,9 +669,9 @@ export function BarresLaquerPanel({ project, currentUser }) {
       const newLots = res.data.lots || [];
       const newest = newLots[newLots.length - 1];
       setActiveLotIdx(newest.lotIndex);
-      toast(`📦 Lot ${newest.lotIndex + 1} créé`);
+      toast(t('lqLotCreated', { n: newest.lotIndex + 1 }));
     } catch (e) {
-      setError(e.response?.data?.error || 'Impossible de créer un nouveau lot.');
+      setError(e.response?.data?.error || t('lqLotCreateError'));
     } finally { setAddingLot(false); }
   };
 
@@ -684,22 +696,22 @@ export function BarresLaquerPanel({ project, currentUser }) {
       if (action === 'send_to_laquage') {
         const ded = res.data.stockDeducted || [];
         toast(ded.length
-          ? `📉 Stock déduit : ${ded.map(d => `${d.quantity} × ${d.reference}`).join(', ')}`
-          : 'Aucune barre brute / laquée à déduire du stock', ded.length ? 'success' : 'error');
+          ? t('lqStockDeducted', { list: ded.map(d => `${d.quantity} × ${d.reference}`).join(', ') })
+          : t('lqNoStockDeduct'), ded.length ? 'success' : 'error');
       }
       const labels = {
-        send_to_laquage: `📤 Lot ${lotIndex + 1} envoyé au laquage`,
-        receive_all_laquage: `✅ Lot ${lotIndex + 1} réceptionné (Laquage)`,
-        return_to_coord: `📦 Lot ${lotIndex + 1} retourné au coordinateur`,
-        receive_all_coord: `✅ Lot ${lotIndex + 1} réceptionné (Coordinateur)`,
-        receive_line_laquage: '✅ Ligne réceptionnée (Laquage)',
-        receive_line_coord: '✅ Ligne réceptionnée (Coordinateur)',
-        incomplete_line: '⚠️ Ligne marquée incomplète',
+        send_to_laquage: t('lqTSent', { n: lotIndex + 1 }),
+        receive_all_laquage: t('lqTRecvAllLaq', { n: lotIndex + 1 }),
+        return_to_coord: t('lqTReturned', { n: lotIndex + 1 }),
+        receive_all_coord: t('lqTRecvAllCoord', { n: lotIndex + 1 }),
+        receive_line_laquage: t('lqTLineLaq'),
+        receive_line_coord: t('lqTLineCoord'),
+        incomplete_line: t('lqTIncomplete'),
       };
-      toast(labels[action] || 'Action effectuée');
+      toast(labels[action] || t('lqTDone'));
     } catch (e) {
-      setError(e.response?.data?.error || "Erreur lors de l'action.");
-      toast("Erreur lors de l'action", 'error');
+      setError(e.response?.data?.error || t('lqActionError'));
+      toast(t('lqActionErrorToast'), 'error');
     } finally { setSaving(false); setConfirm(null); setIncomplete(null); setReceptionNote(null); }
   };
 
@@ -719,24 +731,24 @@ export function BarresLaquerPanel({ project, currentUser }) {
   const toggleRow = k => setSelected(p => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   const addBB = () => {
-    if (!newBB.reference.trim()) return setError('Référence requise');
+    if (!newBB.reference.trim()) return setError(t('lqRefRequired'));
     updateLotData('barresBrutes', [...(activeLot.barresBrutes || []), { ...newBB, quantiteBrute: Number(newBB.quantiteBrute) || 1 }]);
     setNewBB(emptyBB); setError('');
   };
   const addBL = () => {
-    if (!newBL.reference.trim()) return setError('Référence requise');
+    if (!newBL.reference.trim()) return setError(t('lqRefRequired'));
     updateLotData('barresLaquees', [...(activeLot.barresLaquees || []), { ...newBL, quantiteLaquee: Number(newBL.quantiteLaquee) || 1 }]);
     setNewBL(emptyBL); setError('');
   };
   const addMB = () => {
-    if (!newMB.reference.trim()) return setError('Référence requise');
+    if (!newMB.reference.trim()) return setError(t('lqRefRequired'));
     updateLotData('morceauxBruts', [...(activeLot.morceauxBruts || []), { ...newMB, quantite: Number(newMB.quantite) || 1 }]);
     setNewMB(emptyMB); setError('');
   };
   const addML = () => {
-    if (!newML.reference.trim()) return setError('Référence requise');
+    if (!newML.reference.trim()) return setError(t('lqRefRequired'));
     const lignes = newML.lignes.filter(l => l.ral || l.mesure || Number(l.quantite) > 0);
-    if (!lignes.length) return setError('Remplissez au moins une ligne RAL/mesure');
+    if (!lignes.length) return setError(t('lqFillOneLine'));
     updateLotData('morceauxLaques', [...(activeLot.morceauxLaques || []), { reference: newML.reference, lignes }]);
     setNewML(emptyML); setError('');
   };
@@ -745,7 +757,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
   const removeMLLigne = li => setNewML(p => ({ ...p, lignes: p.lignes.filter((_, i) => i !== li) }));
   const removeRow = (sec, idx) => updateLotData(sec, (activeLot[sec] || []).filter((_, i) => i !== idx));
 
-  if (loading) return <div className="laq-loading">Chargement…</div>;
+  if (loading) return <div className="laq-loading">{t('loadingShort')}</div>;
   if (!record) return null;
 
   const lots = record.lots || [];
@@ -813,7 +825,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
       {/* Header */}
       <div className="laq-panel-header">
         <div className="laq-panel-title">
-          <span>🎨</span><h3>Barres à Laquer</h3>
+          <span>🎨</span><h3>{t('lqBarresTitle')}</h3>
           <StatusBadge status={lotStatus} />
         </div>
         <div className="laq-panel-actions">
@@ -826,21 +838,20 @@ export function BarresLaquerPanel({ project, currentUser }) {
           {activeLot && (
             <button
               className="laq-print-btn"
-              title={`Imprimer Lot ${activeLot.lotIndex + 1}`}
+              title={t('lqPrintLot', { n: activeLot.lotIndex + 1 })}
               onClick={() => printPDF(record, project, 'barres', selected, imageMap, activeLot.lotIndex, true)}
             >
-              <Printer size={14} /> Lot {activeLot.lotIndex + 1}
+              <Printer size={14} /> {t('lqLot', { n: activeLot.lotIndex + 1 })}
             </button>
           )}
           {/* Global PDF — admin only */}
           {isAdmin && (
             <button
-              className="laq-print-btn"
-              style={{ background: '#1a1a1a', color: '#fff' }}
-              title="PDF global — tous les lots"
+              className="laq-print-btn laq-print-btn--strong"
+              title={t('lqPdfGlobalTitle')}
               onClick={() => printPDF(record, project, 'barres', new Set(), imageMap, null, false)}
             >
-              <Printer size={14} /> Global
+              <Printer size={14} /> {t('lqGlobal')}
             </button>
           )}
         </div>
@@ -854,22 +865,14 @@ export function BarresLaquerPanel({ project, currentUser }) {
           <button
             key={l.lotIndex}
             onClick={() => setActiveLotIdx(l.lotIndex)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-              border: l.lotIndex === activeLotIdx ? '2px solid #3b5bdb' : '1.5px solid #e0e0e0',
-              background: l.lotIndex === activeLotIdx ? '#f0f4ff' : '#fafafa',
-              color: l.lotIndex === activeLotIdx ? '#3b5bdb' : '#555',
-              cursor: 'pointer',
-            }}>
+            className={`laq-lot-tab${l.lotIndex === activeLotIdx ? ' laq-lot-tab--active' : ''}`}>
             <Package size={12} />
-            Lot {l.lotIndex + 1}
-            <span style={{
-              padding: '1px 6px', borderRadius: 4, fontSize: 10,
-              background: (LOT_STATUSES[l.status] || LOT_STATUSES.draft).color + '20',
-              color: (LOT_STATUSES[l.status] || LOT_STATUSES.draft).color,
+            {t('lqLot', { n: l.lotIndex + 1 })}
+            <span className="laq-lot-tab__status" style={{
+              background: (LOT_STATUSES[l.status] || LOT_STATUSES.draft).color + '1f',
+              color: (LOT_STATUSES[l.status] || LOT_STATUSES.draft).ink,
             }}>
-              {(LOT_STATUSES[l.status] || LOT_STATUSES.draft).label}
+              {t((LOT_STATUSES[l.status] || LOT_STATUSES.draft).label)}
             </span>
           </button>
         ))}
@@ -877,33 +880,28 @@ export function BarresLaquerPanel({ project, currentUser }) {
           <button
             onClick={addNewLot}
             disabled={addingLot}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-              border: '1.5px dashed #3b5bdb', background: 'transparent',
-              color: '#3b5bdb', cursor: 'pointer', opacity: addingLot ? 0.5 : 1,
-            }}>
-            <Plus size={12} /> Nouveau lot
+            className="laq-lot-tab laq-lot-tab--add" style={{ opacity: addingLot ? 0.5 : 1 }}>
+            <Plus size={12} /> {t('lqNewLot')}
           </button>
         )}
       </div>
 
       {/* Lot timeline */}
       {activeLot && (
-        <div style={{ background: '#fafafa', borderRadius: 10, padding: '10px 14px', margin: '4px 0 12px', border: '1px solid #f0f0f0' }}>
+        <div className="laq-lot-progress">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#555' }}>
-              Lot {activeLot.lotIndex + 1} — progression
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>
+              {t('lqProgress', { n: activeLot.lotIndex + 1 })}
             </span>
             {activeLot.receptionLaquageNote && (
-              <span style={{ fontSize: 11, color: '#3b82f6', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                📝 Laquage: {activeLot.receptionLaquageNote}
+              <span style={{ fontSize: 11, color: '#93c5fd', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                📝 {t('lqLaqColon')} {activeLot.receptionLaquageNote}
                 {activeLot.receptionLaquageQty != null ? ` (${activeLot.receptionLaquageQty})` : ''}
               </span>
             )}
             {activeLot.receptionCoordNote && (
-              <span style={{ fontSize: 11, color: '#16a34a', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                📝 Coord: {activeLot.receptionCoordNote}
+              <span style={{ fontSize: 11, color: '#86efac', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                📝 {t('lqCoordColon')} {activeLot.receptionCoordNote}
                 {activeLot.receptionCoordQty != null ? ` (${activeLot.receptionCoordQty})` : ''}
               </span>
             )}
@@ -916,39 +914,39 @@ export function BarresLaquerPanel({ project, currentUser }) {
       {allKeys.length > 0 && (
         <div className="laq-select-bar">
           <MousePointerClick size={13} />
-          <span>Cliquez sur les lignes pour les sélectionner pour le PDF</span>
+          <span>{t('lqSelectHint')}</span>
         </div>
       )}
 
       {/* ── Section 1: Barres Brutes ── */}
       <div className="laq-section">
-        <div className="laq-section-title">1. Barres Brutes</div>
+        <div className="laq-section-title">{t('lqSecBB')}</div>
         {canEdit && isDraft && (
           <div className="laq-add-form"><div className="laq-add-form__row">
-            <InvSearch value={newBB.reference} onChange={v => setNewBB(p => ({ ...p, reference: v, itemId: null }))} onSelect={(v, item) => { setNewBB(p => ({ ...p, reference: v, itemId: item?.id || item?._id || null })); capImg(v, item); }} superCategory="aluminium" label="Référence (aluminium)" />
-            <div className="laq-add-form__field"><label>Quantité</label><input type="number" className="laq-add-input laq-add-input--sm" min="1" value={newBB.quantiteBrute} onChange={e => setNewBB(p => ({ ...p, quantiteBrute: e.target.value }))} /></div>
-            <button className="laq-add-btn" onClick={addBB}>+ Ajouter</button>
+            <InvSearch value={newBB.reference} onChange={v => setNewBB(p => ({ ...p, reference: v, itemId: null }))} onSelect={(v, item) => { setNewBB(p => ({ ...p, reference: v, itemId: item?.id || item?._id || null })); capImg(v, item); }} superCategory="aluminium" label={t('lqRefAlu')} />
+            <div className="laq-add-form__field"><label>{t('quantity')}</label><input type="number" className="laq-add-input laq-add-input--sm" min="1" value={newBB.quantiteBrute} onChange={e => setNewBB(p => ({ ...p, quantiteBrute: e.target.value }))} /></div>
+            <button className="laq-add-btn" onClick={addBB}>{t('lqAdd')}</button>
           </div></div>
         )}
         <div className="laq-table-wrapper"><table className="laq-table">
           <thead><tr>
-            <th style={{ width: 52 }}>Image</th><th>Référence</th><th>Qté brutes</th>
-            {isSent && canReceiveLaquage && <th>Reçu — Laquage</th>}
-            {isRetCoord && canReceiveCoord && <th>Reçu — Coordinateur</th>}
+            <th style={{ width: 52 }}>{t('image')}</th><th>{t('lqRef')}</th><th>{t('lqQtyRaw')}</th>
+            {isSent && canReceiveLaquage && <th>{t('lqRecvLaqCol')}</th>}
+            {isRetCoord && canReceiveCoord && <th>{t('lqRecvCoordCol')}</th>}
             {canEdit && isDraft && <th style={{ width: 40 }} />}
           </tr></thead>
           <tbody>
             {!(lot.barresBrutes || []).length
-              ? <tr><td colSpan={9} className="laq-empty-row">Aucune barre brute.</td></tr>
+              ? <tr><td colSpan={9} className="laq-empty-row">{t('lqNoBB')}</td></tr>
               : (lot.barresBrutes || []).map((row, i) => {
                 const k = `bb-${i}`;
                 return (
                   <tr key={i} {...rowProps(k)}>
-                    <td onClick={e => e.stopPropagation()}>{imageMap[row.reference] ? <img src={imageMap[row.reference]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>}</td>
+                    <td onClick={e => e.stopPropagation()}>{imageMap[row.reference] ? <img src={imageMap[row.reference]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span>}</td>
                     <td><strong>{row.reference || '—'}</strong></td>
                     <td>{row.quantiteBrute}</td>
-                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BB: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer la réception ?', () => transition('receive_line_laquage', lot.lotIndex, k, { lineLabel: `BB: ${row.reference}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `BB: ${row.reference}` })} /></td>}
-                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BB: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer la réception ?', () => transition('receive_line_coord', lot.lotIndex, k, { lineLabel: `BB: ${row.reference}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `BB: ${row.reference}` })} /></td>}
+                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BB: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask(t('lqConfirmReceptionQ'), () => transition('receive_line_laquage', lot.lotIndex, k, { lineLabel: `BB: ${row.reference}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `BB: ${row.reference}` })} /></td>}
+                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BB: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask(t('lqConfirmReceptionQ'), () => transition('receive_line_coord', lot.lotIndex, k, { lineLabel: `BB: ${row.reference}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `BB: ${row.reference}` })} /></td>}
                     {canEdit && isDraft && <td onClick={e => e.stopPropagation()}><button className="delete-btn" onClick={() => removeRow('barresBrutes', i)}><XCircle size={13} /></button></td>}
                   </tr>
                 );
@@ -959,35 +957,35 @@ export function BarresLaquerPanel({ project, currentUser }) {
 
       {/* ── Section 2: Barres Laquées ── */}
       <div className="laq-section">
-        <div className="laq-section-title">2. Barres Laquées</div>
+        <div className="laq-section-title">{t('lqSecBL')}</div>
         {canEdit && isDraft && (
           <div className="laq-add-form"><div className="laq-add-form__row">
-            <InvSearch value={newBL.reference} onChange={v => setNewBL(p => ({ ...p, reference: v, itemId: null }))} onSelect={(v, item) => { setNewBL(p => ({ ...p, reference: v, itemId: item?.id || item?._id || null })); capImg(v, item); }} superCategory="aluminium" label="Référence (aluminium)" />
-            <div className="laq-add-form__field"><label>RAL</label><input className="laq-add-input laq-add-input--sm" placeholder="ex: 9010" value={newBL.ral} onChange={e => setNewBL(p => ({ ...p, ral: e.target.value }))} /></div>
-            <div className="laq-add-form__field"><label>Quantité</label><input type="number" className="laq-add-input laq-add-input--sm" min="1" value={newBL.quantiteLaquee} onChange={e => setNewBL(p => ({ ...p, quantiteLaquee: e.target.value }))} /></div>
-            <button className="laq-add-btn" onClick={addBL}>+ Ajouter</button>
+            <InvSearch value={newBL.reference} onChange={v => setNewBL(p => ({ ...p, reference: v, itemId: null }))} onSelect={(v, item) => { setNewBL(p => ({ ...p, reference: v, itemId: item?.id || item?._id || null })); capImg(v, item); }} superCategory="aluminium" label={t('lqRefAlu')} />
+            <div className="laq-add-form__field"><label>RAL</label><input className="laq-add-input laq-add-input--sm" placeholder={t('lqPhRal')} value={newBL.ral} onChange={e => setNewBL(p => ({ ...p, ral: e.target.value }))} /></div>
+            <div className="laq-add-form__field"><label>{t('quantity')}</label><input type="number" className="laq-add-input laq-add-input--sm" min="1" value={newBL.quantiteLaquee} onChange={e => setNewBL(p => ({ ...p, quantiteLaquee: e.target.value }))} /></div>
+            <button className="laq-add-btn" onClick={addBL}>{t('lqAdd')}</button>
           </div></div>
         )}
         <div className="laq-table-wrapper"><table className="laq-table">
           <thead><tr>
-            <th style={{ width: 52 }}>Image</th><th>Référence</th><th>RAL</th><th>Qté laquées</th>
-            {isSent && canReceiveLaquage && <th>Reçu — Laquage</th>}
-            {isRetCoord && canReceiveCoord && <th>Reçu — Coordinateur</th>}
+            <th style={{ width: 52 }}>{t('image')}</th><th>{t('lqRef')}</th><th>RAL</th><th>{t('lqQtyLaq')}</th>
+            {isSent && canReceiveLaquage && <th>{t('lqRecvLaqCol')}</th>}
+            {isRetCoord && canReceiveCoord && <th>{t('lqRecvCoordCol')}</th>}
             {canEdit && isDraft && <th style={{ width: 40 }} />}
           </tr></thead>
           <tbody>
             {!(lot.barresLaquees || []).length
-              ? <tr><td colSpan={9} className="laq-empty-row">Aucune barre laquée.</td></tr>
+              ? <tr><td colSpan={9} className="laq-empty-row">{t('lqNoBL')}</td></tr>
               : (lot.barresLaquees || []).map((row, i) => {
                 const k = `bl-${i}`;
                 return (
                   <tr key={i} {...rowProps(k)}>
-                    <td onClick={e => e.stopPropagation()}>{imageMap[row.reference] ? <img src={imageMap[row.reference]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>}</td>
+                    <td onClick={e => e.stopPropagation()}>{imageMap[row.reference] ? <img src={imageMap[row.reference]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span>}</td>
                     <td><strong>{row.reference || '—'}</strong></td>
                     <td><span className="laq-ral-chip">{row.ral || '—'}</span></td>
                     <td>{row.quantiteLaquee}</td>
-                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BL: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_laquage', lot.lotIndex, k, { lineLabel: `BL: ${row.reference} RAL ${row.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `BL: ${row.reference}` })} /></td>}
-                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BL: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_coord', lot.lotIndex, k, { lineLabel: `BL: ${row.reference} RAL ${row.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `BL: ${row.reference}` })} /></td>}
+                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BL: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask(t('lqConfirmQ'), () => transition('receive_line_laquage', lot.lotIndex, k, { lineLabel: `BL: ${row.reference} RAL ${row.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `BL: ${row.reference}` })} /></td>}
+                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BL: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask(t('lqConfirmQ'), () => transition('receive_line_coord', lot.lotIndex, k, { lineLabel: `BL: ${row.reference} RAL ${row.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `BL: ${row.reference}` })} /></td>}
                     {canEdit && isDraft && <td onClick={e => e.stopPropagation()}><button className="delete-btn" onClick={() => removeRow('barresLaquees', i)}><XCircle size={13} /></button></td>}
                   </tr>
                 );
@@ -998,34 +996,34 @@ export function BarresLaquerPanel({ project, currentUser }) {
 
       {/* ── Section 3: Morceaux Bruts ── */}
       <div className="laq-section">
-        <div className="laq-section-title">3. Morceaux Bruts</div>
+        <div className="laq-section-title">{t('lqSecMB')}</div>
         {canEdit && isDraft && (
           <div className="laq-add-form"><div className="laq-add-form__row">
-            <InvSearch value={newMB.reference} onChange={v => setNewMB(p => ({ ...p, reference: v }))} onSelect={(v, item) => { setNewMB(p => ({ ...p, reference: v })); capImg(v, item); }} superCategory="aluminium" label="Référence (aluminium)" />
-            <div className="laq-add-form__field"><label>Mesure</label><input className="laq-add-input laq-add-input--sm" placeholder="ex: 1200 mm" value={newMB.mesure} onChange={e => setNewMB(p => ({ ...p, mesure: e.target.value }))} /></div>
-            <div className="laq-add-form__field"><label>Quantité</label><input type="number" className="laq-add-input laq-add-input--sm" min="1" value={newMB.quantite} onChange={e => setNewMB(p => ({ ...p, quantite: e.target.value }))} /></div>
-            <button className="laq-add-btn" onClick={addMB}>+ Ajouter</button>
+            <InvSearch value={newMB.reference} onChange={v => setNewMB(p => ({ ...p, reference: v }))} onSelect={(v, item) => { setNewMB(p => ({ ...p, reference: v })); capImg(v, item); }} superCategory="aluminium" label={t('lqRefAlu')} />
+            <div className="laq-add-form__field"><label>{t('lqMesure')}</label><input className="laq-add-input laq-add-input--sm" placeholder={t('lqPhMesure')} value={newMB.mesure} onChange={e => setNewMB(p => ({ ...p, mesure: e.target.value }))} /></div>
+            <div className="laq-add-form__field"><label>{t('quantity')}</label><input type="number" className="laq-add-input laq-add-input--sm" min="1" value={newMB.quantite} onChange={e => setNewMB(p => ({ ...p, quantite: e.target.value }))} /></div>
+            <button className="laq-add-btn" onClick={addMB}>{t('lqAdd')}</button>
           </div></div>
         )}
         <div className="laq-table-wrapper"><table className="laq-table">
           <thead><tr>
-            <th style={{ width: 52 }}>Image</th><th>Référence</th><th>Mesure</th><th>Quantité</th>
-            {isSent && canReceiveLaquage && <th>Reçu — Laquage</th>}
-            {isRetCoord && canReceiveCoord && <th>Reçu — Coordinateur</th>}
+            <th style={{ width: 52 }}>{t('image')}</th><th>{t('lqRef')}</th><th>{t('lqMesure')}</th><th>{t('quantity')}</th>
+            {isSent && canReceiveLaquage && <th>{t('lqRecvLaqCol')}</th>}
+            {isRetCoord && canReceiveCoord && <th>{t('lqRecvCoordCol')}</th>}
             {canEdit && isDraft && <th style={{ width: 40 }} />}
           </tr></thead>
           <tbody>
             {!(lot.morceauxBruts || []).length
-              ? <tr><td colSpan={9} className="laq-empty-row">Aucun morceau brut.</td></tr>
+              ? <tr><td colSpan={9} className="laq-empty-row">{t('lqNoMB')}</td></tr>
               : (lot.morceauxBruts || []).map((row, i) => {
                 const k = `mb-${i}`;
                 return (
                   <tr key={i} {...rowProps(k)}>
-                    <td onClick={e => e.stopPropagation()}>{imageMap[row.reference] ? <img src={imageMap[row.reference]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>}</td>
+                    <td onClick={e => e.stopPropagation()}>{imageMap[row.reference] ? <img src={imageMap[row.reference]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span>}</td>
                     <td><strong>{row.reference || '—'}</strong></td>
                     <td>{row.mesure || '—'}</td><td>{row.quantite}</td>
-                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`MB: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_laquage', lot.lotIndex, k, { lineLabel: `MB: ${row.reference} ${row.mesure}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `MB: ${row.reference}` })} /></td>}
-                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`MB: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_coord', lot.lotIndex, k, { lineLabel: `MB: ${row.reference} ${row.mesure}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `MB: ${row.reference}` })} /></td>}
+                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`MB: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask(t('lqConfirmQ'), () => transition('receive_line_laquage', lot.lotIndex, k, { lineLabel: `MB: ${row.reference} ${row.mesure}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `MB: ${row.reference}` })} /></td>}
+                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`MB: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask(t('lqConfirmQ'), () => transition('receive_line_coord', lot.lotIndex, k, { lineLabel: `MB: ${row.reference} ${row.mesure}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `MB: ${row.reference}` })} /></td>}
                     {canEdit && isDraft && <td onClick={e => e.stopPropagation()}><button className="delete-btn" onClick={() => removeRow('morceauxBruts', i)}><XCircle size={13} /></button></td>}
                   </tr>
                 );
@@ -1036,34 +1034,34 @@ export function BarresLaquerPanel({ project, currentUser }) {
 
       {/* ── Section 4: Morceaux Laqués ── */}
       <div className="laq-section">
-        <div className="laq-section-title">4. Morceaux Laqués</div>
+        <div className="laq-section-title">{t('lqSecML')}</div>
         {canEdit && isDraft && (
           <div className="laq-add-form"><div className="laq-add-form__row" style={{ alignItems: 'flex-start' }}>
-            <InvSearch value={newML.reference} onChange={v => setNewML(p => ({ ...p, reference: v }))} onSelect={(v, item) => { setNewML(p => ({ ...p, reference: v })); capImg(v, item); }} superCategory="aluminium" label="Référence (aluminium)" />
+            <InvSearch value={newML.reference} onChange={v => setNewML(p => ({ ...p, reference: v }))} onSelect={(v, item) => { setNewML(p => ({ ...p, reference: v })); capImg(v, item); }} superCategory="aluminium" label={t('lqRefAlu')} />
             <div className="laq-ml-lignes">
               {newML.lignes.map((lg, li) => (
                 <div key={li} className="laq-ml-ligne-row">
                   <div className="laq-add-form__field">{li === 0 && <label>RAL</label>}<input className="laq-add-input laq-add-input--sm" placeholder="RAL" value={lg.ral} onChange={e => updateMLLigne(li, 'ral', e.target.value)} /></div>
-                  <div className="laq-add-form__field">{li === 0 && <label>Mesure</label>}<input className="laq-add-input laq-add-input--sm" placeholder="Mesure" value={lg.mesure} onChange={e => updateMLLigne(li, 'mesure', e.target.value)} /></div>
-                  <div className="laq-add-form__field">{li === 0 && <label>Quantité</label>}<input type="number" className="laq-add-input laq-add-input--sm" min="1" value={lg.quantite} onChange={e => updateMLLigne(li, 'quantite', e.target.value)} /></div>
+                  <div className="laq-add-form__field">{li === 0 && <label>{t('lqMesure')}</label>}<input className="laq-add-input laq-add-input--sm" placeholder={t('lqMesure')} value={lg.mesure} onChange={e => updateMLLigne(li, 'mesure', e.target.value)} /></div>
+                  <div className="laq-add-form__field">{li === 0 && <label>{t('quantity')}</label>}<input type="number" className="laq-add-input laq-add-input--sm" min="1" value={lg.quantite} onChange={e => updateMLLigne(li, 'quantite', e.target.value)} /></div>
                   {newML.lignes.length > 1 && <button className="delete-btn" style={{ marginTop: li === 0 ? 22 : 0 }} onClick={() => removeMLLigne(li)}><XCircle size={13} /></button>}
                 </div>
               ))}
-              <button className="laq-add-ligne-btn" onClick={addMLLigne}>+ Ligne RAL</button>
+              <button className="laq-add-ligne-btn" onClick={addMLLigne}>{t('lqAddRalLine')}</button>
             </div>
-            <button className="laq-add-btn" style={{ alignSelf: 'flex-end' }} onClick={addML}>+ Ajouter</button>
+            <button className="laq-add-btn" style={{ alignSelf: 'flex-end' }} onClick={addML}>{t('lqAdd')}</button>
           </div></div>
         )}
         <div className="laq-table-wrapper"><table className="laq-table">
           <thead><tr>
-            <th style={{ width: 52 }}>Image</th><th>Référence</th><th>RAL</th><th>Mesure</th><th>Quantité</th>
-            {isSent && canReceiveLaquage && <th>Reçu — Laquage</th>}
-            {isRetCoord && canReceiveCoord && <th>Reçu — Coordinateur</th>}
+            <th style={{ width: 52 }}>{t('image')}</th><th>{t('lqRef')}</th><th>RAL</th><th>{t('lqMesure')}</th><th>{t('quantity')}</th>
+            {isSent && canReceiveLaquage && <th>{t('lqRecvLaqCol')}</th>}
+            {isRetCoord && canReceiveCoord && <th>{t('lqRecvCoordCol')}</th>}
             {canEdit && isDraft && <th style={{ width: 40 }} />}
           </tr></thead>
           <tbody>
             {!(lot.morceauxLaques || []).length
-              ? <tr><td colSpan={9} className="laq-empty-row">Aucun morceau laqué.</td></tr>
+              ? <tr><td colSpan={9} className="laq-empty-row">{t('lqNoML')}</td></tr>
               : (lot.morceauxLaques || []).flatMap((row, i) =>
                 (row.lignes || [{}]).map((lg, li) => {
                   const k = `ml-${i}-${li}`;
@@ -1071,12 +1069,12 @@ export function BarresLaquerPanel({ project, currentUser }) {
                   const rs = (row.lignes || [{}]).length;
                   return (
                     <tr key={`${i}-${li}`} {...rowProps(k)} className={'laq-table-row' + (li > 0 ? ' laq-sub-row' : '') + (selected.has(`${lot.lotIndex}-${k}`) ? ' laq-row--selected' : '')}>
-                      {isFirst && <td rowSpan={rs} style={{ verticalAlign: 'middle' }} onClick={e => e.stopPropagation()}>{imageMap[row.reference] ? <img src={imageMap[row.reference]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>}</td>}
+                      {isFirst && <td rowSpan={rs} style={{ verticalAlign: 'middle' }} onClick={e => e.stopPropagation()}>{imageMap[row.reference] ? <img src={imageMap[row.reference]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span>}</td>}
                       {isFirst && <td rowSpan={rs} style={{ verticalAlign: 'middle' }}><strong>{row.reference || '—'}</strong></td>}
                       <td><span className="laq-ral-chip">{lg.ral || '—'}</span></td>
                       <td>{lg.mesure || '—'}</td><td>{lg.quantite}</td>
-                      {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`ML: ${row.reference} ${lg.ral}`} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_laquage', lot.lotIndex, k, { lineLabel: `ML: ${row.reference} RAL ${lg.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `ML: ${row.reference} ${lg.ral}` })} /></td>}
-                      {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`ML: ${row.reference} ${lg.ral}`} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_coord', lot.lotIndex, k, { lineLabel: `ML: ${row.reference} RAL ${lg.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `ML: ${row.reference} ${lg.ral}` })} /></td>}
+                      {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`ML: ${row.reference} ${lg.ral}`} lineStatuses={ls} side="laq" onConfirm={() => ask(t('lqConfirmQ'), () => transition('receive_line_laquage', lot.lotIndex, k, { lineLabel: `ML: ${row.reference} RAL ${lg.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `ML: ${row.reference} ${lg.ral}` })} /></td>}
+                      {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`ML: ${row.reference} ${lg.ral}`} lineStatuses={ls} side="coord" onConfirm={() => ask(t('lqConfirmQ'), () => transition('receive_line_coord', lot.lotIndex, k, { lineLabel: `ML: ${row.reference} RAL ${lg.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `ML: ${row.reference} ${lg.ral}` })} /></td>}
                       {canEdit && isDraft && isFirst && <td rowSpan={rs} style={{ verticalAlign: 'middle', textAlign: 'center' }} onClick={e => e.stopPropagation()}><button className="delete-btn" onClick={() => updateLotData('morceauxLaques', lot.morceauxLaques.filter((_, idx) => idx !== i))}><XCircle size={13} /></button></td>}
                     </tr>
                   );
@@ -1089,39 +1087,39 @@ export function BarresLaquerPanel({ project, currentUser }) {
       {/* ── Workflow actions for active lot ── */}
       <div className="laq-workflow">
         <div className="laq-workflow-title">
-          Actions — <LotBadge lotIndex={lot.lotIndex} />
+          {t('lqActions')} — <LotBadge lotIndex={lot.lotIndex} />
         </div>
         <div className="laq-workflow-buttons">
           {canSendToLaquage && isDraft && (
             <button className="laq-wf-btn laq-wf-btn--send" disabled={saving}
-              onClick={() => ask(`Envoyer le Lot ${lot.lotIndex + 1} au laquage ? Les barres brutes et laquées seront déduites du stock.`, () => transition('send_to_laquage', lot.lotIndex, null))}>
-              <Send size={14} /> Envoyer Lot {lot.lotIndex + 1} au Laquage
+              onClick={() => ask(t('lqSendConfirmBarres', { n: lot.lotIndex + 1 }), () => transition('send_to_laquage', lot.lotIndex, null))}>
+              <Send size={14} /> {t('lqSendBtn', { n: lot.lotIndex + 1 })}
             </button>
           )}
           {canReceiveLaquage && isSent && (
             <button
               className={'laq-wf-btn laq-wf-btn--receive' + (allRecvLaq ? ' laq-wf-btn--done' : '')}
               disabled={saving || allRecvLaq}
-              onClick={() => setReceptionNote({ lotIndex: lot.lotIndex, action: 'receive_all_laquage', title: `Réceptionner tout — Lot ${lot.lotIndex + 1} (Laquage)` })}>
-              <PackageCheck size={14} /> Réceptionner TOUT Lot {lot.lotIndex + 1}
+              onClick={() => setReceptionNote({ lotIndex: lot.lotIndex, action: 'receive_all_laquage', title: t('lqReceiveAllTitleLaq', { n: lot.lotIndex + 1 }) })}>
+              <PackageCheck size={14} /> {t('lqReceiveAllBtn', { n: lot.lotIndex + 1 })}
             </button>
           )}
           {canReturnToCoord && isRecvLaq && (
             <button className="laq-wf-btn laq-wf-btn--return" disabled={saving}
-              onClick={() => ask(`Retourner le Lot ${lot.lotIndex + 1} au coordinateur ?`, () => transition('return_to_coord', lot.lotIndex, null))}>
-              <RotateCcw size={14} /> Retourner Lot {lot.lotIndex + 1} au Coordinateur
+              onClick={() => ask(t('lqReturnConfirm', { n: lot.lotIndex + 1 }), () => transition('return_to_coord', lot.lotIndex, null))}>
+              <RotateCcw size={14} /> {t('lqReturnBtn', { n: lot.lotIndex + 1 })}
             </button>
           )}
           {canReceiveCoord && isRetCoord && (
             <button
               className={'laq-wf-btn laq-wf-btn--receive' + (allRecvCoord ? ' laq-wf-btn--done' : '')}
               disabled={saving || allRecvCoord}
-              onClick={() => setReceptionNote({ lotIndex: lot.lotIndex, action: 'receive_all_coord', title: `Réceptionner tout — Lot ${lot.lotIndex + 1} (Coordinateur)` })}>
-              <PackageCheck size={14} /> Réceptionner TOUT Lot {lot.lotIndex + 1}
+              onClick={() => setReceptionNote({ lotIndex: lot.lotIndex, action: 'receive_all_coord', title: t('lqReceiveAllTitleCoord', { n: lot.lotIndex + 1 }) })}>
+              <PackageCheck size={14} /> {t('lqReceiveAllBtn', { n: lot.lotIndex + 1 })}
             </button>
           )}
           {lotStatus === 'received_coord' && (
-            <div className="laq-wf-complete"><CheckCircle2 size={16} /> Lot {lot.lotIndex + 1} terminé</div>
+            <div className="laq-wf-complete"><CheckCircle2 size={16} /> {t('lqLotDone', { n: lot.lotIndex + 1 })}</div>
           )}
         </div>
       </div>
@@ -1141,6 +1139,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
    ═══════════════════════════════════════════════════════════════ */
 export function AccessoiresLaquerPanel({ project, currentUser }) {
   const { user: authUser } = useAuth();
+  const { t } = useLanguage();
   const _cu = currentUser || authUser;
   const userRole = (typeof _cu?.role === 'string' ? _cu.role : _cu?.role?.name) || _cu?.roleName || '';
   const displayName = _cu?.displayName || userRole;
@@ -1210,9 +1209,9 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
         { accessoires: activeLot.accessoires }
       );
       setRecord(res.data);
-      toast('Enregistré ✓');
+      toast(t('lqSaved'));
     } catch (e) {
-      setError(e.response?.data?.error || 'Erreur lors de la sauvegarde.');
+      setError(e.response?.data?.error || t('lqSaveError'));
     } finally { setSaving(false); }
   };
 
@@ -1227,9 +1226,9 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
       const newLots = res.data.lots || [];
       const newest = newLots[newLots.length - 1];
       setActiveLotIdx(newest.lotIndex);
-      toast(`📦 Lot ${newest.lotIndex + 1} créé`);
+      toast(t('lqLotCreated', { n: newest.lotIndex + 1 }));
     } catch (e) {
-      setError(e.response?.data?.error || 'Impossible de créer un nouveau lot.');
+      setError(e.response?.data?.error || t('lqLotCreateError'));
     } finally { setAddingLot(false); }
   };
 
@@ -1241,9 +1240,9 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
         { action, lotIndex, lineKey, by: displayName, ...extra }
       );
       setRecord(res.data);
-      toast('Action confirmée ✓');
+      toast(t('lqActionConfirmed'));
     } catch (e) {
-      setError(e.response?.data?.error || "Erreur lors de l'action.");
+      setError(e.response?.data?.error || t('lqActionError'));
     } finally { setSaving(false); setConfirm(null); setIncomplete(null); setReceptionNote(null); }
   };
 
@@ -1258,12 +1257,12 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
   };
 
   const addAcc = () => {
-    if (!newAcc.designation.trim()) return setError('Désignation requise');
+    if (!newAcc.designation.trim()) return setError(t('lqDesignationRequired'));
     updateLotData('accessoires', [...(activeLot.accessoires || []), { ...newAcc, quantite: Number(newAcc.quantite) || 1 }]);
     setNewAcc(emptyAcc); setError('');
   };
 
-  if (loading) return <div className="laq-loading">Chargement…</div>;
+  if (loading) return <div className="laq-loading">{t('loadingShort')}</div>;
   if (!record) return null;
 
   const lots = record.lots || [];
@@ -1307,7 +1306,7 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
       )}
 
       <div className="laq-panel-header">
-        <div className="laq-panel-title"><span>🔩</span><h3>Accessoires à Laquer</h3><StatusBadge status={lotStatus} /></div>
+        <div className="laq-panel-title"><span>🔩</span><h3>{t('lqAccTitle')}</h3><StatusBadge status={lotStatus} /></div>
         <div className="laq-panel-actions">
           {canEdit && isDraft && (
             <button className="laq-save-btn" disabled={saving} onClick={saveLot}>
@@ -1318,21 +1317,20 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
           {activeLot && (
             <button
               className="laq-print-btn"
-              title={`Imprimer Lot ${activeLot.lotIndex + 1}`}
+              title={t('lqPrintLot', { n: activeLot.lotIndex + 1 })}
               onClick={() => printPDF(record, project, 'accessoires', selected, imageMap, activeLot.lotIndex, true)}
             >
-              <Printer size={14} /> Lot {activeLot.lotIndex + 1}
+              <Printer size={14} /> {t('lqLot', { n: activeLot.lotIndex + 1 })}
             </button>
           )}
           {/* Global PDF — admin only */}
           {isAdmin && (
             <button
-              className="laq-print-btn"
-              style={{ background: '#1a1a1a', color: '#fff' }}
-              title="PDF global — tous les lots"
+              className="laq-print-btn laq-print-btn--strong"
+              title={t('lqPdfGlobalTitle')}
               onClick={() => printPDF(record, project, 'accessoires', new Set(), imageMap, null, false)}
             >
-              <Printer size={14} /> Global
+              <Printer size={14} /> {t('lqGlobal')}
             </button>
           )}
         </div>
@@ -1344,33 +1342,28 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '12px 0 4px', flexWrap: 'wrap' }}>
         {lots.map(l => (
           <button key={l.lotIndex} onClick={() => setActiveLotIdx(l.lotIndex)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-              border: l.lotIndex === activeLotIdx ? '2px solid #3b5bdb' : '1.5px solid #e0e0e0',
-              background: l.lotIndex === activeLotIdx ? '#f0f4ff' : '#fafafa',
-              color: l.lotIndex === activeLotIdx ? '#3b5bdb' : '#555', cursor: 'pointer',
-            }}>
+            className={`laq-lot-tab${l.lotIndex === activeLotIdx ? ' laq-lot-tab--active' : ''}`}>
             <Package size={12} />
-            Lot {l.lotIndex + 1}
-            <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, background: (LOT_STATUSES[l.status] || LOT_STATUSES.draft).color + '20', color: (LOT_STATUSES[l.status] || LOT_STATUSES.draft).color }}>
-              {(LOT_STATUSES[l.status] || LOT_STATUSES.draft).label}
+            {t('lqLot', { n: l.lotIndex + 1 })}
+            <span className="laq-lot-tab__status" style={{ background: (LOT_STATUSES[l.status] || LOT_STATUSES.draft).color + '1f', color: (LOT_STATUSES[l.status] || LOT_STATUSES.draft).ink }}>
+              {t((LOT_STATUSES[l.status] || LOT_STATUSES.draft).label)}
             </span>
           </button>
         ))}
         {canAddLot && (
           <button onClick={addNewLot} disabled={addingLot}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, border: '1.5px dashed #3b5bdb', background: 'transparent', color: '#3b5bdb', cursor: 'pointer', opacity: addingLot ? 0.5 : 1 }}>
-            <Plus size={12} /> Nouveau lot
+            className="laq-lot-tab laq-lot-tab--add" style={{ opacity: addingLot ? 0.5 : 1 }}>
+            <Plus size={12} /> {t('lqNewLot')}
           </button>
         )}
       </div>
 
       {activeLot && (
-        <div style={{ background: '#fafafa', borderRadius: 10, padding: '10px 14px', margin: '4px 0 12px', border: '1px solid #f0f0f0' }}>
+        <div className="laq-lot-progress">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#555' }}>Lot {activeLot.lotIndex + 1} — progression</span>
-            {activeLot.receptionLaquageNote && <span style={{ fontSize: 11, color: '#3b82f6' }}>📝 {activeLot.receptionLaquageNote}{activeLot.receptionLaquageQty != null ? ` (${activeLot.receptionLaquageQty})` : ''}</span>}
-            {activeLot.receptionCoordNote && <span style={{ fontSize: 11, color: '#16a34a' }}>📝 {activeLot.receptionCoordNote}{activeLot.receptionCoordQty != null ? ` (${activeLot.receptionCoordQty})` : ''}</span>}
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>{t('lqProgress', { n: activeLot.lotIndex + 1 })}</span>
+            {activeLot.receptionLaquageNote && <span style={{ fontSize: 11, color: '#93c5fd' }}>📝 {activeLot.receptionLaquageNote}{activeLot.receptionLaquageQty != null ? ` (${activeLot.receptionLaquageQty})` : ''}</span>}
+            {activeLot.receptionCoordNote && <span style={{ fontSize: 11, color: '#86efac' }}>📝 {activeLot.receptionCoordNote}{activeLot.receptionCoordQty != null ? ` (${activeLot.receptionCoordQty})` : ''}</span>}
           </div>
           <LotTimeline lot={activeLot} history={history} />
         </div>
@@ -1381,31 +1374,31 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
           <div className="laq-add-form"><div className="laq-add-form__row">
             <InvSearch value={newAcc.designation} onChange={v => setNewAcc(p => ({ ...p, designation: v }))}
               onSelect={(v, item) => { setNewAcc(p => ({ ...p, designation: v })); if (item?.image) setImageMap(m => ({ ...m, [v]: item.image })); }}
-              superCategory="accessoires" label="Désignation (accessoires)" />
-            <div className="laq-add-form__field"><label>Quantité</label><input type="number" className="laq-add-input laq-add-input--sm" min="1" value={newAcc.quantite} onChange={e => setNewAcc(p => ({ ...p, quantite: e.target.value }))} /></div>
-            <div className="laq-add-form__field" style={{ flex: 2 }}><label>Notes</label><input className="laq-add-input" placeholder="Notes…" value={newAcc.notes} onChange={e => setNewAcc(p => ({ ...p, notes: e.target.value }))} /></div>
-            <button className="laq-add-btn" onClick={addAcc}>+ Ajouter</button>
+              superCategory="accessoires" label={t('lqDesigAcc')} />
+            <div className="laq-add-form__field"><label>{t('quantity')}</label><input type="number" className="laq-add-input laq-add-input--sm" min="1" value={newAcc.quantite} onChange={e => setNewAcc(p => ({ ...p, quantite: e.target.value }))} /></div>
+            <div className="laq-add-form__field" style={{ flex: 2 }}><label>{t('lqNotes')}</label><input className="laq-add-input" placeholder={t('lqNotesPh')} value={newAcc.notes} onChange={e => setNewAcc(p => ({ ...p, notes: e.target.value }))} /></div>
+            <button className="laq-add-btn" onClick={addAcc}>{t('lqAdd')}</button>
           </div></div>
         )}
         <div className="laq-table-wrapper"><table className="laq-table">
           <thead><tr>
-            <th style={{ width: 52 }}>Image</th><th>Désignation</th><th>Quantité</th><th>Notes</th>
-            {isSent && canReceiveLaquage && <th>Reçu — Laquage</th>}
-            {isRetCoord && canReceiveCoord && <th>Reçu — Coordinateur</th>}
+            <th style={{ width: 52 }}>{t('image')}</th><th>{t('designation')}</th><th>{t('quantity')}</th><th>{t('lqNotes')}</th>
+            {isSent && canReceiveLaquage && <th>{t('lqRecvLaqCol')}</th>}
+            {isRetCoord && canReceiveCoord && <th>{t('lqRecvCoordCol')}</th>}
             {canEdit && isDraft && <th style={{ width: 40 }} />}
           </tr></thead>
           <tbody>
             {!(lot.accessoires || []).length
-              ? <tr><td colSpan={9} className="laq-empty-row">Aucun accessoire.</td></tr>
+              ? <tr><td colSpan={9} className="laq-empty-row">{t('lqNoAcc')}</td></tr>
               : (lot.accessoires || []).map((acc, i) => {
                 const k = `acc-${i}`;
                 return (
                   <tr key={i} {...rowProps(k)}>
-                    <td onClick={e => e.stopPropagation()}>{imageMap[acc.designation] ? <img src={imageMap[acc.designation]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>}</td>
+                    <td onClick={e => e.stopPropagation()}>{imageMap[acc.designation] ? <img src={imageMap[acc.designation]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span>}</td>
                     <td><strong>{acc.designation || '—'}</strong></td>
                     <td>{acc.quantite}</td><td>{acc.notes || '—'}</td>
-                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={acc.designation} lineStatuses={ls} side="laq" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_laquage', lot.lotIndex, k, { lineLabel: acc.designation }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: acc.designation })} /></td>}
-                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={acc.designation} lineStatuses={ls} side="coord" onConfirm={() => ask('Confirmer ?', () => transition('receive_line_coord', lot.lotIndex, k, { lineLabel: acc.designation }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: acc.designation })} /></td>}
+                    {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={acc.designation} lineStatuses={ls} side="laq" onConfirm={() => ask(t('lqConfirmQ'), () => transition('receive_line_laquage', lot.lotIndex, k, { lineLabel: acc.designation }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: acc.designation })} /></td>}
+                    {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={acc.designation} lineStatuses={ls} side="coord" onConfirm={() => ask(t('lqConfirmQ'), () => transition('receive_line_coord', lot.lotIndex, k, { lineLabel: acc.designation }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: acc.designation })} /></td>}
                     {canEdit && isDraft && <td onClick={e => e.stopPropagation()}><button className="delete-btn" onClick={() => updateLotData('accessoires', lot.accessoires.filter((_, idx) => idx !== i))}><XCircle size={13} /></button></td>}
                   </tr>
                 );
@@ -1415,36 +1408,36 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
       </div>
 
       <div className="laq-workflow">
-        <div className="laq-workflow-title">Actions — <LotBadge lotIndex={lot.lotIndex} /></div>
+        <div className="laq-workflow-title">{t('lqActions')} — <LotBadge lotIndex={lot.lotIndex} /></div>
         <div className="laq-workflow-buttons">
           {canSendToLaquage && isDraft && (
             <button className="laq-wf-btn laq-wf-btn--send" disabled={saving}
-              onClick={() => ask(`Envoyer le Lot ${lot.lotIndex + 1} au laquage ?`, () => transition('send_to_laquage', lot.lotIndex, null))}>
-              <Send size={14} /> Envoyer Lot {lot.lotIndex + 1} au Laquage
+              onClick={() => ask(t('lqSendConfirm', { n: lot.lotIndex + 1 }), () => transition('send_to_laquage', lot.lotIndex, null))}>
+              <Send size={14} /> {t('lqSendBtn', { n: lot.lotIndex + 1 })}
             </button>
           )}
           {canReceiveLaquage && isSent && (
             <button className={'laq-wf-btn laq-wf-btn--receive' + (allRecvLaq ? ' laq-wf-btn--done' : '')}
               disabled={saving || allRecvLaq}
-              onClick={() => setReceptionNote({ lotIndex: lot.lotIndex, action: 'receive_all_laquage', title: `Réceptionner tout — Lot ${lot.lotIndex + 1} (Laquage)` })}>
-              <PackageCheck size={14} /> Réceptionner TOUT Lot {lot.lotIndex + 1}
+              onClick={() => setReceptionNote({ lotIndex: lot.lotIndex, action: 'receive_all_laquage', title: t('lqReceiveAllTitleLaq', { n: lot.lotIndex + 1 }) })}>
+              <PackageCheck size={14} /> {t('lqReceiveAllBtn', { n: lot.lotIndex + 1 })}
             </button>
           )}
           {canReturnToCoord && isRecvLaq && (
             <button className="laq-wf-btn laq-wf-btn--return" disabled={saving}
-              onClick={() => ask(`Retourner le Lot ${lot.lotIndex + 1} au coordinateur ?`, () => transition('return_to_coord', lot.lotIndex, null))}>
-              <RotateCcw size={14} /> Retourner Lot {lot.lotIndex + 1} au Coordinateur
+              onClick={() => ask(t('lqReturnConfirm', { n: lot.lotIndex + 1 }), () => transition('return_to_coord', lot.lotIndex, null))}>
+              <RotateCcw size={14} /> {t('lqReturnBtn', { n: lot.lotIndex + 1 })}
             </button>
           )}
           {canReceiveCoord && isRetCoord && (
             <button className={'laq-wf-btn laq-wf-btn--receive' + (allRecvCoord ? ' laq-wf-btn--done' : '')}
               disabled={saving || allRecvCoord}
-              onClick={() => setReceptionNote({ lotIndex: lot.lotIndex, action: 'receive_all_coord', title: `Réceptionner tout — Lot ${lot.lotIndex + 1} (Coordinateur)` })}>
-              <PackageCheck size={14} /> Réceptionner TOUT Lot {lot.lotIndex + 1}
+              onClick={() => setReceptionNote({ lotIndex: lot.lotIndex, action: 'receive_all_coord', title: t('lqReceiveAllTitleCoord', { n: lot.lotIndex + 1 }) })}>
+              <PackageCheck size={14} /> {t('lqReceiveAllBtn', { n: lot.lotIndex + 1 })}
             </button>
           )}
           {lotStatus === 'received_coord' && (
-            <div className="laq-wf-complete"><CheckCircle2 size={16} /> Lot {lot.lotIndex + 1} terminé</div>
+            <div className="laq-wf-complete"><CheckCircle2 size={16} /> {t('lqLotDone', { n: lot.lotIndex + 1 })}</div>
           )}
         </div>
       </div>

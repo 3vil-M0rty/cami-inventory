@@ -5,6 +5,8 @@ import {
   Send, RotateCcw, PackageCheck, Trash2, ShoppingCart, Package
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
+import { dialog } from '../../components/common/dialog';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 const POLL_MS = 20_000;
@@ -41,29 +43,29 @@ function persistReadIds(newIds) {
 }
 
 const LAQUAGE_META = {
-  add_lot: { label: 'Nouveau lot créé', color: '#3b5bdb', icon: <Package size={13} /> },
-  send_to_laquage: { label: 'Envoyé au laquage', color: '#f59e0b', icon: <Send size={13} /> },
-  receive_all_laquage: { label: 'Tout réceptionné (Laquage)', color: '#3b82f6', icon: <PackageCheck size={13} /> },
-  return_to_coord: { label: 'Retourné au coordinateur', color: '#8b5cf6', icon: <RotateCcw size={13} /> },
-  receive_all_coord: { label: 'Tout réceptionné (Coordinateur)', color: '#16a34a', icon: <CheckCircle2 size={13} /> },
-  incomplete_line: { label: 'Ligne signalée incomplète', color: '#dc2626', icon: <AlertTriangle size={13} /> },
+  add_lot: { label: 'lnAddLot', color: '#818cf8', icon: <Package size={13} /> },
+  send_to_laquage: { label: 'lnSent', color: '#fbbf24', icon: <Send size={13} /> },
+  receive_all_laquage: { label: 'lnAllRecvLaq', color: '#60a5fa', icon: <PackageCheck size={13} /> },
+  return_to_coord: { label: 'lnReturned', color: '#a78bfa', icon: <RotateCcw size={13} /> },
+  receive_all_coord: { label: 'lnAllRecvCoord', color: '#4ade80', icon: <CheckCircle2 size={13} /> },
+  incomplete_line: { label: 'lnIncomplete', color: '#f87171', icon: <AlertTriangle size={13} /> },
   receive_incomplete_line_laquage: {
-    label: 'Ligne incomplète réceptionnée (Laquage)',
-    color: '#3b82f6', icon: <PackageCheck size={13} />,
+    label: 'lnIncRecvLaq',
+    color: '#60a5fa', icon: <PackageCheck size={13} />,
   },
   receive_incomplete_line_coord: {
-    label: 'Ligne incomplète réceptionnée (Coordinateur)',
-    color: '#16a34a', icon: <PackageCheck size={13} />,
+    label: 'lnIncRecvCoord',
+    color: '#4ade80', icon: <PackageCheck size={13} />,
   },
 };
 const RECEPTION_META = {
-  label: 'Réception commande', color: '#16a34a', icon: <PackageCheck size={13} />,
+  label: 'lnOrderReception', color: '#4ade80', icon: <PackageCheck size={13} />,
 };
 function getLaquageMeta(action) {
   if (action.startsWith('receive_line_laquage:'))
-    return { label: 'Ligne réceptionnée (Laquage)', color: '#3b82f6', icon: <PackageCheck size={13} /> };
+    return { label: 'lnLineRecvLaq', color: '#60a5fa', icon: <PackageCheck size={13} /> };
   if (action.startsWith('receive_line_coord:'))
-    return { label: 'Ligne réceptionnée (Coordinateur)', color: '#16a34a', icon: <CheckCircle2 size={13} /> };
+    return { label: 'lnLineRecvCoord', color: '#4ade80', icon: <CheckCircle2 size={13} /> };
   return LAQUAGE_META[action] || { label: action, color: '#9ca3af', icon: <Bell size={13} /> };
 }
 
@@ -76,22 +78,24 @@ function fmtDT(d) {
 
 /* ── Lot pill ─────────────────────────────────────────────────── */
 function LotPill({ lotIndex }) {
+  const { t } = useLanguage();
   if (lotIndex == null) return null;
   return (
     <span style={{
       fontSize: 9, fontWeight: 800, letterSpacing: '.04em',
-      background: '#f0f4ff', color: '#3b5bdb',
-      border: '1px solid #c5d0f5',
+      background: 'rgba(129,140,248,.12)', color: '#a5b4fc',
+      border: '1px solid rgba(129,140,248,.3)',
       borderRadius: 4, padding: '1px 5px', flexShrink: 0,
       display: 'inline-flex', alignItems: 'center', gap: 3,
     }}>
-      <Package size={9} /> Lot {lotIndex + 1}
+      <Package size={9} /> {t('lnLot', { n: lotIndex + 1 })}
     </span>
   );
 }
 
 export default function NotifBell() {
   const { can } = useAuth();
+  const { t } = useLanguage();
   const isAdmin = can('admin.view');
 
   const [events, setEvents] = useState([]);
@@ -135,7 +139,7 @@ export default function NotifBell() {
           at: pr.orderedAt || pr.updatedAt,
           by: pr.orderedBy || 'ACHAT',
           projectName: pr.itemName,
-          projectRef: `Qté : ${pr.quantity}`,
+          projectRef: t('lnQty', { n: pr.quantity }),
           note: pr.note || null,
           _id: pr.id || pr._id,
         }))
@@ -205,7 +209,7 @@ export default function NotifBell() {
 
   const clearAll = async () => {
     if (deleting) return;
-    if (!window.confirm('Supprimer toutes les notifications laquage ?')) return;
+    if (!(await dialog.confirm({ title: t('lnClearTitle'), message: t('lnClearConfirm'), danger: true, confirmLabel: t('lnClearAll') }))) return;
     setDeleting(true);
     try {
       await axios.delete(`${API_URL}/laquage/history-all`);
@@ -223,10 +227,10 @@ export default function NotifBell() {
     const isRead = readIds.has(getNotifId(ev));
     const rowStyle = {
       display: 'flex', gap: 12, padding: '11px 16px',
-      borderBottom: '1px solid #f5f5f5', alignItems: 'flex-start',
-      background: isRead ? 'transparent' : '#fffbf0',
-      borderLeft: isRead ? '3px solid transparent' : '3px solid #f59e0b',
-      opacity: isRead ? 0.72 : 1,
+      borderBottom: '1px solid var(--border)', alignItems: 'flex-start',
+      background: isRead ? 'transparent' : 'rgba(251,191,36,.05)',
+      borderLeft: isRead ? '3px solid transparent' : '3px solid #fbbf24',
+      opacity: isRead ? 0.62 : 1,
       transition: 'background .15s',
     };
 
@@ -234,33 +238,33 @@ export default function NotifBell() {
     if (ev._type === 'purchase') {
       return (
         <div key={`pr-${i}`} className="notif-row" style={rowStyle}>
-          <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#f59e0b18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#f59e0b' }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(251,191,36,.12)', border: '1px solid rgba(251,191,36,.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fbbf24' }}>
             <ShoppingCart size={13} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
-              Commande lancée par ACHAT
-              {isRead && <span style={{ fontSize: 9, fontWeight: 600, color: '#aaa', background: '#f0f0f0', borderRadius: 4, padding: '1px 5px' }}>VU</span>}
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#fcd34d', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+              {t('lnPurchase')}
+              {isRead && <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-3)', background: 'var(--surface-3)', border: '1px solid var(--border-2)', borderRadius: 4, padding: '0 5px' }}>{t('lnSeen')}</span>}
             </div>
-            <div style={{ fontSize: 12, color: '#222', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 12.5, color: 'var(--text)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {ev.projectName}
-              {ev.projectRef && <span style={{ color: '#888', fontWeight: 400 }}> · {ev.projectRef}</span>}
+              {ev.projectRef && <span style={{ color: 'var(--text-3)', fontWeight: 400 }}> · {ev.projectRef}</span>}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#999', marginTop: 2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-3)', marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>
               <Clock size={10} /> {fmtDT(ev.at)}
               {ev.by && ev.by !== '—' && <><span>·</span><span>{ev.by}</span></>}
             </div>
             {ev.note && (
-              <div style={{ fontSize: 11, color: '#555', marginTop: 3, padding: '2px 7px', background: '#f5f5f5', borderRadius: 4 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 5, padding: '3px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6 }}>
                 📝 {ev.note}
               </div>
             )}
           </div>
           {isAdmin && (
-            <button onClick={() => deleteOne(ev)} disabled={deleting} title="Supprimer"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ddd', padding: 2, flexShrink: 0, display: 'flex', alignItems: 'center', marginTop: 2 }}
-              onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
-              onMouseLeave={e => e.currentTarget.style.color = '#ddd'}>
+            <button className="notif-icon-btn notif-del-btn" onClick={() => deleteOne(ev)} disabled={deleting} title={t('delete')}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-4)', padding: 4, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', marginTop: 2 }}
+              onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-4)'}>
               <Trash2 size={12} />
             </button>
           )}
@@ -272,66 +276,66 @@ export default function NotifBell() {
     const meta = ev._type === 'reception' ? RECEPTION_META : getLaquageMeta(ev.action);
     const laqType = ev.laqType || ev.recordType;
     const laqBadge = laqType === 'barres'
-      ? { label: 'BARRES', bg: '#bd5f08', color: '#fff' }
+      ? { label: t('lnBars'), bg: 'rgba(251,146,60,.14)', color: '#fdba74', bd: 'rgba(251,146,60,.35)' }
       : laqType === 'accessoires'
-        ? { label: 'ACC', bg: '#ff0000', color: '#fff' }
+        ? { label: t('lnAcc'), bg: 'rgba(248,113,113,.14)', color: '#fca5a5', bd: 'rgba(248,113,113,.35)' }
         : null;
 
     return (
       <div key={`lq-${i}`} className="notif-row" style={rowStyle}>
-        <div style={{ width: 32, height: 32, borderRadius: '50%', background: meta.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: meta.color }}>
+        <div style={{ width: 32, height: 32, borderRadius: '50%', background: meta.color + '1f', border: '1px solid ' + meta.color + '40', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: meta.color }}>
           {meta.icon}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Action label row: type badge + action name + lot pill + read badge */}
           <div style={{ fontSize: 12, fontWeight: 700, color: meta.color, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
             {laqBadge && (
-              <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.05em', background: laqBadge.bg, color: laqBadge.color, borderRadius: 4, padding: '1px 5px', flexShrink: 0 }}>
+              <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.05em', background: laqBadge.bg, color: laqBadge.color, border: '1px solid ' + laqBadge.bd, borderRadius: 4, padding: '0 5px', flexShrink: 0 }}>
                 {laqBadge.label}
               </span>
             )}
-            {meta.label}
+            {t(meta.label)}
             {/* ← NEW: show which lot this action belongs to */}
             <LotPill lotIndex={ev.lotIndex} />
             {isRead && (
-              <span style={{ fontSize: 9, fontWeight: 600, color: '#aaa', background: '#f0f0f0', borderRadius: 4, padding: '1px 5px' }}>VU</span>
+              <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-3)', background: 'var(--surface-3)', border: '1px solid var(--border-2)', borderRadius: 4, padding: '0 5px' }}>{t('lnSeen')}</span>
             )}
           </div>
 
           {/* Project name + ref */}
           {ev.projectName && (
-            <div style={{ fontSize: 12, color: '#222', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 12.5, color: 'var(--text)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {ev.projectName}
-              {ev.projectRef && <span style={{ color: '#888', fontWeight: 400 }}> · {ev.projectRef}</span>}
+              {ev.projectRef && <span style={{ color: 'var(--text-3)', fontWeight: 400 }}> · {ev.projectRef}</span>}
             </div>
           )}
 
           {/* Time + author */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#999', marginTop: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-3)', marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>
             <Clock size={10} /> {fmtDT(ev.at)}
             {ev.by && ev.by !== '—' && <><span>·</span><span>{ev.by}</span></>}
           </div>
 
           {/* Note (e.g. reception observation) */}
           {ev.note && (
-            <div style={{ fontSize: 11, color: '#555', marginTop: 3, padding: '2px 7px', background: '#f5f5f5', borderRadius: 4 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 5, padding: '3px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6 }}>
               📝 {ev.note}
             </div>
           )}
 
           {/* Partial qty (e.g. received more/less than expected) */}
           {ev.partialQty != null && (
-            <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 2, padding: '2px 7px', background: '#eff6ff', borderRadius: 4 }}>
-              📦 Qté reçue : <strong>{ev.partialQty}</strong>
+            <div style={{ fontSize: 11, color: '#93c5fd', marginTop: 5, padding: '3px 8px', background: 'rgba(96,165,250,.1)', border: '1px solid rgba(96,165,250,.25)', borderRadius: 6 }}>
+              📦 {t('lnQtyReceived')} <strong>{ev.partialQty}</strong>
             </div>
           )}
         </div>
 
         {isAdmin && ev._type === 'laquage' && (
-          <button onClick={() => deleteOne(ev)} disabled={deleting} title="Supprimer"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ddd', padding: 2, flexShrink: 0, display: 'flex', alignItems: 'center', marginTop: 2 }}
-            onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
-            onMouseLeave={e => e.currentTarget.style.color = '#ddd'}>
+          <button className="notif-icon-btn notif-del-btn" onClick={() => deleteOne(ev)} disabled={deleting} title={t('delete')}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-4)', padding: 4, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', marginTop: 2 }}
+            onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-4)'}>
             <Trash2 size={12} />
           </button>
         )}
@@ -341,51 +345,14 @@ export default function NotifBell() {
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
-
-      {/* Bell button */}
-      <button
-        onClick={handleBellClick}
-        title="Notifications"
-        style={{
-          position: 'relative',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 34, height: 34,
-          background: open ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.08)',
-          border: '1px solid rgba(255,255,255,.18)',
-          borderRadius: '50%',
-          cursor: 'pointer', color: '#fff',
-          transition: 'background .15s',
-        }}>
-        <Bell size={16} strokeWidth={2} />
-        {badge > 0 && (
-          <span style={{
-            position: 'absolute', top: -5, right: -5,
-            background: '#dc2626', color: '#fff',
-            fontSize: 10, fontWeight: 800,
-            minWidth: 18, height: 18, borderRadius: 999,
-            padding: '0 4px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            border: '2px solid var(--900, #111)',
-            lineHeight: 1, whiteSpace: 'nowrap', boxSizing: 'border-box',
-            pointerEvents: 'none',
-          }}>
-            {displayBadge}
-          </span>
-        )}
-      </button>
-
-      {/* Dropdown */}
-      {open && (
-        <div className="notif-bell-panel" style={{
-          width: 'min(380px, 92vw)',
-          background: '#fff', borderRadius: 14,
-          boxShadow: '0 16px 60px rgba(0,0,0,.22)',
-          border: '1px solid #e8e8e8',
-          animation: 'notifBellIn .18s ease',
-        }}>
-          <style>{`
+      <style>{`
             @keyframes notifBellIn { from { opacity:0; transform:translateY(-8px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
-            .notif-row:hover { background: #f9f9f9 !important; }
+            .notif-bell-btn, .notif-icon-btn { padding: 0 !important; }
+            .notif-icon-btn:hover { background: var(--surface-2) !important; color: var(--text) !important; }
+            .notif-del-btn:hover { background: var(--danger-bg) !important; color: var(--danger) !important; }
+            .notif-bell-btn:hover { background: var(--surface-3) !important; color: var(--text) !important; }
+            .notif-row:hover { background: var(--surface-2) !important; }
+            .notif-row:last-child { border-bottom: none !important; }
             .notif-bell-panel {
               position: absolute;
               top: calc(100% + 10px);
@@ -407,26 +374,69 @@ export default function NotifBell() {
             }
           `}</style>
 
+      {/* Bell button */}
+      <button
+        className="notif-bell-btn"
+        onClick={handleBellClick}
+        title={t('lnTitle')}
+        style={{
+          position: 'relative',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 36, height: 36, padding: 0,
+          background: open ? 'var(--surface-3)' : 'var(--surface-2)',
+          border: '1px solid ' + (open ? 'var(--400)' : 'var(--border-2)'),
+          borderRadius: '50%',
+          cursor: 'pointer', color: open ? 'var(--text)' : 'var(--text-2)',
+          transition: 'background .15s',
+        }}>
+        <Bell size={16} strokeWidth={2} />
+        {badge > 0 && (
+          <span style={{
+            position: 'absolute', top: -5, right: -5,
+            background: '#dc2626', color: '#fff',
+            fontSize: 10, fontWeight: 800,
+            minWidth: 18, height: 18, borderRadius: 999,
+            padding: '0 4px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: '2px solid var(--bg)',
+            lineHeight: 1, whiteSpace: 'nowrap', boxSizing: 'border-box',
+            pointerEvents: 'none',
+          }}>
+            {displayBadge}
+          </span>
+        )}
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="notif-bell-panel" style={{
+          width: 'min(380px, 92vw)',
+          background: 'var(--surface)', borderRadius: 14,
+          boxShadow: 'var(--sh-xl), inset 0 1px 0 rgba(255,255,255,.04)',
+          border: '1px solid var(--border)',
+          animation: 'notifBellIn .18s ease',
+        }}>
+
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #f0f0f0', background: '#fafafa' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 12px 12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Bell size={15} style={{ color: '#555' }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Notifications</span>
+              <Bell size={15} style={{ color: 'var(--text-3)' }} />
+              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', letterSpacing: '-.01em' }}>{t('lnTitle')}</span>
               {unreadCount > 0 && (
-                <span style={{ fontSize: 10, fontWeight: 700, background: '#dc2626', color: '#fff', borderRadius: 999, padding: '1px 6px' }}>
-                  {unreadCount} non lu{unreadCount > 1 ? 'es' : 'e'}
+                <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--danger-bg)', color: '#fca5a5', border: '1px solid var(--danger-bd)', borderRadius: 999, padding: '0 7px' }}>
+                  {t('lnUnread', { n: unreadCount })}
                 </span>
               )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {isAdmin && hasLaquage && (
-                <button onClick={clearAll} disabled={deleting} title="Effacer historique laquage"
-                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, cursor: 'pointer', color: '#dc2626', fontSize: 11, fontWeight: 600, fontFamily: 'inherit', opacity: deleting ? .5 : 1 }}>
-                  <Trash2 size={11} /> Tout effacer
+                <button onClick={clearAll} disabled={deleting} title={t('lnClearHistory')}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', background: 'transparent', border: '1px solid var(--danger-bd)', borderRadius: 7, cursor: 'pointer', color: 'var(--danger)', fontSize: 11, fontWeight: 600, fontFamily: 'inherit', opacity: deleting ? .5 : 1 }}>
+                  <Trash2 size={11} /> {t('lnClearAll')}
                 </button>
               )}
-              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', display: 'flex', padding: 4 }}>
-                <X size={14} />
+              <button className="notif-icon-btn" onClick={() => setOpen(false)} style={{ background: 'none', border: '1px solid transparent', cursor: 'pointer', color: 'var(--text-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, padding: 0, borderRadius: 7 }}>
+                <X size={15} />
               </button>
             </div>
           </div>
@@ -434,16 +444,19 @@ export default function NotifBell() {
           {/* Event list */}
           <div style={{ maxHeight: 420, overflowY: 'auto' }}>
             {events.length === 0 ? (
-              <div style={{ padding: '36px 16px', textAlign: 'center', color: '#bbb', fontSize: 13 }}>
-                Aucune activité récente
+              <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                <span style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)' }}>
+                  <Bell size={18} />
+                </span>
+                {t('lnNone')}
               </div>
             ) : events.map((ev, i) => renderEvent(ev, i))}
           </div>
 
           {events.length > 0 && (
-            <div style={{ padding: '9px 16px', borderTop: '1px solid #f0f0f0', background: '#fafafa', textAlign: 'center' }}>
-              <span style={{ fontSize: 11, color: '#bbb' }}>
-                {events.length} notification{events.length > 1 ? 's' : ''} · {events.length - unreadCount} lue{events.length - unreadCount !== 1 ? 's' : ''}
+            <div style={{ padding: '9px 16px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', textAlign: 'center' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                {t('lnFooter', { n: events.length, r: events.length - unreadCount })}
               </span>
             </div>
           )}

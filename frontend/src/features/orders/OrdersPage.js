@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import axios from 'axios';
 import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import './OrdersPage.css';
 import { exportOrdersExcel, exportOrderPDF } from '../../utils/orderExport';
-import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus, ClipboardList } from 'lucide-react';
+import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus, ClipboardList, RefreshCw, ZoomIn, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { dialog, errorMessage } from '../../components/common/dialog';
 import { PAGE_PATHS, subPathFromLocation, getQueryParam, setUrl } from '../../routes';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -32,11 +34,11 @@ function writeOrdersCache(userKey, data) {
 }
 
 const STATUS_COLORS = {
-  brouillon: { bg: '#f3f4f6', text: '#374151', label: { fr: 'Brouillon', en: 'Draft', it: 'Bozza' } },
-  envoye: { bg: '#e0e7ff', text: '#3730a3', label: { fr: 'Envoyé', en: 'Sent', it: 'Inviato' } },
-  partielle: { bg: '#dbeafe', text: '#1e40af', label: { fr: 'Partielle', en: 'Partial', it: 'Parziale' } },
-  recue: { bg: '#dcfce7', text: '#166534', label: { fr: 'Reçue', en: 'Received', it: 'Ricevuta' } },
-  annulee: { bg: '#fee2e2', text: '#991b1b', label: { fr: 'Annulée', en: 'Cancelled', it: 'Annullata' } },
+  brouillon: { bg: 'rgba(161,161,170,.12)', text: '#d4d4d8', bd: 'rgba(161,161,170,.3)', label: { fr: 'Brouillon', en: 'Draft', it: 'Bozza' } },
+  envoye: { bg: 'rgba(96,165,250,.12)', text: '#93c5fd', bd: 'rgba(96,165,250,.3)', label: { fr: 'Envoyé', en: 'Sent', it: 'Inviato' } },
+  partielle: { bg: 'rgba(251,191,36,.12)', text: '#fcd34d', bd: 'rgba(251,191,36,.3)', label: { fr: 'Partielle', en: 'Partial', it: 'Parziale' } },
+  recue: { bg: 'rgba(74,222,128,.12)', text: '#86efac', bd: 'rgba(74,222,128,.3)', label: { fr: 'Reçue', en: 'Received', it: 'Ricevuta' } },
+  annulee: { bg: 'rgba(248,113,113,.12)', text: '#fca5a5', bd: 'rgba(248,113,113,.3)', label: { fr: 'Annulée', en: 'Cancelled', it: 'Annullata' } },
 };
 
 const CATEGORY_LABELS = {
@@ -61,21 +63,21 @@ const CATEGORY_RECEIVE_ROLE = {
 
 // ── Suivi des commandes: static option lists ───────────────────────────────
 const FACTURE_OPTIONS = [
-  { value: 'non_recue', label: 'Non reçue' },
-  { value: 'recue', label: 'Reçue' },
+  { value: 'non_recue', label: 'orOptNotReceived' },
+  { value: 'recue', label: 'orOptReceived' },
 ];
 const PAIEMENT_OPTIONS = [
   { value: '', label: '—' },
-  { value: 'espece', label: 'Espèce' },
-  { value: 'virement', label: 'Virement' },
-  { value: 'cheque', label: 'Chèque' },
-  { value: 'effet', label: 'Effet' },
+  { value: 'espece', label: 'orPayCash' },
+  { value: 'virement', label: 'orPayTransfer' },
+  { value: 'cheque', label: 'orPayCheque' },
+  { value: 'effet', label: 'orPayBill' },
 ];
 const TYPE_FACTURE_OPTIONS = [
   { value: '', label: '—' },
   { value: 'bl', label: 'BL' },
-  { value: 'facture', label: 'Facture' },
-  { value: 'situation', label: 'Situation' },
+  { value: 'facture', label: 'orTypeInvoice' },
+  { value: 'situation', label: 'orTypeSituation' },
 ];
 
 export default function OrdersPage() {
@@ -183,7 +185,7 @@ export default function OrdersPage() {
 
   const [deletingPrId, setDeletingPrId] = useState(null);
   const deletePurchaseRequest = async (id) => {
-    if (!window.confirm('Supprimer cette demande ?')) return;
+    if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('orDeleteRequestConfirm'), danger: true, confirmLabel: t('deleteAction') }))) return;
     setDeletingPrId(id);
     try {
       await axios.delete(`${API_URL}/purchase-requests/${id}`);
@@ -237,35 +239,35 @@ export default function OrdersPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Supprimer cette commande ?')) return;
+    if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('orDeleteOrderConfirm'), danger: true, confirmLabel: t('deleteAction') }))) return;
     try {
       await axios.delete(`${API_URL}/orders/${id}`);
       if (selectedOrder?.id === id) closeOrder({ replace: true });
       fetchOrders();
-    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+    } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
   };
 
   const handleSend = async (order) => {
-    if (!window.confirm('Envoyer le bon de commande au fournisseur ?\nUn numéro sera attribué et il ne pourra plus être modifié par le service achat.')) return;
+    if (!(await dialog.confirm({ title: t('orSendConfirmTitle'), message: t('orSendConfirmDetails'), confirmLabel: t('orSend') }))) return;
     setSendingId(order.id);
     try {
       await axios.post(`${API_URL}/orders/${order.id}/send`);
       await fetchOrders();
-    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+    } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
     finally { setSendingId(null); }
   };
 
   const handleCancel = async (order) => {
-    if (!window.confirm('Annuler ce bon de commande ?')) return;
+    if (!(await dialog.confirm({ message: t('orCancelOrderConfirm'), danger: true, confirmLabel: t('orCancelOrderBtn'), cancelLabel: t('close') }))) return;
     try {
       await axios.post(`${API_URL}/orders/${order.id}/cancel`);
       await fetchOrders();
-    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+    } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
   };
 
   const handleReceive = async () => {
     if (!receiveModal) return;
-    if (!receiveBlNumber.trim()) { alert('Le numéro de BL est requis'); return; }
+    if (!receiveBlNumber.trim()) { await dialog.alert(t('orBlRequired')); return; }
     try {
       await axios.patch(`${API_URL}/orders/${receiveModal.order.id}/receive`, {
         lineId: receiveModal.line._id || receiveModal.line.id,
@@ -275,43 +277,72 @@ export default function OrdersPage() {
       fetchOrders();
       setReceiveModal(null);
       setReceiveBlNumber('');
-    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+    } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
+  };
+
+  // Send a reception correction; if part of the stock was already used, the server answers 409 →
+  // ask for confirmation and send again with force (stock then goes down to 0, never negative)
+  const sendWithStockCheck = async (request) => {
+    try {
+      await request(false);
+    } catch (e) {
+      const data = e.response?.data || {};
+      if (e.response?.status === 409 && data.code === 'INSUFFICIENT_STOCK') {
+        const ok = await dialog.confirm({
+          message: data.error,
+          details: `${t('orStockContinue')}\n${t('orStockWillGo', { available: data.available, missing: data.needed - data.available })}`,
+          danger: true,
+        });
+        if (!ok) return false;
+        await request(true);
+      } else throw e;
+    }
+    return true;
   };
 
   // Cancel a reception entered by mistake (stock + line reverted), then receive again correctly
   const handleCancelReception = async (order, rec, itemName) => {
-    const answer = window.prompt(
-      `Annuler cette réception ?\n${itemName} : +${rec.quantityReceived} · BL ${rec.blNumber}\n\n` +
-      `La quantité sera retirée du stock et de la ligne. Vous pourrez ensuite réceptionner la bonne quantité.\n\nMotif (optionnel) :`,
-      ''
-    );
+    const answer = await dialog.prompt({
+      title: t('orCancelReceptionTitle'),
+      message: `${t('orReceptionSummary', { name: itemName, qty: rec.quantityReceived, bl: rec.blNumber })}\n\n${t('orCancelReceptionDetails')}`,
+      label: t('optionalReason'),
+      defaultValue: '',
+    });
     if (answer === null) return;
     try {
-      await axios.post(`${API_URL}/orders/${order.id}/receptions/${rec._id || rec.id}/cancel`, { note: answer });
-      await fetchOrders();
-    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+      const done = await sendWithStockCheck(force =>
+        axios.post(`${API_URL}/orders/${order.id}/receptions/${rec._id || rec.id}/cancel`, { note: answer, force }));
+      if (done) await fetchOrders();
+    } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
   };
 
   // Correct the quantity of a reception (e.g. 100 entered, 90 really received): only the difference is applied
   const handleAdjustReception = async (order, rec, itemName) => {
-    const answer = window.prompt(
-      `Ajuster cette réception ?\n${itemName} · BL ${rec.blNumber}\nQuantité actuelle : ${rec.quantityReceived}\n\n` +
-      `Nouvelle quantité réellement reçue :`,
-      String(rec.quantityReceived)
-    );
+    const answer = await dialog.prompt({
+      title: t('orAdjustReceptionTitle'),
+      message: t('orAdjustReceptionMsg', { name: itemName, bl: rec.blNumber, qty: rec.quantityReceived }),
+      label: t('orNewQtyReceived'),
+      defaultValue: String(rec.quantityReceived),
+    });
     if (answer === null) return;
     const quantity = Number(String(answer).replace(',', '.'));
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      alert('Quantité invalide. Pour tout retirer, utilisez « Annuler ».');
+      await dialog.alert(t('orInvalidQtyUseCancel'));
       return;
     }
     if (quantity === rec.quantityReceived) return;
-    const note = window.prompt(`${rec.quantityReceived} → ${quantity}\n\nMotif (optionnel) :`, '');
+    const note = await dialog.prompt({
+      title: t('orAdjustReceptionTitle'),
+      message: `${rec.quantityReceived} → ${quantity}`,
+      label: t('optionalReason'),
+      defaultValue: '',
+    });
     if (note === null) return;
     try {
-      await axios.patch(`${API_URL}/orders/${order.id}/receptions/${rec._id || rec.id}`, { quantity, note });
-      await fetchOrders();
-    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+      const done = await sendWithStockCheck(force =>
+        axios.patch(`${API_URL}/orders/${order.id}/receptions/${rec._id || rec.id}`, { quantity, note, force }));
+      if (done) await fetchOrders();
+    } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
   };
 
   // Close a line that will never be fully delivered (e.g. 198 / 200): the rest leaves "quantité commandée"
@@ -319,19 +350,21 @@ export default function OrdersPage() {
     let note = '';
     if (closed) {
       const rest = line.quantityOrdered - (line.quantityReceived || 0);
-      const answer = window.prompt(
-        `Clôturer cette ligne ?\nReçu ${line.quantityReceived || 0} / ${line.quantityOrdered} — les ${rest} restant(s) ne seront jamais livrés et sortiront de la quantité commandée.\n\nMotif (optionnel) :`,
-        ''
-      );
+      const answer = await dialog.prompt({
+        title: t('orCloseLineTitle'),
+        message: t('orCloseLineMsg', { received: line.quantityReceived || 0, ordered: line.quantityOrdered, rest }),
+        label: t('optionalReason'),
+        defaultValue: '',
+      });
       if (answer === null) return;
       note = answer;
-    } else if (!window.confirm('Rouvrir cette ligne ? Le reste à livrer sera de nouveau compté dans la quantité commandée.')) {
+    } else if (!(await dialog.confirm({ message: t('orReopenLineConfirm'), confirmLabel: t('orReopen') }))) {
       return;
     }
     try {
       await axios.patch(`${API_URL}/orders/${order.id}/lines/${line._id || line.id}/close`, { closed, note });
       await fetchOrders();
-    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+    } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
   };
 
   const openReceive = (order, line) => {
@@ -381,11 +414,11 @@ export default function OrdersPage() {
     try {
       const company = companies.find(c => c.id === (order.companyId?.id || order.companyId?._id)) || null;
       await exportOrderPDF(order, lang, company);
-    } catch (e) { console.error(e); alert('Erreur export PDF'); }
+    } catch (e) { console.error(e); await dialog.alert(t('orExportPdfError')); }
     finally { setExportingPdf(null); }
   };
 
-  const orderTitle = (o) => o.number || o.reference || (o.status === 'brouillon' ? 'Brouillon' : '—');
+  const orderTitle = (o) => o.number || o.reference || (o.status === 'brouillon' ? t('orDraft') : '—');
 
   // ── Detail view ──────────────────────────────────────────────────
   if (selectedOrder) {
@@ -411,7 +444,7 @@ export default function OrdersPage() {
           <div className="od-toolbar__actions">
             <button
               className="od-btn"
-              title="Exporter en PDF"
+              title={t('orExportPdf')}
               onClick={() => handleExportPDF(order)}
               disabled={exportingPdf === order.id}
             >
@@ -422,33 +455,33 @@ export default function OrdersPage() {
             {canSendOrder(order) && (
               <button className="od-btn od-btn--send" onClick={() => handleSend(order)} disabled={sendingId === order.id}>
                 {sendingId === order.id ? <LoaderCircle size={15} className="od-spin" /> : <Send size={15} />}
-                <span className="od-btn__label">Envoyer</span>
+                <span className="od-btn__label">{t('orSend')}</span>
               </button>
             )}
 
             {canEditOrder(order) ? (
               <button className="od-btn" title={t('edit')} onClick={() => { setEditOrder(order); setShowForm(true); }}>
                 <Pencil size={15} />
-                <span className="od-btn__label">Modifier</span>
+                <span className="od-btn__label">{t('edit')}</span>
               </button>
             ) : locked && (
-              <span className="od-btn od-btn--locked" title="Verrouillé — admin uniquement">
+              <span className="od-btn od-btn--locked" title={t('orLockedTitle')}>
                 <Lock size={14} />
-                <span className="od-btn__label">Verrouillé</span>
+                <span className="od-btn__label">{t('orLocked')}</span>
               </span>
             )}
 
             {canCancelOrder(order) && (
-              <button className="od-btn od-btn--warn" title="Annuler le bon de commande" onClick={() => handleCancel(order)}>
+              <button className="od-btn od-btn--warn" title={t('orCancelOrderTitle')} onClick={() => handleCancel(order)}>
                 <Ban size={15} />
-                <span className="od-btn__label">Annuler le BC</span>
+                <span className="od-btn__label">{t('orCancelOrderBtn')}</span>
               </button>
             )}
 
             {canDeleteOrder(order) && (
               <button className="od-btn od-btn--danger" title={t('delete')} onClick={() => handleDelete(order.id)}>
                 <Trash2 size={15} />
-                <span className="od-btn__label">Supprimer</span>
+                <span className="od-btn__label">{t('delete')}</span>
               </button>
             )}
           </div>
@@ -458,29 +491,29 @@ export default function OrdersPage() {
         <div className="od-header">
           <div className="od-header__top">
             <h1 className="od-header__ref">{orderTitle(order)}</h1>
-            <span className="status-badge status-badge--lg" style={{ background: st.bg, color: st.text }}>
+            <span className="status-badge status-badge--lg" style={{ background: st.bg, color: st.text, borderColor: st.bd }}>
               {st.label[lang] || st.label.fr}
             </span>
           </div>
           <div className="od-header__meta">
             {order.companyId && (
-              <span className="order-company-badge od-header__company" style={order.companyId.color ? { background: order.companyId.color } : undefined}>
+              <span className="order-company-badge od-header__company" style={order.companyId.color ? { '--co': order.companyId.color } : undefined}>
                 {order.companyId.name}
               </span>
             )}
             {(order.supplierId?.name || order.supplier) && (
               <span className="od-header__supplier">{order.supplierId?.name || order.supplier}</span>
             )}
-            <span className="od-header__chip" title="Date de commande">
+            <span className="od-header__chip" title={t('orOrderDate')}>
               <Calendar size={13} /> {new Date(order.orderDate).toLocaleDateString('fr-FR')}
             </span>
             {order.expectedDate && (
-              <span className="od-header__chip" title="Date de livraison prévue">
+              <span className="od-header__chip" title={t('orExpectedDate')}>
                 <CalendarClock size={13} /> {new Date(order.expectedDate).toLocaleDateString('fr-FR')}
               </span>
             )}
             {order.sentAt && (
-              <span className="od-header__chip" title="Envoyé au fournisseur">
+              <span className="od-header__chip" title={t('orSentToSupplier')}>
                 <Send size={12} /> {new Date(order.sentAt).toLocaleDateString('fr-FR')}{order.sentBy ? ` · ${order.sentBy}` : ''}
               </span>
             )}
@@ -490,19 +523,19 @@ export default function OrdersPage() {
               <div style={{ width: `${progress}%` }} />
             </div>
             <div className="od-header__progress-label">
-              <strong>{totalReceived}</strong> / {totalOrdered} articles reçus <span>({progress}%)</span>
+              <strong>{totalReceived}</strong> / {totalOrdered} {t('orArticlesReceived')} <span>({progress}%)</span>
             </div>
           </div>
         </div>
 
         {order.notes && (
           <div className="order-detail-notes">
-            <strong>Notes :</strong> {order.notes}
+            <strong>{t('orNotesColon')}</strong> {order.notes}
           </div>
         )}
 
         <div className="order-detail-lines">
-          <h2 className="order-detail-lines-title">Articles commandés</h2>
+          <h2 className="order-detail-lines-title">{t('orOrderedItems')}</h2>
           {(order.lines || []).map((line, idx) => {
             const item = line.itemId;
             const received = line.quantityReceived || 0;
@@ -514,66 +547,69 @@ export default function OrdersPage() {
               <div key={idx} className={`order-detail-line ${isComplete ? 'line-complete' : ''}`}>
                 <div className="detail-line-image">
                   {item?.image
-                    ? <img loading="lazy" decoding="async" src={item.image} alt={item.designation?.[lang] || ''} />
+                    ? <ZoomableImg src={item.image} alt={item.designation?.[lang] || ''} />
                     : <div className="detail-line-no-image"><Package size={15} /></div>
                   }
                 </div>
                 <div className="detail-line-body">
                   <div className="detail-line-name">
                     {item
-                      ? (item.designation?.[lang] || item.designation?.fr || item.designation?.it || item.designation?.en || item.codeInterne || 'Article sans désignation')
-                      : 'Article supprimé'}
+                      ? (item.designation?.[lang] || item.designation?.fr || item.designation?.it || item.designation?.en || item.codeInterne || t('orItemNoDesignation'))
+                      : t('orItemDeleted')}
                   </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '2px 0' }}>
-                    {item?.codeInterne && <span className="detail-line-code">Int: {item.codeInterne}</span>}
-                    {codeFour && <span className="detail-line-code">Fourn: {codeFour}</span>}
+                  <div className="detail-line-codes">
+                    {item?.codeInterne && <span className="detail-line-code">{t('orCodeIntShort', { code: item.codeInterne })}</span>}
+                    {codeFour && <span className="detail-line-code">{t('orCodeSupShort', { code: codeFour })}</span>}
                   </div>
-                  {item?.categoryId && (
-                    <span className="detail-line-cat" style={{ background: item.categoryId.color }}>
-                      {item.categoryId.name?.[lang] || item.categoryId.name?.fr}
-                    </span>
-                  )}
-                  {line.unitPrice > 0 && (
-                    <span className="detail-line-price">{line.unitPrice.toFixed(2)} /u</span>
-                  )}
+                  <div className="detail-line-tags">
+                    {item?.categoryId && (
+                      <span className="detail-line-cat">
+                        <span className="detail-line-cat__dot" style={{ background: item.categoryId.color || 'var(--500)' }} />
+                        {item.categoryId.name?.[lang] || item.categoryId.name?.fr}
+                      </span>
+                    )}
+                    {line.unitPrice > 0 && (
+                      <span className="detail-line-price">{line.unitPrice.toFixed(2)} /u</span>
+                    )}
+                  </div>
                   {line.note && <p className="detail-line-note">📝 {line.note}</p>}
                 </div>
                 <div className="detail-line-qty-block">
                   <div className="detail-line-qty-bar">
-                    <div className="detail-line-qty-fill" style={{ width: `${linePct}%`, background: isComplete ? '#16a34a' : '#2563eb' }} />
+                    <div className={`detail-line-qty-fill ${isComplete ? 'detail-line-qty-fill--done' : 'detail-line-qty-fill--open'}`} style={{ width: `${linePct}%` }} />
                   </div>
                   <div className="detail-line-qty-text">
                     {received} / {line.quantityOrdered}
                     {isComplete && <span className="line-check"> ✓</span>}
                   </div>
                   {line.closed && (
-                    <div className="detail-line-closed" style={{ fontSize: 11, color: '#92400e', marginTop: 2 }}
-                      title={[line.closedBy && `Par ${line.closedBy}`, line.closedAt && new Date(line.closedAt).toLocaleString('fr-FR'), line.closedNote].filter(Boolean).join(' — ')}>
-                      Clôturée ({line.quantityOrdered - received} non livré{line.quantityOrdered - received > 1 ? 's' : ''})
+                    <div className="detail-line-closed"
+                      title={[line.closedBy && t('orByCap', { by: line.closedBy }), line.closedAt && new Date(line.closedAt).toLocaleString('fr-FR'), line.closedNote].filter(Boolean).join(' — ')}>
+                      {t(line.quantityOrdered - received > 1 ? 'orLineClosedMany' : 'orLineClosedOne', { n: line.quantityOrdered - received })}
                       {line.closedNote && <> · {line.closedNote}</>}
                     </div>
                   )}
                   {line.closed && isAdmin && order.status !== 'annulee' && (
-                    <button type="button" className="btn-link" style={{ fontSize: 11, marginTop: 2, background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0 }}
+                    <button type="button" className="btn-link detail-line-reopen"
                       onClick={() => handleCloseLine(order, line, false)}>
-                      Rouvrir
+                      {t('orReopen')}
                     </button>
                   )}
                 </div>
                 {!isComplete && order.status !== 'annulee' && order.status !== 'brouillon' && (
                   canReceiveOrder(order) ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div className="detail-line-actions">
                       <button className="btn-receive" onClick={() => openReceive(order, line)}>
-                        Réceptionner
+                        {t('orReceive')}
                       </button>
-                      <button type="button" className="btn-receive" style={{ background: '#fff', color: '#92400e', border: '1px solid #f59e0b' }}
-                        title="Le reste ne sera jamais livré : clôturer la ligne"
+                      <button type="button" className="btn-receive btn-receive--ghost"
+                        title={t('orCloseLineHint')}
                         onClick={() => handleCloseLine(order, line)}>
-                        Clôturer
+                        {t('orCloseLine')}
                       </button>
                     </div>
                   ) : (
-                    <span className="bc-lock" title={`Réservé au rôle ${CATEGORY_RECEIVE_ROLE[order.category] || ''}`}>
+                    <span className="bc-lock" title={t('orReservedRole', { role: CATEGORY_RECEIVE_ROLE[order.category] || '' })}>
                       <Lock size={12} /> {CATEGORY_RECEIVE_ROLE[order.category]}
                     </span>
                   )
@@ -607,7 +643,7 @@ export default function OrdersPage() {
           return (
             <div className="order-receptions">
               <h2 className="order-detail-lines-title">
-                Historique des réceptions
+                {t('orReceptionHistory')}
                 <span className="order-receptions__count">{groups.length} BL</span>
               </h2>
               {groups.map(g => {
@@ -625,9 +661,9 @@ export default function OrdersPage() {
                       </div>
                       <div className="reception-bl__meta">
                         <span><Calendar size={12} /> {fmtDate(g.receivedAt)}</span>
-                        {g.receivedBy.size > 0 && <span>par <strong>{[...g.receivedBy].join(', ')}</strong></span>}
+                        {g.receivedBy.size > 0 && <span>{t('orBy')} <strong>{[...g.receivedBy].join(', ')}</strong></span>}
                         <span className="reception-bl__chip">
-                          {activeRecs.length} article{activeRecs.length > 1 ? 's' : ''} · {totalQty} pcs
+                          {t(activeRecs.length > 1 ? 'orArticleMany' : 'orArticleOne', { n: activeRecs.length })} · {totalQty} {t('orPcs')}
                         </span>
                       </div>
                     </div>
@@ -637,26 +673,26 @@ export default function OrdersPage() {
                           l => (l._id || l.id)?.toString() === rec.lineId?.toString()
                         );
                         const item = line?.itemId;
-                        const name = item?.designation?.[lang] || item?.designation?.fr || item?.codeInterne || 'Article';
+                        const name = item?.designation?.[lang] || item?.designation?.fr || item?.codeInterne || t('orArticle');
                         return (
                           <div key={idx} className={`reception-row ${rec.cancelled ? 'reception-row--cancelled' : ''}`}>
                             <div className="reception-row__thumb">
-                              {item?.image ? <img loading="lazy" decoding="async" src={item.image} alt="" /> : <Package size={14} />}
+                              {item?.image ? <ZoomableImg src={item.image} alt={name} /> : <Package size={14} />}
                             </div>
                             <div className="reception-row__name" title={name}>
                               {name}
                               {item?.codeInterne && <span className="reception-row__code">{item.codeInterne}</span>}
                               {(rec.adjustments || []).map((a, ai) => (
                                 <div key={ai} className="reception-row__adjust-info">
-                                  Ajustée {a.from} → {a.to}{a.by && ` par ${a.by}`}
-                                  {a.at && ` le ${fmtDate(a.at)}`}
+                                  {t('orAdjusted', { from: a.from, to: a.to })}{a.by && ` ${t('orByName', { by: a.by })}`}
+                                  {a.at && ` ${t('orOnDate', { date: fmtDate(a.at) })}`}
                                   {a.note && ` — ${a.note}`}
                                 </div>
                               ))}
                               {rec.cancelled && (
                                 <div className="reception-row__cancel-info">
-                                  Annulée{rec.cancelledBy && ` par ${rec.cancelledBy}`}
-                                  {rec.cancelledAt && ` le ${fmtDate(rec.cancelledAt)}`}
+                                  {t('orCancelledF')}{rec.cancelledBy && ` ${t('orByName', { by: rec.cancelledBy })}`}
+                                  {rec.cancelledAt && ` ${t('orOnDate', { date: fmtDate(rec.cancelledAt) })}`}
                                   {rec.cancelNote && ` — ${rec.cancelNote}`}
                                 </div>
                               )}
@@ -674,14 +710,14 @@ export default function OrdersPage() {
                               {!rec.cancelled && order.status !== 'annulee' && canReceiveOrder(order) && (
                                 <>
                                   <button type="button" className="reception-row__adjust"
-                                    title="Erreur de quantité : corriger la quantité reçue"
+                                    title={t('orAdjustHint')}
                                     onClick={() => handleAdjustReception(order, rec, name)}>
-                                    Ajuster
+                                    {t('orAdjust')}
                                   </button>
                                   <button type="button" className="reception-row__cancel"
-                                    title="Erreur de saisie : annuler cette réception"
+                                    title={t('orCancelReceptionHint')}
                                     onClick={() => handleCancelReception(order, rec, name)}>
-                                    Annuler
+                                    {t('cancel')}
                                   </button>
                                 </>
                               )}
@@ -699,9 +735,9 @@ export default function OrdersPage() {
 
         {/* Totals */}
         <div className="order-detail-totals">
-          <div className="order-detail-totals__row"><span>Total HT</span><strong>{totalHT.toFixed(2)}</strong></div>
-          <div className="order-detail-totals__row"><span>TVA ({tvaRate}%)</span><strong>{(totalHT * tvaRate / 100).toFixed(2)}</strong></div>
-          <div className="order-detail-totals__row order-detail-totals__ttc"><span>Total TTC</span><strong>{ttc.toFixed(2)}</strong></div>
+          <div className="order-detail-totals__row"><span>{t('orTotalHT')}</span><strong>{totalHT.toFixed(2)}</strong></div>
+          <div className="order-detail-totals__row"><span>{t('orVatRate', { rate: tvaRate })}</span><strong>{(totalHT * tvaRate / 100).toFixed(2)}</strong></div>
+          <div className="order-detail-totals__row order-detail-totals__ttc"><span>{t('orTotalTTC')}</span><strong>{ttc.toFixed(2)}</strong></div>
         </div>
 
         {receiveModal && (
@@ -768,14 +804,14 @@ export default function OrdersPage() {
               onClick={() => changeTab('suivi')}
             >
               <ClipboardList size={13} />
-              Suivi des commandes
+              {t('orTracking')}
             </button>
           )}
 
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="super-cat-settings-btn" title='Excel' onClick={() => exportOrdersExcel(filteredOrders, lang)}>
-            <Sheet size={15} color='GREEN' />
+        <div className="orders-header__actions">
+          <button className="orders-icon-btn orders-icon-btn--excel" title='Excel' onClick={() => exportOrdersExcel(filteredOrders, lang)}>
+            <Sheet size={16} />
           </button>
           {can('orders.edit') && (
             <button className="btn-primary" onClick={() => { setEditOrder(null); setShowForm(true); }}>
@@ -804,15 +840,15 @@ export default function OrdersPage() {
         <>
           <div className="orders-stats">
             {[
-              { label: 'Total', value: stats.total, color: '#6b7280' },
-              { label: 'Brouillons', value: stats.brouillon, color: '#6b7280' },
-              { label: 'Envoyés', value: stats.envoye, color: '#4f46e5' },
-              { label: 'Partielles', value: stats.partielle, color: '#2563eb' },
-              { label: 'Reçues', value: stats.recue, color: '#16a34a' },
+              { label: 'orStatTotal', value: stats.total, color: '#f4f4f5' },
+              { label: 'orStatDrafts', value: stats.brouillon, color: '#a1a1aa' },
+              { label: 'orStatSent', value: stats.envoye, color: '#93c5fd' },
+              { label: 'orStatPartial', value: stats.partielle, color: '#fcd34d' },
+              { label: 'orStatReceived', value: stats.recue, color: '#86efac' },
             ].map(s => (
-              <div key={s.label} className="orders-stat-card" style={{ borderLeftColor: s.color }}>
-                <span className="stat-value" style={{ color: s.color }}>{s.value}</span>
-                <span className="stat-label">{s.label}</span>
+              <div key={s.label} className="orders-stat-card" style={{ '--accent': s.color }}>
+                <span className="stat-value">{s.value}</span>
+                <span className="stat-label">{t(s.label)}</span>
               </div>
             ))}
           </div>
@@ -820,7 +856,7 @@ export default function OrdersPage() {
           <div className="orders-controls">
             <input
               className="search-input"
-              placeholder="Rechercher (n° BC, fournisseur, article, notes…)"
+              placeholder={t('orSearchPlaceholder')}
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
@@ -831,7 +867,7 @@ export default function OrdersPage() {
                   className={`filter-tab ${filterStatus === s ? 'active' : ''}`}
                   onClick={() => setFilterStatus(s)}
                 >
-                  {s === 'all' ? 'Toutes' : STATUS_COLORS[s]?.label?.fr}
+                  {s === 'all' ? t('orAll') : (STATUS_COLORS[s]?.label?.[lang] || STATUS_COLORS[s]?.label?.fr)}
                 </button>
               ))}
             </div>
@@ -861,25 +897,20 @@ export default function OrdersPage() {
                       <div className="order-card-header">
                         <div className="order-card-title">
                           <h3>{orderTitle(order)}</h3>
-                          {order.status === 'brouillon' && <span className="bc-draft-tag">Brouillon</span>}
                           {order.companyId && <span className="order-company-badge">{order.companyId.name}</span>}
                           {(order.supplierId?.name || order.supplier) && <span className="order-supplier">— {order.supplierId?.name || order.supplier}</span>}
                           {(order.categories || []).length > 0 && (
-                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                            <div className="order-card-cats">
                               {order.categories.map(cat => (
-                                <span
-                                  key={cat}
-                                  className="order-company-badge"
-                                  style={{ background: '#f0f9ff', color: '#0369a1', fontSize: 11 }}
-                                >
-                                  {CATEGORY_LABELS[cat]?.fr || cat}
+                                <span key={cat} className="order-cat-badge">
+                                  {CATEGORY_LABELS[cat]?.[lang] || CATEGORY_LABELS[cat]?.fr || cat}
                                 </span>
                               ))}
                             </div>
                           )}
                         </div>
                         <div className="order-card-meta">
-                          <span className="status-badge" style={{ background: st.bg, color: st.text }}>
+                          <span className="status-badge" style={{ background: st.bg, color: st.text, borderColor: st.bd }}>
                             {st.label[lang] || st.label.fr}
                           </span>
                           <span className="order-date">{new Date(order.orderDate).toLocaleDateString('fr-FR')}</span>
@@ -891,7 +922,7 @@ export default function OrdersPage() {
                         <div className="order-progress-fill" style={{ width: `${progress}%` }} />
                       </div>
                       <div className="order-progress-label">
-                        {totalReceived} / {totalOrdered} articles reçus ({progress}%)
+                        {totalReceived} / {totalOrdered} {t('orArticlesReceived')} ({progress}%)
                       </div>
 
                       <div className="order-card-thumbs">
@@ -899,7 +930,7 @@ export default function OrdersPage() {
                           <div key={idx} className="order-card-thumb" title={line.itemId?.designation?.[lang] || ''}>
                             {line.itemId?.image
                               ? <img loading="lazy" decoding="async" src={line.itemId.image} alt="" />
-                              : <span>📦</span>
+                              : <Package size={15} />
                             }
                           </div>
                         ))}
@@ -912,9 +943,9 @@ export default function OrdersPage() {
 
                       <div className="order-card-footer">
                         <span className="order-card-lines-count">
-                          {(order.lines || []).length} article{(order.lines || []).length !== 1 ? 's' : ''}
+                          {t((order.lines || []).length !== 1 ? 'orArticleMany' : 'orArticleOne', { n: (order.lines || []).length })}
                         </span>
-                        <span className="order-card-open-hint">Voir détails →</span>
+                        <span className="order-card-open-hint">{t('orSeeDetails')}</span>
                       </div>
                     </div>
                   );
@@ -922,27 +953,12 @@ export default function OrdersPage() {
               </div>
 
               {hasMoreOrders && (
-                <div style={{
-                  textAlign: 'center',
-                  padding: '30px 20px',
-                  marginTop: 20,
-                  borderTop: '1px solid #e5e7eb'
-                }}>
+                <div className="orders-load-more">
                   <button
                     onClick={() => setDisplayCount(prev => prev + 10)}
-                    className="btn-primary"
-                    style={{
-                      padding: '12px 24px',
-                      fontSize: 14,
-                      background: '#3b82f6',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 8,
-                      cursor: 'pointer',
-                      fontWeight: 600
-                    }}
+                    className="od-btn"
                   >
-                    📥 Charger 10 autres commandes ({displayCount} / {filteredOrders.length})
+                    {t('orLoadMore', { shown: displayCount, total: filteredOrders.length })}
                   </button>
                 </div>
               )}
@@ -985,18 +1001,18 @@ export default function OrdersPage() {
 
 /* ── Receive Modal (shared between list & detail view) ──────────── */
 function ReceiveModal({ receiveModal, receiveQty, lang, setReceiveQty, blNumber, setBlNumber, onConfirm, onClose }) {
+  const { t } = useLanguage();
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, padding: 28 }}>
-        <h2 style={{ marginBottom: 8 }}>Réceptionner des articles</h2>
-        <p style={{ color: '#555', marginBottom: 16 }}>
+      <div className="modal modal--receive" onClick={e => e.stopPropagation()}>
+        <h2>{t('orReceiveTitle')}</h2>
+        <div className="or-modal-sub">
           <strong>{receiveModal.line.itemId?.designation?.[lang] || receiveModal.line.itemId?.designation?.fr}</strong>
-        </p>
-        <p style={{ fontSize: '0.88rem', color: '#888', marginBottom: 20 }}>
-          Déjà reçu : {receiveModal.line.quantityReceived || 0} / {receiveModal.line.quantityOrdered}
-        </p>
+          {t('orAlreadyReceived', { received: receiveModal.line.quantityReceived || 0, ordered: receiveModal.line.quantityOrdered })}
+        </div>
         <div className="form-group">
-          <label>Quantité totale reçue (cumulative)</label>
+          <label>{t('orTotalQtyReceived')}</label>
+          <div className="or-qty-row">
           <input
             type="number"
             min={receiveModal.line.quantityReceived || 0}
@@ -1004,30 +1020,29 @@ function ReceiveModal({ receiveModal, receiveQty, lang, setReceiveQty, blNumber,
             value={receiveQty}
             onChange={e => setReceiveQty(e.target.value)}
             autoFocus
-            style={{ width: 120 }}
           />
-          <span style={{ marginLeft: 8, fontSize: '0.85rem', color: '#888' }}>
+          <span>
             / {receiveModal.line.quantityOrdered}
           </span>
+          </div>
         </div>
         <div className="form-group">
-          <label>N° de BL de réception *</label>
+          <label>{t('orBlNumberLabel')}</label>
           <input
             type="text"
-            placeholder="ex: BL-2026-00458"
+            placeholder={t('orBlPlaceholder')}
             value={blNumber}
             onChange={e => setBlNumber(e.target.value)}
           />
         </div>
-        <div className="modal-actions" style={{ marginTop: 20 }}>
-          <button onClick={onClose}>Annuler</button>
+        <div className="modal-actions">
+          <button onClick={onClose}>{t('cancel')}</button>
           <button
-            className="primary"
+            className="primary or-confirm-receive"
             onClick={onConfirm}
             disabled={Number(receiveQty) <= (receiveModal.line.quantityReceived || 0) || !blNumber.trim()}
-            style={{ background: '#16a34a' }}
           >
-            ✓ Confirmer réception
+            {t('orConfirmReception')}
           </button>
         </div>
       </div>
@@ -1037,6 +1052,7 @@ function ReceiveModal({ receiveModal, receiveQty, lang, setReceiveQty, blNumber,
 
 /* ── Supplier (Fournisseur) Modal ──────────────────────────────── */
 function SupplierModal({ onClose, onSaved }) {
+  const { t } = useLanguage();
   const [form, setForm] = useState({ name: '', code: '', contact: '', phone: '', email: '', address: '', city: '', ice: '', rc: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -1044,36 +1060,36 @@ function SupplierModal({ onClose, onSaved }) {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim()) { setError('Le nom est requis'); return; }
+    if (!form.name.trim()) { setError(t('orNameRequired')); return; }
     setSaving(true); setError('');
     try {
       const r = await axios.post(`${API_URL}/fournisseurs`, form);
       onSaved(r.data);
-    } catch (err) { setError(err.response?.data?.error || 'Erreur'); }
+    } catch (err) { setError(errorMessage(err, t('dlgError'))); }
     finally { setSaving(false); }
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1100 }}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
-        <h2 style={{ marginBottom: 14 }}>Nouveau fournisseur</h2>
+    <div className="modal-overlay modal-overlay--top" onClick={onClose}>
+      <div className="modal modal--supplier" onClick={e => e.stopPropagation()}>
+        <h2>{t('orNewSupplier')}</h2>
         <form onSubmit={submit}>
           <div className="form-grid-2">
-            <div className="form-group"><label>Nom *</label><input value={form.name} onChange={set('name')} autoFocus /></div>
-            <div className="form-group"><label>Code fournisseur</label><input value={form.code} onChange={set('code')} /></div>
-            <div className="form-group"><label>Contact</label><input value={form.contact} onChange={set('contact')} /></div>
-            <div className="form-group"><label>Téléphone</label><input value={form.phone} onChange={set('phone')} /></div>
-            <div className="form-group"><label>Email</label><input type="email" value={form.email} onChange={set('email')} /></div>
-            <div className="form-group"><label>Ville</label><input value={form.city} onChange={set('city')} /></div>
+            <div className="form-group"><label>{t('orNameReq')}</label><input value={form.name} onChange={set('name')} autoFocus /></div>
+            <div className="form-group"><label>{t('orSupplierCode')}</label><input value={form.code} onChange={set('code')} /></div>
+            <div className="form-group"><label>{t('orContact')}</label><input value={form.contact} onChange={set('contact')} /></div>
+            <div className="form-group"><label>{t('orPhone')}</label><input value={form.phone} onChange={set('phone')} /></div>
+            <div className="form-group"><label>{t('orEmail')}</label><input type="email" value={form.email} onChange={set('email')} /></div>
+            <div className="form-group"><label>{t('orCity')}</label><input value={form.city} onChange={set('city')} /></div>
             <div className="form-group"><label>ICE</label><input value={form.ice} onChange={set('ice')} /></div>
             <div className="form-group"><label>RC</label><input value={form.rc} onChange={set('rc')} /></div>
           </div>
-          <div className="form-group"><label>Adresse</label><input value={form.address} onChange={set('address')} /></div>
-          <div className="form-group"><label>Notes</label><textarea rows={2} value={form.notes} onChange={set('notes')} /></div>
+          <div className="form-group"><label>{t('orAddress')}</label><input value={form.address} onChange={set('address')} /></div>
+          <div className="form-group"><label>{t('orNotes')}</label><textarea rows={2} value={form.notes} onChange={set('notes')} /></div>
           {error && <div className="form-error">{error}</div>}
           <div className="modal-actions">
-            <button type="button" onClick={onClose}>Annuler</button>
-            <button type="submit" className="primary" disabled={saving}>{saving ? '…' : 'Créer le fournisseur'}</button>
+            <button type="button" onClick={onClose}>{t('cancel')}</button>
+            <button type="submit" className="primary" disabled={saving}>{saving ? '…' : t('orCreateSupplier')}</button>
           </div>
         </form>
       </div>
@@ -1082,10 +1098,47 @@ function SupplierModal({ onClose, onSaved }) {
 }
 
 /* ── Order Form ─────────────────────────────────────────────────── */
+/* ── Image Preview Modal (fullscreen, same as Inventory) ───── */
+function ImagePreviewModal({ src, alt, onClose }) {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return ReactDOM.createPortal(
+    <div className="modal-overlay image-preview-overlay" onClick={onClose}>
+      <div className="image-preview-modal" onClick={e => e.stopPropagation()}>
+        <button type="button" className="image-preview-close" onClick={onClose}>
+          <XCircle size={22} strokeWidth={2} />
+        </button>
+        <img src={src} alt={alt} className="image-preview-img" />
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* Image that opens the fullscreen preview on click (manages its own modal) */
+function ZoomableImg({ src, alt = '', className = '' }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <img
+        loading="lazy" decoding="async" src={src} alt={alt}
+        className={`${className} zoomable-img`.trim()}
+        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+      />
+      {open && <ImagePreviewModal src={src} alt={alt} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
 function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onSupplierAdded, lang, isAdmin, onClose, onSave }) {
   const { t } = useLanguage();
   const today = new Date().toISOString().split('T')[0];
   const [showSupplierModal, setShowSupplierModal] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
 
   // Build super-categories and category maps from items list
   const superCatMap = {};
@@ -1152,7 +1205,9 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
   const updateLineFilter = (idx, field, val) => {
     setLineFilters(f => f.map((lf, i) => i === idx ? { ...lf, [field]: val } : lf));
 
-    // Auto-select when the new filter narrows results to exactly one item
+    // Keep the selected article in sync with what the dropdown shows: if the current article is no
+    // longer in the filtered list, select the first match (a <select> whose value is not among its
+    // options DISPLAYS the first option but keeps the old value → the wrong article was saved)
     if (field === 'search' || field === 'superCat' || field === 'category') {
       const nextFilters = lineFilters.map((lf, i) => i === idx ? { ...lf, [field]: val } : lf);
       const lf = nextFilters[idx];
@@ -1171,7 +1226,8 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
         }
         return true;
       });
-      if (lf.search && matches.length === 1) {
+      const currentId = String(form.lines[idx]?.itemId || '');
+      if (matches.length > 0 && !matches.some(m => String(m.id) === currentId)) {
         updateLine(idx, 'itemId', matches[0].id);
       }
     }
@@ -1196,8 +1252,10 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
   };
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.lines.length === 0) { alert('Ajoutez au moins une ligne'); return; }
-    if (form.categories.length === 0) { alert('Sélectionnez au moins une catégorie'); return; }
+    if (form.lines.length === 0) { await dialog.alert({ variant: 'warning', message: t('orAddOneLine') }); return; }
+    const missing = form.lines.findIndex(l => !l.itemId || !items.some(it => String(it.id) === String(l.itemId)));
+    if (itemsLoaded && missing !== -1) { await dialog.alert({ variant: 'warning', message: t('orLineChooseItem', { n: missing + 1 }) }); return; }
+    if (form.categories.length === 0) { await dialog.alert({ variant: 'warning', message: t('orSelectOneCategory') }); return; }
     try {
       if (order) {
         await axios.put(`${API_URL}/orders/${order.id}`, form);
@@ -1205,56 +1263,37 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
         await axios.post(`${API_URL}/orders`, form);
       }
       onSave();
-    } catch (e) { alert(e.response?.data?.error || 'Erreur'); }
+    } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal xlarge" onClick={e => e.stopPropagation()}>
-        <h2>{order ? `Modifier ${order.number || 'le brouillon'}` : t('orderNew')}</h2>
+        <h2>{order ? t('orEditOrder', { name: order.number || t('orTheDraft') }) : t('orderNew')}</h2>
         {isLocked && (
-          <div className="order-detail-notes" style={{ marginBottom: 14 }}>
-            ⚠️ Bon de commande déjà envoyé — modification réservée à l'administrateur.
+          <div className="order-detail-notes">
+            {t('orAlreadySentWarn')}
           </div>
         )}
         <form onSubmit={handleSubmit}>
           <div className="form-grid-2">
             <div className="form-group">
-              <label>Société *</label>
+              <label>{t('orCompanyReq')}</label>
               <select required value={form.companyId} onChange={e => setForm(f => ({ ...f, companyId: e.target.value }))}>
-                <option value="">Choisir…</option>
+                <option value="">{t('orChoose')}</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            <div className="form-group">
-              <label>Catégories *</label>
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-                padding: '8px 0'
-              }}>
+            <div className="form-group or-cat-group">
+              <label>{t('orCategoriesReq')}</label>
+              <div className="or-cat-grid">
                 {Object.entries(CATEGORY_LABELS).map(([key, label]) => {
                   const isChecked = form.categories.includes(key);
                   const isDisabled = isLocked && !isAdmin;
                   return (
                     <label
                       key={key}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '10px 12px',
-                        margin: 0,
-                        fontSize: 13,
-                        fontWeight: 500,
-                        borderRadius: 6,
-                        cursor: isDisabled ? 'not-allowed' : 'pointer',
-                        background: isChecked ? '#dbeafe' : '#f9fafb',
-                        border: isChecked ? '1px solid #0369a1' : '1px solid #e5e7eb',
-                        transition: 'all 0.15s ease',
-                        opacity: isDisabled ? 0.6 : 1,
-                      }}
+                      className={`or-cat-option${isChecked ? ' is-checked' : ''}${isDisabled ? ' is-disabled' : ''}`}
                     >
                       <input
                         type="checkbox"
@@ -1267,93 +1306,84 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
                           }
                         }}
                         disabled={isDisabled}
-                        style={{
-                          cursor: isDisabled ? 'not-allowed' : 'pointer',
-                          width: 18,
-                          height: 18,
-                          accentColor: '#0369a1'
-                        }}
                       />
-                      <span style={{ flex: 1 }}>{label.fr}</span>
-                      {isChecked && (
-                        <span style={{ fontSize: 12, color: '#0369a1', fontWeight: 600 }}>✓</span>
-                      )}
+                      <span>{label[lang] || label.fr}</span>
                     </label>
                   );
                 })}
               </div>
               {form.categories.length === 0 && (
-                <p style={{ fontSize: 12, color: '#dc2626', margin: '8px 0 0' }}>
-                  ⚠️ Sélectionnez au moins une catégorie
+                <p className="or-field-hint or-field-hint--err">
+                  {t('orSelectOneCategory')}
                 </p>
               )}
               {form.categories.length > 0 && (
-                <p style={{ fontSize: 12, color: '#059669', margin: '8px 0 0' }}>
-                  ✓ {form.categories.length} catégorie{form.categories.length > 1 ? 's' : ''} sélectionnée{form.categories.length > 1 ? 's' : ''}
+                <p className="or-field-hint or-field-hint--ok">
+                  {t(form.categories.length > 1 ? 'orCatSelectedMany' : 'orCatSelectedOne', { n: form.categories.length })}
                 </p>
               )}
             </div>
             <div className="form-group">
-              <label>Référence interne</label>
-              <input type="text" placeholder="(facultatif)" value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} />
+              <label>{t('orInternalRef')}</label>
+              <input type="text" placeholder={t('orOptional')} value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label>Numéro BC</label>
+              <label>{t('orBcNumber')}</label>
               <input
                 type="text"
-                placeholder="Laissez vide pour attribution auto à l'envoi"
+                placeholder={t('orBcNumberPlaceholder')}
                 value={form.number}
                 onChange={e => setForm(f => ({ ...f, number: e.target.value }))}
                 disabled={isLocked && !isAdmin}
               />
               {isLocked && isAdmin && (
-                <p style={{ fontSize: 11, color: '#b45309', marginTop: 4 }}>
-                  ⚠️ Modification du numéro sur un bon déjà envoyé — action réservée à l'administrateur.
+                <p className="or-field-hint or-field-hint--warn">
+                  {t('orBcNumberAdminWarn')}
                 </p>
               )}
             </div>
             <div className="form-group">
-              <label>Fournisseur</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <select value={form.supplierId} onChange={e => setForm(f => ({ ...f, supplierId: e.target.value }))} style={{ flex: 1 }}>
-                  <option value="">— Choisir —</option>
+              <label>{t('orSupplier')}</label>
+              <div className="or-supplier-row">
+                <select value={form.supplierId} onChange={e => setForm(f => ({ ...f, supplierId: e.target.value }))}>
+                  <option value="">{t('orChooseDash')}</option>
                   {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ''}</option>)}
                 </select>
-                <button type="button" className="btn-add-line" onClick={() => setShowSupplierModal(true)} title="Ajouter un fournisseur">
+                <button type="button" className="btn-add-line" onClick={() => setShowSupplierModal(true)} title={t('orAddSupplier')}>
                   <Plus size={14} />
                 </button>
               </div>
             </div>
             <div className="form-group">
-              <label>Date de commande *</label>
+              <label>{t('orOrderDate')} *</label>
               <input required type="date" value={form.orderDate} onChange={e => setForm(f => ({ ...f, orderDate: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label>Date prévue de livraison</label>
+              <label>{t('orExpectedDateLabel')}</label>
               <input type="date" value={form.expectedDate} onChange={e => setForm(f => ({ ...f, expectedDate: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label>TVA (%)</label>
+              <label>{t('orVatPct')}</label>
               <input type="number" min={0} step="0.1" value={form.tva} onChange={e => setForm(f => ({ ...f, tva: Number(e.target.value) }))} />
             </div>
           </div>
 
           <div className="form-group">
-            <label>Notes</label>
+            <label>{t('orNotes')}</label>
             <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
           </div>
 
           <div className="order-lines-section">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <h3 style={{ margin: 0 }}>Articles commandés</h3>
+            <div className="order-lines-head">
+              <h3>{t('orOrderedItems')}</h3>
               <button type="button" className="btn-add-line" onClick={addLine} disabled={!itemsLoaded}>
-                {itemsLoaded ? '+ Ajouter ligne' : 'Chargement des articles…'}
+                {itemsLoaded ? t('orAddLine') : t('orLoadingItems')}
               </button>
             </div>
 
             {form.lines.length === 0 && (
-              <p style={{ color: '#888', textAlign: 'center', padding: 16 }}>
-                Aucune ligne. Cliquez sur "+ Ajouter ligne"
+              <p className="order-lines-empty">
+                {t('orNoLines')}
               </p>
             )}
 
@@ -1371,7 +1401,7 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
                       value={lf.superCat}
                       onChange={e => updateLineFilter(idx, 'superCat', e.target.value)}
                     >
-                      <option value="">Toutes super-catégories</option>
+                      <option value="">{t('orAllSuperCats')}</option>
                       {superCats.map(sc => (
                         <option key={sc.key} value={sc.key}>{sc.label}</option>
                       ))}
@@ -1383,7 +1413,7 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
                         value={lf.category}
                         onChange={e => updateLineFilter(idx, 'category', e.target.value)}
                       >
-                        <option value="">Toutes catégories</option>
+                        <option value="">{t('superCatAll')}</option>
                         {scCategories.map(cat => (
                           <option key={cat.id} value={cat.id}>{cat.name}</option>
                         ))}
@@ -1393,7 +1423,7 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
                     <input
                       className="line-filter-search"
                       type="text"
-                      placeholder="Rechercher (nom ou code interne)…"
+                      placeholder={t('orSearchItemPlaceholder')}
                       value={lf.search}
                       onChange={e => updateLineFilter(idx, 'search', e.target.value)}
                     />
@@ -1402,19 +1432,33 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
                   <div className="order-line-main">
                     <div className="line-item-selector">
                       {selectedItem?.image && (
-                        <img loading="lazy" decoding="async" className="line-item-preview" src={selectedItem.image} alt="" />
+                        <button
+                          type="button"
+                          className="line-item-preview-btn"
+                          onClick={() => setPreviewImage({ src: selectedItem.image, alt: selectedItem.designation?.[lang] || '' })}
+                        >
+                          <img loading="lazy" decoding="async" className="line-item-preview" src={selectedItem.image} alt="" />
+                          <span className="line-item-zoom"><ZoomIn size={16} strokeWidth={2} /></span>
+                        </button>
                       )}
                       {!selectedItem?.image && (
-                        <div className="line-item-preview line-item-preview--placeholder">📦</div>
+                        <div className="line-item-preview line-item-preview--placeholder"><Package size={16} /></div>
                       )}
-                      <div className="form-group" style={{ flex: 1, margin: 0 }}>
-                        <label>Article</label>
+                      <div className="form-group">
+                        <label>{t('orArticle')}</label>
                         <select
                           value={line.itemId}
                           onChange={e => updateLine(idx, 'itemId', e.target.value)}
                         >
-                          {filteredForLine.length === 0 && (
-                            <option value="">Aucun article trouvé</option>
+                          {/* The saved article is always shown, even when the search hides it,
+                              so what is displayed is always what will be saved */}
+                          {selectedItem && !filteredForLine.some(it => String(it.id) === String(selectedItem.id)) && (
+                            <option value={selectedItem.id}>
+                              {selectedItem.codeInterne ? `[${selectedItem.codeInterne}] ` : ''}{selectedItem.designation?.[lang] || selectedItem.designation?.fr} {t('orSelected')}
+                            </option>
+                          )}
+                          {!selectedItem && (
+                            <option value="">{filteredForLine.length === 0 ? t('orNoItemFound') : t('orChooseItem')}</option>
                           )}
                           {filteredForLine.map(it => (
                             <option key={it.id} value={it.id}>
@@ -1425,8 +1469,8 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
                       </div>
                     </div>
 
-                    <div className="form-group" style={{ flex: '0 0 90px' }}>
-                      <label>Qté</label>
+                    <div className="form-group order-line-qty">
+                      <label>{t('orQty')}</label>
                       <input
                         type="number"
                         min={1}
@@ -1435,8 +1479,8 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
                       />
                     </div>
 
-                    <div className="form-group" style={{ flex: '0 0 110px' }}>
-                      <label>Prix unit.</label>
+                    <div className="form-group order-line-price">
+                      <label>{t('orUnitPrice')}</label>
                       <input
                         type="number"
                         min={0}
@@ -1449,11 +1493,11 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
                     <button type="button" className="btn-remove-line" onClick={() => removeLine(idx)}>×</button>
                   </div>
 
-                  <div className="form-group" style={{ margin: '8px 0 0' }}>
-                    <label>Note de ligne</label>
+                  <div className="form-group order-line-note">
+                    <label>{t('orLineNote')}</label>
                     <input
                       type="text"
-                      placeholder="Remarque spécifique à cet article…"
+                      placeholder={t('orLineNotePlaceholder')}
                       value={line.note}
                       onChange={e => updateLine(idx, 'note', e.target.value)}
                     />
@@ -1464,9 +1508,9 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
           </div>
 
           <div className="modal-actions">
-            <button type="button" onClick={onClose}>Annuler</button>
+            <button type="button" onClick={onClose}>{t('cancel')}</button>
             <button type="submit" className="primary">
-              {order ? 'Mettre à jour' : 'Créer le brouillon'}
+              {order ? t('update') : t('orCreateDraft')}
             </button>
           </div>
         </form>
@@ -1475,6 +1519,14 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
           <SupplierModal
             onClose={() => setShowSupplierModal(false)}
             onSaved={(s) => { onSupplierAdded(s); setForm(f => ({ ...f, supplierId: s.id })); setShowSupplierModal(false); }}
+          />
+        )}
+
+        {previewImage && (
+          <ImagePreviewModal
+            src={previewImage.src}
+            alt={previewImage.alt}
+            onClose={() => setPreviewImage(null)}
           />
         )}
       </div>
@@ -1488,6 +1540,7 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
    Admin sees full history (pending + done).
 ────────────────────────────────────────────────────────────────────────── */
 function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMarkOrdered, onDelete, onRefresh, isAdmin, lang }) {
+  const { t } = useLanguage();
   const [filter, setFilter] = useState('pending'); // 'pending' | 'all'
 
   const visible = filter === 'pending'
@@ -1503,9 +1556,9 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
 
   if (loading) {
     return (
-      <div style={{ padding: '60px 20px', textAlign: 'center', color: '#888' }}>
-        <LoaderCircle size={24} style={{ animation: 'spin .7s linear infinite' }} />
-        <p style={{ marginTop: 8 }}>Chargement des demandes…</p>
+      <div className="orders-loading">
+        <LoaderCircle size={22} />
+        <p>{t('orLoadingRequests')}</p>
       </div>
     );
   }
@@ -1515,50 +1568,50 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
       <div className="pr-panel__header">
         <div className="pr-panel__title">
           <ShoppingCart size={16} />
-          <span>Demandes de commande</span>
+          <span>{t('orPurchaseRequests')}</span>
           {pendingCount > 0 && (
-            <span className="pr-badge">{pendingCount} en attente</span>
+            <span className="pr-badge">{t('orNPending', { n: pendingCount })}</span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="pr-panel__tools">
           <div className="pr-filter-tabs">
             <button
               className={`pr-filter-tab ${filter === 'pending' ? 'active' : ''}`}
               onClick={() => setFilter('pending')}
             >
-              <Clock size={11} /> En attente
+              <Clock size={11} /> {t('orPending')}
             </button>
             <button
               className={`pr-filter-tab ${filter === 'all' ? 'active' : ''}`}
               onClick={() => setFilter('all')}
             >
-              Tout voir
+              {t('orSeeAll')}
             </button>
           </div>
-          <button className="pr-refresh-btn" onClick={onRefresh} title="Rafraîchir">
-            🔄
+          <button className="pr-refresh-btn orders-icon-btn orders-icon-btn--sm" onClick={onRefresh} title={t('orRefresh')}>
+            <RefreshCw size={14} />
           </button>
         </div>
       </div>
 
       {visible.length === 0 ? (
         <div className="pr-empty">
-          <ShoppingCart size={36} strokeWidth={1} style={{ color: '#ccc' }} />
-          <p>{filter === 'pending' ? 'Aucune demande en attente.' : 'Aucune demande trouvée.'}</p>
+          <span className="pr-empty__icon"><ShoppingCart size={20} /></span>
+          <p>{filter === 'pending' ? t('orNoPendingRequests') : t('orNoRequests')}</p>
         </div>
       ) : (
         <div className="pr-table-wrap">
           <table className="pr-table">
             <thead>
               <tr>
-                <th style={{ width: 52 }}>Image</th>
-                <th>Article</th>
-                <th>Qté demandée</th>
-                <th>Note</th>
-                <th>Demandé par</th>
-                <th>Date</th>
-                <th>Statut</th>
-                <th style={{ width: 140 }}>Action</th>
+                <th style={{ width: 60 }}>{t('image')}</th>
+                <th>{t('orArticle')}</th>
+                <th>{t('orQtyRequested')}</th>
+                <th>{t('orNote')}</th>
+                <th>{t('orRequestedBy')}</th>
+                <th>{t('orDate')}</th>
+                <th>{t('orStatus')}</th>
+                <th style={{ width: 140 }}>{t('orAction')}</th>
                 {isAdmin && <th style={{ width: 44 }}></th>}
               </tr>
             </thead>
@@ -1567,35 +1620,37 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
                 <tr key={req.id || req._id} className={`pr-row pr-row--${req.status}`}>
                   <td>
                     {req.itemImage
-                      ? <img loading="lazy" decoding="async" src={req.itemImage} alt={req.itemName} style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 6, border: '1px solid #e8e8e8', background: '#fff' }} />
-                      : <span style={{ color: '#ccc', fontSize: 11 }}>—</span>
+                      ? <ZoomableImg src={req.itemImage} alt={req.itemName} className="pr-img" />
+                      : <span className="pr-faint">—</span>
                     }
                   </td>
                   <td>
-                    <strong style={{ fontSize: 13 }}>{req.itemName || '—'}</strong>
+                    <strong className="pr-strong">{req.itemName || '—'}</strong>
                   </td>
                   <td>
-                    <span style={{ fontWeight: 700, fontSize: 15 }}>{req.quantity}</span>
+                    <span className="pr-qty">{req.quantity}</span>
                   </td>
                   <td>
-                    <span style={{ fontSize: 12, color: '#555' }}>{req.note || <span style={{ color: '#ccc' }}>—</span>}</span>
+                    <span className="pr-muted">{req.note || <span className="pr-faint">—</span>}</span>
                   </td>
                   <td>
-                    <span style={{ fontSize: 12, fontWeight: 600 }}>{req.requestedBy || 'Admin'}</span>
+                    <span className="pr-strong">{req.requestedBy || 'Admin'}</span>
                   </td>
                   <td>
-                    <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>{fmtDate(req.createdAt)}</span>
+                    <span className="pr-date">{fmtDate(req.createdAt)}</span>
                   </td>
                   <td>
                     {req.status === 'pending' ? (
                       <span className="pr-status pr-status--pending">
-                        <Clock size={10} /> En attente
+                        <Clock size={10} /> {t('orPending')}
                       </span>
                     ) : (
-                      <span className="pr-status pr-status--done">
-                        <CheckCheck size={10} /> Commandé
-                        {req.orderedAt && <><br /><span style={{ fontSize: 10, color: '#666' }}>{fmtDate(req.orderedAt)}</span></>}
-                      </span>
+                      <>
+                        <span className="pr-status pr-status--done">
+                          <CheckCheck size={10} /> {t('orOrdered')}
+                        </span>
+                        {req.orderedAt && <span className="pr-status-date">{fmtDate(req.orderedAt)}</span>}
+                      </>
                     )}
                   </td>
                   <td>
@@ -1606,32 +1661,25 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
                         onClick={() => onMarkOrdered(req.id || req._id)}
                       >
                         {markingId === (req.id || req._id)
-                          ? <LoaderCircle size={12} style={{ animation: 'spin .7s linear infinite' }} />
+                          ? <LoaderCircle size={12} className="od-spin" />
                           : <CheckCheck size={13} />
                         }
-                        Marquer commandé
+                        {t('orMarkOrdered')}
                       </button>
                     ) : (
-                      <span style={{ fontSize: 11, color: '#aaa' }}>Traité</span>
+                      <span className="pr-date">{t('orProcessed')}</span>
                     )}
                   </td>
                   {isAdmin && (
                     <td style={{ textAlign: 'center' }}>
                       <button
-                        title="Supprimer"
+                        className="pr-del-btn"
+                        title={t('delete')}
                         disabled={deletingId === (req.id || req._id)}
                         onClick={() => onDelete(req.id || req._id)}
-                        style={{
-                          background: 'none', border: 'none', cursor: 'pointer',
-                          color: '#ddd', padding: 4, borderRadius: 4,
-                          display: 'inline-flex', alignItems: 'center',
-                          transition: 'color .15s',
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
-                        onMouseLeave={e => e.currentTarget.style.color = '#ddd'}
                       >
                         {deletingId === (req.id || req._id)
-                          ? <LoaderCircle size={13} style={{ animation: 'spin .7s linear infinite' }} />
+                          ? <LoaderCircle size={13} className="od-spin" />
                           : <Trash2 size={13} />
                         }
                       </button>
@@ -1661,6 +1709,7 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
    editable and persisted.
 ────────────────────────────────────────────────────────────────────────── */
 function SuiviCommandesPanel() {
+  const { t, currentLanguage: lang } = useLanguage();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState(null);
@@ -1692,7 +1741,7 @@ function SuiviCommandesPanel() {
       });
     } catch (e) {
       console.error(e);
-      alert('Erreur lors de la sauvegarde');
+      dialog.alert(t('errSave'));
       fetchRows();
     } finally { setSavingKey(null); }
   };
@@ -1714,9 +1763,9 @@ function SuiviCommandesPanel() {
 
   if (loading) {
     return (
-      <div style={{ padding: '60px 20px', textAlign: 'center', color: '#888' }}>
-        <LoaderCircle size={24} style={{ animation: 'spin .7s linear infinite' }} />
-        <p style={{ marginTop: 8 }}>Chargement du suivi…</p>
+      <div className="orders-loading">
+        <LoaderCircle size={22} />
+        <p>{t('orLoadingTracking')}</p>
       </div>
     );
   }
@@ -1726,68 +1775,70 @@ function SuiviCommandesPanel() {
       <div className="pr-panel__header">
         <div className="pr-panel__title">
           <ClipboardList size={16} />
-          <span>Suivi des commandes</span>
-          <span className="pr-badge" style={{ background: '#eef2ff', color: '#3730a3' }}>
-            {visibleRows.length} ligne{visibleRows.length !== 1 ? 's' : ''}
+          <span>{t('orTracking')}</span>
+          <span className="pr-badge pr-badge--neutral">
+            {t(visibleRows.length !== 1 ? 'orLineMany' : 'orLineOne', { n: visibleRows.length })}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="pr-panel__tools">
           <div className="pr-filter-tabs">
             <button
               className={`pr-filter-tab ${factureFilter === 'all' ? 'active' : ''}`}
               onClick={() => setFactureFilter('all')}
             >
-              Toutes
+              {t('orAll')}
             </button>
             <button
               className={`pr-filter-tab ${factureFilter === 'non_recue' ? 'active' : ''}`}
               onClick={() => setFactureFilter('non_recue')}
             >
-              Facture non reçue
+              {t('orInvoiceNotReceived')}
             </button>
             <button
               className={`pr-filter-tab ${factureFilter === 'recue' ? 'active' : ''}`}
               onClick={() => setFactureFilter('recue')}
             >
-              Facture reçue
+              {t('orInvoiceReceived')}
             </button>
           </div>
-          <button className="pr-refresh-btn" onClick={fetchRows} title="Rafraîchir">
-            🔄
+          <button className="pr-refresh-btn orders-icon-btn orders-icon-btn--sm" onClick={fetchRows} title={t('orRefresh')}>
+            <RefreshCw size={14} />
           </button>
         </div>
       </div>
 
-      <div className="orders-controls" style={{ marginBottom: 12 }}>
-        <input
-          className="search-input"
-          placeholder="Rechercher (fournisseur, n° BC, n° BL, remarque…)"
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-        />
+      <div className="pr-search">
+        <div className="orders-controls">
+          <input
+            className="search-input"
+            placeholder={t('orTrackingSearchPlaceholder')}
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
+        </div>
       </div>
 
       {visibleRows.length === 0 ? (
         <div className="pr-empty">
-          <ClipboardList size={36} strokeWidth={1} style={{ color: '#ccc' }} />
-          <p>Aucune commande à afficher.</p>
+          <span className="pr-empty__icon"><ClipboardList size={20} /></span>
+          <p>{t('orNoOrdersToShow')}</p>
         </div>
       ) : (
         <div className="pr-table-wrap">
           <table className="pr-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Fournisseur</th>
-                <th>N° BC</th>
+                <th>{t('orDate')}</th>
+                <th>{t('orSupplier')}</th>
+                <th>{t('orBcNo')}</th>
                 <th>BL</th>
-                <th>Montant BC</th>
-                <th>Montant BL</th>
-                <th>Facture</th>
-                <th>Mode paiement</th>
-                <th>Type facture</th>
-                <th>État commande</th>
-                <th style={{ minWidth: 180 }}>Remarque</th>
+                <th>{t('orAmountBC')}</th>
+                <th>{t('orAmountBL')}</th>
+                <th>{t('orInvoice')}</th>
+                <th>{t('orPaymentMode')}</th>
+                <th>{t('orInvoiceType')}</th>
+                <th>{t('orOrderState')}</th>
+                <th style={{ minWidth: 180 }}>{t('orRemark')}</th>
               </tr>
             </thead>
             <tbody>
@@ -1797,31 +1848,26 @@ function SuiviCommandesPanel() {
                 const saving = savingKey === key;
                 return (
                   <tr key={key}>
-                    <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
+                    <td className="pr-date">
                       {new Date(row.date).toLocaleDateString('fr-FR')}
                     </td>
-                    <td style={{ fontSize: 13, fontWeight: 600 }}>{row.supplierName || '—'}</td>
-                    <td style={{ fontSize: 13 }}>{row.orderNumber || '—'}</td>
-                    <td style={{ fontSize: 13 }}>
+                    <td className="pr-strong">{row.supplierName || '—'}</td>
+                    <td className="pr-num">{row.orderNumber || '—'}</td>
+                    <td className="pr-num">
                       {row.blNumber
                         ? <strong>{row.blNumber}</strong>
-                        : <span style={{ color: '#aaa' }}>En attente</span>}
+                        : <span className="pr-faint">{t('orPending')}</span>}
                     </td>
-                    <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{row.montantBC.toFixed(2)}</td>
-                    <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{row.montantBL.toFixed(2)}</td>
+                    <td className="pr-num pr-strong">{row.montantBC.toFixed(2)}</td>
+                    <td className="pr-num pr-strong">{row.montantBL.toFixed(2)}</td>
                     <td>
                       <select
                         value={row.factureStatus}
                         disabled={saving}
                         onChange={e => updateField(row, 'factureStatus', e.target.value)}
-                        style={{
-                          fontSize: 12, padding: '3px 6px', borderRadius: 6,
-                          border: '1px solid #ddd',
-                          background: row.factureStatus === 'recue' ? '#dcfce7' : '#fee2e2',
-                          color: row.factureStatus === 'recue' ? '#166534' : '#991b1b',
-                        }}
+                        className={`pr-cell-input ${row.factureStatus === 'recue' ? 'pr-cell-input--ok' : 'pr-cell-input--ko'}`}
                       >
-                        {FACTURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {FACTURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
                       </select>
                     </td>
                     <td>
@@ -1829,9 +1875,9 @@ function SuiviCommandesPanel() {
                         value={row.modePaiement}
                         disabled={saving}
                         onChange={e => updateField(row, 'modePaiement', e.target.value)}
-                        style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: '1px solid #ddd' }}
+                        className="pr-cell-input"
                       >
-                        {PAIEMENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {PAIEMENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
                       </select>
                     </td>
                     <td>
@@ -1839,14 +1885,14 @@ function SuiviCommandesPanel() {
                         value={row.typeFacture}
                         disabled={saving}
                         onChange={e => updateField(row, 'typeFacture', e.target.value)}
-                        style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: '1px solid #ddd' }}
+                        className="pr-cell-input"
                       >
-                        {TYPE_FACTURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {TYPE_FACTURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
                       </select>
                     </td>
                     <td>
-                      <span className="status-badge" style={{ background: st.bg, color: st.text, fontSize: 11, whiteSpace: 'nowrap' }}>
-                        {st.label.fr}
+                      <span className="status-badge" style={{ background: st.bg, color: st.text, borderColor: st.bd }}>
+                        {st.label[lang] || st.label.fr}
                       </span>
                     </td>
                     <td>
@@ -1856,7 +1902,7 @@ function SuiviCommandesPanel() {
                         placeholder="—"
                         disabled={saving}
                         onBlur={e => { if (e.target.value !== row.remarque) updateField(row, 'remarque', e.target.value); }}
-                        style={{ fontSize: 12, padding: '4px 6px', width: '100%', border: '1px solid #ddd', borderRadius: 6 }}
+                        className="pr-cell-input pr-cell-input--wide"
                       />
                     </td>
                   </tr>
@@ -1865,11 +1911,11 @@ function SuiviCommandesPanel() {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={4} style={{ textAlign: 'right', fontWeight: 700, fontSize: 12, padding: '10px 12px' }}>
-                  Totaux (lignes affichées) :
+                <td colSpan={4} className="pr-totals-label">
+                  {t('orTotalsShown')}
                 </td>
-                <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{totals.bc.toFixed(2)}</td>
-                <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{totals.bl.toFixed(2)}</td>
+                <td className="pr-num">{totals.bc.toFixed(2)}</td>
+                <td className="pr-num">{totals.bl.toFixed(2)}</td>
                 <td colSpan={5}></td>
               </tr>
             </tfoot>

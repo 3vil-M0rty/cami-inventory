@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { Flame } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -9,6 +10,7 @@ const ROLE_LAQUAGE = 'Laquage';
 /* ── FourStatus — thermolaquage furnace on/off indicator ── */
 export default function FourStatus() {
     const { user } = useAuth();
+    const { t } = useLanguage();
     const userRole =
         (typeof user?.role === 'string' ? user.role : user?.role?.name) ||
         user?.roleName || '';
@@ -50,12 +52,8 @@ export default function FourStatus() {
             <button
                 onClick={canToggle ? toggle : undefined}
                 disabled={saving || loading}
-                aria-label={isOn ? 'Four allumé — cliquer pour éteindre' : 'Four éteint — cliquer pour allumer'}
-                title={
-                    isOn
-                        ? 'Four thermolaquage — Allumé'
-                        : 'Four thermolaquage — Éteint'
-                }
+                aria-label={isOn ? t('fsOnAria') : t('fsOffAria')}
+                title={isOn ? t('fsOn') : t('fsOff')}
                 style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -63,12 +61,13 @@ export default function FourStatus() {
                     gap: 5,
                     background: isOn
                         ? 'linear-gradient(135deg, rgba(251,113,12,.25) 0%, rgba(239,68,68,.18) 100%)'
-                        : 'rgba(255,255,255,.07)',
+                        : 'var(--surface-2)',
                     border: isOn
-                        ? '1.5px solid rgba(251,113,12,.55)'
-                        : '1.5px solid rgba(255,255,255,.14)',
+                        ? '1px solid rgba(251,113,12,.55)'
+                        : '1px solid var(--border-2)',
                     borderRadius: 999,
-                    padding: '5px 11px 5px 8px',
+                    height: 36,
+                    padding: '0 12px 0 10px',
                     cursor: canToggle && !saving ? 'pointer' : 'default',
                     transition: 'all .22s cubic-bezier(.4,0,.2,1)',
                     outline: 'none',
@@ -76,7 +75,7 @@ export default function FourStatus() {
                     /* glow when on */
                     boxShadow: isOn
                         ? '0 0 12px rgba(251,113,12,.35), inset 0 1px 0 rgba(255,255,255,.08)'
-                        : 'inset 0 1px 0 rgba(255,255,255,.06)',
+                        : 'none',
                 }}
             >
                 {/* Flame icon */}
@@ -85,7 +84,7 @@ export default function FourStatus() {
                         size={15}
                         strokeWidth={2}
                         style={{
-                            color: isOn ? '#fb7312' : 'rgba(255,255,255,.35)',
+                            color: isOn ? '#fb923c' : 'var(--text-3)',
                             transition: 'color .22s, filter .22s',
                             filter: isOn
                                 ? 'drop-shadow(0 0 4px rgba(251,113,12,.7))'
@@ -116,7 +115,7 @@ export default function FourStatus() {
                         width: 6,
                         height: 6,
                         borderRadius: '50%',
-                        background: isOn ? '#4ade80' : 'rgba(255,255,255,.2)',
+                        background: isOn ? '#4ade80' : 'var(--400)',
                         boxShadow: isOn ? '0 0 6px #4ade80' : 'none',
                         transition: 'all .22s',
                         flexShrink: 0,
@@ -127,7 +126,7 @@ export default function FourStatus() {
                         fontWeight: 700,
                         letterSpacing: '.06em',
                         textTransform: 'uppercase',
-                        color: isOn ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.35)',
+                        color: isOn ? 'var(--text)' : 'var(--text-3)',
                         transition: 'color .22s',
                         whiteSpace: 'nowrap',
                     }}>
@@ -140,37 +139,37 @@ export default function FourStatus() {
             {tooltip && (
                 <div style={{
                     position: 'absolute',
-                    bottom: 'calc(100% + 8px)',
+                    top: 'calc(100% + 8px)',
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    background: '#1a1a2e',
-                    color: '#fff',
+                    background: 'var(--surface-3)',
+                    color: 'var(--text)',
                     fontSize: 11,
                     fontWeight: 600,
                     padding: '6px 10px',
                     borderRadius: 7,
                     whiteSpace: 'nowrap',
-                    boxShadow: '0 4px 14px rgba(0,0,0,.4)',
-                    border: '1px solid rgba(255,255,255,.1)',
+                    boxShadow: 'var(--sh-lg)',
+                    border: '1px solid var(--border-2)',
                     pointerEvents: 'none',
                     zIndex: 999,
                 }}>
-                    {isOn ? '🔥 Four thermolaquage — Allumé' : '❄️ Four thermolaquage — Éteint'}
+                    {isOn ? `🔥 ${t('fsOn')}` : `❄️ ${t('fsOff')}`}
                     {!canToggle && (
-                        <div style={{ fontSize: 10, opacity: 0.6, marginTop: 2 }}>
-                            (Seul le rôle Laquage peut changer l'état)
+                        <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 500, marginTop: 2 }}>
+                            {t('fsOnlyLaquage')}
                         </div>
                     )}
                     {/* arrow */}
                     <div style={{
                         position: 'absolute',
-                        top: '100%',
+                        bottom: '100%',
                         left: '50%',
                         transform: 'translateX(-50%)',
                         width: 0, height: 0,
                         borderLeft: '5px solid transparent',
                         borderRight: '5px solid transparent',
-                        borderTop: '5px solid #1a1a2e',
+                        borderBottom: '5px solid var(--border-2)',
                     }} />
                 </div>
             )}

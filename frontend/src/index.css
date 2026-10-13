@@ -5,45 +5,51 @@
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap');
 
 :root {
-  /* Greyscale palette */
-  --black:  #0a0a0a;
-  --900:    #1a1a1a;
-  --850:    #2c2c2c;
-  --800:    #2d2d2d;
-  --700:    #444;
-  --600:    #666;
-  --500:    #888;
-  --400:    #aaa;
-  --300:    #ccc;
-  --200:    #e0e0e0;
-  --150:    #eaeaea;
-  --100:    #f0f0f0;
-  --50:     #f7f7f7;
-  --white:  #fff;
+  color-scheme: dark;
+
+  /* Greyscale — DARK THEME: the scale is inverted so that the low numbers are
+     dark surfaces (hover / subtle fills) and the high numbers are light ink.
+     var(--900) = strongest ink / primary button fill, var(--50) = subtle fill. */
+  --black:  #ffffff;
+  --900:    #f4f4f5;
+  --850:    #e4e4e7;
+  --800:    #d4d4d8;
+  --700:    #a1a1aa;
+  --600:    #8b8b94;
+  --500:    #71717a;
+  --400:    #52525b;
+  --300:    #3f3f46;
+  --200:    #2e2e34;
+  --150:    #26262b;
+  --100:    #1f1f23;
+  --50:     #1a1a1e;
+  --white:  #ffffff;
 
   /* Semantic surfaces */
-  --bg:        #f0f0f0;
-  --surface:   #fff;
-  --surface-2: #f7f7f7;
-  --border:    #e0e0e0;
-  --border-2:  #d0d0d0;
-  --text:      #1a1a1a;
-  --text-2:    #555;
-  --text-3:    #888;
-  --text-4:    #aaa;
-  --text-inv:  #fff;
+  --bg:        #09090b;
+  --surface:   #212124;   /* cards, panels, modals */
+  --surface-2: #15151a;   /* raised rows, inputs, hover */
+  --surface-3: #222227;   /* pressed / selected */
+  --border:    #27272c;
+  --border-2:  #34343b;
+  --text:      #f4f4f5;
+  --text-2:    #b4b4bd;
+  --text-3:    #8b8b94;
+  --text-4:    #5f5f68;
+  --text-inv:  #09090b;   /* text on light (primary) fills */
+  --focus:     rgba(255,255,255,.14);
 
-  /* Status — color is meaningful, used sparingly */
-  --danger:     #dc2626; --danger-bg:  #fef2f2; --danger-bd:  #fca5a5;
-  --warning:    #d97706; --warning-bg: #fffbeb; --warning-bd: #fcd34d;
-  --success:    #16a34a; --success-bg: #f0fdf4; --success-bd: #86efac;
-  --info:       #2563eb; --info-bg:    #eff6ff; --info-bd:    #bfdbfe;
+  /* Status — tuned for dark backgrounds */
+  --danger:  #f87171; --danger-bg:  rgba(248,113,113,.10); --danger-bd:  rgba(248,113,113,.35);
+  --warning: #fbbf24; --warning-bg: rgba(251,191,36,.10);  --warning-bd: rgba(251,191,36,.35);
+  --success: #4ade80; --success-bg: rgba(74,222,128,.10);  --success-bd: rgba(74,222,128,.35);
+  --info:    #60a5fa; --info-bg:    rgba(96,165,250,.10);  --info-bd:    rgba(96,165,250,.35);
 
-  /* Extended accent palette — use via var() instead of hardcoding */
+  /* Extended accent palette */
   --amber:      #f59e0b;
   --blue:       #3b82f6;
   --purple:     #8b5cf6;
-  --green-vivid:#479400;
+  --green-vivid:#65c11a;
 
   /* Typography */
   --font: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -56,12 +62,12 @@
   /* Radius */
   --r-sm:4px; --r:6px; --r-md:8px; --r-lg:10px; --r-xl:12px; --r-full:9999px;
 
-  /* Shadow */
-  --sh-sm: 0 1px 3px rgba(0,0,0,.07);
-  --sh:    0 2px 8px rgba(0,0,0,.09);
-  --sh-md: 0 4px 16px rgba(0,0,0,.11);
-  --sh-lg: 0 12px 40px rgba(0,0,0,.15);
-  --sh-xl: 0 24px 64px rgba(0,0,0,.20);
+  /* Shadow (dark: deeper, plus a hairline highlight) */
+  --sh-sm: 0 1px 2px rgba(0,0,0,.5);
+  --sh:    0 2px 8px rgba(0,0,0,.45);
+  --sh-md: 0 6px 20px rgba(0,0,0,.5);
+  --sh-lg: 0 14px 40px rgba(0,0,0,.6);
+  --sh-xl: 0 24px 64px rgba(0,0,0,.7);
 
   /* Motion */
   --t: .15s ease;
@@ -86,6 +92,7 @@ input,select,textarea { font-family:inherit; }
 ::-webkit-scrollbar { width:5px; height:5px; }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:var(--300); border-radius:var(--r-full); }
+::selection { background:rgba(255,255,255,.18); }
 ::-webkit-scrollbar-thumb:hover { background:var(--500); }
 
 /* Animations */
@@ -103,3 +110,12 @@ input,select,textarea { font-family:inherit; }
     transition-duration:.01ms !important;
   }
 }
+
+
+/* Shared zoom cursor: clean Lucide ZoomIn icon (white with a soft dark outline for any background) */
+:root { --cursor-zoom: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='32'%20height='32'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cg%20stroke='black'%20stroke-opacity='0.55'%20stroke-width='4.5'%3E%3Ccircle%20cx='11'%20cy='11'%20r='8'/%3E%3Cpath%20d='m21%2021-4.3-4.3'/%3E%3Cpath%20d='M11%208v6'/%3E%3Cpath%20d='M8%2011h6'/%3E%3C/g%3E%3Cg%20stroke='white'%20stroke-width='2'%3E%3Ccircle%20cx='11'%20cy='11'%20r='8'/%3E%3Cpath%20d='m21%2021-4.3-4.3'/%3E%3Cpath%20d='M11%208v6'/%3E%3Cpath%20d='M8%2011h6'/%3E%3C/g%3E%3C/svg%3E") 15 15, zoom-in; }
+
+/* Apply anywhere an element opens a zoom/preview */
+.zoomable-img,
+.item-image--zoomable,
+.line-item-preview-btn { cursor: var(--cursor-zoom); }

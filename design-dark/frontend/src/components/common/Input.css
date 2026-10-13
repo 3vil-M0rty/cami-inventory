@@ -1,0 +1,13 @@
+/* Input.css */
+.input-group { display:flex;flex-direction:column;gap:6px;margin-bottom:var(--sp-4); }
+.input-label { font-family:var(--font);font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em; }
+.input-required { color:var(--danger);margin-left:4px; }
+.input-field { font-family:var(--font);font-size:13px;height:38px;padding:0 12px;border:1px solid var(--border-2);border-radius:var(--r-md);background:var(--surface-2);color:var(--text);transition:border-color var(--t), box-shadow var(--t);outline:none;width:100%; }
+textarea.input-field { height:auto;padding:10px 12px; }
+.input-field:hover:not(:disabled) { border-color:var(--400); }
+.input-field:focus { border-color:var(--600);box-shadow:0 0 0 3px var(--focus); }
+.input-field::placeholder { color:var(--text-4); }
+.input-field:disabled { background:var(--50);color:var(--text-4);cursor:not-allowed; }
+.input-field--error { border-color:var(--danger-bd); }
+.input-field--error:focus { border-color:var(--danger);box-shadow:0 0 0 3px var(--danger-bg); }
+.input-error { font-size:12px;color:var(--danger);margin-top:-2px; }

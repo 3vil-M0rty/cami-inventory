@@ -11,6 +11,26 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useLanguage } from '../../context/LanguageContext';
+import { dialog } from '../../components/common/dialog';
+import './AdminPage.css';
+
+const Ico = ({ d, size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {d.map((p, i) => <path key={i} d={p} />)}
+  </svg>
+);
+const IC = {
+  pin:   ['M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z', 'M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z'],
+  phone: ['M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z'],
+  mail:  ['M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', 'M22 6l-10 7L2 6'],
+  image: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z', 'M21 15l-5-5L5 21'],
+  edit:  ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'],
+  trash: ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'],
+  x:     ['M18 6 6 18', 'M6 6l12 12'],
+  build: ['M3 21h18', 'M5 21V7l7-4 7 4v14', 'M9 9h1', 'M14 9h1', 'M9 13h1', 'M14 13h1', 'M9 17h6'],
+  info:  ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z', 'M12 16v-4', 'M12 8h.01'],
+};
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -24,7 +44,9 @@ function resolveLogoUrl(logo) {
 }
 
 function authHeaders() {
+  // the app stores its session token as 'auth_token'
   const token =
+    localStorage.getItem('auth_token') ||
     localStorage.getItem('token') ||
     sessionStorage.getItem('token') ||
     '';
@@ -48,44 +70,45 @@ const EMPTY = {
 // ─── CompanyCard ──────────────────────────────────────────────────────────────
 
 function CompanyCard({ company, onEdit, onDelete }) {
+  const { t } = useLanguage();
   const logoUrl = resolveLogoUrl(company.logo);
   return (
-    <div style={styles.card}>
+    <div className="cm-card">
       {/* colour stripe */}
-      <div style={{ ...styles.cardStripe, background: company.color || '#1a1a1a' }} />
+      <div className="cm-card-stripe" style={{ background: company.color || '#1a1a1a' }} />
 
-      <div style={styles.cardBody}>
+      <div className="cm-card-body">
         {/* logo / initials */}
-        <div style={styles.logoWrap}>
+        <div className="cm-logo-wrap">
           {logoUrl ? (
             <img
               src={logoUrl}
               alt={company.name}
-              style={styles.logo}
+              className="cm-logo"
               onError={e => { e.target.style.display = 'none'; }}
             />
           ) : (
-            <div style={{ ...styles.logoFallback, background: company.color || '#1a1a1a' }}>
+            <div className="cm-logo-fallback" style={{ background: company.color || '#1a1a1a' }}>
               {(company.name || '?').charAt(0)}
             </div>
           )}
         </div>
 
         {/* details */}
-        <div style={styles.cardInfo}>
-          <div style={styles.cardName}>{company.name}</div>
-          {company.address && <div style={styles.cardMeta}>📍 {company.address}</div>}
-          {company.phone   && <div style={styles.cardMeta}>📞 {company.phone}</div>}
-          {company.email   && <div style={styles.cardMeta}>✉️ {company.email}</div>}
-          {company.rc      && <div style={styles.cardMeta}>RC : {company.rc}</div>}
-          {company.ice     && <div style={styles.cardMeta}>ICE : {company.ice}</div>}
-          {company.logo    && <div style={{ ...styles.cardMeta, color: '#9ca3af', fontSize: 11 }}>🖼 {company.logo}</div>}
+        <div className="cm-card-info">
+          <div className="cm-card-name">{company.name}</div>
+          {company.address && <div className="cm-card-meta"><Ico d={IC.pin} size={13} /> {company.address}</div>}
+          {company.phone   && <div className="cm-card-meta"><Ico d={IC.phone} size={13} /> {company.phone}</div>}
+          {company.email   && <div className="cm-card-meta"><Ico d={IC.mail} size={13} /> {company.email}</div>}
+          {company.rc      && <div className="cm-card-meta">RC : {company.rc}</div>}
+          {company.ice     && <div className="cm-card-meta">ICE : {company.ice}</div>}
+          {company.logo    && <div className="cm-card-meta cm-card-meta--logo"><Ico d={IC.image} size={12} /> {company.logo}</div>}
         </div>
 
         {/* actions */}
-        <div style={styles.cardActions}>
-          <button style={styles.editBtn} onClick={() => onEdit(company)}>✏️ Modifier</button>
-          <button style={styles.deleteBtn} onClick={() => onDelete(company)}>🗑 Supprimer</button>
+        <div className="cm-card-actions">
+          <button className="cm-edit-btn" onClick={() => onEdit(company)}><Ico d={IC.edit} size={13} /> {t('coEdit')}</button>
+          <button className="cm-delete-btn" onClick={() => onDelete(company)}><Ico d={IC.trash} size={13} /> {t('coDelete')}</button>
         </div>
       </div>
     </div>
@@ -95,6 +118,7 @@ function CompanyCard({ company, onEdit, onDelete }) {
 // ─── CompanyForm (modal) ──────────────────────────────────────────────────────
 
 function CompanyForm({ initial, onSave, onCancel, saving }) {
+  const { t } = useLanguage();
   const [form, setForm] = useState(initial || EMPTY);
   const [previewError, setPreviewError] = useState(false);
 
@@ -109,98 +133,98 @@ function CompanyForm({ initial, onSave, onCancel, saving }) {
   };
 
   return (
-    <div style={styles.overlay} onClick={onCancel}>
-      <div style={styles.modal} onClick={e => e.stopPropagation()}>
-        <div style={styles.modalHeader}>
-          <h2 style={styles.modalTitle}>
-            {initial?.id ? '✏️ Modifier la société' : '🏢 Nouvelle société'}
+    <div className="cm-overlay" onClick={onCancel}>
+      <div className="cm-modal" onClick={e => e.stopPropagation()}>
+        <div className="cm-modal-header">
+          <h2 className="cm-modal-title">
+            {initial?.id ? t('coEditTitle') : t('coNewTitle')}
           </h2>
-          <button style={styles.closeBtn} onClick={onCancel}>✕</button>
+          <button className="cm-close-btn" onClick={onCancel}><Ico d={IC.x} size={16} /></button>
         </div>
 
-        <form onSubmit={handleSubmit} style={styles.form}>
+        <form onSubmit={handleSubmit} className="cm-form">
 
           {/* Name + Color */}
-          <div style={styles.row}>
-            <div style={{ ...styles.group, flex: 1 }}>
-              <label style={styles.label}>Nom <span style={styles.req}>*</span></label>
+          <div className="cm-row">
+            <div className="cm-group" style={{ flex: 1 }}>
+              <label className="cm-label">{t('coName')} <span className="cm-req">*</span></label>
               <input
-                style={styles.input}
+                className="cm-input"
                 value={form.name}
                 onChange={e => set('name', e.target.value)}
-                placeholder="ex: CAMI"
+                placeholder={t('coNamePh')}
                 required
               />
             </div>
-            <div style={styles.group}>
-              <label style={styles.label}>Couleur</label>
-              <div style={styles.colorRow}>
+            <div className="cm-group">
+              <label className="cm-label">{t('coColor')}</label>
+              <div className="cm-color-row">
                 <input
                   type="color"
-                  style={styles.colorInput}
+                  className="cm-color-input"
                   value={form.color || '#1a1a1a'}
                   onChange={e => set('color', e.target.value)}
                 />
-                <span style={styles.colorHex}>{form.color || '#1a1a1a'}</span>
+                <span className="cm-color-hex">{form.color || '#1a1a1a'}</span>
               </div>
             </div>
           </div>
 
           {/* Logo URL */}
-          <div style={styles.group}>
-            <label style={styles.label}>Logo (chemin ou URL)</label>
+          <div className="cm-group">
+            <label className="cm-label">{t('coLogo')}</label>
             <input
-              style={styles.input}
+              className="cm-input"
               value={form.logo}
               onChange={e => { set('logo', e.target.value); setPreviewError(false); }}
-              placeholder="ex: /cami.png  ou  https://..."
+              placeholder={t('coLogoPh')}
             />
             {/* live preview */}
             {form.logo && !previewError && (
-              <div style={styles.logoPreviewWrap}>
+              <div className="cm-logo-preview-wrap">
                 <img
                   src={logoPreview}
                   alt="preview"
-                  style={styles.logoPreview}
+                  className="cm-logo-preview"
                   onError={() => setPreviewError(true)}
                 />
-                <span style={styles.logoPreviewLabel}>Aperçu</span>
+                <span className="cm-logo-preview-label">{t('coPreview')}</span>
               </div>
             )}
             {previewError && (
-              <div style={styles.logoError}>⚠️ Image introuvable à cette URL</div>
+              <div className="cm-logo-error">{t('coLogoNotFound')}</div>
             )}
-            <div style={styles.hint}>
-              Pour les logos servis localement, placez le fichier dans <code>backend/public/</code> et entrez <code>/nom-fichier.png</code>
+            <div className="cm-hint">
+              {t('coLogoHint')}
             </div>
           </div>
 
           {/* Address */}
-          <div style={styles.group}>
-            <label style={styles.label}>Adresse</label>
+          <div className="cm-group">
+            <label className="cm-label">{t('coAddress')}</label>
             <input
-              style={styles.input}
+              className="cm-input"
               value={form.address}
               onChange={e => set('address', e.target.value)}
-              placeholder="ex: Zone Industrielle, Marrakech, Maroc"
+              placeholder={t('coAddressPh')}
             />
           </div>
 
           {/* Phone + Email */}
-          <div style={styles.row}>
-            <div style={{ ...styles.group, flex: 1 }}>
-              <label style={styles.label}>Téléphone</label>
+          <div className="cm-row">
+            <div className="cm-group" style={{ flex: 1 }}>
+              <label className="cm-label">{t('coPhone')}</label>
               <input
-                style={styles.input}
+                className="cm-input"
                 value={form.phone}
                 onChange={e => set('phone', e.target.value)}
                 placeholder="+212 5XX-XXXXXX"
               />
             </div>
-            <div style={{ ...styles.group, flex: 1 }}>
-              <label style={styles.label}>Email</label>
+            <div className="cm-group" style={{ flex: 1 }}>
+              <label className="cm-label">{t('coEmail')}</label>
               <input
-                style={styles.input}
+                className="cm-input"
                 type="email"
                 value={form.email}
                 onChange={e => set('email', e.target.value)}
@@ -210,61 +234,61 @@ function CompanyForm({ initial, onSave, onCancel, saving }) {
           </div>
 
           {/* RC + ICE */}
-          <div style={styles.row}>
-            <div style={{ ...styles.group, flex: 1 }}>
-              <label style={styles.label}>RC (Registre de commerce)</label>
+          <div className="cm-row">
+            <div className="cm-group" style={{ flex: 1 }}>
+              <label className="cm-label">{t('coRc')}</label>
               <input
-                style={styles.input}
+                className="cm-input"
                 value={form.rc}
                 onChange={e => set('rc', e.target.value)}
-                placeholder="ex: 123456"
+                placeholder={t('coExample', { v: '123456' })}
               />
             </div>
-            <div style={{ ...styles.group, flex: 1 }}>
-              <label style={styles.label}>ICE</label>
+            <div className="cm-group" style={{ flex: 1 }}>
+              <label className="cm-label">{t('coIce')}</label>
               <input
-                style={styles.input}
+                className="cm-input"
                 value={form.ice}
                 onChange={e => set('ice', e.target.value)}
-                placeholder="ex: 000123456789012"
+                placeholder={t('coExample', { v: '000123456789012' })}
               />
             </div>
           </div>
 
           {/* BL preview strip */}
-          <div style={styles.blPreview}>
-            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Aperçu entête Bon de Livraison
+          <div className="cm-bl-preview">
+            <div className="cm-bl-caption">
+              {t('coBlPreview')}
             </div>
-            <div style={{ ...styles.blStrip, borderColor: form.color || '#1a1a1a' }}>
-              <div style={styles.blLeft}>
+            <div className="cm-bl-strip" style={{ borderColor: form.color || '#1a1a1a' }}>
+              <div className="cm-bl-left">
                 {form.logo && !previewError ? (
-                  <img src={logoPreview} alt="" style={{ height: 36, objectFit: 'contain' }} />
+                  <img src={logoPreview} alt="" className="cm-bl-logo" />
                 ) : (
-                  <div style={{ ...styles.logoFallback, width: 36, height: 36, fontSize: 18, background: form.color || '#1a1a1a' }}>
+                  <div className="cm-logo-fallback" style={{ width: 36, height: 36, fontSize: 18, background: form.color || '#1a1a1a' }}>
                     {(form.name || '?').charAt(0)}
                   </div>
                 )}
                 <div>
-                  <div style={{ fontWeight: 800, color: form.color || '#1a1a1a', fontSize: 15 }}>{form.name || 'Nom société'}</div>
-                  {form.address && <div style={{ fontSize: 10, color: '#555' }}>{form.address}</div>}
-                  {form.phone   && <div style={{ fontSize: 10, color: '#555' }}>Tél : {form.phone}</div>}
+                  <div className="cm-bl-name" style={{ color: form.color || '#1a1a1a' }}>{form.name || t('coNamePlaceholder')}</div>
+                  {form.address && <div className="cm-bl-meta">{form.address}</div>}
+                  {form.phone   && <div className="cm-bl-meta">{t('coTel', { v: form.phone })}</div>}
                 </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 9, color: '#999', textTransform: 'uppercase' }}>Bon de Livraison</div>
-                <div style={{ fontSize: 18, fontWeight: 900 }}>BL-XXXXXX</div>
+              <div className="cm-bl-right">
+                <div className="cm-bl-doc">{t('coBl')}</div>
+                <div className="cm-bl-num">BL-XXXXXX</div>
               </div>
             </div>
           </div>
 
           {/* actions */}
-          <div style={styles.formActions}>
-            <button type="button" style={styles.cancelBtn} onClick={onCancel} disabled={saving}>
-              Annuler
+          <div className="cm-form-actions">
+            <button type="button" className="cm-cancel-btn" onClick={onCancel} disabled={saving}>
+              {t('cancel')}
             </button>
-            <button type="submit" style={styles.saveBtn} disabled={saving || !form.name.trim()}>
-              {saving ? '⏳ Enregistrement…' : (initial?.id ? '💾 Mettre à jour' : '➕ Créer la société')}
+            <button type="submit" className="cm-save-btn" disabled={saving || !form.name.trim()}>
+              {saving ? t('coSaving') : (initial?.id ? t('coUpdate') : t('coCreate'))}
             </button>
           </div>
         </form>
@@ -273,42 +297,16 @@ function CompanyForm({ initial, onSave, onCancel, saving }) {
   );
 }
 
-// ─── DeleteConfirm (modal) ────────────────────────────────────────────────────
-
-function DeleteConfirm({ company, onConfirm, onCancel, deleting }) {
-  return (
-    <div style={styles.overlay} onClick={onCancel}>
-      <div style={{ ...styles.modal, maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-        <h2 style={{ ...styles.modalTitle, color: '#dc2626', marginBottom: 12 }}>🗑 Supprimer la société</h2>
-        <p style={{ color: '#374151', marginBottom: 20 }}>
-          Êtes-vous sûr de vouloir supprimer <strong>{company.name}</strong> ?<br />
-          <span style={{ color: '#6b7280', fontSize: 13 }}>
-            Cette action est irréversible. Les projets, devis et commandes liés à cette société ne seront pas supprimés mais perdront la référence société.
-          </span>
-        </p>
-        <div style={styles.formActions}>
-          <button style={styles.cancelBtn} onClick={onCancel} disabled={deleting}>Annuler</button>
-          <button style={{ ...styles.saveBtn, background: '#dc2626' }} onClick={onConfirm} disabled={deleting}>
-            {deleting ? '⏳ Suppression…' : '🗑 Confirmer la suppression'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main CompanyManager ──────────────────────────────────────────────────────
 
 export default function CompanyManager() {
+  const { t } = useLanguage();
   const [companies, setCompanies] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState('');
   const [showForm,  setShowForm]  = useState(false);
   const [editing,   setEditing]   = useState(null);   // company object being edited
-  const [deleting,  setDeleting]  = useState(null);   // company object to delete
   const [saving,    setSaving]    = useState(false);
-  const [doingDel,  setDoingDel]  = useState(false);
-  const [toast,     setToast]     = useState('');
 
   // ── load ──
   const load = useCallback(async () => {
@@ -326,12 +324,6 @@ export default function CompanyManager() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  // ── toast helper ──
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3000);
-  };
 
   // ── save (create or update) ──
   const handleSave = async (form) => {
@@ -351,35 +343,35 @@ export default function CompanyManager() {
           body: JSON.stringify(form),
         });
       }
-      if (!r.ok) throw new Error((await r.json()).error || 'Erreur');
+      if (!r.ok) throw new Error((await r.json()).error || t('errSave'));
       setShowForm(false);
       setEditing(null);
       await load();
-      showToast(editing?.id ? '✅ Société mise à jour' : '✅ Société créée');
+      dialog.toast(editing?.id ? t('coUpdated') : t('coCreated'));
     } catch (e) {
-      alert(`Erreur : ${e.message}`);
+      dialog.alert(e.message || t('errSave'));
     } finally {
       setSaving(false);
     }
   };
 
   // ── delete ──
-  const handleDelete = async () => {
-    if (!deleting) return;
-    setDoingDel(true);
+  const handleDelete = async (company) => {
+    const ok = await dialog.confirm({
+      title: t('coDeleteTitle'), message: t('coDeleteConfirm', { name: company.name }),
+      details: t('coDeleteDetails'), danger: true, confirmLabel: t('deleteAction'),
+    });
+    if (!ok) return;
     try {
-      const r = await fetch(`${API_URL}/companies/${deleting.id}`, {
+      const r = await fetch(`${API_URL}/companies/${company.id}`, {
         method: 'DELETE',
         headers: authHeaders(),
       });
-      if (!r.ok) throw new Error((await r.json()).error || 'Erreur');
-      setDeleting(null);
+      if (!r.ok) throw new Error((await r.json()).error || t('errDelete'));
       await load();
-      showToast('✅ Société supprimée');
+      dialog.toast(t('coDeleted'));
     } catch (e) {
-      alert(`Erreur : ${e.message}`);
-    } finally {
-      setDoingDel(false);
+      dialog.alert(e.message || t('errDelete'));
     }
   };
 
@@ -397,58 +389,49 @@ export default function CompanyManager() {
 
   // ── render ──
   return (
-    <div style={styles.container}>
+    <div className="cm-container">
       {/* header */}
-      <div style={styles.header}>
+      <div className="cm-header">
         <div>
-          <h1 style={styles.title}>🏢 Gestion des sociétés</h1>
-          <p style={styles.subtitle}>
-            Gérez les informations des sociétés utilisées dans les Bons de Livraison, devis et projets.
+          <h2 className="cm-title"><span className="cm-title-icon"><Ico d={IC.build} size={18} /></span>{t('coTitle')}</h2>
+          <p className="cm-subtitle">
+            {t('coSubtitle')}
           </p>
         </div>
-        <button style={styles.addBtn} onClick={() => { setEditing(null); setShowForm(true); }}>
-          + Nouvelle société
+        <button className="cm-add-btn" onClick={() => { setEditing(null); setShowForm(true); }}>
+          {t('coNew')}
         </button>
       </div>
 
-      {/* toast */}
-      {toast && (
-        <div style={styles.toast}>{toast}</div>
-      )}
-
       {/* loading / error */}
-      {loading && <div style={styles.centered}>Chargement…</div>}
-      {error   && <div style={styles.errBanner}>❌ {error} <button onClick={load}>Réessayer</button></div>}
+      {loading && <div className="cm-centered">{t('loadingShort')}</div>}
+      {error   && <div className="cm-err-banner">{error} <button className="cm-retry" onClick={load}>{t('coRetry')}</button></div>}
 
       {/* list */}
       {!loading && !error && (
         <>
           {companies.length === 0 ? (
-            <div style={styles.empty}>
-              <div style={{ fontSize: 48, marginBottom: 12 }}>🏢</div>
-              <p>Aucune société enregistrée.</p>
-              <button style={styles.addBtn} onClick={() => setShowForm(true)}>+ Ajouter la première société</button>
+            <div className="cm-empty">
+              <div className="cm-empty-icon"><Ico d={IC.build} size={20} /></div>
+              <p>{t('coNone')}</p>
+              <button className="cm-add-btn" onClick={() => setShowForm(true)}>{t('coAddFirst')}</button>
             </div>
           ) : (
-            <div style={styles.list}>
+            <div className="cm-list">
               {companies.map(c => (
                 <CompanyCard
                   key={c.id}
                   company={c}
                   onEdit={openEdit}
-                  onDelete={setDeleting}
+                  onDelete={handleDelete}
                 />
               ))}
             </div>
           )}
 
           {/* info box about logo files */}
-          <div style={styles.infoBox}>
-            <strong>📁 Logos locaux :</strong> Placez vos fichiers image (PNG, SVG) dans le dossier{' '}
-            <code style={styles.code}>backend/public/</code> de votre serveur, puis entrez le chemin{' '}
-            <code style={styles.code}>/nom-fichier.png</code> dans le champ Logo.
-            Les fichiers <code style={styles.code}>/cami.png</code> et{' '}
-            <code style={styles.code}>/gimav.png</code> sont déjà pré-configurés.
+          <div className="cm-info-box">
+            <Ico d={IC.info} size={15} /><span><strong>{t('coLocalLogos')}</strong> {t('coLocalLogosText')}</span>
           </div>
         </>
       )}
@@ -462,375 +445,6 @@ export default function CompanyManager() {
           saving={saving}
         />
       )}
-      {deleting && (
-        <DeleteConfirm
-          company={deleting}
-          onConfirm={handleDelete}
-          onCancel={() => setDeleting(null)}
-          deleting={doingDel}
-        />
-      )}
     </div>
   );
 }
-
-// ─── styles ───────────────────────────────────────────────────────────────────
-
-const styles = {
-  container: {
-    maxWidth: 900,
-    margin: '0 auto',
-    padding: '32px 24px',
-    fontFamily: "'Segoe UI', Arial, sans-serif",
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 28,
-    gap: 16,
-    flexWrap: 'wrap',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 800,
-    margin: 0,
-    color: '#111827',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    margin: '4px 0 0',
-  },
-  addBtn: {
-    background: '#2563eb',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 8,
-    padding: '10px 20px',
-    fontWeight: 700,
-    fontSize: 14,
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-  },
-  list: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 14,
-  },
-  card: {
-    background: '#fff',
-    border: '1px solid #e5e7eb',
-    borderRadius: 12,
-    overflow: 'hidden',
-    display: 'flex',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-  },
-  cardStripe: {
-    width: 6,
-    flexShrink: 0,
-  },
-  cardBody: {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    padding: '16px 20px',
-    gap: 20,
-    flexWrap: 'wrap',
-  },
-  logoWrap: {
-    flexShrink: 0,
-    width: 64,
-    height: 64,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: '#f9fafb',
-    borderRadius: 10,
-    border: '1px solid #e5e7eb',
-    overflow: 'hidden',
-  },
-  logo: {
-    maxWidth: 56,
-    maxHeight: 56,
-    objectFit: 'contain',
-  },
-  logoFallback: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 24,
-    fontWeight: 900,
-    color: '#fff',
-  },
-  cardInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  cardName: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: '#111827',
-    marginBottom: 4,
-  },
-  cardMeta: {
-    fontSize: 13,
-    color: '#4b5563',
-    marginTop: 2,
-  },
-  cardActions: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    flexShrink: 0,
-  },
-  editBtn: {
-    background: '#f3f4f6',
-    color: '#374151',
-    border: '1px solid #e5e7eb',
-    borderRadius: 7,
-    padding: '7px 14px',
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-  },
-  deleteBtn: {
-    background: '#fef2f2',
-    color: '#dc2626',
-    border: '1px solid #fecaca',
-    borderRadius: 7,
-    padding: '7px 14px',
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-  },
-  // Modal
-  overlay: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(0,0,0,0.45)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
-    padding: 16,
-  },
-  modal: {
-    background: '#fff',
-    borderRadius: 16,
-    padding: 32,
-    width: '100%',
-    maxWidth: 640,
-    maxHeight: '90vh',
-    overflowY: 'auto',
-    boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-  },
-  modalHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 800,
-    margin: 0,
-    color: '#111827',
-  },
-  closeBtn: {
-    background: 'none',
-    border: 'none',
-    fontSize: 20,
-    cursor: 'pointer',
-    color: '#6b7280',
-    padding: 4,
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-  },
-  row: {
-    display: 'flex',
-    gap: 14,
-    flexWrap: 'wrap',
-  },
-  group: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 5,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: '#374151',
-  },
-  req: {
-    color: '#dc2626',
-  },
-  input: {
-    border: '1.5px solid #d1d5db',
-    borderRadius: 8,
-    padding: '9px 12px',
-    fontSize: 14,
-    color: '#111827',
-    outline: 'none',
-    width: '100%',
-    boxSizing: 'border-box',
-  },
-  colorRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-  },
-  colorInput: {
-    width: 48,
-    height: 38,
-    border: '1.5px solid #d1d5db',
-    borderRadius: 8,
-    cursor: 'pointer',
-    padding: 2,
-  },
-  colorHex: {
-    fontSize: 13,
-    color: '#6b7280',
-    fontFamily: 'monospace',
-  },
-  hint: {
-    fontSize: 12,
-    color: '#9ca3af',
-    marginTop: 4,
-  },
-  logoPreviewWrap: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 8,
-    background: '#f9fafb',
-    border: '1px solid #e5e7eb',
-    borderRadius: 8,
-    padding: '8px 12px',
-  },
-  logoPreview: {
-    maxHeight: 48,
-    maxWidth: 120,
-    objectFit: 'contain',
-  },
-  logoPreviewLabel: {
-    fontSize: 11,
-    color: '#9ca3af',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-  },
-  logoError: {
-    fontSize: 12,
-    color: '#dc2626',
-    marginTop: 4,
-  },
-  // BL preview
-  blPreview: {
-    background: '#f9fafb',
-    border: '1px solid #e5e7eb',
-    borderRadius: 10,
-    padding: '14px 16px',
-  },
-  blStrip: {
-    background: '#fff',
-    border: '1px solid',
-    borderRadius: 8,
-    padding: '12px 16px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTop: '3px solid',
-  },
-  blLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-  },
-  // form actions
-  formActions: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 8,
-  },
-  cancelBtn: {
-    background: '#f3f4f6',
-    color: '#374151',
-    border: '1px solid #e5e7eb',
-    borderRadius: 8,
-    padding: '10px 20px',
-    fontWeight: 600,
-    fontSize: 14,
-    cursor: 'pointer',
-  },
-  saveBtn: {
-    background: '#2563eb',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 8,
-    padding: '10px 22px',
-    fontWeight: 700,
-    fontSize: 14,
-    cursor: 'pointer',
-  },
-  // misc
-  centered: {
-    textAlign: 'center',
-    padding: 40,
-    color: '#6b7280',
-  },
-  errBanner: {
-    background: '#fef2f2',
-    border: '1px solid #fecaca',
-    borderRadius: 8,
-    padding: '12px 16px',
-    color: '#dc2626',
-    marginBottom: 16,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-  },
-  empty: {
-    textAlign: 'center',
-    padding: '48px 24px',
-    color: '#6b7280',
-  },
-  toast: {
-    position: 'fixed',
-    bottom: 24,
-    right: 24,
-    background: '#111827',
-    color: '#fff',
-    borderRadius: 10,
-    padding: '12px 20px',
-    fontSize: 14,
-    fontWeight: 600,
-    zIndex: 2000,
-    boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-  },
-  infoBox: {
-    marginTop: 24,
-    background: '#eff6ff',
-    border: '1px solid #bfdbfe',
-    borderRadius: 10,
-    padding: '14px 18px',
-    fontSize: 13,
-    color: '#1e40af',
-    lineHeight: 1.7,
-  },
-  code: {
-    background: '#dbeafe',
-    borderRadius: 4,
-    padding: '1px 5px',
-    fontFamily: 'monospace',
-    fontSize: 12,
-  },
-};

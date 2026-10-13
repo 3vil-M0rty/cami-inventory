@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { useProjects } from '../../../context/ProjectContext';
-import { useLanguage } from '../../../context/LanguageContext';
+import { useLanguage, tx, activeLanguage } from '../../../context/LanguageContext';
+import { dialog } from '../../../components/common/dialog';
 import ChassisForm from './ChassisForm';
 import ChassisTypeManager from './ChassisTypeManager';
 import UsedBarsPanel from './UsedBarsPanel';
@@ -17,10 +18,16 @@ import './ProjectDetail.css';
 const ETAT_OPTIONS = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
 const ETAT_COLORS = {
   non_entame: '#9ca3af', en_cours: '#f59e0b', non_vitre: '#a855f7',
-  fabrique: '#3b82f6', livre: '#16a34a', pret_a_livrer: 'rgb(255, 0, 0)',
+  fabrique: '#3b82f6', livre: '#16a34a', pret_a_livrer: '#ef4444',
 };
-const STATUS_COLORS = { en_cours: '#f59e0b', fabrique: '#3b82f6', cloture: '#16a34a', pret_a_livrer: 'rgb(255, 0, 0)', non_vitre: '#a855f7' };
+// Light ink tones so tinted état badges stay readable on the dark theme
+const ETAT_INK = { non_entame: '#d4d4d8', en_cours: '#fcd34d', non_vitre: '#d8b4fe', fabrique: '#93c5fd', livre: '#86efac', pret_a_livrer: '#fca5a5' };
+const etatTint = (e) => { const c = ETAT_COLORS[e] || '#9ca3af'; return { background: c + '1f', color: ETAT_INK[e] || '#d4d4d8', border: `1px solid ${c}59` }; };
+const STATUS_COLORS = { en_cours: '#f59e0b', fabrique: '#3b82f6', cloture: '#16a34a', pret_a_livrer: '#ef4444', non_vitre: '#a855f7' };
 const REMPLISSAGE_TYPES = ['Verre', 'MDF', 'Tôle', 'Panneau sandwich', 'Autre'];
+// Stored values stay in French; only the displayed label is translated
+const REMP_TYPE_KEYS = { 'Verre': 'rtVerre', 'MDF': 'rtMdf', 'Tôle': 'rtTole', 'Panneau sandwich': 'rtSandwich', 'Autre': 'rtOther' };
+const rempTypeLabel = (v) => (REMP_TYPE_KEYS[v] ? tx(REMP_TYPE_KEYS[v]) : v);
 
 // ─── TAB CONFIG ───────────────────────────────────────────────────────────────
 // stateRoles : who can SEE a dropdown (vs read-only badge)
@@ -208,12 +215,13 @@ function getRemplissageCounts(chassis, unitIndex, compIndex = null) {
 
 function RemplissageBadge({ chassis, unitIndex, compIndex = null, onClick }) {
   const { cnt, rdy } = getRemplissageCounts(chassis, unitIndex, compIndex);
-  const bg = cnt === 0 ? '#f3f4f6' : (rdy === cnt ? '#dcfce7' : '#fef9c3');
-  const color = cnt === 0 ? '#6b7280' : (rdy === cnt ? '#16a34a' : '#92400e');
+  const bg = cnt === 0 ? 'var(--surface-2)' : (rdy === cnt ? 'var(--success-bg)' : 'var(--warning-bg)');
+  const color = cnt === 0 ? 'var(--text-3)' : (rdy === cnt ? 'var(--success)' : 'var(--warning)');
+  const bd = cnt === 0 ? 'var(--border-2)' : (rdy === cnt ? 'var(--success-bd)' : 'var(--warning-bd)');
   return (
-    <button title="Gérer les remplissages" onClick={onClick} style={{
-      fontSize: 13, background: bg, border: '1px solid #e5e7eb',
-      borderRadius: 5, padding: '2px 8px', cursor: 'pointer',
+    <button title={tx('pdManageRemp')} onClick={onClick} style={{
+      fontSize: 12, background: bg, border: `1px solid ${bd}`,
+      borderRadius: 6, padding: '2px 8px', cursor: 'pointer',
       color, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4,
     }}>
       <PlusCircle size={14} />
@@ -229,18 +237,18 @@ function EtatBreakdownBadge({ ch, etatList, t, onClick }) {
   return (
     <button
       onClick={onClick}
-      title="Cliquer pour gérer les unités individuellement"
+      title={t('pdManageUnits')}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-        border: '1px solid #e5e7eb', borderRadius: 6, padding: '3px 8px', background: '#fff',
+        border: '1px solid var(--border-2)', borderRadius: 6, padding: '3px 8px', background: 'var(--surface-2)',
       }}
     >
-      <div style={{ display: 'flex', height: 8, width: 56, borderRadius: 4, overflow: 'hidden', background: '#f3f4f6', flexShrink: 0 }}>
+      <div style={{ display: 'flex', height: 6, width: 56, borderRadius: 999, overflow: 'hidden', background: 'var(--200)', flexShrink: 0 }}>
         {present.map(e => (
           <div key={e} style={{ width: `${(counts[e] / qty) * 100}%`, background: ETAT_COLORS[e] }} title={`${t('etat_' + e)}: ${counts[e]}`} />
         ))}
       </div>
-      <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
         {present.map(e => `${counts[e]} ${t('etat_' + e)}`).join(' · ')}
       </span>
     </button>
@@ -257,7 +265,7 @@ function RemplissageAtelierCell({ chassis, unitIndex, compIndex = null, project,
   const currentTable = tables.length === 1 ? tables[0] : '';
   const [saving, setSaving] = useState(false);
 
-  if (relevant.length === 0) return <span style={{ color: '#cbd5e1', fontSize: 11 }}>—</span>;
+  if (relevant.length === 0) return <span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span>;
 
   const handleChange = async (newTable) => {
     setSaving(true);
@@ -275,8 +283,8 @@ function RemplissageAtelierCell({ chassis, unitIndex, compIndex = null, project,
       className={`etat-select atelier-select${saving ? ' atelier-select--saving' : ''}`}
       value={currentTable} disabled={saving}
       onChange={e => handleChange(e.target.value)}
-      style={{ borderLeft: '3px solid #3b82f6', background: currentTable ? '#eff6ff' : undefined, fontSize: 11, minWidth: 90 }}
-      title={`Table vitrage — ${relevant.length} remplissage(s)`}
+      style={{ borderLeft: '3px solid #3b82f6', backgroundColor: currentTable ? 'rgba(59,130,246,.12)' : undefined, fontSize: 11, minWidth: 90 }}
+      title={tx('pdTableVitrage', { n: relevant.length })}
     >
       <option value="">——</option>
       {atelierTableOptions.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
@@ -317,14 +325,14 @@ function generateBLHtml(bl, project, logoBase64 = '') {
     : `<div style="height:52px;width:52px;border-radius:10px;background:${companyColor};display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#fff;">${(companyName || '?').charAt(0)}</div>`;
   const coLines = [
     companyAddr && `<div>${companyAddr}</div>`,
-    companyPhone && `<div>Tél : ${companyPhone}</div>`,
+    companyPhone && `<div>${tx('pdTel', { v: companyPhone })}</div>`,
     companyEmail && `<div>${companyEmail}</div>`,
     companyRC && `<div>RC : ${companyRC}</div>`,
     companyICE && `<div>ICE : ${companyICE}</div>`,
   ].filter(Boolean).join('');
   const clientBlock = clientName ? `
     <div class="client-block">
-      <div class="block-label">Destinataire</div>
+      <div class="block-label">${tx('pdRecipient')}</div>
       <div class="client-name">${clientName}</div>
       ${clientAddr ? `<div class="client-detail">${clientAddr}</div>` : ''}
       ${clientCity ? `<div class="client-detail">${clientCity}</div>` : ''}
@@ -348,7 +356,7 @@ function generateBLHtml(bl, project, logoBase64 = '') {
   }).join('');
   const closeScript = '<' + '/script>';
   return `<!DOCTYPE html>
-<html lang="fr"><head><meta charset="utf-8"><title>${bl.blId}</title>
+<html lang="${activeLanguage()}"><head><meta charset="utf-8"><title>${bl.blId}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:16px 20px}
@@ -383,20 +391,20 @@ td{padding:10px 12px;font-size:12.5px;border-bottom:1px solid #f0f0f0}
 </style></head><body>
 <div class="header">
   <div class="header-left">${logoBlock}<div><div class="company-name">${companyName}</div><div class="company-info">${coLines}</div></div></div>
-  <div style="text-align:right"><div class="doc-label">Bon de Livraison</div><div class="bl-num">${bl.blId}</div><div class="date-label">Date de livraison</div><div class="date-val">${new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR')}</div></div>
+  <div style="text-align:right"><div class="doc-label">${tx('pdBL')}</div><div class="bl-num">${bl.blId}</div><div class="date-label">${tx('pdDeliveryDate')}</div><div class="date-val">${new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR')}</div></div>
 </div>
 <div class="info-row">
-  <div class="info-card"><div class="info-card__label">Projet</div><div class="info-card__val">${project.name}</div></div>
-  <div class="info-card"><div class="info-card__label">Référence</div><div class="info-card__val">${project.reference}</div></div>
-  <div class="info-card"><div class="info-card__label">RAL</div><div class="info-card__val"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${project.ralColor || '#eee'};border:1px solid #ddd;flex-shrink:0"></span>${project.ralCode}</div></div>
-  <div class="info-card"><div class="info-card__label">Pièces livrées</div><div class="info-card__val">${bl.units.length}</div></div>
-  <div class="info-card"><div class="info-card__label">Localisation</div><div class="info-card__val">${bl.localisation || '—'}</div></div>
-  <div class="info-card"><div class="info-card__label">Transport</div><div class="info-card__val">${bl.transport || '—'}</div></div>
+  <div class="info-card"><div class="info-card__label">${tx('pdProject')}</div><div class="info-card__val">${project.name}</div></div>
+  <div class="info-card"><div class="info-card__label">${tx('pdReference')}</div><div class="info-card__val">${project.reference}</div></div>
+  <div class="info-card"><div class="info-card__label">${tx('pdRal')}</div><div class="info-card__val"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${project.ralColor || '#eee'};border:1px solid #ddd;flex-shrink:0"></span>${project.ralCode}</div></div>
+  <div class="info-card"><div class="info-card__label">${tx('pdPiecesDelivered')}</div><div class="info-card__val">${bl.units.length}</div></div>
+  <div class="info-card"><div class="info-card__label">${tx('pdLocation')}</div><div class="info-card__val">${bl.localisation || '—'}</div></div>
+  <div class="info-card"><div class="info-card__label">${tx('pdTransport')}</div><div class="info-card__val">${bl.transport || '—'}</div></div>
 </div>
 ${clientBlock}
-<table><thead><tr><th class="th-c" style="width:36px">#</th><th>Repère</th><th>Désignation</th><th class="th-c" style="width:50px">Qté</th><th class="th-c">Dimension</th><th class="th-c">m²</th><th class="th-c">Date livraison</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>
-<div class="sig-row"><div class="sig-box">Signature livreur</div><div class="sig-box">Signature réceptionnaire</div></div>
-<div class="bl-page-footer"><div class="footer" style="border:none;padding:0;margin:0;text-align:center;width:100%">${[companyName, companyAddr, companyPhone ? 'Tél : ' + companyPhone : '', companyRC ? 'RC : ' + companyRC : '', companyICE ? 'ICE : ' + companyICE : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')}</div></div>
+<table><thead><tr><th class="th-c" style="width:36px">#</th><th>${tx('pdRepere')}</th><th>${tx('pdDesignation')}</th><th class="th-c" style="width:50px">${tx('pdQty')}</th><th class="th-c">${tx('pdDimension')}</th><th class="th-c">m²</th><th class="th-c">${tx('pdDelivDate')}</th><th>${tx('pdNotes')}</th></tr></thead><tbody>${rows}</tbody></table>
+<div class="sig-row"><div class="sig-box">${tx('pdSigDriver')}</div><div class="sig-box">${tx('pdSigReceiver')}</div></div>
+<div class="bl-page-footer"><div class="footer" style="border:none;padding:0;margin:0;text-align:center;width:100%">${[companyName, companyAddr, companyPhone ? tx('pdTel', { v: companyPhone }) : '', companyRC ? 'RC : ' + companyRC : '', companyICE ? 'ICE : ' + companyICE : ''].filter(Boolean).join(' &nbsp;·&nbsp; ')}</div></div>
 <script>window.onload=()=>{const images=document.querySelectorAll('img');if(images.length===0){window.print();return;}let loaded=0;const tryPrint=()=>{loaded++;if(loaded>=images.length)window.print();};images.forEach(img=>{if(img.complete){tryPrint();}else{img.onload=tryPrint;img.onerror=tryPrint;}});};${closeScript}
 </body></html>`;
 }
@@ -432,27 +440,27 @@ function exportBLExcel(bl, project) {
     footer: { font: { sz: 9, color: { rgb: 'FFAAAAAA' } }, alignment: { horizontal: 'center' } },
   };
   setCell(0, row, co.name || '', S.companyName); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
-  setCell(4, row, 'Bon de Livraison', S.blLabel); setCell(5, row, bl.blId || '', S.blId); merges.push({ s: { r: row - 1, c: 4 }, e: { r: row - 1, c: 6 } }); row++;
+  setCell(4, row, tx('pdBL'), S.blLabel); setCell(5, row, bl.blId || '', S.blId); merges.push({ s: { r: row - 1, c: 4 }, e: { r: row - 1, c: 6 } }); row++;
   setCell(0, row, co.address || '', S.subtext); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
-  setCell(4, row, 'Date de livraison', S.dateLabel);
+  setCell(4, row, tx('pdDeliveryDate'), S.dateLabel);
   const delivDate = bl.deliveryDate ? new Date(bl.deliveryDate + 'T00:00:00').toLocaleDateString('fr-FR') : '';
   setCell(5, row, delivDate, S.dateVal); row++;
-  const phoneEmail = [co.phone ? 'Tél : ' + co.phone : '', co.email || ''].filter(Boolean).join('   ·   ');
+  const phoneEmail = [co.phone ? tx('pdTel', { v: co.phone }) : '', co.email || ''].filter(Boolean).join('   ·   ');
   setCell(0, row, phoneEmail, S.subtext); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } }); row++; row++;
-  const cards = [['PROJET', project.name], ['RÉFÉRENCE', project.reference], ['RAL', project.ralCode], ['PIÈCES LIVRÉES', bl.units.length], ['LOCALISATION', bl.localisation || '—'], ['TRANSPORT', bl.transport || '—']];
+  const cards = [[tx('pdProject').toUpperCase(), project.name], [tx('pdReference').toUpperCase(), project.reference], [tx('pdRal'), project.ralCode], [tx('pdPiecesDelivered').toUpperCase(), bl.units.length], [tx('pdLocation').toUpperCase(), bl.localisation || '—'], [tx('pdTransport').toUpperCase(), bl.transport || '—']];
   [[0, 1, 2], [3, 4, 5]].forEach(idxs => {
     idxs.forEach((ci, pos) => { setCell(pos * 2, row, cards[ci][0], S.cardLabel); setCell(pos * 2 + 1, row, '', S.cardLabel); }); row++;
     idxs.forEach((ci, pos) => { setCell(pos * 2, row, cards[ci][1], S.cardValue); setCell(pos * 2 + 1, row, '', S.cardValue); }); row++;
   });
   const clientName = project.clientId?.name || '';
   if (clientName) {
-    row++; setCell(0, row, 'DESTINATAIRE', S.clientLabel); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } }); row++;
+    row++; setCell(0, row, tx('pdRecipient').toUpperCase(), S.clientLabel); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } }); row++;
     setCell(0, row, clientName, S.clientName); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } }); row++;
     const addr = [project.clientId?.address, project.clientId?.city].filter(Boolean).join(', ');
     if (addr) { setCell(0, row, addr, S.clientSub); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } }); row++; }
   }
   row++;
-  ['#', 'Repère', 'Désignation', 'Qté', 'Dimension', 'm²', 'Date livraison', 'Notes'].forEach((h, i) => { setCell(i, row, h, i === 0 || i === 3 || i === 4 || i === 5 || i === 6 ? S.th : S.thLeft); }); row++;
+  ['#', tx('pdRepere'), tx('pdDesignation'), tx('pdQty'), tx('pdDimension'), 'm²', tx('pdDelivDate'), tx('pdNotes')].forEach((h, i) => { setCell(i, row, h, i === 0 || i === 3 || i === 4 || i === 5 || i === 6 ? S.th : S.thLeft); }); row++;
   const unitNotes = bl.unitNotes || {};
   bl.units.forEach((u, idx) => {
     const base = idx % 2 === 0 ? S.tdEven : S.tdOdd; const note = unitNotes[u.unitLabel] || u.notes || '';
@@ -462,9 +470,9 @@ function exportBLExcel(bl, project) {
     setCell(6, row, u.deliveryDate ? fmtDate(u.deliveryDate) : '', S.tdCenter(base)); setCell(7, row, note || '', base); row++;
   });
   row += 2;
-  setCell(0, row, 'Signature livreur', S.sigBox); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
-  setCell(4, row, 'Signature réceptionnaire', S.sigBox); merges.push({ s: { r: row - 1, c: 4 }, e: { r: row - 1, c: 7 } }); row++; row++;
-  const footerParts = [co.name, co.address, co.phone ? 'Tél : ' + co.phone : '', co.rc ? 'RC : ' + co.rc : '', co.ice ? 'ICE : ' + co.ice : ''].filter(Boolean);
+  setCell(0, row, tx('pdSigDriver'), S.sigBox); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 3 } });
+  setCell(4, row, tx('pdSigReceiver'), S.sigBox); merges.push({ s: { r: row - 1, c: 4 }, e: { r: row - 1, c: 7 } }); row++; row++;
+  const footerParts = [co.name, co.address, co.phone ? tx('pdTel', { v: co.phone }) : '', co.rc ? 'RC : ' + co.rc : '', co.ice ? 'ICE : ' + co.ice : ''].filter(Boolean);
   setCell(0, row, footerParts.join('  ·  '), S.footer); merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 7 } });
   ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row, c: 7 } });
   ws['!merges'] = merges; ws['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 26 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 30 }]; ws['!rows'] = [{ hpt: 28 }, { hpt: 18 }, { hpt: 16 }];
@@ -476,11 +484,7 @@ function exportChassisRemplissageExcel(project, chassisLabels, language) {
   const rows = [];
   let idx = 0;
 
-  const etatLabelFr = {
-    non_entame: 'Non entamé', en_cours: 'En cours', non_vitre: 'Non vitré',
-    fabrique: 'Fabriqué', livre: 'Livré', pret_a_livrer: 'Prêt à livrer',
-  };
-  const etatOf = (e) => etatLabelFr[e] || e || '—';
+  const etatOf = (e) => (e ? tx('etat_' + e) : '—');
 
   for (const ch of project.chassis || []) {
     const qty = ch.quantity || 1;
@@ -530,14 +534,14 @@ function exportChassisRemplissageExcel(project, chassisLabels, language) {
           idx++;
           const compEtat = getComponentEtat(unit, ci, comp);
           const cs = (unit.componentStates || []).find(c => c.compIndex === ci);
-          const compLabel = comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${ci + 1}`);
+          const compLabel = comp.repere || (comp.role === 'dormant' ? tx('chDormant') : tx('chVantail', { n: ci + 1 }));
           const compL = comp.largeur || ch.largeur;
           const compH = comp.hauteur || ch.hauteur;
           const compM2 = compL && compH ? parseFloat(((compL * compH) / 1e6).toFixed(2)) : '';
           rows.push({
             '#': idx,
             'Repère': `${baseLabel} — ${compLabel}`,
-            'Type': `${typeLabel} (${comp.role === 'dormant' ? 'Dormant' : 'Vantail'})`,
+            'Type': `${typeLabel} (${comp.role === 'dormant' ? tx('chDormant') : tx('pdVantailWord')})`,
             'Qté': 1, 'L (mm)': compL, 'H (mm)': compH,
             'Dimension': compL && compH ? `${compL}×${compH}` : '',
             'm²': compM2,
@@ -566,17 +570,24 @@ function exportChassisRemplissageExcel(project, chassisLabels, language) {
     }
   }
 
-  if (rows.length === 0) { alert('Aucun châssis dans ce projet.'); return; }
+  if (rows.length === 0) { dialog.alert({ variant: 'info', message: tx('pdNoChassis') }); return; }
 
-  const ws = XLSX.utils.json_to_sheet(rows);
+  // Column titles in the active language (rows are built with internal French keys)
+  const H = {
+    'Repère': tx('pdRepere'), 'Type': tx('pdColType'), 'Qté': tx('pdQty'), 'L (mm)': tx('pdColL'), 'H (mm)': tx('pdColH'),
+    'Dimension': tx('pdDimension'), 'État châssis': tx('pdColChassisState'), 'Date livraison châssis': tx('pdColChassisDeliv'),
+    'Type remplissage': tx('pdColRempType'), 'Sous-type': tx('pdColSubType'), 'Dim. remplissage': tx('pdColRempDim'),
+    'm² remplissage': tx('pdColRempM2'), 'État remplissage': tx('pdColRempState'), 'Date livraison remplissage': tx('pdColRempDeliv'),
+  };
+  const ws = XLSX.utils.json_to_sheet(rows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [H[k] || k, v]))));
   ws['!cols'] = [
     { wch: 5 }, { wch: 26 }, { wch: 22 }, { wch: 6 }, { wch: 9 }, { wch: 9 },
     { wch: 14 }, { wch: 9 }, { wch: 14 }, { wch: 16 },
     { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 18 },
   ];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Châssis & Remplissages');
-  XLSX.writeFile(wb, `${project.name || 'projet'}_chassis_remplissages.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, tx('pdSheetChassisRemp').slice(0, 31));
+  XLSX.writeFile(wb, `${project.name || tx('pdFileProject')}_chassis_remplissages.xlsx`);
 }
 
 // ─── Devis-style Excel Export (Repère / Désignation / Qté / PU HT / Total HT) ──
@@ -621,7 +632,7 @@ function exportChassisRemplissageExcel(project, chassisLabels, language) {
         (ch.remplissages || [])
           .filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex == null)
           .forEach(r => {
-            const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+            const rLabel = r.sousType ? `${rempTypeLabel(r.type)} — ${r.sousType}` : rempTypeLabel(r.type);
             pushRow(`↳ ${baseLabel}`, `${rLabel} — ${r.largeur}×${r.hauteur} mm`, 1, r.largeur, r.hauteur);
           });
       } else {
@@ -634,7 +645,7 @@ function exportChassisRemplissageExcel(project, chassisLabels, language) {
           (ch.remplissages || [])
             .filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex === ci)
             .forEach(r => {
-              const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+              const rLabel = r.sousType ? `${rempTypeLabel(r.type)} — ${r.sousType}` : rempTypeLabel(r.type);
               pushRow(`↳ ${baseLabel} — ${compLabel}`, `${rLabel} — ${r.largeur}×${r.hauteur} mm`, 1, r.largeur, r.hauteur);
             });
         });
@@ -642,7 +653,7 @@ function exportChassisRemplissageExcel(project, chassisLabels, language) {
     }
   }
 
-  if (rows.length === 0) { alert('Aucun châssis dans ce projet.'); return; }
+  if (rows.length === 0) { dialog.alert({ variant: 'info', message: tx('pdNoChassis') }); return; }
 
   // total linear meters (périmètre) of rectilinear remplissage panels
   let totalMLRemplissage = 0;
@@ -803,10 +814,10 @@ function exportDevisExcel(project, chassisLabels, language, company) {
   setCell(4, compRow, co.name || '', S.companyName); merge(compRow, compRow, 4, 6); compRow++;
   const infoLines = [];
   if (co.address) infoLines.push([null, co.address]);
-  if (co.phone) infoLines.push(['Tél:', co.phone]);
-  if (co.email) infoLines.push(['Email:', co.email]);
-  if (co.ice) infoLines.push(['ICE:', co.ice]);
-  if (co.rc) infoLines.push(['RC:', co.rc]);
+  if (co.phone) infoLines.push([tx('qtTel'), co.phone]);
+  if (co.email) infoLines.push([tx('qtEmail'), co.email]);
+  if (co.ice) infoLines.push([tx('qtIce'), co.ice]);
+  if (co.rc) infoLines.push([tx('qtRc'), co.rc]);
   infoLines.forEach(([label, value]) => {
     if (label) {
       setCell(4, compRow, label, S.companyLine); merge(compRow, compRow, 4, 5);
@@ -820,21 +831,21 @@ function exportDevisExcel(project, chassisLabels, language, company) {
 
   // ---------- Reference / Date / Devis N° block (cols A:D) ----------
   let refRow = 2;
-  setCell(0, refRow, 'Référence:', S.refLabel);
+  setCell(0, refRow, tx('qtReference'), S.refLabel);
   setCell(1, refRow, project.reference || '', S.refValue); merge(refRow, refRow, 1, 3); refRow++;
-  setCell(0, refRow, 'Date:', S.refLabel);
+  setCell(0, refRow, tx('qtDate'), S.refLabel);
   setCell(1, refRow, new Date().toLocaleDateString('fr-FR'), S.refValue); merge(refRow, refRow, 1, 3); refRow++;
-  setCell(0, refRow, 'Devis N°:', S.refLabel);
+  setCell(0, refRow, tx('qtNumber'), S.refLabel);
   setCell(1, refRow, '', S.refInput); merge(refRow, refRow, 1, 3); refRow++;
   const refBlockEnd = refRow - 1;
 
   // ---------- Section band ----------
   let row = Math.max(companyBlockEnd, refBlockEnd) + 2;
-  setCell(0, row, `DEVIS — ${project.name || ''}`, S.sectionBand); merge(row, row, 0, 6);
+  setCell(0, row, tx('qtTitle', { name: project.name || '' }), S.sectionBand); merge(row, row, 0, 6);
   row += 2;
 
   // Table header — written once, not repeated per item.
-  ['Type', 'Description', 'Composants', 'Détails', 'Valeurs', 'Prix Unitaire', 'Prix HT'].forEach((h, i) =>
+  [tx('qtColType'), tx('qtColDescription'), tx('qtColComponents'), tx('qtColDetails'), tx('qtColValues'), tx('qtColUnitPrice'), tx('qtColPrice')].forEach((h, i) =>
     setCell(i, row, h, S.th)
   );
   row++;
@@ -855,7 +866,7 @@ function exportDevisExcel(project, chassisLabels, language, company) {
     setCell(4, r, H || 0, S.valueInput);
     const hAddr = addr(4, r); r++;
 
-    setCell(3, r, `${detailPrefix} Quantité`, S.detailCell);
+    setCell(3, r, `${detailPrefix} ${tx('qtQuantity')}`, S.detailCell);
     setCell(4, r, qty || 1, S.valueInput);
     const qAddr = addr(4, r); r++;
 
@@ -896,17 +907,17 @@ function exportDevisExcel(project, chassisLabels, language, company) {
       lhAddrs.push({ lAddr, hAddr });
     });
 
-    setCell(3, r, 'Aluminium Quantité', S.detailCell);
+    setCell(3, r, tx('qtAluQty'), S.detailCell);
     setCell(4, r, qty || 1, S.valueInput);
     const qAddr = addr(4, r); r++;
 
-    setCell(3, r, 'Aluminium M² (total)', S.detailCell);
+    setCell(3, r, tx('qtAluM2Total'), S.detailCell);
     const sumTerms = lhAddrs.map(({ lAddr, hAddr }) => `${lAddr}*${hAddr}`).join('+');
     setCell(4, r, 0, S.valueCell, `(${sumTerms})*${qAddr}/1000000`);
     const m2Addr = addr(4, r);
     const endRow = r;
 
-    setCell(2, startRow, 'Aluminium', S.compCell);
+    setCell(2, startRow, tx('qtAluminium'), S.compCell);
     merge(startRow, endRow, 2, 2);
 
     setCell(5, startRow, '', S.priceInput);
@@ -926,7 +937,7 @@ function exportDevisExcel(project, chassisLabels, language, company) {
       const key = `${r.type}|${r.sousType || ''}|${r.largeur}|${r.hauteur}`;
       if (!groups.has(key)) {
         groups.set(key, {
-          label: r.sousType ? `${r.type} — ${r.sousType}` : r.type,
+          label: r.sousType ? `${rempTypeLabel(r.type)} — ${r.sousType}` : rempTypeLabel(r.type),
           type: r.type, largeur: r.largeur, hauteur: r.hauteur, count: 0,
         });
       }
@@ -951,7 +962,7 @@ function exportDevisExcel(project, chassisLabels, language, company) {
         cL = cL ?? parts[0];
         cH = cH ?? parts[1];
       }
-      row = writeSubBlock(row, 'Aluminium', 'Aluminium', cL, cH, qty, false);
+      row = writeSubBlock(row, tx('qtAluminium'), tx('qtAluminium'), cL, cH, qty, false);
 
       groupRemplissages(ch.remplissages, null).forEach(g => {
         row = writeSubBlock(row, g.label, g.type, g.largeur, g.hauteur, g.count, true);
@@ -963,7 +974,7 @@ function exportDevisExcel(project, chassisLabels, language, company) {
         cL = cL ?? parts[0];
         cH = cH ?? parts[1];
       }
-      row = writeSubBlock(row, 'Aluminium', 'Aluminium', cL, cH, qty, false);
+      row = writeSubBlock(row, tx('qtAluminium'), tx('qtAluminium'), cL, cH, qty, false);
 
       groupRemplissages(ch.remplissages, 'any').forEach(g => {
         row = writeSubBlock(row, g.label, g.type, g.largeur, g.hauteur, g.count, true);
@@ -978,15 +989,15 @@ function exportDevisExcel(project, chassisLabels, language, company) {
 
   // ---------- Totals ----------
   row += 1;
-  setCell(5, row, 'TOTAL HORS TAXE:', S.totalLabel);
+  setCell(5, row, tx('qtTotalHT'), S.totalLabel);
   setCell(6, row, 0, S.totalValue, `SUM(G${tableFirstRow}:G${tableLastRow})`);
   const totalHtRow = row; row++;
 
-  setCell(5, row, 'TVA 20%:', S.totalLabel);
+  setCell(5, row, tx('qtTva20'), S.totalLabel);
   setCell(6, row, 0, S.totalValue, `0.2*G${totalHtRow}`);
   const tvaRow = row; row++;
 
-  setCell(5, row, 'TOTAL TTC:', S.totalLabel);
+  setCell(5, row, tx('qtTotalTTC'), S.totalLabel);
   setCell(6, row, 0, S.totalValue, `G${totalHtRow}+G${tvaRow}`);
   row++;
 
@@ -995,7 +1006,7 @@ function exportDevisExcel(project, chassisLabels, language, company) {
     const mlFormula = remplissageRefs
       .map(({ lAddr, hAddr, qAddr }) => `2*(${lAddr}+${hAddr})/1000*${qAddr}`)
       .join('+');
-    setCell(5, row, 'TOTAL ML REMPLISSAGE:', S.totalLabel);
+    setCell(5, row, tx('qtTotalML'), S.totalLabel);
     setCell(6, row, 0, { ...S.totalValue, numFmt: '#,##0.00 "ML"' }, mlFormula);
     row++;
   }
@@ -1019,8 +1030,8 @@ function exportDevisExcel(project, chassisLabels, language, company) {
   ];
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Devis');
-  XLSX.writeFile(wb, `${project.name || 'projet'}_devis.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, tx('qtSheet'));
+  XLSX.writeFile(wb, `${project.name || tx('pdFileProject')}_${tx('qtFile')}.xlsx`);
 }
 
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
@@ -1051,7 +1062,7 @@ function ProgressBar({ chassis, t }) {
             {t('etat_' + e)}: <strong>{counts[e]}</strong>
           </span>
         ))}
-        <span className="progress-legend__total">Total: <strong>{total}</strong></span>
+        <span className="progress-legend__total">{t('pdTotal')}: <strong>{total}</strong></span>
       </div>
     </div>
   );
@@ -1135,44 +1146,44 @@ function GroupUnitStatesModal({ chassis, project, onClose, onSaved }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 640, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div className="ct-manager__header">
-          <h2>📦 {chassis.repere} — {qty} unités</h2>
+          <h2>📦 {chassis.repere} — {t('pdUnitsCount', { n: qty })}</h2>
           <button className="chassis-form__close" onClick={onClose}>×</button>
         </div>
 
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16, padding: '10px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16, padding: '10px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8 }}>
           {etatList.map(e => (
             <span key={e} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
               <span style={{ width: 9, height: 9, borderRadius: 3, background: ETAT_COLORS[e] }} />
               {t('etat_' + e)}: <strong>{counts[e] || 0}</strong>
             </span>
           ))}
-          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#6b7280' }}>Total: <strong>{qty}</strong></span>
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-3)' }}>{t('pdTotal')}: <strong>{qty}</strong></span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginBottom: 16, flexWrap: 'wrap', padding: '10px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginBottom: 16, flexWrap: 'wrap', padding: '10px 12px', background: 'var(--info-bg)', border: '1px solid var(--info-bd)', borderRadius: 8 }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label style={{ fontSize: 11 }}>Nombre d'unités</label>
+            <label style={{ fontSize: 11 }}>{t('pdUnitCountLabel')}</label>
             <input type="number" min="1" max={qty} value={bulkCount}
               onChange={e => setBulkCount(Math.max(1, Math.min(qty, parseInt(e.target.value) || 1)))}
               className="ct-acc-qty-input" style={{ width: 70 }} />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label style={{ fontSize: 11 }}>Nouvel état</label>
+            <label style={{ fontSize: 11 }}>{t('pdNewState')}</label>
             <select value={bulkTarget} onChange={e => setBulkTarget(e.target.value)}>
               {etatList.map(e => <option key={e} value={e}>{t('etat_' + e)}</option>)}
             </select>
           </div>
           {bulkTarget === 'livre' && (
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label style={{ fontSize: 11 }}>Date livraison</label>
+              <label style={{ fontSize: 11 }}>{t('pdDeliveryDate')}</label>
               <input type="date" value={bulkDate} onChange={e => setBulkDate(e.target.value)} />
             </div>
           )}
-          <button type="button" className="ct-config-btn" onClick={applyBulk}>Appliquer à {bulkCount}</button>
+          <button type="button" className="ct-config-btn" onClick={applyBulk}>{t('pdApplyTo', { n: bulkCount })}</button>
         </div>
 
         <table className="proj-acc-table" style={{ marginBottom: 16 }}>
-          <thead><tr><th style={{ width: 60 }}>#</th><th>État</th><th style={{ width: 150 }}>Date livraison</th></tr></thead>
+          <thead><tr><th style={{ width: 60 }}>#</th><th>{t('pdState')}</th><th style={{ width: 150 }}>{t('pdDeliveryDate')}</th></tr></thead>
           <tbody>
             {units.map(u => (
               <tr key={u.unitIndex}>
@@ -1189,7 +1200,7 @@ function GroupUnitStatesModal({ chassis, project, onClose, onSaved }) {
                 <td>
                   {u.etat === 'livre'
                     ? <input type="date" value={u.deliveryDate || ''} onChange={e => updateOne(u.unitIndex, { deliveryDate: e.target.value })} />
-                    : <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>}
+                    : <span style={{ color: 'var(--text-4)', fontSize: 12 }}>—</span>}
                 </td>
               </tr>
             ))}
@@ -1198,7 +1209,7 @@ function GroupUnitStatesModal({ chassis, project, onClose, onSaved }) {
 
         <div className="modal-actions">
           <button onClick={onClose}>{t('cancel')}</button>
-          <button className="primary" onClick={handleSave} disabled={saving}>{saving ? '…' : '💾 Enregistrer'}</button>
+          <button className="primary" onClick={handleSave} disabled={saving}>{saving ? '…' : `💾 ${t('save')}`}</button>
         </div>
       </div>
     </div>
@@ -1210,7 +1221,7 @@ function AccessoriesExportModal({ project, chassisLabels, language, t, onClose }
   const [etatFilter, setEtatFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const etatLabel = { all: 'Tous', non_entame: t('etat_non_entame'), en_cours: t('etat_en_cours'), non_vitre: t('etat_non_vitre'), fabrique: t('etat_fabrique'), livre: t('etat_livre'), pret_a_livrer: t('etat_pret_a_livrer') };
+  const etatLabel = { all: t('pdAll'), non_entame: t('etat_non_entame'), en_cours: t('etat_en_cours'), non_vitre: t('etat_non_vitre'), fabrique: t('etat_fabrique'), livre: t('etat_livre'), pret_a_livrer: t('etat_pret_a_livrer') };
   const computeAccessories = async () => {
     setLoading(true); setError('');
     try {
@@ -1226,7 +1237,7 @@ function AccessoriesExportModal({ project, chassisLabels, language, t, onClose }
         }
       }
       const typeIds = Object.keys(typeTotals);
-      if (typeIds.length === 0) { setError('Aucun châssis ne correspond au filtre sélectionné.'); setLoading(false); return; }
+      if (typeIds.length === 0) { setError(t('pdNoChassisForFilter')); setLoading(false); return; }
       const accMap = {};
       await Promise.all(typeIds.map(async (typeId) => {
         try {
@@ -1239,22 +1250,22 @@ function AccessoriesExportModal({ project, chassisLabels, language, t, onClose }
           }
         } catch { }
       }));
-      const rows = Object.entries(accMap).map(([, v]) => ({ 'Désignation accessoire': v.label, 'Unité': v.unit, 'Quantité totale': v.hasFormula ? `Formule: ${v.formula}` : parseFloat(v.total.toFixed(4)) }));
-      if (rows.length === 0) { setError('Aucun accessoire configuré pour les types de châssis de ce projet.'); setLoading(false); return; }
+      const rows = Object.entries(accMap).map(([, v]) => ({ [t('pdAccDesignation')]: v.label, [t('pdUnit')]: v.unit, [t('pdTotalQty')]: v.hasFormula ? `${t('pdFormula')}: ${v.formula}` : parseFloat(v.total.toFixed(4)) }));
+      if (rows.length === 0) { setError(t('pdNoAccForTypes')); setLoading(false); return; }
       const ws = XLSX.utils.json_to_sheet(rows); ws['!cols'] = [{ wch: 40 }, { wch: 14 }, { wch: 18 }];
-      const wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, ws, 'Accessoires');
-      XLSX.writeFile(wb2, `${project.name || 'projet'}_accessoires_${etatFilter === 'all' ? 'tous' : etatFilter}.xlsx`);
+      const wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, ws, t('pdAccessories'));
+      XLSX.writeFile(wb2, `${project.name || t('pdFileProject')}_${t('pdAccessories').toLowerCase()}_${etatFilter === 'all' ? t('pdAll').toLowerCase() : etatFilter}.xlsx`);
       onClose();
-    } catch (e) { setError('Erreur lors du calcul : ' + (e.message || '')); }
+    } catch (e) { setError(t('pdCalcError', { msg: e.message || '' })); }
     finally { setLoading(false); }
   };
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-        <h3 style={{ marginBottom: 8 }}>🔧 Export des accessoires nécessaires</h3>
-        <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Calcule la somme des accessoires pour tous les châssis du projet.</p>
+        <h3 style={{ marginBottom: 8 }}>🔧 {t('pdAccExportTitle')}</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 20 }}>{t('pdAccExportHint')}</p>
         <div className="form-group">
-          <label style={{ fontWeight: 600 }}>Filtrer par état des châssis</label>
+          <label style={{ fontWeight: 600 }}>{t('pdFilterByState')}</label>
           <div className="acc-export-filters">
             {['all', ...ETAT_OPTIONS].map(opt => (
               <button key={opt} className={`acc-filter-btn${etatFilter === opt ? ' acc-filter-btn--active' : ''}`}
@@ -1269,7 +1280,7 @@ function AccessoriesExportModal({ project, chassisLabels, language, t, onClose }
         {error && <div className="ct-manager__error" style={{ marginTop: 12 }}>{error}</div>}
         <div className="modal-actions" style={{ marginTop: 24 }}>
           <button onClick={onClose}>{t('cancel')}</button>
-          <button className="primary" onClick={computeAccessories} disabled={loading}>{loading ? '⏳ Calcul…' : '📥 Télécharger Excel'}</button>
+          <button className="primary" onClick={computeAccessories} disabled={loading}>{loading ? `⏳ ${t('pdComputing')}` : `📥 ${t('pdDownloadExcel')}`}</button>
         </div>
       </div>
     </div>
@@ -1320,41 +1331,41 @@ function BLExportModal({ bl, project, t, onClose }) {
 
   if (loadingMeta) return (
     <div className="modal-overlay"><div className="modal" style={{ maxWidth: 420, textAlign: 'center', padding: 32 }}>
-      <div style={{ fontSize: 28, marginBottom: 12 }}>⏳</div><p style={{ color: '#6b7280' }}>Chargement des données sauvegardées…</p>
+      <div style={{ fontSize: 28, marginBottom: 12 }}>⏳</div><p style={{ color: 'var(--text-3)' }}>{t('pdLoadingSaved')}</p>
     </div></div>
   );
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 540, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-        <h3 style={{ marginBottom: 18 }}>📤 Exporter le bon de livraison</h3>
-        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '14px 16px', marginBottom: 14 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 10 }}>En-tête du BL</p>
+        <h3 style={{ marginBottom: 18 }}>📤 {t('pdExportBL')}</h3>
+        <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-4)', marginBottom: 10 }}>{t('pdBLHeader')}</p>
           <div className="form-group" style={{ marginBottom: 12 }}>
-            <label style={{ fontWeight: 600 }}>Numéro BL <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6, fontSize: 11 }}>(actuel : {bl.blId})</span></label>
-            <input type="text" value={blId} onChange={e => setBlId(e.target.value)} placeholder="ex: BL26-107" style={{ fontWeight: 700, letterSpacing: '0.03em' }} />
+            <label style={{ fontWeight: 600 }}>{t('pdBLNumber')} <span style={{ fontWeight: 400, color: 'var(--text-4)', marginLeft: 6, fontSize: 11 }}>({t('pdCurrent')} : {bl.blId})</span></label>
+            <input type="text" value={blId} onChange={e => setBlId(e.target.value)} placeholder={t('pdBLNumberPh')} style={{ fontWeight: 700, letterSpacing: '0.03em' }} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label style={{ fontWeight: 600 }}>Localisation</label>
-              <input type="text" value={localisation} onChange={e => setLocalisation(e.target.value)} placeholder="ex: Casablanca, Site A…" />
+              <label style={{ fontWeight: 600 }}>{t('pdLocation')}</label>
+              <input type="text" value={localisation} onChange={e => setLocalisation(e.target.value)} placeholder={t('pdLocationPh')} />
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label style={{ fontWeight: 600 }}>Transport</label>
-              <input type="text" value={transport} onChange={e => setTransport(e.target.value)} placeholder="ex: Camion, Messagerie…" />
+              <label style={{ fontWeight: 600 }}>{t('pdTransport')}</label>
+              <input type="text" value={transport} onChange={e => setTransport(e.target.value)} placeholder={t('pdTransportPh')} />
             </div>
           </div>
         </div>
         {bl.units.length > 0 && (
-          <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '14px 16px', marginBottom: 14 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', marginBottom: 10 }}>
-              Notes par pièce <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none', letterSpacing: 0 }}>— apparaissent dans la colonne Notes du PDF et Excel</span>
+          <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-4)', marginBottom: 10 }}>
+              {t('pdNotesPerPiece')} <span style={{ fontWeight: 400, color: 'var(--text-4)', textTransform: 'none', letterSpacing: 0 }}>— {t('pdNotesPerPieceHint')}</span>
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {bl.units.map(u => (
                 <div key={u.unitLabel} style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, padding: '5px 9px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.unitLabel}</span>
-                  <input type="text" value={unitNotes[u.unitLabel] || ''} onChange={e => updateUnitNote(u.unitLabel, e.target.value)} placeholder="Note pour cette pièce…" style={{ fontSize: 12, padding: '5px 10px' }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', background: 'var(--surface)', border: '1px solid var(--border-2)', borderRadius: 6, padding: '5px 9px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.unitLabel}</span>
+                  <input type="text" value={unitNotes[u.unitLabel] || ''} onChange={e => updateUnitNote(u.unitLabel, e.target.value)} placeholder={t('pdNotePh')} style={{ fontSize: 12, padding: '5px 10px' }} />
                 </div>
               ))}
             </div>
@@ -1362,9 +1373,9 @@ function BLExportModal({ bl, project, t, onClose }) {
         )}
         <div className="modal-actions" style={{ marginTop: 8, gap: 8 }}>
           <button onClick={onClose}>{t('cancel')}</button>
-          <button onClick={handleSaveMeta} disabled={savingMeta} title="Sauvegarder sans exporter" style={{ background: '#6b7280', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>{savingMeta ? '⏳' : '💾'}</button>
-          <button onClick={handleExcel} title="Exporter Excel" style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>📊 Excel</button>
-          <button className="primary" onClick={handlePdf} disabled={loadingPdf} title="Imprimer PDF" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{loadingPdf ? '⏳' : '🖨'} PDF</button>
+          <button onClick={handleSaveMeta} disabled={savingMeta} title={t('pdSaveNoExport')} className="btn btn--secondary">{savingMeta ? '⏳' : '💾'}</button>
+          <button onClick={handleExcel} title={t('pdExportExcel')} className="pd-btn-success">📊 Excel</button>
+          <button className="primary" onClick={handlePdf} disabled={loadingPdf} title={t('pdPrintPdf')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{loadingPdf ? '⏳' : '🖨'} PDF</button>
         </div>
       </div>
     </div>
@@ -1405,35 +1416,35 @@ function BLPanel({ project, t, language }) {
           <div key={bl.deliveryDate} className="bl-card">
             <div className="bl-card__header" onClick={() => setOpenBL(openBL === bl.deliveryDate ? null : bl.deliveryDate)}>
               <div className="bl-card__info">
-                <span style={{ display: 'inline-block', width: 4, height: 20, borderRadius: 2, background: co.color || '#1a1a1a', marginRight: 10, verticalAlign: 'middle', flexShrink: 0 }} />
+                <span style={{ display: 'inline-block', width: 4, height: 20, borderRadius: 2, background: co.color || 'var(--700)', marginRight: 10, verticalAlign: 'middle', flexShrink: 0 }} />
                 <span className="bl-card__id">{bl.blId}</span>
                 <span className="bl-card__date">📅 {fmtDate(bl.deliveryDate + 'T00:00:00')}</span>
-                <span className="bl-card__count">{bl.units.length} pièce{bl.units.length > 1 ? 's' : ''}</span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 5, fontSize: 11, background: (co.color || '#1a1a1a') + '18', color: co.color || '#1a1a1a', fontWeight: 600 }}>
+                <span className="bl-card__count">{t(bl.units.length > 1 ? 'pdPieces' : 'pdPiece', { n: bl.units.length })}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 5, fontSize: 11, background: co.color ? co.color + '26' : 'var(--surface-2)', color: 'var(--text)', border: `1px solid ${co.color ? co.color + '55' : 'var(--border-2)'}`, fontWeight: 600 }}>
                   {co.logo && <img src={resolveLogoUrl(co.logo)} alt="" style={{ height: 14, objectFit: 'contain' }} />}
                   {co.name}
                 </span>
               </div>
               <div className="bl-card__actions">
-                <button className="bl-print-btn" title="Exporter" style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }} onClick={e => { e.stopPropagation(); setBlExportModal({ bl }); }}>📊</button>
-                <button className="bl-print-btn" title="Imprimer PDF" style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }} onClick={e => { e.stopPropagation(); setBlExportModal({ bl }); }}>🖨</button>
+                <button className="bl-print-btn" title={t('pdExport')} style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }} onClick={e => { e.stopPropagation(); setBlExportModal({ bl }); }}>📊</button>
+                <button className="bl-print-btn" title={t('pdPrintPdf')} style={{ fontSize: 17, padding: '4px 9px', lineHeight: 1 }} onClick={e => { e.stopPropagation(); setBlExportModal({ bl }); }}>🖨</button>
                 <span className="bl-card__toggle">{openBL === bl.deliveryDate ? '▲' : '▼'}</span>
               </div>
             </div>
             {openBL === bl.deliveryDate && (
               <div className="bl-card__body">
                 <table className="bl-table">
-                  <thead><tr><th>{t('repere')}</th><th>{t('type')}</th><th style={{ textAlign: 'center' }}>Qté</th><th>{t('dimension')}</th><th style={{ textAlign: 'center' }}>m²</th><th>{t('blDate')}</th><th>{t('unitNotes')}</th></tr></thead>
+                  <thead><tr><th>{t('repere')}</th><th>{t('type')}</th><th style={{ textAlign: 'center' }}>{t('pdQty')}</th><th>{t('dimension')}</th><th style={{ textAlign: 'center' }}>m²</th><th>{t('blDate')}</th><th>{t('unitNotes')}</th></tr></thead>
                   <tbody>
                     {bl.units.map((u, i) => (
                       <tr key={i} className={u.isComponent ? 'bl-row--component' : (u.isRemplissage ? 'bl-row--remplissage' : '')}>
-                        <td data-label="Repère"><strong>{u.unitLabel}</strong></td>
-                        <td data-label="Type">{u.chassisType || '—'}</td>
-                        <td data-label="Qté" style={{ textAlign: 'center' }}>{u.quantity && u.quantity > 1 ? u.quantity : 1}</td>
-                        <td data-label="Dimension" className="dim-cell">{u.dimension}</td>
-                        <td data-label="m²" style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>{u.m2 ? u.m2 + ' m²' : '—'}</td>
-                        <td data-label="Date">{fmtDate(u.deliveryDate)}</td>
-                        <td data-label="Notes">{u.notes || '—'}</td>
+                        <td data-label={t('pdRepere')}><strong>{u.unitLabel}</strong></td>
+                        <td data-label={t('type')}>{u.chassisType || '—'}</td>
+                        <td data-label={t('pdQty')} style={{ textAlign: 'center' }}>{u.quantity && u.quantity > 1 ? u.quantity : 1}</td>
+                        <td data-label={t('pdDimension')} className="dim-cell">{u.dimension}</td>
+                        <td data-label="m²" style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-3)' }}>{u.m2 ? u.m2 + ' m²' : '—'}</td>
+                        <td data-label={t('date')}>{fmtDate(u.deliveryDate)}</td>
+                        <td data-label={t('unitNotes')}>{u.notes || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1453,6 +1464,7 @@ const UNIT_OPTIONS = ['UN', 'ML', 'M²', 'M³', 'KG', 'L', 'PAIRE', 'JEU', 'ROUL
 const EMPTY_ACC = { label: '', unit: 'UN', quantity: 1, formula: '', itemId: '', mode: 'fixed' };
 
 function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
+  const { t } = useLanguage();
   const [suggestions, setSuggestions] = React.useState([]);
   const [open, setOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -1478,22 +1490,22 @@ function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
   return (
     <div ref={wrapRef} style={{ position: 'relative', width: '100%' }}>
       <div style={{ position: 'relative' }}>
-        <span style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#9ca3af', pointerEvents: 'none' }}>🔍</span>
+        <span style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--text-4)', pointerEvents: 'none' }}>🔍</span>
         <input className="ct-acc-search-input"
-          onFocus={e => { e.target.style.borderColor = '#1a1a1a'; e.target.style.boxShadow = '0 0 0 3px rgba(26,26,26,0.08)'; if (value.length >= 2 && suggestions.length > 0) setOpen(true); }}
-          onBlur={e => { e.target.style.borderColor = '#d1d5db'; e.target.style.boxShadow = 'none'; }}
-          value={value} onChange={handleChange} placeholder={placeholder || 'Nom ou recherche inventaire…'} autoComplete="off" />
-        {busy ? <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#555' }}>⏳</span>
-          : value && <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#9ca3af', cursor: 'pointer' }} onMouseDown={() => { onChange(''); setSuggestions([]); setOpen(false); }}>✕</span>}
+          onFocus={e => { e.target.style.borderColor = 'var(--600)'; e.target.style.boxShadow = '0 0 0 3px var(--focus)'; if (value.length >= 2 && suggestions.length > 0) setOpen(true); }}
+          onBlur={e => { e.target.style.borderColor = ''; e.target.style.boxShadow = 'none'; }}
+          value={value} onChange={handleChange} placeholder={placeholder || t('pdAccSearchPh')} autoComplete="off" />
+        {busy ? <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--text-3)' }}>⏳</span>
+          : value && <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: 'var(--text-4)', cursor: 'pointer' }} onMouseDown={() => { onChange(''); setSuggestions([]); setOpen(false); }}>✕</span>}
       </div>
       {open && suggestions.length > 0 && (
         <div className="ct-acc-dropdown">
-          <div className="ct-acc-dropdown__header">{suggestions.length} résultat{suggestions.length > 1 ? 's' : ''}</div>
+          <div className="ct-acc-dropdown__header">{t(suggestions.length > 1 ? 'pdResults' : 'pdResult', { n: suggestions.length })}</div>
           {suggestions.map(item => {
             const id = item.id || item._id; const label = item.designation?.fr || item.designation || id;
             return (
               <div key={id} onMouseDown={() => handleSelect(item)} className="ct-acc-dropdown__item"
-                onMouseEnter={e => { e.currentTarget.style.background = '#f5f5f5'; }} onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)'; }} onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>📦</span><span>{label}</span></span>
                 {item.unit && <span className="ct-acc-dropdown__unit">{item.unit}</span>}
               </div>
@@ -1506,6 +1518,7 @@ function AccLabelAutocomplete({ value, onChange, onSelect, placeholder }) {
 }
 
 function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
+  const { t } = useLanguage();
   const chId = chassis._id || chassis.id; const L = chassis.largeur || 0; const H = chassis.hauteur || 0;
   const [accessories, setAccessories] = useState([]); const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false); const [error, setError] = useState('');
@@ -1531,14 +1544,14 @@ function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
       const res = await axios.get(`${API_URL}/chassis-type-defaults/${encodeURIComponent(chassis.type)}`);
       const defaults = res.data || [];
       if (defaults.length > 0) setAccessories(defaults.map(d => { const hf = d.formula && d.formula.trim() !== ''; return { itemId: d.itemId || '', label: d.label, unit: d.unit || 'UN', quantity: hf ? 0 : (d.quantity || 1), formula: hf ? d.formula.trim() : '', mode: hf ? 'formula' : 'fixed' }; }));
-      else if (!silent) setError('Aucun accessoire par défaut configuré pour ce type de châssis.');
-    } catch { if (!silent) setError('Erreur lors du chargement des défauts.'); } finally { setLoadingDefaults(false); }
+      else if (!silent) setError(t('pdNoDefaultAcc'));
+    } catch { if (!silent) setError(t('pdDefaultsLoadError')); } finally { setLoadingDefaults(false); }
   };
 
   const update = (idx, key, val) => setAccessories(prev => prev.map((a, i) => i === idx ? { ...a, [key]: val } : a));
   const setMode = (idx, mode) => setAccessories(prev => prev.map((a, i) => i === idx ? { ...a, mode, formula: mode === 'fixed' ? '' : a.formula } : a));
   const addAcc = () => {
-    if (!newAcc.label.trim()) return setError("Le nom de l'accessoire est requis"); setError('');
+    if (!newAcc.label.trim()) return setError(t('pdAccNameRequired')); setError('');
     setAccessories(prev => [...prev, { itemId: newAcc.itemId || `manual_${Date.now()}`, label: newAcc.label.trim(), unit: newAcc.unit || 'UN', quantity: newAcc.mode === 'fixed' ? (parseFloat(newAcc.quantity) || 1) : 0, formula: newAcc.mode === 'formula' ? newAcc.formula.trim() : '', mode: newAcc.mode }]);
     setNewAcc(EMPTY_ACC);
   };
@@ -1554,74 +1567,74 @@ function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
         for (let i = 0; i < qty; i++) { const unit = (chassis.units || []).find(u => u.unitIndex === i); const tbl = unit?.atelierTable || ''; if (tbl) tableGroups[tbl] = (tableGroups[tbl] || 0) + 1; }
         await Promise.allSettled(Object.entries(tableGroups).map(async ([tableName, unitCount]) => {
           try {
-            const tblRes = await axios.get(`${API_URL}/atelier-tables`); const found = (tblRes.data || []).find(t => t.name === tableName);
+            const tblRes = await axios.get(`${API_URL}/atelier-tables`); const found = (tblRes.data || []).find(tb => tb.name === tableName);
             if (!found) return;
             await axios.post(`${API_URL}/table-stock/deduct-chassis`, { tableId: found.id, tableName, projectId: project.id, projectName: project.name, chassisRef: chassis.repere, accessories: computedAccs.map(a => ({ ...a, quantity: a.quantity * unitCount })) });
           } catch { }
         }));
       }
       onSaved && onSaved(); onClose();
-    } catch (e) { setError(e.response?.data?.error || 'Erreur lors de la sauvegarde'); } finally { setSaving(false); }
+    } catch (e) { setError(e.response?.data?.error || t('pdSaveError')); } finally { setSaving(false); }
   };
   const preview = (acc) => {
-    if (acc.mode === 'formula' && acc.formula) { const val = evalFormula(acc.formula, L, H); return val !== null ? <span className="proj-acc-preview-cell">{val} {acc.unit}</span> : <span className="proj-acc-preview-cell proj-acc-preview-cell--invalid">⚠ invalide</span>; }
+    if (acc.mode === 'formula' && acc.formula) { const val = evalFormula(acc.formula, L, H); return val !== null ? <span className="proj-acc-preview-cell">{val} {acc.unit}</span> : <span className="proj-acc-preview-cell proj-acc-preview-cell--invalid">⚠ {t('pdInvalid')}</span>; }
     return <span className="proj-acc-preview-cell">{acc.quantity} {acc.unit}</span>;
   };
   const setN = (key, val) => setNewAcc(prev => ({ ...prev, [key]: val }));
   const newPreview = () => {
-    if (newAcc.mode === 'formula' && newAcc.formula) { const val = evalFormula(newAcc.formula, L, H); if (val !== null) return <span className="proj-acc-formula-preview">= {val} {newAcc.unit}</span>; return <span className="proj-acc-formula-preview proj-acc-formula-preview--invalid">⚠ formule invalide</span>; }
+    if (newAcc.mode === 'formula' && newAcc.formula) { const val = evalFormula(newAcc.formula, L, H); if (val !== null) return <span className="proj-acc-formula-preview">= {val} {newAcc.unit}</span>; return <span className="proj-acc-formula-preview proj-acc-formula-preview--invalid">⚠ {t('pdInvalidFormula')}</span>; }
     return null;
   };
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal proj-acc-modal" onClick={e => e.stopPropagation()}>
         <div className="ct-manager__header">
-          <h2>🔧 Accessoires — {chassis.repere}<span style={{ fontWeight: 400, fontSize: 14, color: '#6b7280', marginLeft: 8 }}>({L}×{H} mm)</span></h2>
+          <h2>🔧 {t('pdAccessories')} — {chassis.repere}<span style={{ fontWeight: 400, fontSize: 14, color: 'var(--text-3)', marginLeft: 8 }}>({L}×{H} mm)</span></h2>
           <button className="chassis-form__close" onClick={onClose}>×</button>
         </div>
         {error && <div className="ct-manager__error">{error}</div>}
-        {loading ? <div className="ct-manager__loading">Chargement…</div> : (
+        {loading ? <div className="ct-manager__loading">{t('loading')}</div> : (
           <>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-              <p className="ct-acc-hint" style={{ margin: 0, flex: 1 }}>Accessoires pour ce châssis. Quantité <strong>fixe</strong> ou <strong>formule</strong> avec <strong>L</strong> et <strong>H</strong> en mm.</p>
-              <button className="proj-acc-load-defaults-btn" onClick={() => loadDefaults(false)} disabled={loadingDefaults}>{loadingDefaults ? '…' : '↩ Charger les défauts'}</button>
+              <p className="ct-acc-hint" style={{ margin: 0, flex: 1 }}>{t('pdAccHint')}</p>
+              <button className="proj-acc-load-defaults-btn" onClick={() => loadDefaults(false)} disabled={loadingDefaults}>{loadingDefaults ? '…' : `↩ ${t('pdLoadDefaults')}`}</button>
             </div>
             {accessories.length > 0 ? (
               <table className="proj-acc-table">
-                <thead><tr><th>Accessoire</th><th style={{ width: 90 }}>Unité</th><th style={{ width: 80 }}>Mode</th><th style={{ width: 110 }}>Qté fixe</th><th style={{ width: 180 }}>Formule (L,H)</th><th style={{ width: 110 }}>Aperçu</th><th style={{ width: 40 }}></th></tr></thead>
+                <thead><tr><th>{t('pdAccessory')}</th><th style={{ width: 90 }}>{t('pdUnit')}</th><th style={{ width: 80 }}>{t('pdMode')}</th><th style={{ width: 110 }}>{t('pdFixedQty')}</th><th style={{ width: 180 }}>{t('pdFormulaLH')}</th><th style={{ width: 110 }}>{t('pdPreview')}</th><th style={{ width: 40 }}></th></tr></thead>
                 <tbody>
                   {accessories.map((acc, idx) => (
                     <tr key={idx}>
                       <td><input className="ct-acc-qty-input" style={{ width: '100%' }} value={acc.label} onChange={e => update(idx, 'label', e.target.value)} /></td>
                       <td><select className="ct-acc-unit-select" value={acc.unit || 'UN'} onChange={e => update(idx, 'unit', e.target.value)}>{UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
-                      <td><select className="ct-acc-unit-select" value={acc.mode || 'fixed'} onChange={e => setMode(idx, e.target.value)}><option value="fixed">Fixe</option><option value="formula">Formule</option></select></td>
+                      <td><select className="ct-acc-unit-select" value={acc.mode || 'fixed'} onChange={e => setMode(idx, e.target.value)}><option value="fixed">{t('pdFixed')}</option><option value="formula">{t('pdFormula')}</option></select></td>
                       <td><input className="ct-acc-qty-input" type="number" min="0" step="0.01" value={acc.quantity} disabled={acc.mode === 'formula'} onChange={e => update(idx, 'quantity', parseFloat(e.target.value) || 0)} /></td>
-                      <td className="proj-acc-formula-cell"><input className="proj-acc-formula-input" value={acc.formula} disabled={acc.mode === 'fixed'} onChange={e => update(idx, 'formula', e.target.value)} placeholder="ex: 2*(L+H)/1000" /></td>
+                      <td className="proj-acc-formula-cell"><input className="proj-acc-formula-input" value={acc.formula} disabled={acc.mode === 'fixed'} onChange={e => update(idx, 'formula', e.target.value)} placeholder={t('pdFormulaPh')} /></td>
                       <td>{preview(acc)}</td>
                       <td><button className="delete-btn" onClick={() => removeAcc(idx)}>✕</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            ) : <div className="proj-acc-empty">Aucun accessoire configuré.</div>}
+            ) : <div className="proj-acc-empty">{t('pdNoAcc')}</div>}
             <div className="proj-acc-add-form">
-              <div className="proj-acc-add-form__title">➕ Ajouter un accessoire</div>
+              <div className="proj-acc-add-form__title">➕ {t('pdAddAccessory')}</div>
               <div className="proj-acc-add-form__grid">
                 <div className="form-group proj-acc-add-form__search" style={{ marginBottom: 0 }}>
-                  <label>Désignation *</label>
+                  <label>{t('designation')} *</label>
                   <AccLabelAutocomplete value={newAcc.label} onChange={v => setN('label', v)} onSelect={({ label, unit, itemId }) => setNewAcc(p => ({ ...p, label, unit: UNIT_OPTIONS.includes(unit) ? unit : (unit || 'UN'), itemId }))} />
                 </div>
                 <div className="proj-acc-mode-row">
                   <div className={`proj-acc-mode-card${newAcc.mode === 'fixed' ? ' proj-acc-mode-card--active' : ''}`} onClick={() => setN('mode', 'fixed')}>
-                    <div className="proj-acc-mode-card__label"><span className="proj-acc-mode-dot" />Quantité fixe</div>
+                    <div className="proj-acc-mode-card__label"><span className="proj-acc-mode-dot" />{t('pdFixedQuantity')}</div>
                     <div className="proj-acc-qty-unit-row">
                       <input type="number" className="ct-acc-qty-input" min="0" step="0.01" value={newAcc.quantity} disabled={newAcc.mode !== 'fixed'} style={{ flex: 1 }} onChange={e => setN('quantity', e.target.value)} onClick={e => { e.stopPropagation(); setN('mode', 'fixed'); }} />
                       <select className="proj-acc-unit-select" value={newAcc.unit} onChange={e => setN('unit', e.target.value)} onClick={e => e.stopPropagation()}>{UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}</select>
                     </div>
                   </div>
                   <div className={`proj-acc-mode-card${newAcc.mode === 'formula' ? ' proj-acc-mode-card--active' : ''}`} onClick={() => setN('mode', 'formula')}>
-                    <div className="proj-acc-mode-card__label"><span className="proj-acc-mode-dot" />Formule (L, H)</div>
-                    <input className="proj-acc-formula-input" value={newAcc.formula} disabled={newAcc.mode !== 'formula'} onChange={e => setN('formula', e.target.value)} onClick={e => { e.stopPropagation(); setN('mode', 'formula'); }} placeholder="ex: 2*(L+H)/1000" />
+                    <div className="proj-acc-mode-card__label"><span className="proj-acc-mode-dot" />{t('pdFormulaLH')}</div>
+                    <input className="proj-acc-formula-input" value={newAcc.formula} disabled={newAcc.mode !== 'formula'} onChange={e => setN('formula', e.target.value)} onClick={e => { e.stopPropagation(); setN('mode', 'formula'); }} placeholder={t('pdFormulaPh')} />
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
                       <select className="proj-acc-unit-select" value={newAcc.unit} onChange={e => setN('unit', e.target.value)} onClick={e => e.stopPropagation()}>{UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}</select>
                       <p className="proj-acc-formula-hint" style={{ margin: 0 }}><strong>L</strong>={L} · <strong>H</strong>={H} mm</p>
@@ -1630,14 +1643,14 @@ function ChassisLineAccessoryEditor({ chassis, project, onClose, onSaved }) {
                   </div>
                 </div>
                 <div className="proj-acc-add-form__actions">
-                  <button type="button" className="ct-config-btn" onClick={() => { setNewAcc(EMPTY_ACC); setError(''); }}>Réinitialiser</button>
-                  <button type="button" className="ct-config-btn" onClick={addAcc}>+ Ajouter</button>
+                  <button type="button" className="ct-config-btn" onClick={() => { setNewAcc(EMPTY_ACC); setError(''); }}>{t('pdReset')}</button>
+                  <button type="button" className="ct-config-btn" onClick={addAcc}>{t('add')}</button>
                 </div>
               </div>
             </div>
             <div className="modal-actions">
-              <button onClick={onClose}>Annuler</button>
-              <button className="primary" onClick={handleSave} disabled={saving}>{saving ? '…' : '💾 Enregistrer'}</button>
+              <button onClick={onClose}>{t('cancel')}</button>
+              <button className="primary" onClick={handleSave} disabled={saving}>{saving ? '…' : `💾 ${t('save')}`}</button>
             </div>
           </>
         )}
@@ -1659,31 +1672,31 @@ function buildChassisDetailHTML(ch, project, chassisLabels, language, accessorie
     else { mergedMap[key] = { label: acc.label, unit: acc.unit || '', totalQty: qty, formulaStr: acc.formula || '' }; }
   }
   const mergedAccessories = Object.values(mergedMap);
-  const accRows = mergedAccessories.map((acc, i) => { const qtyDisplay = acc.totalQty !== null ? `${acc.totalQty} ${acc.unit}` : `⚠ formule invalide`; const formulaDisplay = acc.formulaStr ? `<code style="font-size:11px;color:#6b7280">${acc.formulaStr}</code>` : '—'; return `<tr class="${i % 2 === 0 ? 'row-even' : 'row-odd'}"><td>${i + 1}</td><td>${acc.label}</td><td>${formulaDisplay}</td><td style="font-weight:700;color:${companyColor}">${qtyDisplay}</td></tr>`; }).join('');
-  const componentRows = (ch.components || []).map((comp, i) => `<tr><td>${comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${i}`)}</td><td>${comp.role === 'dormant' ? 'Dormant' : 'Vantail'}</td><td>${comp.largeur}×${comp.hauteur} mm</td></tr>`).join('');
-  const atelierChip = atelierTable ? `<div class="chip" style="background:#fef9c3;border-color:#fde68a">🏭 Table atelier : <strong style="color:#92400e">${atelierTable}</strong></div>` : `<div class="chip" style="color:#9ca3af">🏭 Table atelier : <strong>non assignée</strong></div>`;
+  const accRows = mergedAccessories.map((acc, i) => { const qtyDisplay = acc.totalQty !== null ? `${acc.totalQty} ${acc.unit}` : `⚠ ${tx('pdInvalidFormula')}`; const formulaDisplay = acc.formulaStr ? `<code style="font-size:11px;color:#6b7280">${acc.formulaStr}</code>` : '—'; return `<tr class="${i % 2 === 0 ? 'row-even' : 'row-odd'}"><td>${i + 1}</td><td>${acc.label}</td><td>${formulaDisplay}</td><td style="font-weight:700;color:${companyColor}">${qtyDisplay}</td></tr>`; }).join('');
+  const componentRows = (ch.components || []).map((comp, i) => `<tr><td>${comp.repere || (comp.role === 'dormant' ? tx('pdDormant') : `${tx('pdVantailWord')} ${i}`)}</td><td>${comp.role === 'dormant' ? tx('pdDormant') : tx('pdVantailWord')}</td><td>${comp.largeur}×${comp.hauteur} mm</td></tr>`).join('');
+  const atelierChip = atelierTable ? `<div class="chip" style="background:#fef9c3;border-color:#fde68a">🏭 ${tx('pdAtelierTable')} : <strong style="color:#92400e">${atelierTable}</strong></div>` : `<div class="chip" style="color:#9ca3af">🏭 ${tx('pdAtelierTable')} : <strong>${tx('pdUnassigned')}</strong></div>`;
   const closeScript = '<' + '/script>';
-  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Détail — ${ch.repere}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:28px 36px}h1{font-size:18px;font-weight:800;color:${companyColor};margin-bottom:4px}h2{font-size:13px;font-weight:700;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.06em;color:#374151}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}.chip{padding:5px 12px;border-radius:6px;border:1px solid #e5e7eb;background:#f9fafb;font-size:12px}.chip strong{color:${companyColor}}table{width:100%;border-collapse:collapse;margin-bottom:12px}thead tr{background:${companyColor};color:#fff}th{padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;text-align:left}td{padding:8px 10px;border-bottom:1px solid #f0f0f0}.row-even{background:#fff}.row-odd{background:#f9fafb}.no-acc{color:#9ca3af;font-style:italic;padding:12px 0}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm 16mm}@page{size:A4;margin:0}}</style></head><body><h1>🪟 ${ch.repere}</h1><div class="meta"><div class="chip">Type : <strong>${typeLabel}</strong></div><div class="chip">Dimensions : <strong>${L}×${H} mm</strong></div><div class="chip">Projet : <strong>${project.name}</strong></div><div class="chip">Réf. : <strong>${project.reference}</strong></div><div class="chip">RAL : <strong>${project.ralCode}</strong></div>${atelierChip}</div>${componentRows ? `<h2>Composants</h2><table><thead><tr><th>Repère</th><th>Rôle</th><th>Dimension</th></tr></thead><tbody>${componentRows}</tbody></table>` : ''}<h2>Accessoires nécessaires</h2>${mergedAccessories.length === 0 ? '<p class="no-acc">Aucun accessoire configuré pour ce châssis.</p>' : `<table><thead><tr><th>#</th><th>Désignation</th><th>Formule</th><th>Quantité</th></tr></thead><tbody>${accRows}</tbody></table>`}<script>window.onload = () => window.print();${closeScript}</body></html>`;
+  return `<!DOCTYPE html><html lang="${activeLanguage()}"><head><meta charset="utf-8"><title>${tx('pdDetail')} — ${ch.repere}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:28px 36px}h1{font-size:18px;font-weight:800;color:${companyColor};margin-bottom:4px}h2{font-size:13px;font-weight:700;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.06em;color:#374151}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}.chip{padding:5px 12px;border-radius:6px;border:1px solid #e5e7eb;background:#f9fafb;font-size:12px}.chip strong{color:${companyColor}}table{width:100%;border-collapse:collapse;margin-bottom:12px}thead tr{background:${companyColor};color:#fff}th{padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;text-align:left}td{padding:8px 10px;border-bottom:1px solid #f0f0f0}.row-even{background:#fff}.row-odd{background:#f9fafb}.no-acc{color:#9ca3af;font-style:italic;padding:12px 0}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm 16mm}@page{size:A4;margin:0}}</style></head><body><h1>🪟 ${ch.repere}</h1><div class="meta"><div class="chip">${tx('labelType')} : <strong>${typeLabel}</strong></div><div class="chip">${tx('labelDim')} : <strong>${L}×${H} mm</strong></div><div class="chip">${tx('labelProject')} : <strong>${project.name}</strong></div><div class="chip">${tx('labelRef')} : <strong>${project.reference}</strong></div><div class="chip">RAL : <strong>${project.ralCode}</strong></div>${atelierChip}</div>${componentRows ? `<h2>${tx('pdComponents')}</h2><table><thead><tr><th>${tx('labelRepere')}</th><th>${tx('role')}</th><th>${tx('pdDimension')}</th></tr></thead><tbody>${componentRows}</tbody></table>` : ''}<h2>${tx('pdRequiredAcc')}</h2>${mergedAccessories.length === 0 ? `<p class="no-acc">${tx('pdNoAccForChassis')}</p>` : `<table><thead><tr><th>#</th><th>${tx('designation')}</th><th>${tx('pdFormula')}</th><th>${tx('quantity')}</th></tr></thead><tbody>${accRows}</tbody></table>`}<script>window.onload = () => window.print();${closeScript}</body></html>`;
 }
 
 // ─── Remplissage Label Print ──────────────────────────────────────────────────
 function buildRemplissageLabelHTML(remplissages, chassis, project, compLabel, typeLabel) {
   const ralHex = project.ralColor || '#cccccc';
-  const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
+  const dateStr = project.date ? new Date(project.date).toLocaleDateString({ fr: 'fr-FR', it: 'it-IT', en: 'en-GB' }[activeLanguage()] || 'fr-FR') : '';
   const unitSuffix = (idx) => chassis.quantity > 1 ? ` #${Number(idx) + 1}` : '';
   const pages = remplissages.map(r => {
-    const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+    const rLabel = r.sousType ? `${rempTypeLabel(r.type)} — ${r.sousType}` : rempTypeLabel(r.type);
     const repere = compLabel ? `${chassis.repere}${unitSuffix(r.unitIndex ?? 0)} — ${compLabel}` : `${chassis.repere}${unitSuffix(r.unitIndex ?? 0)}`;
     const parentLine = `<div class="parent-ref">${typeLabel}</div>`;
     return `<div class="page"><div class="label">
     <div class="lh"><span class="brand">CAMI ALUMINIUM</span><span class="swatch"></span></div>
-    <div class="row"><span class="f"><span class="k">Projet</span><span class="v">${project.name}</span></span><span class="f"><span class="k">Réf.</span><span class="v">${project.reference}</span></span></div>
-    <div class="row"><span class="f"><span class="k">RAL</span><span class="v">${project.ralCode}</span></span><span class="f"><span class="k">Date</span><span class="v">${dateStr}</span></span></div>
+    <div class="row"><span class="f"><span class="k">${tx('labelProject')}</span><span class="v">${project.name}</span></span><span class="f"><span class="k">${tx('labelRef')}</span><span class="v">${project.reference}</span></span></div>
+    <div class="row"><span class="f"><span class="k">RAL</span><span class="v">${project.ralCode}</span></span><span class="f"><span class="k">${tx('labelDate')}</span><span class="v">${dateStr}</span></span></div>
     <div class="div"></div>
     <div class="grid">
-      <div class="cell"><span class="k">Repère</span><span class="repere">${repere}${parentLine}</span></div>
-      <div class="cell"><span class="k">Remplissage</span><span class="v remp-type">${rLabel}</span></div>
-      <div class="cell full"><span class="k">Dimensions</span><span class="dim">${r.largeur} × ${r.hauteur} mm</span></div>
+      <div class="cell"><span class="k">${tx('labelRepere')}</span><span class="repere">${repere}${parentLine}</span></div>
+      <div class="cell"><span class="k">${tx('pdRemplissage')}</span><span class="v remp-type">${rLabel}</span></div>
+      <div class="cell full"><span class="k">${tx('labelDim')}</span><span class="dim">${r.largeur} × ${r.hauteur} mm</span></div>
     </div>
   </div></div>`;
   }).join('\n');
@@ -1726,7 +1739,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
   }
 
   const comp = compIndex !== null ? (chassis.components || [])[compIndex] : null;
-  const compLabel = comp ? (comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${compIndex}`)) : null;
+  const compLabel = comp ? (comp.repere || (comp.role === 'dormant' ? t('pdDormant') : `${t('pdVantailWord')} ${compIndex}`)) : null;
   const compDimL = comp?.largeur || chassis.largeur;
   const compDimH = comp?.hauteur || chassis.hauteur;
 
@@ -1743,7 +1756,7 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
   }, [chId, project.id, unitIndex, compIndex]);
 
   const addRemp = async () => {
-    if (!newRemp.largeur || !newRemp.hauteur) return setError('Largeur et hauteur sont requises');
+    if (!newRemp.largeur || !newRemp.hauteur) return setError(t('pdWHRequired'));
     const qty = Math.max(1, parseInt(newRemp.quantity) || 1);
     setError('');
     try {
@@ -1756,16 +1769,16 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
       setRemplissages(prev => [...prev, ...created]);
       setNewRemp(EMPTY_REMP);
       if (onSaved) onSaved();
-    } catch (e) { setError(e.response?.data?.error || 'Erreur ajout'); }
+    } catch (e) { setError(e.response?.data?.error || t('pdAddError')); }
   };
 
   const deleteRemp = async (id) => {
-    if (!window.confirm('Supprimer ce remplissage ?')) return;
+    if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('pdDeleteRempConfirm'), danger: true, confirmLabel: t('deleteAction') }))) return;
     try {
       await axios.delete(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${id}`);
       setRemplissages(prev => prev.filter(r => (r._id || r.id) !== id));
       if (onSaved) onSaved();
-    } catch (e) { setError(e.response?.data?.error || 'Erreur suppression'); }
+    } catch (e) { setError(e.response?.data?.error || t('pdDeleteError')); }
   };
 
   const patchRemp = async (id, patch) => {
@@ -1774,13 +1787,13 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
       const res = await axios.patch(`${API_URL}/projects/${project.id}/chassis/${chId}/remplissages/${id}`, patch);
       setRemplissages(prev => prev.map(r => (r._id || r.id) === id ? res.data : r));
       if (onSaved) onSaved();
-    } catch (e) { setError(e.response?.data?.error || 'Erreur mise à jour'); } finally { setSaving(null); }
+    } catch (e) { setError(e.response?.data?.error || t('pdUpdateError')); } finally { setSaving(null); }
   };
 
   const saveEdit = async () => {
     if (!editingRemp) return;
     const { id, type, sousType, largeur, hauteur } = editingRemp;
-    if (!largeur || !hauteur) return setError('Largeur et hauteur sont requises');
+    if (!largeur || !hauteur) return setError(t('pdWHRequired'));
     setError('');
     await patchRemp(id, { type, sousType, largeur: Number(largeur), hauteur: Number(hauteur) });
     setEditingRemp(null);
@@ -1845,8 +1858,8 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
         <div className="ct-manager__header">
           <h2>
             {t('remplissage')} — {t('repere')} : {chassis.repere}{unitSuffix}
-            {compLabel && <span style={{ fontWeight: 400, fontSize: 13, color: '#6b7280', marginLeft: 4 }}>— {compLabel}</span>}
-            <span style={{ fontWeight: 400, fontSize: 13, color: '#6b7280', marginLeft: 8 }}>({compDimL}×{compDimH} mm)</span>
+            {compLabel && <span style={{ fontWeight: 400, fontSize: 13, color: 'var(--text-3)', marginLeft: 4 }}>— {compLabel}</span>}
+            <span style={{ fontWeight: 400, fontSize: 13, color: 'var(--text-3)', marginLeft: 8 }}>({compDimL}×{compDimH} mm)</span>
           </h2>
           <button className="chassis-form__close" onClick={onClose}>×</button>
         </div>
@@ -1858,8 +1871,8 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                 <thead>
                   <tr>
                     <th>{t('type')}</th><th>{t('subtype')}</th>
-                    <th style={{ width: 80 }}>L (mm)</th><th style={{ width: 80 }}>H (mm)</th>
-                    <th style={{ width: 90 }}>m²</th><th style={{ width: 120 }}>{t('status')}</th>
+                    <th style={{ width: 80 }}>{t('pdColL')}</th><th style={{ width: 80 }}>{t('pdColH')}</th>
+                    <th style={{ width: 80 }}>m²</th><th style={{ width: 150 }}>{t('status')}</th>
                     <th style={{ width: 120 }}>{t('blDate')}</th>
                     {adminVerre && <th style={{ width: 40 }}></th>}
                     {adminVerre && <th style={{ width: 40 }}></th>}
@@ -1870,25 +1883,25 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
                   {remplissages.map(r => {
                     const id = r._id || r.id; const isSaving = saving === id; const isEditing = editingRemp?.id === id;
                     return (
-                      <tr key={id} style={{ opacity: isSaving ? 0.6 : 1, background: isEditing ? '#f0f9ff' : undefined }}>
-                        <td>{isEditing ? <select value={editingRemp.type} onChange={e => setEditingRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>{REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}</select> : <strong>{r.type}</strong>}</td>
-                        <td>{isEditing ? <input type="text" value={editingRemp.sousType} onChange={e => setEditingRemp(p => ({ ...p, sousType: e.target.value }))} placeholder="Sous-type…" style={{ width: '100%' }} /> : (r.sousType || <span style={{ color: '#9ca3af' }}>—</span>)}</td>
+                      <tr key={id} style={{ opacity: isSaving ? 0.6 : 1, background: isEditing ? 'rgba(59,130,246,.08)' : undefined }}>
+                        <td>{isEditing ? <select value={editingRemp.type} onChange={e => setEditingRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>{REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{rempTypeLabel(tVal)}</option>)}</select> : <strong>{rempTypeLabel(r.type)}</strong>}</td>
+                        <td>{isEditing ? <input type="text" value={editingRemp.sousType} onChange={e => setEditingRemp(p => ({ ...p, sousType: e.target.value }))} placeholder={t('pdSubTypePh')} style={{ width: '100%' }} /> : (r.sousType || <span style={{ color: 'var(--text-4)' }}>—</span>)}</td>
                         <td style={{ textAlign: 'center' }}>{isEditing ? <input type="number" min="1" value={editingRemp.largeur} onChange={e => setEditingRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" style={{ width: 70 }} /> : r.largeur}</td>
                         <td style={{ textAlign: 'center' }}>{isEditing ? <input type="number" min="1" value={editingRemp.hauteur} onChange={e => setEditingRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" style={{ width: 70 }} /> : r.hauteur}</td>
-                        <td style={{ textAlign: 'center', fontSize: 11, color: '#6b7280' }}>{calcM2(isEditing ? editingRemp.largeur : r.largeur, isEditing ? editingRemp.hauteur : r.hauteur)}</td>
+                        <td style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-3)' }}>{calcM2(isEditing ? editingRemp.largeur : r.largeur, isEditing ? editingRemp.hauteur : r.hauteur)}</td>
                         <td>
                           {stateThingVitrage ? (
                             <select value={r.etat} disabled={isSaving || isEditing || isEtatSelectDisabled(userRole, r.etat, isSaving)} onChange={e => handleEtatChange(r, e.target.value)} style={{ borderLeft: `3px solid ${ETAT_COLORS[r.etat]}`, borderRadius: 4, padding: '3px 6px', fontSize: 12, width: '100%' }}>
                               {getRemplissageAllowedEtats(userRole, r.etat).map(opt => <option key={opt} value={opt}>{t('etat_' + opt)}</option>)}
                             </select>
                           ) : (
-                            <span className="etat-badge" style={{ background: ETAT_COLORS[r.etat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>{t(`etat_${r.etat}`)}</span>
+                            <span className="etat-badge pd-etat-badge" style={etatTint(r.etat)}>{t(`etat_${r.etat}`)}</span>
                           )}
                         </td>
                         <td style={{ textAlign: 'center', fontSize: 12 }}>
                           {r.etat === 'livre' && r.deliveryDate
                             ? <button className="date-btn" style={{ fontSize: 11 }} onClick={() => setDelivDateModal({ id, etat: 'livre', current: toDateInput(r.deliveryDate) })}>📅 {fmtDate(r.deliveryDate)}</button>
-                            : <span style={{ color: '#9ca3af' }}>—</span>}
+                            : <span style={{ color: 'var(--text-4)' }}>—</span>}
                         </td>
                         {adminVerre && <td>{isEditing ? <div style={{ display: 'flex', gap: 4 }}><button className="ct-config-btn" style={{ fontSize: 11, padding: '2px 7px' }} onClick={saveEdit} disabled={isSaving}>💾</button><button className="delete-btn" style={{ fontSize: 11, padding: '2px 7px' }} onClick={() => setEditingRemp(null)}>✕</button></div> : <button className="edit-btn" disabled={isSaving} onClick={() => setEditingRemp({ id, type: r.type, sousType: r.sousType || '', largeur: r.largeur, hauteur: r.hauteur })}>✏️</button>}</td>}
                         {adminVerre && <td><button className="print-btn" disabled={isEditing} onClick={() => { const tl = chassisLabels[chassis.type]?.[language] || chassisLabels[chassis.type]?.fr || chassis.type; const html = buildRemplissageLabelHTML([r], chassis, project, compLabel, tl); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}>🏷</button></td>}
@@ -1904,14 +1917,14 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
               <div className="proj-acc-add-form">
                 <div className="proj-acc-add-form__title">➕ {t('add_infill')}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 80px 70px auto', gap: 10, alignItems: 'flex-end' }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>{t('type')}</label><select value={newRemp.type} onChange={e => setNewRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>{REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{tVal}</option>)}</select></div>
+                  <div className="form-group" style={{ marginBottom: 0 }}><label>{t('type')}</label><select value={newRemp.type} onChange={e => setNewRemp(p => ({ ...p, type: e.target.value }))} style={{ width: '100%' }}>{REMPLISSAGE_TYPES.map(tVal => <option key={tVal} value={tVal}>{rempTypeLabel(tVal)}</option>)}</select></div>
                   <div className="form-group" style={{ marginBottom: 0 }}><label>{t('subtype')}</label><input type="text" value={newRemp.sousType} onChange={e => setNewRemp(p => ({ ...p, sousType: e.target.value }))} placeholder={t('subtype_placeholder')} style={{ width: '100%' }} /></div>
                   <div className="form-group" style={{ marginBottom: 0 }}><label>{t('width_mm')}</label><input type="number" min="1" value={newRemp.largeur} onChange={e => setNewRemp(p => ({ ...p, largeur: e.target.value }))} className="ct-acc-qty-input" /></div>
                   <div className="form-group" style={{ marginBottom: 0 }}><label>{t('height_mm')}</label><input type="number" min="1" value={newRemp.hauteur} onChange={e => setNewRemp(p => ({ ...p, hauteur: e.target.value }))} className="ct-acc-qty-input" /></div>
-                  <div className="form-group" style={{ marginBottom: 0 }}><label>Qté</label><input type="number" min="1" max="50" value={newRemp.quantity} onChange={e => setNewRemp(p => ({ ...p, quantity: e.target.value }))} className="ct-acc-qty-input" /></div>
+                  <div className="form-group" style={{ marginBottom: 0 }}><label>{t('pdQty')}</label><input type="number" min="1" max="50" value={newRemp.quantity} onChange={e => setNewRemp(p => ({ ...p, quantity: e.target.value }))} className="ct-acc-qty-input" /></div>
                   <div><button type="button" className="ct-config-btn" style={{ marginTop: 22 }} onClick={addRemp}>{t('add')}</button></div>
                 </div>
-                {newRemp.largeur && newRemp.hauteur && <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>{t('surface')} <strong>{calcM2(newRemp.largeur, newRemp.hauteur)}</strong></div>}
+                {newRemp.largeur && newRemp.hauteur && <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-3)' }}>{t('surface')} <strong>{calcM2(newRemp.largeur, newRemp.hauteur)}</strong></div>}
               </div>
             )}
           </>
@@ -1919,11 +1932,11 @@ function RemplissageModal({ chassis, unitIndex = 0, compIndex = null, project, o
         {delivDateModal && (
           <div className="modal-overlay" onClick={() => setDelivDateModal(null)}>
             <div className="modal" style={{ maxWidth: 320 }} onClick={e => e.stopPropagation()}>
-              <h3 style={{ marginBottom: 16 }}>📅 Date de livraison</h3>
-              <div className="form-group"><label>Date</label><input type="date" defaultValue={delivDateModal.current || new Date().toISOString().split('T')[0]} id="remp-date-input" /></div>
+              <h3 style={{ marginBottom: 16 }}>📅 {t('pdDeliveryDate')}</h3>
+              <div className="form-group"><label>{t('date')}</label><input type="date" defaultValue={delivDateModal.current || new Date().toISOString().split('T')[0]} id="remp-date-input" /></div>
               <div className="modal-actions">
-                <button onClick={() => setDelivDateModal(null)}>Annuler</button>
-                <button className="primary" onClick={() => handleDeliveryConfirm(document.getElementById('remp-date-input').value)}>Confirmer</button>
+                <button onClick={() => setDelivDateModal(null)}>{t('cancel')}</button>
+                <button className="primary" onClick={() => handleDeliveryConfirm(document.getElementById('remp-date-input').value)}>{t('dlgConfirm')}</button>
               </div>
             </div>
           </div>
@@ -1984,20 +1997,20 @@ function BulkRemplissageModal({ project, onClose, onSaved }) {
       }));
       if (onSaved) onSaved();
       onClose();
-    } catch (e) { setError(e.response?.data?.error || 'Erreur lors de la mise à jour'); }
+    } catch (e) { setError(e.response?.data?.error || t('pdUpdateError')); }
     finally { setSaving(false); }
   };
 
   const REMP_ETAT_COLORS = {
     non_entame: '#9ca3af', en_cours: '#f59e0b', fabrique: '#3b82f6',
-    pret_a_livrer: 'rgb(255,0,0)', livre: '#16a34a',
+    pret_a_livrer: '#ef4444', livre: '#16a34a',
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 600, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div className="ct-manager__header">
-          <h2>🏷 Changer l'état des remplissages en lot</h2>
+          <h2>🏷 {t('pdBulkRempTitle')}</h2>
           <button className="chassis-form__close" onClick={onClose}>×</button>
         </div>
         {error && <div className="ct-manager__error">{error}</div>}
@@ -2005,13 +2018,13 @@ function BulkRemplissageModal({ project, onClose, onSaved }) {
         {selectableRemplissages.length === 0 ? (
           <div className="proj-acc-empty">
             {isLogistique
-              ? 'Aucun remplissage en état "Prêt à livrer" disponible.'
-              : 'Aucun remplissage dans ce projet.'}
+              ? t('pdNoRempReady')
+              : t('pdNoRemp')}
           </div>
         ) : (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-              <label style={{ fontWeight: 600, fontSize: 13 }}>Nouvel état :</label>
+              <label style={{ fontWeight: 600, fontSize: 13 }}>{t('pdNewState')} :</label>
               <select
                 value={targetEtat}
                 onChange={e => setTargetEtat(e.target.value)}
@@ -2026,18 +2039,18 @@ function BulkRemplissageModal({ project, onClose, onSaved }) {
                   type="date"
                   value={deliveryDate}
                   onChange={e => setDeliveryDate(e.target.value)}
-                  style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #d1d5db', fontSize: 13 }}
+                  style={{ padding: '4px 8px', fontSize: 13 }}
                 />
               )}
             </div>
 
             <div style={{ marginBottom: 10 }}>
-              <label style={{ fontSize: 12, color: '#6b7280', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <label style={{ fontSize: 12, color: 'var(--text-3)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <input type="checkbox"
                   checked={selected.size === selectableRemplissages.length}
                   onChange={toggleAll}
                 />
-                Tout sélectionner ({selectableRemplissages.length})
+                {t('selectAll')} ({selectableRemplissages.length})
               </label>
             </div>
 
@@ -2045,21 +2058,21 @@ function BulkRemplissageModal({ project, onClose, onSaved }) {
               <thead>
                 <tr>
                   <th style={{ width: 36 }}></th>
-                  <th>Repère</th>
-                  <th>Type</th>
-                  <th>Dimensions</th>
-                  <th>État actuel</th>
+                  <th>{t('pdRepere')}</th>
+                  <th>{t('type')}</th>
+                  <th>{t('labelDim')}</th>
+                  <th>{t('pdCurrentState')}</th>
                 </tr>
               </thead>
               <tbody>
                 {selectableRemplissages.map(({ r, ch }, i) => {
                   const unitSuffix = (ch.quantity || 1) > 1 ? ` #${(r.unitIndex ?? 0) + 1}` : '';
                   const comp = r.compIndex != null ? (ch.components || [])[r.compIndex] : null;
-                  const compLabel = comp ? (comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${r.compIndex}`)) : null;
+                  const compLabel = comp ? (comp.repere || (comp.role === 'dormant' ? t('pdDormant') : `${t('pdVantailWord')} ${r.compIndex}`)) : null;
                   const repere = compLabel
                     ? `${ch.repere}${unitSuffix} — ${compLabel}`
                     : `${ch.repere}${unitSuffix}`;
-                  const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+                  const rLabel = r.sousType ? `${rempTypeLabel(r.type)} — ${r.sousType}` : rempTypeLabel(r.type);
                   return (
                     <tr key={r._id || r.id} style={{ opacity: selected.has(i) ? 1 : 0.45 }}>
                       <td><input type="checkbox" checked={selected.has(i)} onChange={() => toggleOne(i)} /></td>
@@ -2067,10 +2080,7 @@ function BulkRemplissageModal({ project, onClose, onSaved }) {
                       <td>{rLabel}</td>
                       <td style={{ textAlign: 'center', fontSize: 12 }}>{r.largeur}×{r.hauteur} mm</td>
                       <td>
-                        <span style={{
-                          background: REMP_ETAT_COLORS[r.etat] || '#9ca3af',
-                          color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600
-                        }}>
+                        <span className="pd-etat-badge" style={etatTint(r.etat)}>
                           {t('etat_' + r.etat)}
                         </span>
                       </td>
@@ -2090,7 +2100,7 @@ function BulkRemplissageModal({ project, onClose, onSaved }) {
               onClick={handleApply}
               disabled={saving || !selected.size}
             >
-              {saving ? '⏳ En cours…' : `✅ Appliquer (${selected.size} remplissage${selected.size > 1 ? 's' : ''})`}
+              {saving ? `⏳ ${t('pdInProgress')}` : `✅ ${t(selected.size > 1 ? 'pdApplyRemps' : 'pdApplyRemp', { n: selected.size })}`}
             </button>
           )}
         </div>
@@ -2325,10 +2335,10 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
     const chId = ch._id || ch.id; const qty = ch.quantity ?? 1;
     const keepAsOne = ch.keepAsOne === true || (ch.keepAsOne == null && projectTab === 'laquage');
     if (qty <= 1 || keepAsOne) {
-      if (!window.confirm(t('deleteChassisConfirm'))) return;
+      if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('deleteChassisConfirm'), danger: true, confirmLabel: t('deleteAction') }))) return;
       await deleteChassis(project.id, chId);
     } else {
-      if (!window.confirm(`Supprimer l'unité #${unitIndex + 1} ?`)) return;
+      if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('pdDeleteUnitConfirm', { n: unitIndex + 1 }), danger: true, confirmLabel: t('deleteAction') }))) return;
       await updateChassis(project.id, chId, { quantity: qty - 1 });
     }
     if (refreshProject) await refreshProject(project.id);
@@ -2424,7 +2434,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
       const displayEtat = allowedEtats.includes(etat) ? etat : etat;
       const disabled = isEtatSelectDisabled(userRole, etat, isSaving);
       return (
-        <td data-label="État">
+        <td data-label={t('pdState')}>
           <select
             className={`etat-select etat-select--${displayEtat}`}
             value={displayEtat}
@@ -2443,10 +2453,9 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
     }
     // Read-only badge for everyone else
     return (
-      <td data-label="État">
+      <td data-label={t('pdState')}>
         <span
-          className="etat-badge"
-          style={{ background: ETAT_COLORS[etat] || '#9ca3af', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap', display: 'inline-block' }}
+          className="etat-badge pd-etat-badge" style={etatTint(etat)}
         >
           {t(`etat_${etat}`)}
         </span>
@@ -2464,21 +2473,22 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
       <button className="btn-back" onClick={onBack}><StepBack size={15} />{t('backToProjects')}</button>
       <div className="project-detail__header">
         <div className="project-detail__info">
-          <div className="project-detail__ral-swatch" style={{ backgroundColor: project.ralColor || '#eee' }} />
+          <div className="project-detail__ral-swatch" style={{ backgroundColor: project.ralColor || 'var(--surface-3)' }} />
           <div>
             <h2 className="project-detail__name">{project.name}</h2>
             <div className="project-detail__meta">
               <span>{t('ref')} <strong>{project.reference}</strong></span>
               <span>{t('ral')} <strong>{project.ralCode}</strong></span>
               <span>{t('date')}: <strong>{dateStr}</strong></span>
-              <span className="project-detail__status" style={{ backgroundColor: statusColor }}>{t(`status_${project.status}`) || project.status}</span>
+              <span className="project-detail__status" style={{ backgroundColor: statusColor + '1f', color: statusColor, border: `1px solid ${statusColor}59` }}>{t(`status_${project.status}`) || project.status}</span>
               {project.tab && project.tab !== 'aluminium' && (
                 <span style={{
                   fontSize: 11, padding: '2px 8px', borderRadius: 99, fontWeight: 700,
-                  background: project.tab === 'laquage' ? '#fef3c7' : '#ede9fe',
-                  color: project.tab === 'laquage' ? '#92400e' : '#5b21b6',
+                  background: project.tab === 'laquage' ? 'rgba(251,191,36,.12)' : 'rgba(167,139,250,.12)',
+                  color: project.tab === 'laquage' ? '#fcd34d' : '#c4b5fd',
+                  border: `1px solid ${project.tab === 'laquage' ? 'rgba(251,191,36,.3)' : 'rgba(167,139,250,.3)'}`,
                 }}>
-                  {project.tab === 'laquage' ? '🎨 Laquage' : '🪟 Vitrage'}
+                  {project.tab === 'laquage' ? `🎨 ${t('pdLaquage')}` : `🪟 ${t('pdVitrage')}`}
                 </span>
               )}
             </div>
@@ -2486,10 +2496,10 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
         </div>
         {adminThing && (
           <div className="project-detail__header-actions">
-            <button className="excel-btn" onClick={() => exportProjectPDF(project, language, chassisLabels, t)}>📄 {t('exportPDF')} — Châssis</button>
-            <button className="excel-btn" onClick={() => exportBarsPDF(project, language, t)}>📄 {t('exportPDF')} — Barres</button>
-            <button className="excel-btn" onClick={() => exportChassisRemplissageExcel(project, chassisLabels, language)}>📊 Excel — Châssis & Remplissages</button>
-            <button className="excel-btn" onClick={() => exportDevisExcel(project, chassisLabels, language)}>💰 Excel — Devis</button>
+            <button className="excel-btn" onClick={() => exportProjectPDF(project, language, chassisLabels, t)}>📄 {t('exportPDF')} — {t('pdChassisWord')}</button>
+            <button className="excel-btn" onClick={() => exportBarsPDF(project, language, t)}>📄 {t('exportPDF')} — {t('pdBars')}</button>
+            <button className="excel-btn" onClick={() => exportChassisRemplissageExcel(project, chassisLabels, language)}>📊 Excel — {t('pdSheetChassisRemp')}</button>
+            <button className="excel-btn" onClick={() => exportDevisExcel(project, chassisLabels, language)}>💰 Excel — {t('qtSheet')}</button>
           </div>
         )}
       </div>
@@ -2531,8 +2541,8 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                   const allowed = getAllowedEtats(userRole, sampleEtat, project);
                   const bulkEtats = userRole === 'LOGISTIQUE' ? ['livre'] : allowed.filter(e => e !== 'livre' || userRole === 'Admin');
                   return (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, padding: '3px 10px' }}>
-                      <span style={{ fontSize: 12, color: '#0369a1', fontWeight: 600 }}>
+                    <div className="pd-bulk-etat">
+                      <span className="pd-bulk-etat__label">
                         Changer état ({selectedKeys.size}) :
                       </span>
                       {bulkEtats.map(opt => (
@@ -2540,10 +2550,8 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                           key={opt}
                           disabled={bulkSaving}
                           onClick={() => handleBulkEtatChange(opt)}
-                          style={{
-                            fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 5, border: 'none',
-                            background: ETAT_COLORS[opt], color: '#fff', cursor: 'pointer', opacity: bulkSaving ? 0.6 : 1,
-                          }}
+                          className="pd-etat-badge pd-etat-badge--btn"
+                          style={{ ...etatTint(opt), opacity: bulkSaving ? 0.6 : 1 }}
                         >
                           {t('etat_' + opt)}
                         </button>
@@ -2556,7 +2564,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                   const allRemp = (project.chassis || []).flatMap(ch => { const numComps = (ch.components || []).length; return (ch.remplissages || []).map(r => ({ r, ch, numComps })); });
                   if (allRemp.length === 0) return null;
                   return (
-                    <button className="print-selected-btn" style={{ background: '#6366f1' }} onClick={() => {
+                    <button className="print-selected-btn pd-tone-btn pd-tone-btn--violet" onClick={() => {
                       const byChassisId = {};
                       allRemp.forEach(({ r, ch, numComps }) => { const cid = (ch._id || ch.id).toString(); if (!byChassisId[cid]) byChassisId[cid] = { ch, numComps, remps: [] }; byChassisId[cid].remps.push(r); });
                       const ralHex = project.ralColor || '#cccccc';
@@ -2565,10 +2573,10 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                       const allPages = Object.values(byChassisId).flatMap(({ ch, remps }) => {
                         const tl = chassisLabels[ch.type]?.[language] || chassisLabels[ch.type]?.fr || ch.type;
                         return remps.map(r => {
-                          const compLabel2 = r.compIndex != null ? (() => { const comp = (ch.components || [])[r.compIndex]; return comp ? (comp.repere || (comp.role === 'dormant' ? 'Dormant' : `Vantail ${r.compIndex}`)) : null; })() : null;
-                          const rLabel = r.sousType ? `${r.type} — ${r.sousType}` : r.type;
+                          const compLabel2 = r.compIndex != null ? (() => { const comp = (ch.components || [])[r.compIndex]; return comp ? (comp.repere || (comp.role === 'dormant' ? t('pdDormant') : `${t('pdVantailWord')} ${r.compIndex}`)) : null; })() : null;
+                          const rLabel = r.sousType ? `${rempTypeLabel(r.type)} — ${r.sousType}` : rempTypeLabel(r.type);
                           const repere = compLabel2 ? `${ch.repere}${unitSuffix2(ch, r.unitIndex ?? 0)} — ${compLabel2}` : `${ch.repere}${unitSuffix2(ch, r.unitIndex ?? 0)}`;
-                          return `<div class="page"><div class="label"><div class="lh"><span class="brand">CAMI ALUMINIUM</span><span class="swatch"></span></div><div class="row"><span class="f"><span class="k">Projet</span><span class="v">${project.name}</span></span><span class="f"><span class="k">Réf.</span><span class="v">${project.reference}</span></span></div><div class="row"><span class="f"><span class="k">RAL</span><span class="v">${project.ralCode}</span></span><span class="f"><span class="k">Date</span><span class="v">${dateStr2}</span></span></div><div class="div"></div><div class="grid"><div class="cell"><span class="k">Repère</span><span class="repere">${repere}<div class="parent-ref">${tl}</div></span></div><div class="cell"><span class="k">Remplissage</span><span class="v remp-type">${rLabel}</span></div><div class="cell full"><span class="k">Dimensions</span><span class="dim">${r.largeur} × ${r.hauteur} mm</span></div></div></div></div>`;
+                          return `<div class="page"><div class="label"><div class="lh"><span class="brand">CAMI ALUMINIUM</span><span class="swatch"></span></div><div class="row"><span class="f"><span class="k">${t('labelProject')}</span><span class="v">${project.name}</span></span><span class="f"><span class="k">${t('labelRef')}</span><span class="v">${project.reference}</span></span></div><div class="row"><span class="f"><span class="k">RAL</span><span class="v">${project.ralCode}</span></span><span class="f"><span class="k">${t('labelDate')}</span><span class="v">${dateStr2}</span></span></div><div class="div"></div><div class="grid"><div class="cell"><span class="k">${t('labelRepere')}</span><span class="repere">${repere}<div class="parent-ref">${tl}</div></span></div><div class="cell"><span class="k">${t('pdRemplissage')}</span><span class="v remp-type">${rLabel}</span></div><div class="cell full"><span class="k">${t('labelDim')}</span><span class="dim">${r.largeur} × ${r.hauteur} mm</span></div></div></div></div>`;
                         });
                       }).join('\n');
                       const closeScript = '<' + '/script>';
@@ -2586,8 +2594,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                     (userRole === 'LOGISTIQUE' && (project.chassis || []).some(ch => (ch.remplissages || []).some(r => r.etat === 'pret_a_livrer')))
                   ) && (project.chassis || []).some(ch => (ch.remplissages || []).length > 0) && (
                     <button
-                      className="print-selected-btn"
-                      style={{ background: '#0891b2' }}
+                      className="print-selected-btn pd-tone-btn pd-tone-btn--cyan"
                       onClick={() => setShowBulkRemplissageModal(true)}
                     >
                       🪟 États remplissages en lot
@@ -2615,8 +2622,8 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                     <th>{t('etat')}</th>
                     <th>{t('deliveryDate')}</th>
                     {/* Atelier / Vitrage cols: aluminium tab only */}
-                    {showAtelierCols && <th className="atelier-table-col">Table atelier</th>}
-                    {showAtelierCols && <th className="atelier-table-col" style={{ color: '#3b82f6' }}>Table vitrage</th>}
+                    {showAtelierCols && <th className="atelier-table-col">{t('pdAtelierTable')}</th>}
+                    {showAtelierCols && <th className="atelier-table-col" style={{ color: '#93c5fd' }}>{t('pdVitrageTable')}</th>}
                     <th>{t('actions')}</th>
                   </tr>
                 </thead>
@@ -2632,23 +2639,23 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                       return (
                         <tr key={rowKey} className="chassis-row chassis-row--group-head">
                           {(adminThing || stateThing) && <td className="chassis-row__check" />}
-                          <td data-label="Repère"><strong>{label}</strong><span className="composite-badge" title="Composite">⊞</span></td>
-                          <td data-label="Type">{chassisLabels[ch.type]?.[language] || ch.type}</td>
-                          <td data-label="L (mm)">{ch.largeur}</td><td data-label="H (mm)">{ch.hauteur}</td>
-                          <td data-label="Dimension" className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
-                          <td data-label="m²" style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{chM2} m²</td>
+                          <td data-label={t('pdRepere')}><strong>{label}</strong><span className="composite-badge" title="Composite">⊞</span></td>
+                          <td data-label={t('type')}>{chassisLabels[ch.type]?.[language] || ch.type}</td>
+                          <td data-label={t('pdColL')}>{ch.largeur}</td><td data-label={t('pdColH')}>{ch.hauteur}</td>
+                          <td data-label={t('pdDimension')} className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
+                          <td data-label="m²" style={{ fontSize: 11, color: 'var(--text-3)', textAlign: 'center' }}>{chM2} m²</td>
                           {showAtelierCols && (
-                            <td data-label="Remplissage">
+                            <td data-label={t('pdRemplissage')}>
                               {allCompsCnt > 0
-                                ? <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: allCompsRdy === allCompsCnt ? '#dcfce7' : '#fef9c3', color: allCompsRdy === allCompsCnt ? '#16a34a' : '#92400e', fontWeight: 600 }}>{allCompsRdy}/{allCompsCnt} prêt{allCompsCnt > 1 ? 's' : ''}</span>
-                                : <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>}
+                                ? <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: allCompsRdy === allCompsCnt ? 'var(--success-bg)' : 'var(--warning-bg)', color: allCompsRdy === allCompsCnt ? 'var(--success)' : 'var(--warning)', border: `1px solid ${allCompsRdy === allCompsCnt ? 'var(--success-bd)' : 'var(--warning-bd)'}`, fontWeight: 600 }}>{t(allCompsCnt > 1 ? 'pdReadyMany' : 'pdReadyOne', { a: allCompsRdy, b: allCompsCnt })}</span>
+                                : <span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span>}
                             </td>
                           )}
                           {/* Group head: always show read-only derived état badge */}
-                          <td data-label="État">
-                            <span className="etat-badge" style={{ background: ETAT_COLORS[derivedEtat], color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12, whiteSpace: 'nowrap' }}>{t(`etat_${derivedEtat}`)}</span>
+                          <td data-label={t('pdState')}>
+                            <span className="etat-badge pd-etat-badge" style={etatTint(derivedEtat)}>{t(`etat_${derivedEtat}`)}</span>
                           </td>
-                          <td data-label="Date" className="delivery-date-cell">
+                          <td data-label={t('date')} className="delivery-date-cell">
                             {(() => {
                               const unit = row.unit;
                               const compDates = (ch.components || []).map((_, ci) => {
@@ -2664,18 +2671,18 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                               return (
                                 <span className="date-placeholder" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                   {allLivres ? '📅' : '🕐'}
-                                  <span style={{ color: allLivres ? '#16a34a' : '#f59e0b', fontWeight: 600 }}>
+                                  <span style={{ color: allLivres ? 'var(--success)' : 'var(--warning)', fontWeight: 600 }}>
                                     {fmtDate(lastDate)}
                                   </span>
                                   {!allLivres && (
-                                    <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 2 }}>(partiel)</span>
+                                    <span style={{ fontSize: 10, color: 'var(--text-4)', marginLeft: 2 }}>({t('pdPartial')})</span>
                                   )}
                                 </span>
                               );
                             })()}
                           </td>
-                          {showAtelierCols && <td data-label="Atelier" className="atelier-table-col"><span style={{ color: '#9ca3af', fontSize: 11 }}>—</span></td>}
-                          {showAtelierCols && <td data-label="Vitrage" className="atelier-table-col"><span style={{ color: '#9ca3af', fontSize: 11 }}>—</span></td>}
+                          {showAtelierCols && <td data-label={t('pdAtelierTable')} className="atelier-table-col"><span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span></td>}
+                          {showAtelierCols && <td data-label={t('pdVitrageTable')} className="atelier-table-col"><span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span></td>}
                           <td data-label="">{adminThing && <div className="chassis-row__actions">
                             <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, _originalId: chId }); setShowChassisForm(true); }}>✏️</button>
                             {adminOnly && <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}>🔧</button>}
@@ -2694,19 +2701,19 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                       const compM2 = comp.largeur && comp.hauteur ? ((comp.largeur * comp.hauteur) / 1e6).toFixed(2) : '—';
                       return (
                         <tr key={rowKey} className={`component-row${isSelected ? ' component-row--selected' : ''}${isSaving ? ' component-row--saving' : ''}`}>
-                          {(adminThing || stateThing) && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}                          <td data-label="Repère" className="component-indent">↳ <strong>{label}</strong></td>
-                          <td data-label="Type" className="component-role">{comp.role === 'dormant' ? t('dormant') : t('vantail')}</td>
-                          <td data-label="L (mm)">{comp.largeur || '—'}</td><td data-label="H (mm)">{comp.hauteur || '—'}</td>
-                          <td data-label="Dimension" className="dim-cell">{comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}</td>
-                          <td data-label="m²" style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{compM2 !== '—' ? compM2 + ' m²' : '—'}</td>
+                          {(adminThing || stateThing) && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}                          <td data-label={t('pdRepere')} className="component-indent">↳ <strong>{label}</strong></td>
+                          <td data-label={t('type')} className="component-role">{comp.role === 'dormant' ? t('dormant') : t('vantail')}</td>
+                          <td data-label={t('pdColL')}>{comp.largeur || '—'}</td><td data-label={t('pdColH')}>{comp.hauteur || '—'}</td>
+                          <td data-label={t('pdDimension')} className="dim-cell">{comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}</td>
+                          <td data-label="m²" style={{ fontSize: 11, color: 'var(--text-3)', textAlign: 'center' }}>{compM2 !== '—' ? compM2 + ' m²' : '—'}</td>
                           {showAtelierCols && (
-                            <td data-label="Remplissage">
+                            <td data-label={t('pdRemplissage')}>
                               <RemplissageBadge chassis={ch} unitIndex={unitIndex} compIndex={ci} onClick={() => setRemplissageEditor({ ch, unitIndex, compIndex: ci })} />
                             </td>
                           )}
                           {/* État cell */}
                           {renderEtatCell(etat, isSaving, (newEtat) => handleComponentEtatChange(ch, unitIndex, ci, newEtat, rowKey))}
-                          <td data-label="Date" className="delivery-date-cell">
+                          <td data-label={t('date')} className="delivery-date-cell">
                             {(() => {
                               const cs = (row.unit.componentStates || []).find(c => c.compIndex === ci);
                               const compEtat = cs?.etat || 'non_entame';
@@ -2714,7 +2721,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                               if (compEtat === 'livre') {
                                 return (userRole === 'Admin' || userRole === 'LOGISTIQUE')
                                   ? <button className="date-btn" onClick={() => setDeliveryModal({ kind: 'component', chId, unitIndex, ci, rowKey, currentDate: toDateInput(compDate) })}>
-                                    📅 {compDate ? fmtDate(compDate) : 'Définir'}
+                                    📅 {compDate ? fmtDate(compDate) : t('pdSet')}
                                   </button>
                                   : <span className="date-placeholder">📅 {compDate ? fmtDate(compDate) : '—'}</span>;
                               }
@@ -2722,24 +2729,24 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                             })()}
                           </td>
                           {showAtelierCols && (
-                            <td data-label="Atelier" className="atelier-table-col">
+                            <td data-label={t('pdAtelierTable')} className="atelier-table-col">
                               {canEditAtelierTable ? (
                                 <select className={`etat-select etat-select--livre atelier-select${isSavingTable ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={isSavingTable} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey, ci)}>
                                   <option value="">——</option>
                                   {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
                                 </select>
                               ) : (
-                                <span className="etat-select etat-select--livre atelier-select">{atelierTables[rowKey] || <span style={{ color: '#9ca3af' }}>—</span>}</span>
+                                <span className="etat-select etat-select--livre atelier-select">{atelierTables[rowKey] || <span style={{ color: 'var(--text-4)' }}>—</span>}</span>
                               )}
                             </td>
                           )}
                           {showAtelierCols && (
-                            <td data-label="Vitrage" className="atelier-table-col">
+                            <td data-label={t('pdVitrageTable')} className="atelier-table-col">
                               {canEditRemplissageTable ? (
                                 <RemplissageAtelierCell chassis={ch} unitIndex={unitIndex} compIndex={ci} project={project} atelierTableOptions={ATELIER_TABLES} onPatched={() => { if (refreshProject) refreshProject(project.id); }} />
                               ) : (
-                                <span style={{ fontSize: 11, color: '#6b7280' }}>
-                                  {(() => { const relevant = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex === ci && r.atelierTable); const tables = [...new Set(relevant.map(r => r.atelierTable))]; return tables.length ? tables.join(', ') : <span style={{ color: '#cbd5e1' }}>—</span>; })()}
+                                <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                                  {(() => { const relevant = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex === ci && r.atelierTable); const tables = [...new Set(relevant.map(r => r.atelierTable))]; return tables.length ? tables.join(', ') : <span style={{ color: 'var(--text-4)' }}>—</span>; })()}
                                 </span>
                               )}
                             </td>
@@ -2758,25 +2765,25 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                     return (
                       <tr key={rowKey} className={`chassis-row${isSelected ? ' chassis-row--selected' : ''}${isSaving ? ' chassis-row--saving' : ''}`}>
                         {(adminThing || stateThing) && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}
-                        <td data-label="Repère">
+                        <td data-label={t('pdRepere')}>
                           <strong>{label}</strong>
                           {ch.keepAsOne && (ch.quantity || 1) > 1 && (
                             <span style={{
                               marginLeft: 6, fontSize: 11, fontWeight: 700,
-                              background: '#000000', color: '#ffffff',
-                              border: '1px solid #000000', borderRadius: 4,
+                              background: 'var(--surface-3)', color: 'var(--text)',
+                              border: '1px solid var(--border-2)', borderRadius: 999,
                               padding: '1px 6px', whiteSpace: 'nowrap',
                             }}>
                               ×{ch.quantity}
                             </span>
                           )}
                         </td>
-                        <td data-label="Type">{chassisLabels[ch.type]?.[language] || ch.type}</td>
-                        <td data-label="L (mm)">{ch.largeur}</td><td data-label="H (mm)">{ch.hauteur}</td>
-                        <td data-label="Dimension" className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
-                        <td data-label="m²" style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>{unitM2} m²</td>
+                        <td data-label={t('type')}>{chassisLabels[ch.type]?.[language] || ch.type}</td>
+                        <td data-label={t('pdColL')}>{ch.largeur}</td><td data-label={t('pdColH')}>{ch.hauteur}</td>
+                        <td data-label={t('pdDimension')} className="dim-cell">{ch.dimension || `${ch.largeur}×${ch.hauteur}`}</td>
+                        <td data-label="m²" style={{ fontSize: 11, color: 'var(--text-3)', textAlign: 'center' }}>{unitM2} m²</td>
                         {showAtelierCols && (
-                          <td data-label="Remplissage">
+                          <td data-label={t('pdRemplissage')}>
                             <RemplissageBadge chassis={ch} unitIndex={unitIndex} compIndex={null} onClick={() => setRemplissageEditor({ ch, unitIndex, compIndex: null })} />
                           </td>
                         )}
@@ -2786,41 +2793,41 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                           const qtyN = ch.quantity || 1;
                           if (keepAsOne && qtyN > 1 && (adminThing || stateThing)) {
                             return (
-                              <td data-label="État">
+                              <td data-label={t('pdState')}>
                                 <EtatBreakdownBadge ch={ch} etatList={tabCfg.etats} t={t} onClick={() => setGroupStatesModal(ch)} />
                               </td>
                             );
                           }
                           return renderEtatCell(etat, isSaving, (newEtat) => handleUnitEtatChange(ch, unitIndex, newEtat, rowKey));
                         })()}
-                        <td data-label="Date" className="delivery-date-cell">
+                        <td data-label={t('date')} className="delivery-date-cell">
                           {etat === 'livre'
                             ? (userRole === 'Admin' || userRole === 'LOGISTIQUE')
-                              ? <button className="date-btn" onClick={() => setDeliveryModal({ kind: 'unit', chId, unitIndex, rowKey, currentDate: toDateInput(unit.deliveryDate) })}>📅 {unit.deliveryDate ? fmtDate(unit.deliveryDate) : 'Définir'}</button>
+                              ? <button className="date-btn" onClick={() => setDeliveryModal({ kind: 'unit', chId, unitIndex, rowKey, currentDate: toDateInput(unit.deliveryDate) })}>📅 {unit.deliveryDate ? fmtDate(unit.deliveryDate) : t('pdSet')}</button>
                               : <span className="date-placeholder">📅 {unit.deliveryDate ? fmtDate(unit.deliveryDate) : '—'}</span>
                             : <span className="date-placeholder">—</span>}
                         </td>
                         {showAtelierCols && (
-                          <td data-label="Atelier" className="atelier-table-col">
+                          <td data-label={t('pdAtelierTable')} className="atelier-table-col">
                             {canEditAtelierTable ? (
                               <select className={`etat-select etat-select--livre atelier-select${savingTableKey === rowKey ? ' atelier-select--saving' : ''}`} value={atelierTables[rowKey] || ''} disabled={savingTableKey === rowKey} onChange={e => handleAtelierTableChange(ch, unitIndex, e.target.value, rowKey)}>
                                 <option value="">——</option>
                                 {ATELIER_TABLES.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
                               </select>
                             ) : (
-                              <span style={{ fontSize: 11, color: '#6b7280' }}>
-                                {atelierTables[rowKey] || <span style={{ color: '#9ca3af' }}>—</span>}
+                              <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                                {atelierTables[rowKey] || <span style={{ color: 'var(--text-4)' }}>—</span>}
                               </span>
                             )}
                           </td>
                         )}
                         {showAtelierCols && (
-                          <td data-label="Vitrage" className="atelier-table-col">
+                          <td data-label={t('pdVitrageTable')} className="atelier-table-col">
                             {canEditRemplissageTable ? (
                               <RemplissageAtelierCell chassis={ch} unitIndex={unitIndex} compIndex={null} project={project} atelierTableOptions={ATELIER_TABLES} onPatched={() => { if (refreshProject) refreshProject(project.id); }} />
                             ) : (
-                              <span style={{ fontSize: 11, color: '#6b7280' }}>
-                                {(() => { const relevant = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex == null && r.atelierTable); const tables = [...new Set(relevant.map(r => r.atelierTable))]; return tables.length ? tables.join(', ') : <span style={{ color: '#cbd5e1' }}>—</span>; })()}
+                              <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                                {(() => { const relevant = (ch.remplissages || []).filter(r => (r.unitIndex ?? 0) === unitIndex && r.compIndex == null && r.atelierTable); const tables = [...new Set(relevant.map(r => r.atelierTable))]; return tables.length ? tables.join(', ') : <span style={{ color: 'var(--text-4)' }}>—</span>; })()}
                               </span>
                             )}
                           </td>

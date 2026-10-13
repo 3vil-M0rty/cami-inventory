@@ -1,12 +1,14 @@
 // components/ProjectCard.jsx
 import { useAuth } from '../../../context/AuthContext';
 
-const STATUS_COLORS = {
-  en_cours: '#f59e0b',
-  fabrique: '#3b82f6',
-  cloture: '#16a34a',
-  non_vitre: '#a855f7',
-  pret_a_livrer: 'red',
+// Tinted badge tones (dark theme): [text, background, border]
+const STATUS_TONES = {
+  non_entame:    ['#d4d4d8', 'rgba(161,161,170,.12)', 'rgba(161,161,170,.3)'],
+  en_cours:      ['#fcd34d', 'rgba(251,191,36,.12)',  'rgba(251,191,36,.3)'],
+  fabrique:      ['#93c5fd', 'rgba(96,165,250,.12)',  'rgba(96,165,250,.3)'],
+  cloture:       ['#86efac', 'rgba(74,222,128,.12)',  'rgba(74,222,128,.3)'],
+  non_vitre:     ['#c4b5fd', 'rgba(167,139,250,.12)', 'rgba(167,139,250,.3)'],
+  pret_a_livrer: ['#fca5a5', 'rgba(248,113,113,.12)', 'rgba(248,113,113,.3)'],
 };
 
 const ETAT_COLORS = {
@@ -14,7 +16,7 @@ const ETAT_COLORS = {
   en_cours: '#f59e0b',
   non_vitre: '#a855f7',
   fabrique: '#3b82f6',
-  pret_a_livrer: 'rgb(255,0,0)',
+  pret_a_livrer: '#ef4444',
   livre: '#16a34a',
 };
 
@@ -65,7 +67,7 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
     (userRole === 'Laquage' && project?.tab === 'laquage') ||
     (userRole === 'Coordinateur-vitrage' && project?.tab === 'vitrage');
 
-  const statusColor = STATUS_COLORS[project.status] || '#999';
+  const statusTone = STATUS_TONES[project.status] || STATUS_TONES.non_entame;
   const statusLabel = t(`status_${project.status}`) || project.status || '';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
@@ -76,13 +78,13 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
   const activeEtats = ETAT_ORDER.filter(e => etatCounts[e] > 0);
 
   return (
-    <div className="project-card" onClick={onOpen} style={{ borderTopColor: project.ralColor || '#ccc' }}>
-      <div className="project-card__ral" style={{ backgroundColor: project.ralColor || '#eee' }} />
+    <div className="project-card" onClick={onOpen}>
+      <div className="project-card__ral" style={{ backgroundColor: project.ralColor || 'var(--300)' }} />
 
       <div className="project-card__body">
         <div className="project-card__top">
           <h3 className="project-card__name">{project.name}</h3>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="project-card__badges">
             {project.companyId && (
               <span className="project-company-tag">
                 {project.companyId.name === "CANDIDO & MICHEL Aluminium Italien S.A.R.L"
@@ -90,7 +92,10 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
                   : project.companyId.name}
               </span>
             )}
-            <span className="project-card__status" style={{ backgroundColor: statusColor }}>
+            <span
+              className="project-card__status"
+              style={{ '--st-fg': statusTone[0], '--st-bg': statusTone[1], '--st-bd': statusTone[2] }}
+            >
               {statusLabel}
             </span>
           </div>
@@ -98,7 +103,10 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
 
         <div className="project-card__meta">
           <span>{t('ref')} <strong>{project.reference}</strong></span>
-          <span>{t('ral')} <strong>{project.ralCode}</strong></span>
+          <span>
+            {project.ralColor && <span className="project-card__ral-dot" style={{ backgroundColor: project.ralColor }} />}
+            {t('ral')} <strong>{project.ralCode}</strong>
+          </span>
           <span>{dateStr}</span>
         </div>
 
@@ -108,7 +116,7 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
 
         {total > 0 && (
           <>
-            <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', background: '#f3f4f6', margin: '8px 0 4px' }}>
+            <div className="project-card__bar">
               {activeEtats.map(e => (
                 <div
                   key={e}
@@ -131,8 +139,8 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
       </div>
 
       <div className="project-card__actions" onClick={e => e.stopPropagation()}>
-        {canEdit && <button className="edit-btn" onClick={onEdit}>  {t('edit')}   </button>}
-        {isAdmin && <button className="delete-btn" onClick={onDelete}>{t('delete')} </button>}
+        {canEdit && <button className="edit-btn" onClick={onEdit}>{t('edit')}</button>}
+        {isAdmin && <button className="delete-btn" onClick={onDelete}>{t('delete')}</button>}
       </div>
     </div>
   );

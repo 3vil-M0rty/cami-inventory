@@ -1,6 +1,7 @@
 // components/RalPicker.jsx
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import '../RalPicker.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -27,7 +28,7 @@ export default function RalPicker({ language, value, colorValue, onChange, t }) 
     return name === value;
   });
 
-  if (loading) return <div className="ral-picker__loading">Chargement des poudres...</div>;
+  if (loading) return <div className="ral-picker__loading">{t ? t('pjLoadingPowders') : '…'}</div>;
 
   if (manualMode || poudres.length === 0) {
     return (
@@ -73,7 +74,7 @@ export default function RalPicker({ language, value, colorValue, onChange, t }) 
         </div>
       ) : (
         <div className="ral-picker__placeholder">
-          <span style={{ color: '#9ca3af', fontSize: 13 }}>
+          <span style={{ color: 'var(--text-4)', fontSize: 13 }}>
             {t('ralPickerPlaceholder') || '— Sélectionner une poudre —'}
           </span>
         </div>

@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import projectService from '../../../services/projectService';
 import { useProjects } from '../../../context/ProjectContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import { dialog, errorMessage } from '../../../components/common/dialog';
 import { useCompany } from '../../../context/CompanyContext';
 import { useAuth } from '../../../context/AuthContext';
 import ProjectCard from '../components/ProjectCard';
@@ -70,15 +71,17 @@ export default function VitrageTab({ categoryKey, statusFilter }) {
       const full = await projectService.getProjectById(projectId);
       setOpenProject(full);
     } catch (err) {
-      alert(err.message);
+      dialog.alert(errorMessage(err, t('errLoad')));
     } finally {
       setOpenLoading(false);
     }
   };
 
   const handleDelete = async id => {
-    if (!window.confirm(t('deleteProjectConfirm'))) return;
-    await deleteProject(id);
+    if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('deleteProjectConfirm'), danger: true, confirmLabel: t('deleteAction') }))) return;
+    try {
+      await deleteProject(id);
+    } catch (err) { dialog.alert(errorMessage(err, t('errDelete'))); return; }
     fetchPage(1, false);
   };
 
@@ -111,7 +114,7 @@ export default function VitrageTab({ categoryKey, statusFilter }) {
     <div className="projects-page">
       <div className="projects-page__header">
         <div className="projects-page__header-left">
-          <h2 className="projects-page__title">Vitrage</h2>
+          <h2 className="projects-page__title">{t('pjTabVitrage')}</h2>
           <span className="projects-page__count">{total}</span>
         </div>
         <div className="projects-page__header-right">
@@ -134,13 +137,13 @@ export default function VitrageTab({ categoryKey, statusFilter }) {
         <div className="loading">{t('loading')}</div>
       ) : error ? (
         <div className="no-items">
-          Erreur de chargement: {error}
-          <div style={{ marginTop: 10 }}>
-            <button onClick={() => fetchPage(1, false)}>Réessayer</button>
+          {t('pjLoadError', { msg: error })}
+          <div style={{ marginTop: 12 }}>
+            <button onClick={() => fetchPage(1, false)}>{t('retry')}</button>
           </div>
         </div>
       ) : items.length === 0 ? (
-        <div className="no-items">Aucun projet vitrage pour le moment</div>
+        <div className="no-items">{t('pjNoVitrage')}</div>
       ) : (
         <>
           <div className="projects-grid">
@@ -156,16 +159,13 @@ export default function VitrageTab({ categoryKey, statusFilter }) {
             ))}
           </div>
           {hasMore && (
-            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+            <div className="projects-load-more">
               <button
+                className="projects-load-more__btn"
                 disabled={loadingMore}
                 onClick={() => fetchPage(page + 1, true)}
-                style={{
-                  padding: '10px 28px', borderRadius: 8, border: '1px solid #e5e7eb',
-                  background: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', color: '#374151',
-                }}
               >
-                {loadingMore ? t('loading') : `Charger plus (${total - items.length} restants)`}
+                {loadingMore ? t('loading') : t('pjLoadMore', { n: total - items.length })}
               </button>
             </div>
           )}

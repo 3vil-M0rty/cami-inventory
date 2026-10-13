@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
+import { useLanguage } from '../../context/LanguageContext';
+import { dialog } from '../../components/common/dialog';
 import './AtelierTablesPage.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -19,20 +21,40 @@ const CANVAS_W = 880;
 const CANVAS_H = 800;
 
 const ETAT_COLORS = {
-  non_entame: '#9ca3af',
-  en_cours: '#f59e0b',
-  non_vitre: '#a855f7',
-  fabrique: '#3b82f6',
-  pret_a_livrer: '#ef4444',
-  livre: '#16a34a',
+  non_entame: '#a1a1aa',
+  en_cours: '#fbbf24',
+  non_vitre: '#c084fc',
+  fabrique: '#60a5fa',
+  pret_a_livrer: '#f87171',
+  livre: '#4ade80',
 };
+
+// ─── Small inline icons (stroke = currentColor) ──────────────────────────────
+const Ico = ({ d, size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {d.map((p, i) => <path key={i} d={p} />)}
+  </svg>
+);
+const IC = {
+  plan:  ['M3 3h18v18H3z', 'M3 9h7v12', 'M14 3v6h7', 'M14 14h3'],
+  chart: ['M3 3v18h18', 'M8 17v-5', 'M13 17V8', 'M18 17v-9'],
+  plus:  ['M12 5v14', 'M5 12h14'],
+  save:  ['M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z', 'M17 21v-8H7v8', 'M7 3v5h8'],
+  check: ['M20 6 9 17l-5-5'],
+  trash: ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'],
+  x:     ['M18 6 6 18', 'M6 6l12 12'],
+  edit:  ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'],
+  users: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M22 21v-2a4 4 0 0 0-3-3.87', 'M16 3.13a4 4 0 0 1 0 7.75'],
+  arrow: ['M7 17 17 7', 'M8 7h9v9'],
+};
+// translation keys (etat_* exist in LanguageContext)
 const ETAT_LABELS = {
-  non_entame: 'Non entamé',
-  en_cours: 'En cours',
-  non_vitre: 'Non vitré',
-  fabrique: 'Fabriqué',
-  pret_a_livrer: 'Prêt à livrer',
-  livre: 'Livré',
+  non_entame: 'etat_non_entame',
+  en_cours: 'etat_en_cours',
+  non_vitre: 'etat_non_vitre',
+  fabrique: 'etat_fabrique',
+  pret_a_livrer: 'etat_pret_a_livrer',
+  livre: 'etat_livre',
 };
 
 // All possible etat keys in display order
@@ -81,15 +103,16 @@ function WorkshopTable({ table, isSelected, isDragging, onMouseDown, onDoubleCli
       onClick={onClick}
       style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
     >
-      <rect x={table.x + 4} y={table.y + 6} width={table.w} height={table.h} rx={10} ry={10} fill="rgba(0,0,0,0.18)" filter="url(#blur)" />
+      <rect x={table.x + 2} y={table.y + 8} width={table.w} height={table.h} rx={10} ry={10} fill="rgba(0,0,0,0.55)" filter="url(#blur)" />
       <rect x={table.x} y={table.y} width={table.w} height={table.h} rx={10} ry={10}
         className={`atp__table-rect${isSelected ? ' atp__table-rect--selected' : ''}`} />
-      {[0.25, 0.5, 0.75].map((frac, i) => (
-        <line key={i} x1={table.x + 12} y1={table.y + table.h * frac}
-          x2={table.x + table.w - 12} y2={table.y + table.h * frac} className="atp__table-grain" />
+      <rect x={table.x + 8} y={table.y + 8} width={table.w - 16} height={table.h - 16} rx={6} ry={6} className="atp__table-top" />
+      {[0.38, 0.62].map((frac, i) => (
+        <line key={i} x1={table.x + 46} y1={table.y + table.h * frac}
+          x2={table.x + table.w - 46} y2={table.y + table.h * frac} className="atp__table-grain" />
       ))}
-      <circle cx={table.x + 22} cy={table.y + 22} r={14} className="atp__table-badge-circle" />
-      <text x={table.x + 22} y={table.y + 22} textAnchor="middle" dominantBaseline="central" className="atp__table-badge-num">{table.number}</text>
+      <rect x={table.x + 14} y={table.y + 14} width={26} height={18} rx={5} ry={5} className="atp__table-badge-circle" />
+      <text x={table.x + 27} y={table.y + 23.5} textAnchor="middle" dominantBaseline="central" className="atp__table-badge-num">{table.number}</text>
       {!isEditing ? (
         <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" className="atp__table-name-text">{table.name}</text>
       ) : (
@@ -99,17 +122,20 @@ function WorkshopTable({ table, isSelected, isDragging, onMouseDown, onDoubleCli
       )}
       {workloadCount > 0 && (
         <g>
-          <circle cx={table.x + table.w - 18} cy={table.y + 18} r={13} fill="#3b82f6" />
-          <text x={table.x + table.w - 18} y={table.y + 18} textAnchor="middle" dominantBaseline="central"
-            style={{ fontSize: 10, fontWeight: 700, fill: '#fff', userSelect: 'none' }}>{workloadCount}</text>
+          <rect x={table.x + table.w - 40} y={table.y + 14} width={26} height={18} rx={9} ry={9} className="atp__table-load" />
+          <text x={table.x + table.w - 27} y={table.y + 23.5} textAnchor="middle" dominantBaseline="central"
+            className="atp__table-load-num">{workloadCount}</text>
         </g>
       )}
       {stockAlert && (
-        <circle cx={table.x + table.w - 14} cy={table.y + table.h - 14} r={7} fill="#ef4444" />
+        <g>
+          <circle cx={table.x + table.w - 22} cy={table.y + table.h - 22} r={8} fill="rgba(248,113,113,.25)" />
+          <circle cx={table.x + table.w - 22} cy={table.y + table.h - 22} r={4} fill="#f87171" />
+        </g>
       )}
       {isSelected && (
         <rect x={table.x - 3} y={table.y - 3} width={table.w + 6} height={table.h + 6}
-          rx={13} ry={13} fill="none" strokeWidth={2.5} className="atp__table-selection-ring" />
+          rx={13} ry={13} fill="none" strokeWidth={1.5} strokeDasharray="6 4" className="atp__table-selection-ring" />
       )}
     </g>
   );
@@ -117,6 +143,7 @@ function WorkshopTable({ table, isSelected, isDragging, onMouseDown, onDoubleCli
 
 // ─── Etat Filter Bar ──────────────────────────────────────────────────────────
 function EtatFilterBar({ workload, activeFilter, onChange }) {
+  const { t } = useLanguage();
   // Count how many rows exist per etat
   const counts = {};
   for (const w of workload) {
@@ -129,27 +156,16 @@ function EtatFilterBar({ workload, activeFilter, onChange }) {
   if (presentEtats.length === 0) return null;
 
   return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '10px 0 4px', alignItems: 'center' }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', marginRight: 2 }}>
-        Filtrer :
+    <div className="atp__filter">
+      <span className="atp__filter-label">
+        {t('atFilterLabel')}
       </span>
       {/* "All" pill */}
       <button
         onClick={() => onChange('all')}
-        style={{
-          padding: '3px 10px',
-          borderRadius: 999,
-          border: '1.5px solid',
-          fontSize: 12,
-          fontWeight: 600,
-          cursor: 'pointer',
-          borderColor: activeFilter === 'all' ? '#1a1a1a' : '#e5e7eb',
-          background: activeFilter === 'all' ? '#1a1a1a' : '#fff',
-          color: activeFilter === 'all' ? '#fff' : '#374151',
-          transition: 'all .15s',
-        }}
+        className={`atp__pill${activeFilter === 'all' ? ' atp__pill--active' : ''}`}
       >
-        Tous ({workload.length})
+        {t('atAll', { n: workload.length })}
       </button>
       {presentEtats.map(e => {
         const active = activeFilter === e;
@@ -157,40 +173,12 @@ function EtatFilterBar({ workload, activeFilter, onChange }) {
           <button
             key={e}
             onClick={() => onChange(active ? 'all' : e)}
-            style={{
-              padding: '3px 10px',
-              borderRadius: 999,
-              border: '1.5px solid',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              borderColor: active ? ETAT_COLORS[e] : '#e5e7eb',
-              background: active ? ETAT_COLORS[e] : '#fff',
-              color: active ? '#fff' : '#374151',
-              transition: 'all .15s',
-            }}
+            className={`atp__pill atp__pill--etat${active ? ' atp__pill--on' : ''}`}
+            style={{ '--c': ETAT_COLORS[e] }}
           >
-            <span style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: active ? '#fff' : ETAT_COLORS[e],
-              display: 'inline-block', flexShrink: 0,
-            }} />
-            {ETAT_LABELS[e]}
-            <span style={{
-              background: active ? 'rgba(255,255,255,.25)' : ETAT_COLORS[e] + '22',
-              color: active ? '#fff' : ETAT_COLORS[e],
-              borderRadius: 999,
-              padding: '0 5px',
-              fontSize: 11,
-              fontWeight: 700,
-              minWidth: 18,
-              textAlign: 'center',
-            }}>
-              {counts[e]}
-            </span>
+            <span className="atp__pill-dot" />
+            {t(ETAT_LABELS[e])}
+            <span className="atp__pill-count">{counts[e]}</span>
           </button>
         );
       })}
@@ -200,6 +188,7 @@ function EtatFilterBar({ workload, activeFilter, onChange }) {
 
 // ─── Table Detail Popup ───────────────────────────────────────────────────────
 function TableDetailPopup({ table, onClose }) {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab]         = useState('workload');
   const [workload, setWorkload]           = useState([]);
   const [stock, setStock]                 = useState([]);
@@ -252,7 +241,7 @@ function TableDetailPopup({ table, onClose }) {
   }, [activeTab, recapPeriod, table.id]);
 
   const handleDeleteRecapEntry = async (id) => {
-    if (!window.confirm('Supprimer cette entrée du journal de consommation ?')) return;
+    if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('atDeleteRecapConfirm'), danger: true, confirmLabel: t('deleteAction') }))) return;
     try {
       await axios.delete(`${API_URL}/table-consumption/${id}`);
       setRecap(prev => prev.filter(e => (e._id || e.id) !== id));
@@ -326,7 +315,11 @@ function TableDetailPopup({ table, onClose }) {
   };
 
   const handleRemoveItem = async (item) => {
-    if (!window.confirm(`Retirer "${item.label}" du stock de cette table ?\nLa quantité restante (${item.quantity}) sera retournée à l'inventaire global.`)) return;
+    const ok = await dialog.confirm({
+      title: t('atRemoveItemTitle'), message: t('atRemoveItemConfirm', { name: item.label }),
+      details: t('atRemoveItemDetails', { n: item.quantity }), danger: true, confirmLabel: t('atRemoveAction'),
+    });
+    if (!ok) return;
     setSaving(true);
     try {
       const r = await axios.delete(`${API_URL}/table-stock/${table.id}/item/${item.itemId}`);
@@ -356,12 +349,12 @@ function TableDetailPopup({ table, onClose }) {
             <span className="atp__popup-badge">#{table.number}</span>
             <h2>{table.name}</h2>
           </div>
-          <button className="atp__popup-close" onClick={onClose}>✕</button>
+          <button className="atp__popup-close" onClick={onClose}><Ico d={IC.x} /></button>
         </div>
 
         {/* Workers strip */}
         <div className="atp__popup-workers">
-          <span className="atp__popup-workers-label">👷 Opérateurs :</span>
+          <span className="atp__popup-workers-label"><Ico d={IC.users} size={14} /> {t('atOperators')}</span>
           <div className="atp__popup-workers-list">
             {workers.map((w, i) => (
               <span key={i} className="atp__worker-chip">
@@ -372,8 +365,8 @@ function TableDetailPopup({ table, onClose }) {
             <div className="atp__worker-add">
               <input value={newWorker} onChange={e => setNewWorker(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') addWorker(); }}
-                placeholder="Ajouter opérateur…" className="atp__worker-input" />
-              <button onClick={addWorker} className="atp__worker-addbtn">＋</button>
+                placeholder={t('atAddOperator')} className="atp__worker-input" />
+              <button onClick={addWorker} className="atp__worker-addbtn"><Ico d={IC.plus} size={14} /></button>
             </div>
           </div>
         </div>
@@ -381,26 +374,26 @@ function TableDetailPopup({ table, onClose }) {
         {/* Tabs */}
         <div className="atp__popup-tabs">
           {[
-            ['workload', `📋 En cours${workload.length > 0 ? ` (${workload.length})` : ''}`],
-            ['stock', '🔧 Stock'],
-            ['recap', '📊 Récap'],
-          ].map(([k, label]) => (
+            ['workload', t('atTabWorkload'), workload.length > 0 ? workload.length : null],
+            ['stock', t('atTabStock'), null],
+            ['recap', t('atTabRecap'), null],
+          ].map(([k, label, n]) => (
             <button key={k} className={`atp__popup-tab${activeTab === k ? ' active' : ''}`} onClick={() => setActiveTab(k)}>
-              {label}
+              {label}{n != null && <span className="atp__popup-tab-count">{n}</span>}
             </button>
           ))}
         </div>
 
         <div className="atp__popup-body">
           {loading ? (
-            <div className="atp__popup-loading"><div className="atp__loading-spinner" /><span>Chargement…</span></div>
+            <div className="atp__popup-loading"><div className="atp__loading-spinner" /><span>{t('loadingShort')}</span></div>
           ) : (
             <>
               {/* ── WORKLOAD TAB ── */}
               {activeTab === 'workload' && (
                 <div className="atp__popup-workload">
                   {workload.length === 0 ? (
-                    <div className="atp__popup-empty">Aucun châssis assigné à cette table</div>
+                    <div className="atp__popup-empty">{t('atNoChassis')}</div>
                   ) : (
                     <>
                       {/* Etat filter pills */}
@@ -411,24 +404,20 @@ function TableDetailPopup({ table, onClose }) {
                       />
 
                       {filteredWorkload.length === 0 ? (
-                        <div className="atp__popup-empty" style={{ marginTop: 16 }}>
-                          Aucun châssis avec l'état &laquo;&nbsp;
-                          <span style={{ color: ETAT_COLORS[etatFilter], fontWeight: 700 }}>
-                            {ETAT_LABELS[etatFilter]}
-                          </span>
-                          &nbsp;&raquo;
+                        <div className="atp__popup-empty">
+                          {t('atNoChassisWithState', { etat: t(ETAT_LABELS[etatFilter]) })}
                         </div>
                       ) : (
-                        <table className="atp__popup-table" style={{ marginTop: 8 }}>
+                        <div className="atp__table-scroll"><table className="atp__popup-table">
                           <thead>
                             <tr>
-                              <th>Projet</th>
-                              <th>Client</th>
-                              <th>Réf châssis</th>
-                              <th>Dim.</th>
-                              <th>État</th>
-                              <th>Livraison</th>
-                              <th>Accessoires</th>
+                              <th>{t('atColProject')}</th>
+                              <th>{t('atColClient')}</th>
+                              <th>{t('atColChassisRef')}</th>
+                              <th>{t('atColDim')}</th>
+                              <th>{t('atColState')}</th>
+                              <th>{t('atColDelivery')}</th>
+                              <th>{t('atColAccessories')}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -437,7 +426,7 @@ function TableDetailPopup({ table, onClose }) {
                                 <td>
                                   <strong>{w.projectName}</strong>
                                   <br />
-                                  <small style={{ color: '#6b7280' }}>{w.projectRef}</small>
+                                  <small className="atp__muted">{w.projectRef}</small>
                                 </td>
                                 <td>{w.clientName || '—'}</td>
                                 <td>
@@ -448,31 +437,15 @@ function TableDetailPopup({ table, onClose }) {
                                 </td>
                                 <td>{w.dimension}</td>
                                 <td>
-                                  <span style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 5,
-                                    padding: '2px 8px',
-                                    borderRadius: 999,
-                                    fontSize: 11,
-                                    fontWeight: 600,
-                                    background: (ETAT_COLORS[w.etat] || '#9ca3af') + '1a',
-                                    color: ETAT_COLORS[w.etat] || '#9ca3af',
-                                    border: `1px solid ${(ETAT_COLORS[w.etat] || '#9ca3af')}40`,
-                                    whiteSpace: 'nowrap',
-                                  }}>
-                                    <span style={{
-                                      width: 7, height: 7, borderRadius: '50%',
-                                      background: ETAT_COLORS[w.etat] || '#9ca3af',
-                                      display: 'inline-block', flexShrink: 0,
-                                    }} />
-                                    {ETAT_LABELS[w.etat] || w.etat}
+                                  <span className="atp__etat-badge" style={{ '--c': ETAT_COLORS[w.etat] || '#a1a1aa' }}>
+                                    <span className="atp__etat-badge-dot" />
+                                    {ETAT_LABELS[w.etat] ? t(ETAT_LABELS[w.etat]) : w.etat}
                                   </span>
                                 </td>
                                 <td>{fmtDate(w.deliveryDate)}</td>
                                 <td>
                                   {(w.accessories || []).filter(a => a.quantity > 0).length === 0
-                                    ? <span style={{ color: '#9ca3af' }}>—</span>
+                                    ? <span className="atp__muted">—</span>
                                     : (w.accessories || []).filter(a => a.quantity > 0).map((a, ai) => (
                                       <span key={ai} className="atp__acc-chip">
                                         {a.label} <strong>{a.quantity}</strong>{a.unit && ` ${a.unit}`}
@@ -483,7 +456,7 @@ function TableDetailPopup({ table, onClose }) {
                               </tr>
                             ))}
                           </tbody>
-                        </table>
+                        </table></div>
                       )}
                     </>
                   )}
@@ -493,14 +466,14 @@ function TableDetailPopup({ table, onClose }) {
               {/* ── STOCK TAB ── */}
               {activeTab === 'stock' && (
                 <div className="atp__popup-stock">
-                  <h4 className="atp__popup-section-title">Stock d'accessoires de la table</h4>
+                  <h4 className="atp__popup-section-title">{t('atStockTitle')}</h4>
                   {stock.length === 0 ? (
-                    <div className="atp__popup-empty">Aucun accessoire en stock</div>
+                    <div className="atp__popup-empty">{t('atNoStock')}</div>
                   ) : (
-                    <table className="atp__popup-table">
+                    <div className="atp__table-scroll"><table className="atp__popup-table">
                       <thead>
                         <tr>
-                          <th>Accessoire</th><th>Unité</th><th style={{ textAlign: 'right' }}>Qté</th><th>Ajuster</th><th></th>
+                          <th>{t('atColAccessory')}</th><th>{t('atColUnit')}</th><th style={{ textAlign: 'right' }}>{t('atColQty')}</th><th>{t('atColAdjust')}</th><th></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -516,48 +489,47 @@ function TableDetailPopup({ table, onClose }) {
                                 <button className="atp__adj-btn atp__adj-btn--minus" disabled={saving} onClick={() => handleAdjust(item, -1)}>−1</button>
                                 <button className="atp__adj-btn atp__adj-btn--plus"  disabled={saving} onClick={() => handleAdjust(item, +1)}>+1</button>
                                 <button className="atp__adj-btn atp__adj-btn--custom" disabled={saving}
-                                  onClick={() => setAdjusting({ idx: i, delta: '' })}>✎</button>
+                                  onClick={() => setAdjusting({ idx: i, delta: '' })}><Ico d={IC.edit} size={13} /></button>
                               </div>
                               {adjusting?.idx === i && (
                                 <div className="atp__adj-custom">
                                   <input type="number" className="atp__adj-input"
                                     value={adjusting.delta}
                                     onChange={e => setAdjusting({ ...adjusting, delta: e.target.value })}
-                                    placeholder="±qté" />
+                                    placeholder={t('atQtyPh')} />
                                   <button className="atp__adj-ok" onClick={() => {
                                     const d = parseFloat(adjusting.delta);
                                     if (!isNaN(d) && d !== 0) handleAdjust(item, d);
                                     setAdjusting(null);
                                   }}>OK</button>
-                                  <button className="atp__adj-cancel" onClick={() => setAdjusting(null)}>✕</button>
+                                  <button className="atp__adj-cancel" onClick={() => setAdjusting(null)}><Ico d={IC.x} size={13} /></button>
                                 </div>
                               )}
                             </td>
                             <td>
                               <button
-                                className="atp__adj-btn"
+                                className="atp__adj-btn atp__adj-btn--danger"
                                 disabled={saving}
-                                title="Retirer cet accessoire du stock de la table (retour inventaire)"
-                                style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+                                title={t('atRemoveItemHint')}
                                 onClick={() => handleRemoveItem(item)}
-                              >🗑</button>
+                              ><Ico d={IC.trash} size={13} /></button>
                             </td>
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </table></div>
                   )}
 
                   <div className="atp__stock-add-section">
-                    <h5 className="atp__popup-section-subtitle">➕ Ajouter depuis l'inventaire accessoires</h5>
+                    <h5 className="atp__popup-section-subtitle">{t('atAddFromInv')}</h5>
                     <input className="atp__stock-search" value={stockSearch} onChange={e => setStockSearch(e.target.value)}
-                      placeholder="Rechercher un accessoire…" />
+                      placeholder={t('atSearchAcc')} />
                     {addingItem && (
                       <div className="atp__add-item-form">
                         <span className="atp__add-item-name">{addingItem.label}</span>
-                        <input type="number" className="atp__adj-input" value={addQty} onChange={e => setAddQty(e.target.value)} placeholder="Quantité" min={1} />
-                        <button className="atp__adj-ok" onClick={handleAddItem} disabled={saving}>Ajouter</button>
-                        <button className="atp__adj-cancel" onClick={() => { setAddingItem(null); setAddQty(''); }}>✕</button>
+                        <input type="number" className="atp__adj-input" value={addQty} onChange={e => setAddQty(e.target.value)} placeholder={t('atQuantityPh')} min={1} />
+                        <button className="atp__adj-ok" onClick={handleAddItem} disabled={saving}>{t('add')}</button>
+                        <button className="atp__adj-cancel" onClick={() => { setAddingItem(null); setAddQty(''); }}><Ico d={IC.x} size={13} /></button>
                       </div>
                     )}
                     <div className="atp__inv-list">
@@ -568,7 +540,7 @@ function TableDetailPopup({ table, onClose }) {
                           <span className="atp__inv-chip-stock">{it.quantity}</span>
                         </button>
                       ))}
-                      {filteredInventory.length === 0 && <span style={{ color: '#9ca3af', fontSize: 13 }}>Aucun résultat</span>}
+                      {filteredInventory.length === 0 && <span className="atp__muted">{t('atNoResult')}</span>}
                     </div>
                   </div>
                 </div>
@@ -578,9 +550,9 @@ function TableDetailPopup({ table, onClose }) {
               {activeTab === 'recap' && (
                 <div className="atp__popup-recap">
                   <div className="atp__recap-toolbar">
-                    <h4 className="atp__popup-section-title" style={{ margin: 0 }}>Consommation — {table.name}</h4>
+                    <h4 className="atp__popup-section-title atp__popup-section-title--flush">{t('atConsumption', { name: table.name })}</h4>
                     <div className="atp__period-selector">
-                      {[['daily','Jour'], ['weekly','Semaine'], ['monthly','Mois']].map(([k, l]) => (
+                      {[['daily', t('atDay')], ['weekly', t('atWeek')], ['monthly', t('atMonth')]].map(([k, l]) => (
                         <button key={k} className={`atp__period-btn${recapPeriod === k ? ' active' : ''}`}
                           onClick={() => setRecapPeriod(k)}>{l}</button>
                       ))}
@@ -605,23 +577,23 @@ function TableDetailPopup({ table, onClose }) {
                       grouped[key].push(entry);
                     }
                     const periods = Object.entries(grouped).sort((a, b) => b[0].localeCompare(a[0]));
-                    const TYPE_COLORS = { chassis_assignment: '#f59e0b', manual_in: '#16a34a', manual_out: '#ef4444' };
-                    const TYPE_LABELS = { chassis_assignment: 'Châssis', manual_in: 'Appro.', manual_out: 'Retrait' };
+                    const TYPE_COLORS = { chassis_assignment: '#fbbf24', manual_in: '#4ade80', manual_out: '#f87171' };
+                    const TYPE_LABELS = { chassis_assignment: t('atTypeChassis'), manual_in: t('atTypeIn'), manual_out: t('atTypeOut') };
                     return recap.length === 0 ? (
-                      <div className="atp__popup-empty">Aucune consommation enregistrée</div>
+                      <div className="atp__popup-empty">{t('atNoConsumption')}</div>
                     ) : (
                       <div className="atp__recap-periods">
                         {periods.map(([periodKey, entries]) => (
                           <div key={periodKey} className="atp__recap-period-block">
                             <div className="atp__recap-period-header">
                               <span className="atp__recap-period-key">{periodKey}</span>
-                              <span className="atp__recap-period-total">{entries.length} entrée{entries.length > 1 ? 's' : ''}</span>
+                              <span className="atp__recap-period-total">{t('atEntries', { n: entries.length })}</span>
                             </div>
-                            <table className="atp__popup-table atp__popup-table--compact">
+                            <div className="atp__table-scroll"><table className="atp__popup-table atp__popup-table--compact">
                               <thead>
                                 <tr>
-                                  <th>Accessoire</th><th>Unité</th><th>Type</th>
-                                  <th>Qté</th><th>Projet</th><th>Châssis</th><th></th>
+                                  <th>{t('atColAccessory')}</th><th>{t('atColUnit')}</th><th>{t('atColType')}</th>
+                                  <th>{t('atColQty')}</th><th>{t('atColProject')}</th><th>{t('atColChassis')}</th><th></th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -633,30 +605,29 @@ function TableDetailPopup({ table, onClose }) {
                                       <td>{entry.label}</td>
                                       <td>{entry.unit || '—'}</td>
                                       <td>
-                                        <span style={{ fontSize: 11, fontWeight: 600, color: TYPE_COLORS[entry.type] || '#888' }}>
+                                        <span className="atp__type-badge" style={{ '--c': TYPE_COLORS[entry.type] || '#a1a1aa' }}>
                                           {TYPE_LABELS[entry.type] || entry.type}
                                         </span>
                                       </td>
                                       <td>
-                                        <span style={{ fontWeight: 700, color: isOut ? '#ef4444' : '#16a34a' }}>
+                                        <span className={`atp__qty ${isOut ? 'atp__qty--out' : 'atp__qty--in'}`}>
                                           {isOut ? '−' : '+'}{entry.quantity}
                                         </span>
                                       </td>
-                                      <td style={{ fontSize: 11, color: '#6b7280' }}>{entry.projectName || '—'}</td>
+                                      <td className="atp__muted">{entry.projectName || '—'}</td>
                                       <td style={{ fontSize: 11 }}>{entry.chassisRef ? <code>{entry.chassisRef}</code> : '—'}</td>
                                       <td>
                                         <button
-                                          className="atp__adj-btn"
-                                          style={{ color: '#ef4444', borderColor: '#fca5a5' }}
-                                          title="Supprimer cette entrée"
+                                          className="atp__adj-btn atp__adj-btn--danger"
+                                          title={t('atDeleteEntry')}
                                           onClick={() => handleDeleteRecapEntry(id)}
-                                        >🗑</button>
+                                        ><Ico d={IC.trash} size={13} /></button>
                                       </td>
                                     </tr>
                                   );
                                 })}
                               </tbody>
-                            </table>
+                            </table></div>
                           </div>
                         ))}
                       </div>
@@ -674,6 +645,7 @@ function TableDetailPopup({ table, onClose }) {
 
 // ─── Global Recap Modal ───────────────────────────────────────────────────────
 function GlobalRecapModal({ tables, onClose }) {
+  const { t } = useLanguage();
   const [period, setPeriod] = useState('monthly');
   const [recap, setRecap]   = useState([]);
   const [loading, setLoading] = useState(false);
@@ -686,45 +658,45 @@ function GlobalRecapModal({ tables, onClose }) {
       .finally(() => setLoading(false));
   }, [period]);
 
-  const allPeriodKeys = [...new Set(recap.flatMap(t => Object.keys(t.periods)))].sort((a, b) => b.localeCompare(a));
+  const allPeriodKeys = [...new Set(recap.flatMap(r => Object.keys(r.periods)))].sort((a, b) => b.localeCompare(a));
 
   return (
     <div className="atp__popup-overlay" onClick={onClose}>
       <div className="atp__popup atp__popup--wide" onClick={e => e.stopPropagation()}>
         <div className="atp__popup-header">
           <div className="atp__popup-title">
-            <span style={{ fontSize: 22 }}>📊</span>
-            <h2>Récap global — Consommation accessoires</h2>
+            <span className="atp__popup-icon"><Ico d={IC.chart} size={18} /></span>
+            <h2>{t('atGlobalRecap')}</h2>
           </div>
-          <button className="atp__popup-close" onClick={onClose}>✕</button>
+          <button className="atp__popup-close" onClick={onClose}><Ico d={IC.x} /></button>
         </div>
-        <div style={{ padding: '12px 20px 0', display: 'flex', gap: 8 }}>
-          {[['daily','Par jour'], ['weekly','Par semaine'], ['monthly','Par mois']].map(([k, l]) => (
+        <div className="atp__recap-periodbar">
+          {[['daily', t('atPerDay')], ['weekly', t('atPerWeek')], ['monthly', t('atPerMonth')]].map(([k, l]) => (
             <button key={k} className={`atp__period-btn${period === k ? ' active' : ''}`} onClick={() => setPeriod(k)}>{l}</button>
           ))}
         </div>
         <div className="atp__popup-body">
           {loading ? (
-            <div className="atp__popup-loading"><div className="atp__loading-spinner" /><span>Chargement…</span></div>
+            <div className="atp__popup-loading"><div className="atp__loading-spinner" /><span>{t('loadingShort')}</span></div>
           ) : recap.length === 0 ? (
-            <div className="atp__popup-empty">Aucune donnée de consommation</div>
+            <div className="atp__popup-empty">{t('atNoConsumptionData')}</div>
           ) : (
-            allPeriodKeys.slice(0, 20).map(pk => (
+            <div className="atp__recap-periods">{allPeriodKeys.slice(0, 20).map(pk => (
               <div key={pk} className="atp__recap-period-block">
                 <div className="atp__recap-period-header">
                   <span className="atp__recap-period-key">{pk}</span>
                 </div>
-                <table className="atp__popup-table atp__popup-table--compact">
+                <div className="atp__table-scroll"><table className="atp__popup-table atp__popup-table--compact">
                   <thead>
                     <tr>
-                      <th>Table</th><th>Accessoire</th><th>Consommé</th><th>Réappro</th>
+                      <th>{t('atColTable')}</th><th>{t('atColAccessory')}</th><th>{t('atColConsumed')}</th><th>{t('atColRestocked')}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {recap.flatMap(t =>
-                      (t.periods[pk] || []).map((it, i) => (
-                        <tr key={`${t.tableId}-${i}`}>
-                          <td><strong>{t.tableName}</strong></td>
+                    {recap.flatMap(r =>
+                      (r.periods[pk] || []).map((it, i) => (
+                        <tr key={`${r.tableId}-${i}`}>
+                          <td><strong>{r.tableName}</strong></td>
                           <td>{it.label}</td>
                           <td><span className="atp__recap-consumed">{it.consumed} {it.unit}</span></td>
                           <td>{it.restocked > 0 ? <span className="atp__recap-restocked">+{it.restocked}</span> : '—'}</td>
@@ -732,9 +704,9 @@ function GlobalRecapModal({ tables, onClose }) {
                       ))
                     )}
                   </tbody>
-                </table>
+                </table></div>
               </div>
-            ))
+            ))}</div>
           )}
         </div>
       </div>
@@ -744,6 +716,7 @@ function GlobalRecapModal({ tables, onClose }) {
 
 // ─── Main AtelierTablesPage ───────────────────────────────────────────────────
 function AtelierTablesPage() {
+  const { t } = useLanguage();
   const [tables, setTables]           = useState([]);
   const [loading, setLoading]         = useState(true);
   const [saving, setSaving]           = useState(false);
@@ -801,15 +774,15 @@ function AtelierTablesPage() {
       await axios.put(`${API_URL}/atelier-tables`, { tables });
       setSaved(true); setTimeout(() => setSaved(false), 2200);
     } catch (e) {
-      setError(e.response?.data?.error || 'Erreur lors de la sauvegarde');
+      setError(e.response?.data?.error || t('errSave'));
     } finally { setSaving(false); }
   };
 
   const handleAddTable = () => {
-    const nextNum = tables.length > 0 ? Math.max(...tables.map(t => t.number)) + 1 : 1;
+    const nextNum = tables.length > 0 ? Math.max(...tables.map(tb => tb.number)) + 1 : 1;
     const newTable = {
       id: `table-${nextNum}-${Date.now()}`,
-      number: nextNum, name: `Table ${nextNum}`,
+      number: nextNum, name: t('atTableN', { n: nextNum }),
       x: 80 + (tables.length % 3) * 260,
       y: 80 + Math.floor(tables.length / 3) * 160,
       w: 200, h: 90,
@@ -818,10 +791,11 @@ function AtelierTablesPage() {
     setSelectedId(newTable.id);
   };
 
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (!selectedId) return;
-    if (!window.confirm('Supprimer cette table ?')) return;
-    setTables(prev => prev.filter(t => t.id !== selectedId));
+    const tbl = tables.find(tb => tb.id === selectedId);
+    if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('atDeleteTableConfirm', { name: tbl?.name || '' }), danger: true, confirmLabel: t('deleteAction') }))) return;
+    setTables(prev => prev.filter(tb => tb.id !== selectedId));
     setSelectedId(null);
   };
 
@@ -891,24 +865,24 @@ function AtelierTablesPage() {
     <div className="atp">
       <div className="atp__header">
         <div className="atp__header-left">
-          <div className="atp__header-icon">🏭</div>
+          <div className="atp__header-icon"><Ico d={IC.plan} size={20} /></div>
           <div>
-            <h1 className="atp__title">Atelier — Tables de travail</h1>
-            <p className="atp__subtitle">Vue de dessus · Clic pour détails · Double-clic pour renommer · Glisser pour repositionner</p>
+            <h1 className="atp__title">{t('atTitle')}</h1>
+            <p className="atp__subtitle">{t('atSubtitle')}</p>
           </div>
         </div>
         <div className="atp__header-actions">
           <button className="atp__btn atp__btn--recap" onClick={() => setShowGlobalRecap(true)}>
-            📊 Récap global
+            <Ico d={IC.chart} size={15} /> {t('atGlobalRecapBtn')}
           </button>
           <button className="atp__btn atp__btn--add" onClick={handleAddTable}>
-            <span>＋</span> Ajouter une table
+            <Ico d={IC.plus} size={15} /> {t('atAddTable')}
           </button>
           {selectedId && (
-            <button className="atp__btn atp__btn--delete" onClick={handleDeleteSelected}>🗑 Supprimer</button>
+            <button className="atp__btn atp__btn--delete" onClick={handleDeleteSelected}><Ico d={IC.trash} size={15} /> {t('delete')}</button>
           )}
           <button className={`atp__btn atp__btn--save${saved ? ' atp__btn--saved' : ''}`} onClick={handleSave} disabled={saving}>
-            {saving ? '…' : saved ? '✓ Enregistré' : '💾 Enregistrer'}
+            {saving ? '…' : saved ? <><Ico d={IC.check} size={15} /> {t('atSaved')}</> : <><Ico d={IC.save} size={15} /> {t('save')}</>}
           </button>
         </div>
       </div>
@@ -919,16 +893,16 @@ function AtelierTablesPage() {
         <div className="atp__info-bar">
           <span className="atp__info-badge">#{selectedTable.number}</span>
           <strong>{selectedTable.name}</strong>
-          <span className="atp__info-hint">Clic = détails · Double-clic = renommer</span>
-          <button className="atp__info-open-btn" onClick={() => setPopupTable(selectedTable)}>Ouvrir ↗</button>
+          <span className="atp__info-hint">{t('atHint')}</span>
+          <button className="atp__info-open-btn" onClick={() => setPopupTable(selectedTable)}>{t('atOpen')}</button>
         </div>
       )}
 
       <div className="atp__canvas-wrap">
-        <div className="atp__canvas-label atp__canvas-label--top">ENTRÉE</div>
-        <div className="atp__canvas-label atp__canvas-label--left">NORD</div>
+        <div className="atp__canvas-label atp__canvas-label--top">{t('atEntrance')}</div>
+        <div className="atp__canvas-label atp__canvas-label--left">{t('atNorth')}</div>
         {loading ? (
-          <div className="atp__loading"><div className="atp__loading-spinner" /><span>Chargement de l'atelier…</span></div>
+          <div className="atp__loading"><div className="atp__loading-spinner" /><span>{t('atLoading')}</span></div>
         ) : (
           <svg ref={svgRef} className="atp__svg" viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}
             onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
@@ -936,12 +910,12 @@ function AtelierTablesPage() {
             <defs>
               <filter id="blur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="4" /></filter>
               <pattern id="floor-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <rect width="40" height="40" fill="#f5f3ee" />
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e2ddd5" strokeWidth="0.8" />
+                <rect width="40" height="40" fill="#0e0e11" />
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.045)" strokeWidth="1" />
               </pattern>
               <pattern id="wall-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                <rect width="8" height="8" fill="#c8c0b4" />
-                <line x1="0" y1="4" x2="8" y2="4" stroke="#b8b0a4" strokeWidth="1.5" />
+                <rect width="8" height="8" fill="#1c1c21" />
+                <line x1="0" y1="4" x2="8" y2="4" stroke="#2c2c33" strokeWidth="1.5" />
               </pattern>
             </defs>
             <rect className="atp__floor" x={0} y={0} width={CANVAS_W} height={CANVAS_H} fill="url(#floor-grid)" rx={4} />
@@ -949,15 +923,18 @@ function AtelierTablesPage() {
             <rect x={0} y={CANVAS_H - 16} width={CANVAS_W} height={16} fill="url(#wall-hatch)" />
             <rect x={0} y={0} width={16} height={CANVAS_H} fill="url(#wall-hatch)" />
             <rect x={CANVAS_W - 16} y={0} width={16} height={CANVAS_H} fill="url(#wall-hatch)" />
-            <rect x={CANVAS_W / 2 - 40} y={CANVAS_H - 17} width={80} height={18} fill="#f5f3ee" />
-            <text x={CANVAS_W / 2} y={CANVAS_H - 5} textAnchor="middle" className="atp__door-label">▼ ENTRÉE</text>
+            <rect x={16} y={16} width={CANVAS_W - 32} height={CANVAS_H - 32} fill="none" stroke="#34343b" strokeWidth="1" />
+            <rect x={CANVAS_W / 2 - 60} y={CANVAS_H - 17} width={120} height={18} fill="#0e0e11" />
+            <path d={`M ${CANVAS_W / 2 - 60} ${CANVAS_H - 16} A 60 60 0 0 1 ${CANVAS_W / 2} ${CANVAS_H - 76}`} fill="none" stroke="#3f3f46" strokeWidth="1" strokeDasharray="3 4" />
+            <line x1={CANVAS_W / 2} y1={CANVAS_H - 16} x2={CANVAS_W / 2} y2={CANVAS_H - 76} stroke="#3f3f46" strokeWidth="1" />
+            <text x={CANVAS_W / 2 + 30} y={CANVAS_H - 30} textAnchor="middle" className="atp__door-label">{t('atEntrance')}</text>
             {[1, 2, 3, 4].map(i => (
               <line key={`vr${i}`} x1={i * (CANVAS_W / 5)} y1={16} x2={i * (CANVAS_W / 5)} y2={CANVAS_H - 16}
-                stroke="#ddd8d0" strokeWidth="0.5" strokeDasharray="4,8" />
+                stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="2,10" />
             ))}
             {[1, 2, 3].map(i => (
               <line key={`hr${i}`} x1={16} y1={i * (CANVAS_H / 4)} x2={CANVAS_W - 16} y2={i * (CANVAS_H / 4)}
-                stroke="#ddd8d0" strokeWidth="0.5" strokeDasharray="4,8" />
+                stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="2,10" />
             ))}
             {tables.map(table => (
               <WorkshopTable
@@ -978,16 +955,16 @@ function AtelierTablesPage() {
             ))}
             {tables.length === 0 && (
               <text x={CANVAS_W / 2} y={CANVAS_H / 2} textAnchor="middle" dominantBaseline="central" className="atp__empty-hint">
-                Aucune table — cliquez sur "Ajouter une table"
+                {t('atNoTableHint')}
               </text>
             )}
           </svg>
         )}
-        <div className="atp__canvas-label atp__canvas-label--right">SUD</div>
+        <div className="atp__canvas-label atp__canvas-label--right">{t('atSouth')}</div>
       </div>
 
       <div className="atp__list-section">
-        <h3 className="atp__list-title">Tables configurées <span className="atp__list-count">{tables.length}</span></h3>
+        <h3 className="atp__list-title">{t('atConfigured')} <span className="atp__list-count">{tables.length}</span></h3>
         <div className="atp__list">
           {tables.map(table => (
             <div key={table.id}
@@ -996,12 +973,12 @@ function AtelierTablesPage() {
               onDoubleClick={() => { setEditingId(table.id); setEditName(table.name); }}>
               <span className="atp__list-num">#{table.number}</span>
               <span className="atp__list-name">{table.name}</span>
-              {(workloads[table.id] || 0) > 0 && <span className="atp__list-workload">{workloads[table.id]} châssis</span>}
-              {stockAlerts[table.id] && <span className="atp__list-alert">⚠ stock bas</span>}
-              <button className="atp__list-open-btn" onClick={e => { e.stopPropagation(); setPopupTable(table); }}>Détails ↗</button>
+              {(workloads[table.id] || 0) > 0 && <span className="atp__list-workload">{t('atChassisCount', { n: workloads[table.id] })}</span>}
+              {stockAlerts[table.id] && <span className="atp__list-alert">{t('atLowStock')}</span>}
+              <button className="atp__list-open-btn" onClick={e => { e.stopPropagation(); setPopupTable(table); }}>{t('atDetails')}</button>
             </div>
           ))}
-          {tables.length === 0 && <div className="atp__list-empty">Aucune table configurée</div>}
+          {tables.length === 0 && <div className="atp__list-empty">{t('atNoTable')}</div>}
         </div>
       </div>
 

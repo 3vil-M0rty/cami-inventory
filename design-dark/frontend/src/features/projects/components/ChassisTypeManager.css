@@ -1,0 +1,705 @@
+/* ============================================================
+   CHASSIS TYPE MANAGER — B&W theme
+   ============================================================ */
+
+.ct-manager-modal {
+  max-width: 1760px !important;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.ct-manager__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.ct-manager__header h2 { margin: 0 !important; font-size: 18px; font-weight: 800; letter-spacing: -.02em; color: var(--text); }
+
+/* ── Form ── */
+.ct-manager__form {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+  margin-bottom: 24px;
+}
+.ct-manager__form h3 { margin: 0 0 14px; font-size: 12px; color: var(--text-2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+
+.ct-manager__fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ct-manager__composite-toggle { grid-column: 1 / -1; }
+.ct-manager__composite-toggle label { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 13px; font-weight: 600; }
+
+.ct-manager__preview { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); }
+.ct-manager__preview code { background: var(--surface); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; font-size: 11px; color: var(--text-2); font-family: var(--mono); }
+
+.ct-manager__error {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-bd);
+  color: var(--danger);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+/* ── List ── */
+.ct-manager__list h3 { margin: 0 0 12px; font-size: 12px; color: var(--text-3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+
+.ct-manager__table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ct-manager__table thead tr { background: var(--surface-2); }
+.ct-manager__table th {
+  background: var(--surface-2);
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+  padding: 9px 14px;
+  text-align: left;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.ct-manager__table td {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  color: var(--text);
+}
+.ct-manager__table tbody tr:hover td { background: var(--surface-2); }
+.ct-manager__row--editing td { background: var(--surface-3); }
+
+.ct-manager__code { background: var(--surface-2); border: 1px solid var(--border); padding: 2px 7px; border-radius: 4px; font-size: 11px; color: var(--text-2); font-family: var(--mono); }
+
+/* Composite badge */
+.ct-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: rgba(161,161,170,.12); color: var(--text-3); border: 1px solid rgba(161,161,170,.25); }
+.ct-badge--composite { background: rgba(96,165,250,.12); color: #93c5fd; border-color: rgba(96,165,250,.3); }
+
+.ct-manager__actions { display: flex; gap: 6px; }
+.ct-manager__loading { color: var(--text-4); padding: 16px 0; font-size: 14px; }
+
+
+/* ════════════════════════════════════════════════════════════
+   SECTION A — AccessoryEditor modal
+   ════════════════════════════════════════════════════════════ */
+
+/* ── Accessory modal sizing ── */
+.ct-acc-modal {
+  max-width: 780px !important;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+/* ── Intro hint text ── */
+.ct-acc-hint {
+  font-size: 13px;
+  color: var(--text-3);
+  line-height: 1.55;
+  margin: 0 0 20px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-left: 3px solid var(--400);
+  border-radius: 0 6px 6px 0;
+}
+
+/* ── Search bar wrapper ── */
+.ct-acc-search-wrap { margin-bottom: 24px; }
+
+.ct-acc-search-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.ct-acc-search-field { position: relative; }
+
+.ct-acc-search-field input {
+  width: 100%;
+  padding: 11px 40px 11px 40px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+.ct-acc-search-field input:focus {
+  border-color: var(--600);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+.ct-acc-search-field input::placeholder { color: var(--text-4); }
+
+.ct-acc-search-icon {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  color: var(--text-4);
+  pointer-events: none;
+  line-height: 1;
+}
+
+/* ── Linked accessories table ── */
+.ct-acc-linked { margin-bottom: 24px; }
+
+.ct-acc-linked h3 {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 10px;
+}
+
+.ct-acc-linked-table { margin: 0; }
+.ct-acc-linked-table td:last-child { text-align: right; width: 40px; }
+
+/* ── Quantity input ── */
+.ct-acc-qty-input {
+  padding: 5px 8px;
+  border: 1px solid var(--border-2);
+  border-radius: 5px;
+  font-size: 13px;
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+  width: 72px;
+  text-align: right;
+}
+.ct-acc-qty-input:focus { border-color: var(--600); box-shadow: 0 0 0 3px var(--focus); }
+.ct-acc-qty-input:disabled { background: var(--surface); color: var(--text-4); cursor: not-allowed; }
+
+/* Unit badge */
+.ct-acc-unit { font-size: 11px; color: var(--text-3); font-weight: 600; margin-left: 4px; }
+
+/* ════════════════════════════════════════════════════════════
+   NEW ACCESSORY ADD FORM — ChassisTypeManager
+   ════════════════════════════════════════════════════════════ */
+
+.ct-acc-add-form {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 22px;
+  margin-bottom: 24px;
+}
+
+.ct-acc-add-form__title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Mobile: 1-col; 601px+: 2-col */
+.ct-acc-add-form__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px 16px;
+}
+.ct-acc-add-form__search { grid-column: 1 / 1; }
+
+.ct-acc-add-form__mode-row {
+  grid-column: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.ct-acc-mode-card {
+  flex: 1;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  position: relative;
+}
+.ct-acc-mode-card:hover { border-color: var(--400); background: var(--surface-2); }
+.ct-acc-mode-card--active {
+  border-color: var(--600);
+  background: var(--surface-3);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+.ct-acc-mode-card__label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-2);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ct-acc-mode-card--active .ct-acc-mode-card__label { color: var(--text); }
+
+.ct-acc-mode-card__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--300);
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.ct-acc-mode-card--active .ct-acc-mode-card__dot { background: var(--900); }
+
+.ct-acc-qty-row { display: flex; gap: 8px; align-items: center; }
+
+/* Unit dropdown */
+.ct-acc-unit-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 7px 28px 7px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' viewBox='0 0 10 6'%3E%3Cpath stroke='%238b8b94' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M1 1l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 10px center;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  min-width: 80px;
+  outline: none;
+}
+.ct-acc-unit-select:focus { border-color: var(--600); box-shadow: 0 0 0 3px var(--focus); }
+
+/* Formula input */
+.ct-acc-formula-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-2);
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.ct-acc-formula-input:focus { border-color: var(--600); box-shadow: 0 0 0 3px var(--focus); }
+.ct-acc-formula-input::placeholder { color: var(--text-4); font-style: italic; }
+
+/* Formula preview pill */
+.ct-acc-formula-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  background: var(--info-bg);
+  border: 1px solid var(--info-bd);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--info);
+}
+.ct-acc-formula-preview--invalid {
+  background: var(--danger-bg);
+  border-color: var(--danger-bd);
+  color: var(--danger);
+}
+
+.ct-acc-add-form__actions {
+  grid-column: 1 / 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ── Autocomplete search input ── */
+.ct-acc-search-input {
+  width: 100%;
+  padding: 10px 38px 10px 38px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+.ct-acc-search-input:focus {
+  border-color: var(--600);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+.ct-acc-search-input::placeholder { color: var(--text-4); }
+
+/* ── Suggestions dropdown ── */
+.ct-acc-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: var(--sh-lg);
+  z-index: 9999;
+  overflow: hidden;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.ct-acc-dropdown__header {
+  padding: 7px 14px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.ct-acc-dropdown__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  color: var(--text);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.ct-acc-dropdown__item:last-child { border-bottom: none; }
+.ct-acc-dropdown__item:hover { background: var(--surface-2); }
+
+.ct-acc-dropdown__unit {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--surface-3);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-2);
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+/* Accessory config button */
+.ct-acc-btn {
+  padding: 5px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.ct-acc-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: var(--400);
+}
+
+
+/* ════════════════════════════════════════════════════════════
+   SECTION B — ProjectDetail additions
+   ════════════════════════════════════════════════════════════ */
+
+.proj-acc-modal {
+  max-width: 780px !important;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.proj-acc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.proj-acc-table th {
+  background: var(--surface-2);
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.proj-acc-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  background: var(--surface);
+}
+.proj-acc-table tr:last-child td { border-bottom: none; }
+.proj-acc-table tr:hover td { background: var(--surface-2); }
+
+.proj-acc-table .ct-acc-qty-input { width: 100%; box-sizing: border-box; font-size: 13px; }
+
+.proj-acc-table .proj-acc-formula-cell input {
+  font-family: var(--mono);
+  font-size: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.proj-acc-preview-cell {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--info);
+  white-space: nowrap;
+}
+.proj-acc-preview-cell--invalid { color: var(--danger); }
+
+/* ── Project accessory add form ── */
+.proj-acc-add-form {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 22px;
+  margin-bottom: 20px;
+}
+
+.proj-acc-add-form__title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Mobile: 1-col; 601px+: 2fr 1fr */
+.proj-acc-add-form__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px 16px;
+  align-items: start;
+}
+.proj-acc-add-form__search  { grid-column: 1 / 1; }
+.proj-acc-add-form__actions { grid-column: 1 / 1; display: flex; justify-content: flex-end; gap: 8px; }
+
+.proj-acc-qty-unit-row { display: flex; gap: 8px; align-items: center; }
+
+/* Unit dropdown */
+.proj-acc-unit-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 8px 28px 8px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' viewBox='0 0 10 6'%3E%3Cpath stroke='%238b8b94' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M1 1l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 10px center;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  min-width: 90px;
+  outline: none;
+}
+.proj-acc-unit-select:focus { border-color: var(--600); box-shadow: 0 0 0 3px var(--focus); }
+
+/* Mode toggle cards */
+.proj-acc-mode-row {
+  grid-column: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.proj-acc-mode-card {
+  flex: 1;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.proj-acc-mode-card:hover { border-color: var(--400); }
+.proj-acc-mode-card--active {
+  border-color: var(--600);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+.proj-acc-mode-card__label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-2);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.proj-acc-mode-card--active .proj-acc-mode-card__label { color: var(--text); }
+
+.proj-acc-mode-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--300);
+  flex-shrink: 0;
+}
+.proj-acc-mode-card--active .proj-acc-mode-dot { background: var(--900); }
+
+/* Formula input */
+.proj-acc-formula-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-2);
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.proj-acc-formula-input:focus { border-color: var(--600); box-shadow: 0 0 0 3px var(--focus); }
+.proj-acc-formula-input::placeholder { color: var(--text-4); font-style: italic; }
+
+.proj-acc-formula-hint { font-size: 11px; color: var(--text-3); margin-top: 5px; }
+.proj-acc-formula-hint strong { color: var(--text); }
+
+.proj-acc-formula-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  background: var(--info-bg);
+  border: 1px solid var(--info-bd);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--info);
+}
+.proj-acc-formula-preview--invalid {
+  background: var(--danger-bg);
+  border-color: var(--danger-bd);
+  color: var(--danger);
+}
+
+.proj-acc-load-defaults-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: 1px solid var(--border-2);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.proj-acc-load-defaults-btn:hover { border-color: var(--400); background: var(--surface-3); }
+.proj-acc-load-defaults-btn:disabled { opacity: 0.5; cursor: wait; }
+
+.proj-acc-empty {
+  padding: 18px 0 10px;
+  color: var(--text-4);
+  font-style: italic;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ── Responsive ── */
+@media (min-width: 601px) {
+  .ct-acc-add-form__grid { grid-template-columns: 1fr 1fr; }
+  .proj-acc-add-form__grid { grid-template-columns: 2fr 1fr; }
+
+  .ct-acc-add-form__search,
+  .proj-acc-add-form__search,
+  .ct-acc-add-form__mode-row,
+  .proj-acc-mode-row,
+  .ct-acc-add-form__actions,
+  .proj-acc-add-form__actions { grid-column: 1 / -1; }
+
+  .ct-acc-add-form__mode-row,
+  .proj-acc-mode-row { flex-direction: row; align-items: stretch; }
+}
+
+/* Composite checkbox: keep it a real checkbox, not a full-width input */
+.ct-manager__composite-toggle { margin-bottom: 0; }
+.ct-manager__composite-toggle label {
+  text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; color: var(--text-2);
+  margin-bottom: 0;
+}
+.ct-manager__composite-toggle input[type="checkbox"] {
+  width: 16px !important; height: 16px; padding: 0 !important; margin: 0;
+  accent-color: var(--900); flex-shrink: 0; cursor: pointer;
+}
+.ct-manager__fields .form-group { margin-bottom: 0; }
+.ct-manager__form .modal-actions { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.ct-manager__list { overflow-x: auto; }
+.ct-manager__actions .edit-btn, .ct-manager__actions .delete-btn { width: 32px; height: 32px; }
+.ct-manager-modal { border-radius: 14px !important; }
+@media (max-width: 600px) {
+  .ct-manager__fields { grid-template-columns: 1fr; }
+  .ct-manager__table { min-width: 640px; }
+}
+
+.ct-manager__fields .ct-manager__composite-toggle label {
+  display: inline-flex; align-items: center; gap: 8px;
+  text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; color: var(--text-2);
+}
+.ct-manager__fields .ct-manager__composite-toggle input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; border-radius: 4px; }
+
+.ct-acc-modal .ct-acc-mode-card--active,
+.ct-acc-modal .proj-acc-mode-card--active { border-color: var(--500); box-shadow: none; }
+
+/* Inline add-form buttons (accessory editor) */
+.ct-acc-modal .proj-acc-add-form__actions button,
+.ct-acc-modal .ct-acc-add-form__actions button {
+  height: 34px; padding: 0 16px;
+  border: 1px solid var(--border-2); border-radius: var(--r-md);
+  background: var(--surface); color: var(--text);
+  font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+  transition: all var(--t);
+}
+.ct-acc-modal .proj-acc-add-form__actions button:hover,
+.ct-acc-modal .ct-acc-add-form__actions button:hover { border-color: var(--400); background: var(--surface-3); }
+.ct-acc-modal .proj-acc-add-form__actions button.primary,
+.ct-acc-modal .ct-acc-add-form__actions button.primary { background: var(--900); color: var(--text-inv); border-color: var(--900); }
+.ct-acc-modal .proj-acc-add-form__actions button.primary:hover,
+.ct-acc-modal .ct-acc-add-form__actions button.primary:hover { background: var(--black); }
+.ct-acc-modal .ct-manager__header h2 { margin: 0 !important; }
+.ct-acc-modal { border-radius: 14px !important; }

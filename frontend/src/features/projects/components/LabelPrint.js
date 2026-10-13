@@ -1,4 +1,4 @@
-import { useLanguage } from '../../../context/LanguageContext';
+import { useLanguage, translate } from '../../../context/LanguageContext';
 import './LabelPrint.css';
 
 /**
@@ -10,6 +10,7 @@ import './LabelPrint.css';
  * `_printRowIndex` is still used to disambiguate the parent unit instance label.
  */
 export function buildLabelHTML(chassisList, project, chassisLabels, language) {
+  const tr = (k) => translate(language, k);
   const ralHex = project.ralColor || '#cccccc';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
@@ -34,18 +35,18 @@ export function buildLabelHTML(chassisList, project, chassisLabels, language) {
       <span class="swatch"></span>
     </div>
     <div class="row">
-      <span class="f"><span class="k">Projet</span><span class="v">${project.name}</span></span>
-      <span class="f"><span class="k">Réf.</span><span class="v">${project.reference}</span></span>
+      <span class="f"><span class="k">${tr('labelProject')}</span><span class="v">${project.name}</span></span>
+      <span class="f"><span class="k">${tr('labelRef')}</span><span class="v">${project.reference}</span></span>
     </div>
     <div class="row">
-      <span class="f"><span class="k">RAL</span><span class="v">${project.ralCode}</span></span>
-      <span class="f"><span class="k">Date</span><span class="v">${dateStr}</span></span>
+      <span class="f"><span class="k">${tr('labelRal')}</span><span class="v">${project.ralCode}</span></span>
+      <span class="f"><span class="k">${tr('labelDate')}</span><span class="v">${dateStr}</span></span>
     </div>
     <div class="div"></div>
     <div class="grid">
-      <div class="cell"><span class="k">Repère</span><span class="repere">${repere}${parentLine}</span></div>
-      <div class="cell"><span class="k">Type</span><span class="v">${type}</span></div>
-      <div class="cell full"><span class="k">Dimensions</span><span class="dim">${largeur} × ${hauteur} mm</span></div>
+      <div class="cell"><span class="k">${tr('labelRepere')}</span><span class="repere">${repere}${parentLine}</span></div>
+      <div class="cell"><span class="k">${tr('labelType')}</span><span class="v">${type}</span></div>
+      <div class="cell full"><span class="k">${tr('labelDim')}</span><span class="dim">${largeur} × ${hauteur} mm</span></div>
     </div>
     
   </div>`;
@@ -167,7 +168,7 @@ function LabelPrint({ chassis, project, chassisLabels, onClose }) {
             </div>
             <div className="lp-row">
               <span className="lp-field"><span className="lp-k">{t('labelRal')}</span><span className="lp-v">{project.ralCode}</span></span>
-              <span className="lp-field"><span className="lp-k">Date</span><span className="lp-v">{dateStr}</span></span>
+              <span className="lp-field"><span className="lp-k">{t('labelDate')}</span><span className="lp-v">{dateStr}</span></span>
             </div>
             <div className="lp-divider" />
             <div className="lp-grid">
@@ -176,7 +177,7 @@ function LabelPrint({ chassis, project, chassisLabels, onClose }) {
                 <span className="lp-repere">{displayRepere}</span>
                 {comp && (
                   <div style={{ fontSize: '9px', color: '#888', marginTop: 4 }}>
-                    Châssis : {chassis.repere}{unitSuffix}
+                    {t('labelChassis')} {chassis.repere}{unitSuffix}
                   </div>
                 )}
               </div>

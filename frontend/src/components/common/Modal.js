@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useContext } from 'react';
+import LanguageContext, { tx } from '../../context/LanguageContext';
 import './Modal.css';
 
 /**
@@ -15,6 +16,7 @@ const Modal = ({
   children,
   size = 'medium'
 }) => {
+  const lang = useContext(LanguageContext);
   useEffect(() => {
     const handleEscape = (e) => {
       if (e.key === 'Escape' && isOpen) {
@@ -49,7 +51,7 @@ const Modal = ({
           <button 
             className="modal__close"
             onClick={onClose}
-            aria-label="Close modal"
+            aria-label={(lang ? lang.t : tx)('close')}
           >
             ×
           </button>

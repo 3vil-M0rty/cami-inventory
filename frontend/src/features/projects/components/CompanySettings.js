@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useLanguage } from '../../context/LanguageContext';
+import { useLanguage } from '../../../context/LanguageContext';
+import { dialog, errorMessage } from '../../../components/common/dialog';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -62,13 +63,13 @@ export default function CompanySettings() {
       setSaved(prev => ({ ...prev, [id]: true }));
       setTimeout(() => setSaved(prev => ({ ...prev, [id]: false })), 2000);
     } catch (e) {
-      alert('Erreur lors de la sauvegarde: ' + (e.response?.data?.error || e.message));
+      await dialog.alert(t('lqCsSaveError', { msg: errorMessage(e, '') }));
     } finally {
       setSaving(null);
     }
   };
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--color-text-secondary)' }}>Chargement…</div>;
+  if (loading) return <div style={{ padding: 32, color: 'var(--text-3)' }}>{t('loadingShort')}</div>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -79,8 +80,8 @@ export default function CompanySettings() {
 
         return (
           <div key={c.id} style={{
-            background: 'var(--color-background-primary)',
-            border: '0.5px solid var(--color-border-tertiary)',
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
             borderRadius: 12,
             overflow: 'hidden',
           }}>
@@ -88,29 +89,29 @@ export default function CompanySettings() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 12,
               padding: '14px 20px',
-              borderBottom: '0.5px solid var(--color-border-tertiary)',
-              background: 'var(--color-background-secondary)',
+              borderBottom: '1px solid var(--border)',
+              background: 'var(--surface-2)',
             }}>
               {/* Logo preview */}
               <div style={{
                 width: 44, height: 44, borderRadius: 8,
-                border: '0.5px solid var(--color-border-tertiary)',
-                background: '#fff',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-2)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 overflow: 'hidden', flexShrink: 0,
               }}>
                 {f.logo
-                  ? <img src={getLogoUrl(f.logo)} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={e => { e.target.style.display = 'none'; }} />
-                  : <span style={{ fontSize: 20, color: f.color || '#1a1a1a', fontWeight: 700 }}>{(f.name || '?')[0]}</span>
+                  ? <img src={getLogoUrl(f.logo)} alt={t('lqCsLogoAlt')} style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={e => { e.target.style.display = 'none'; }} />
+                  : <span style={{ fontSize: 20, color: f.color || 'var(--text)', fontWeight: 700 }}>{(f.name || '?')[0]}</span>
                 }
               </div>
               <div>
-                <div style={{ fontWeight: 500, fontSize: 15, color: 'var(--color-text-primary)' }}>{f.name || c.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 1 }}>Paramètres de la société</div>
+                <div style={{ fontWeight: 500, fontSize: 15, color: 'var(--text)' }}>{f.name || c.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>{t('lqCsSettings')}</div>
               </div>
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
                 {isSaved && (
-                  <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 500 }}>✓ Enregistré</span>
+                  <span style={{ fontSize: 13, color: 'var(--success)', fontWeight: 500 }}>{t('lqCsSaved')}</span>
                 )}
                 <button
                   onClick={() => handleSave(c.id)}
@@ -122,7 +123,7 @@ export default function CompanySettings() {
                     opacity: isSaving ? 0.7 : 1,
                   }}
                 >
-                  {isSaving ? 'Enregistrement…' : 'Enregistrer'}
+                  {isSaving ? t('lqCsSaving') : t('save')}
                 </button>
               </div>
             </div>
@@ -132,61 +133,61 @@ export default function CompanySettings() {
 
               {/* Logo URL — full width */}
               <div style={{ gridColumn: '1 / -1' }}>
-                <label style={labelStyle}>Logo (URL de l'image)</label>
+                <label style={labelStyle}>{t('lqCsLogo')}</label>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input
                     style={inputStyle}
                     type="url"
-                    placeholder="https://exemple.com/logo.png"
+                    placeholder={t('lqCsLogoPh')}
                     value={getLogoUrl(f.logo) || ''}
                     onChange={e => set(c.id, 'logo', e.target.value)}
                   />
                   {f.logo && (
                     <button
                       onClick={() => set(c.id, 'logo', '')}
-                      style={{ padding: '0 10px', height: 36, border: '0.5px solid var(--color-border-secondary)', borderRadius: 7, background: 'transparent', cursor: 'pointer', color: 'var(--color-text-secondary)', fontSize: 13 }}
+                      style={{ padding: '0 10px', height: 36, border: '1px solid var(--border-2)', borderRadius: 7, background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', fontSize: 13 }}
                     >✕</button>
                   )}
                 </div>
                 {f.logo && (
-                  <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--color-background-secondary)', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <img src={getLogoUrl(f.logo)} alt="preview" style={{ height: 32, maxWidth: 120, objectFit: 'contain' }} onError={e => { e.target.style.display = 'none'; }} />
-                    <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>Aperçu</span>
+                  <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <img src={getLogoUrl(f.logo)} alt={t('lqCsPreview')} style={{ height: 32, maxWidth: 120, objectFit: 'contain' }} onError={e => { e.target.style.display = 'none'; }} />
+                    <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('lqCsPreview')}</span>
                   </div>
                 )}
               </div>
 
               <div>
-                <label style={labelStyle}>Nom de la société</label>
+                <label style={labelStyle}>{t('lqCsName')}</label>
                 <input style={inputStyle} value={f.name} onChange={e => set(c.id, 'name', e.target.value)} />
               </div>
 
               <div>
-                <label style={labelStyle}>Couleur de marque</label>
+                <label style={labelStyle}>{t('lqCsColor')}</label>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input type="color" value={f.color} onChange={e => set(c.id, 'color', e.target.value)}
-                    style={{ width: 36, height: 36, padding: 2, border: '0.5px solid var(--color-border-secondary)', borderRadius: 7, cursor: 'pointer' }} />
+                    style={{ width: 36, height: 36, padding: 2, border: '1px solid var(--border-2)', borderRadius: 7, cursor: 'pointer' }} />
                   <input style={{ ...inputStyle, flex: 1 }} value={f.color} onChange={e => set(c.id, 'color', e.target.value)} placeholder="#1a1a1a" />
                 </div>
               </div>
 
               <div>
-                <label style={labelStyle}>Adresse</label>
-                <input style={inputStyle} value={f.address} onChange={e => set(c.id, 'address', e.target.value)} placeholder="123 rue exemple, Ville" />
+                <label style={labelStyle}>{t('lqCsAddress')}</label>
+                <input style={inputStyle} value={f.address} onChange={e => set(c.id, 'address', e.target.value)} placeholder={t('lqCsAddressPh')} />
               </div>
 
               <div>
-                <label style={labelStyle}>Téléphone</label>
+                <label style={labelStyle}>{t('lqCsPhone')}</label>
                 <input style={inputStyle} value={f.phone} onChange={e => set(c.id, 'phone', e.target.value)} placeholder="+212 5xx xxx xxx" />
               </div>
 
               <div>
-                <label style={labelStyle}>Email</label>
-                <input style={inputStyle} type="email" value={f.email} onChange={e => set(c.id, 'email', e.target.value)} placeholder="contact@societe.ma" />
+                <label style={labelStyle}>{t('lqCsEmail')}</label>
+                <input style={inputStyle} type="email" value={f.email} onChange={e => set(c.id, 'email', e.target.value)} placeholder={t('lqCsEmailPh')} />
               </div>
 
               <div>
-                <label style={labelStyle}>RC (Registre de commerce)</label>
+                <label style={labelStyle}>{t('lqCsRc')}</label>
                 <input style={inputStyle} value={f.rc} onChange={e => set(c.id, 'rc', e.target.value)} placeholder="RC 12345" />
               </div>
 
@@ -207,7 +208,7 @@ const labelStyle = {
   display: 'block',
   fontSize: 12,
   fontWeight: 500,
-  color: 'var(--color-text-secondary)',
+  color: 'var(--text-3)',
   marginBottom: 5,
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
@@ -217,10 +218,10 @@ const inputStyle = {
   width: '100%',
   height: 36,
   padding: '0 10px',
-  border: '0.5px solid var(--color-border-secondary)',
+  border: '1px solid var(--border-2)',
   borderRadius: 7,
   fontSize: 13,
-  background: 'var(--color-background-primary)',
-  color: 'var(--color-text-primary)',
+  background: 'var(--surface-2)',
+  color: 'var(--text)',
   boxSizing: 'border-box',
 };

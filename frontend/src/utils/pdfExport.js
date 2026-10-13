@@ -1,16 +1,11 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { translate, activeLanguage } from '../context/LanguageContext';
 
-const ETAT_LABELS = {
-  fr: { non_entame: 'Non entamé', en_cours: 'En cours', fabrique: 'Fabriqué', livre: 'Livré' },
-  it: { non_entame: 'Non iniziato', en_cours: 'In corso', fabrique: 'Fabbricato', livre: 'Consegnato' },
-  en: { non_entame: 'Not Started', en_cours: 'In Progress', fabrique: 'Fabricated', livre: 'Delivered' }
-};
-const STATUS_LABELS = {
-  fr: { en_cours: 'En cours', termine: 'Terminé', livre: 'Livré' },
-  it: { en_cours: 'In corso', termine: 'Terminato', livre: 'Consegnato' },
-  en: { en_cours: 'In Progress', termine: 'Completed', livre: 'Delivered' }
-};
+// Translated label for a key, or the raw value when the key does not exist
+const lab = (lang, key, raw) => { const v = translate(lang, key); return v === key ? raw : v; };
+const etatLabel = (lang, e) => (e ? lab(lang, `etat_${e}`, e) : '');
+const statusLabel = (lang, s) => (s ? lab(lang, `anPdfStatus_${s}`, lab(lang, `status_${s}`, s)) : '');
 
 function runAutoTable(doc, options) {
   if (typeof doc.autoTable === 'function') {
@@ -22,9 +17,8 @@ function runAutoTable(doc, options) {
 
 export function exportProjectPDF(project, language, chassisLabels, t) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const etatL = ETAT_LABELS[language] || ETAT_LABELS.fr;
-  const statusL = STATUS_LABELS[language] || STATUS_LABELS.fr;
-  const lang = language || 'fr';
+  const lang = language || activeLanguage();
+  const L = (key, vars) => translate(lang, key, vars);
 
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
   const margin = 15;
@@ -36,11 +30,10 @@ export function exportProjectPDF(project, language, chassisLabels, t) {
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
-  doc.text('CAMI ALUMINIUM', margin, 12);
+  doc.text(L('appTitle'), margin, 12);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  const sheetLabel = { fr: 'Fiche Projet', it: 'Scheda Progetto', en: 'Project Sheet' }[lang] || 'Fiche Projet';
-  doc.text(sheetLabel, margin, 20);
+  doc.text(L('anPdfProjectSheet'), margin, 20);
 
   // RAL swatch
   if (project.ralColor) {
@@ -61,18 +54,12 @@ export function exportProjectPDF(project, language, chassisLabels, t) {
   doc.text(project.name || '', margin, y);
   y += 8;
 
-  const lbl = {
-    fr: { ref: 'Référence', ral: 'RAL', date: 'Date', status: 'Statut', total: 'Châssis' },
-    it: { ref: 'Riferimento', ral: 'RAL', date: 'Data', status: 'Stato', total: 'Telai' },
-    en: { ref: 'Reference', ral: 'RAL', date: 'Date', status: 'Status', total: 'Chassis' },
-  }[lang] || { ref: 'Référence', ral: 'RAL', date: 'Date', status: 'Statut', total: 'Châssis' };
-
   const metaItems = [
-    [lbl.ref,    project.reference || ''],
-    [lbl.ral,    project.ralCode || ''],
-    [lbl.date,   dateStr],
-    [lbl.status, statusL[project.status] || project.status || ''],
-    [lbl.total,  String(project.chassis?.length || 0)],
+    [L('anPdfRef'),          project.reference || ''],
+    [L('anPdfRal'),          project.ralCode || ''],
+    [L('anPdfDate'),         dateStr],
+    [L('anPdfStatus'),       statusLabel(lang, project.status)],
+    [L('anPdfTotalChassis'), String(project.chassis?.length || 0)],
   ];
 
   doc.setFontSize(10);
@@ -86,11 +73,7 @@ export function exportProjectPDF(project, language, chassisLabels, t) {
   y += 6;
 
   // Chassis table
-  const chHead = {
-    fr: [['Repère', 'Type', 'Qté', 'Largeur (mm)', 'Hauteur (mm)', 'Dimension', 'État']],
-    it: [['Repere', 'Tipo', 'Qtà', 'Largh. (mm)', 'Alt. (mm)', 'Dimensione', 'Stato']],
-    en: [['ID', 'Type', 'Qty', 'Width (mm)', 'Height (mm)', 'Dimension', 'Status']],
-  }[lang] || [['Repère', 'Type', 'Qté', 'Largeur (mm)', 'Hauteur (mm)', 'Dimension', 'État']];
+  const chHead = [[L('anPdfColRepere'), L('anPdfColType'), L('anPdfColQty'), L('anPdfColWidthMm'), L('anPdfColHeightMm'), L('anPdfColDimension'), L('anPdfColEtat')]];
 
   const chRows = (project.chassis || []).map(ch => [
     ch.repere || '',
@@ -99,10 +82,10 @@ export function exportProjectPDF(project, language, chassisLabels, t) {
     String(ch.largeur || 0),
     String(ch.hauteur || 0),
     ch.dimension || `${ch.largeur}×${ch.hauteur}`,
-    etatL[ch.etat] || ch.etat || ''
+    etatLabel(lang, ch.etat)
   ]);
 
-  const chTitle = { fr: 'Liste des Châssis', it: 'Lista Telai', en: 'Chassis List' }[lang];
+  const chTitle = L('anPdfChassisList');
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
   doc.text(chTitle, margin, y);
@@ -121,7 +104,7 @@ export function exportProjectPDF(project, language, chassisLabels, t) {
   // Composite detail
   const composites = (project.chassis || []).filter(ch => ch.components?.length > 0);
   if (composites.length > 0) {
-    const compTitle = { fr: 'Détail Châssis Composites', it: 'Dettaglio Telai Compositi', en: 'Composite Chassis Detail' }[lang];
+    const compTitle = L('anPdfCompositeDetail');
     doc.setFontSize(13);
     doc.setFont('helvetica', 'bold');
     doc.text(compTitle, margin, y);
@@ -129,15 +112,12 @@ export function exportProjectPDF(project, language, chassisLabels, t) {
     composites.forEach(ch => {
       const compRows = ch.components.map((c, i) => [
         c.repere || `${c.role} ${i + 1}`, c.role,
-        String(c.largeur || 0), String(c.hauteur || 0), etatL[c.etat] || c.etat || ''
+        String(c.largeur || 0), String(c.hauteur || 0), etatLabel(lang, c.etat)
       ]);
       runAutoTable(doc, {
         startY: y,
         head: [[`${ch.repere} — ${chassisLabels[ch.type]?.[lang] || ch.type}`,
-          { fr: 'Rôle', it: 'Ruolo', en: 'Role' }[lang],
-          { fr: 'Largeur', it: 'Larghezza', en: 'Width' }[lang],
-          { fr: 'Hauteur', it: 'Altezza', en: 'Height' }[lang],
-          { fr: 'État', it: 'Stato', en: 'Status' }[lang]]],
+          L('anPdfColRole'), L('anPdfColWidth'), L('anPdfColHeight'), L('anPdfColEtat')]],
         body: compRows, theme: 'grid',
         headStyles: { fillColor: [50, 50, 50], textColor: 255, fontStyle: 'bold', fontSize: 9 },
         bodyStyles: { fontSize: 9 }, margin: { left: margin, right: margin }
@@ -150,16 +130,12 @@ export function exportProjectPDF(project, language, chassisLabels, t) {
   const usedBars = (project.usedBars || []).filter(b => b.itemId && typeof b.itemId === 'object');
   if (usedBars.length > 0) {
     if (y > 240) { doc.addPage(); y = margin; }
-    const barsTitle = { fr: 'Barres Utilisées', it: 'Barre Utilizzate', en: 'Used Bars' }[lang];
+    const barsTitle = L('anPdfUsedBars');
     doc.setFontSize(13);
     doc.setFont('helvetica', 'bold');
     doc.text(barsTitle, margin, y);
     y += 4;
-    const bHead = {
-      fr: [['Désignation', 'Qté utilisée', 'Stock restant']],
-      it: [['Designazione', 'Qtà usata', 'Stock rimanente']],
-      en: [['Designation', 'Qty used', 'Remaining stock']],
-    }[lang];
+    const bHead = [[L('anPdfColDesignation'), L('anPdfColQtyUsed'), L('anPdfColStockLeft')]];
     runAutoTable(doc, {
       startY: y, head: bHead,
       body: usedBars.map(b => [b.itemId.designation?.[lang] || b.itemId.designation?.fr || '', String(b.quantity || 0), String(b.itemId.quantity ?? '—')]),
@@ -176,8 +152,8 @@ export function exportProjectPDF(project, language, chassisLabels, t) {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setTextColor(150);
-    doc.text(`CAMI ALUMINIUM — ${project.name} — ${dateStr} — ${i}/${pageCount}`, margin, doc.internal.pageSize.height - 8);
+    doc.text(`${L('appTitle')} — ${project.name} — ${dateStr} — ${i}/${pageCount}`, margin, doc.internal.pageSize.height - 8);
   }
 
-  doc.save(`${project.reference || 'projet'}_${(project.name || 'project').replace(/\s+/g, '_')}.pdf`);
+  doc.save(`${project.reference || L('anPdfFileProject')}_${(project.name || 'project').replace(/\s+/g, '_')}.pdf`);
 }

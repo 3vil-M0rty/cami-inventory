@@ -6,12 +6,13 @@ import * as XLSX from 'xlsx';
 import {
   Layers, GlassWater, Wrench, FlaskConical, Settings, Paintbrush, MirrorRectangular,
   Search, AlertTriangle, AlertCircle, Plus, Minus, Pencil, Trash2,
-  FileDown, PackagePlus, Package, ChevronRight, Tag,
+  FileDown, PackagePlus, Package, ChevronRight, ChevronUp, ChevronDown, Tag,
   CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn, ClipboardList,
 } from 'lucide-react';
 import ItemOrdersModal from './components/ItemOrdersModal';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
+import { dialog } from '../../components/common/dialog';
 import './InventoryPage.css';
 import './InventoryPaging.css';
 
@@ -213,10 +214,10 @@ function InventoryPage() {
   const getStockStatus = (item) => {
     const total = item.quantity + (item.orderedQuantity || 0);
     if (total < item.threshold)
-      return { color: '#dc2626', bg: '#fef2f2', text: t('criticalStock'), className: 'status-critical', icon: <XCircle size={11} /> };
+      return { color: '#fca5a5', bg: 'rgba(248,113,113,.12)', text: t('criticalStock'), className: 'status-critical', icon: <XCircle size={11} /> };
     if (item.quantity < item.threshold && total >= item.threshold)
-      return { color: '#d97706', bg: '#fffbeb', text: t('warningStock'), className: 'status-warning', icon: <AlertTriangle size={11} /> };
-    return { color: '#16a34a', bg: '#f0fdf4', text: t('inStock'), className: 'status-ok', icon: <CheckCircle2 size={11} /> };
+      return { color: '#fcd34d', bg: 'rgba(251,191,36,.12)', text: t('warningStock'), className: 'status-warning', icon: <AlertTriangle size={11} /> };
+    return { color: '#86efac', bg: 'rgba(74,222,128,.1)', text: t('inStock'), className: 'status-ok', icon: <CheckCircle2 size={11} /> };
   };
 
   const updateQuantity = async (itemId, amount, note = '') => {
@@ -224,7 +225,7 @@ function InventoryPage() {
       const res = await axios.patch(`${API_URL}/inventory/${itemId}/quantity`, { amount, note });
       setItems(items.map(i => i.id === itemId ? res.data : i));
       inventoryViewCache.clear();
-    } catch { alert(t('errorUpdating') || 'Erreur de mise à jour'); }
+    } catch { await dialog.alert(t('errorUpdating')); }
   };
 
   const handleMinusClick = (item) => { setTakeOutModal({ item }); setTakeOutQty(isPoudre ? '' : 1); setTakeOutNote(''); };
@@ -247,7 +248,7 @@ function InventoryPage() {
   };
 
   const deleteItem = async (itemId) => {
-    if (!window.confirm(t('deleteConfirmMessage'))) return;
+    if (!(await dialog.confirm({ title: t('ivDeleteItemTitle'), message: t('deleteConfirmMessage'), danger: true, confirmLabel: t('deleteAction') }))) return;
     try {
       await axios.delete(`${API_URL}/inventory/${itemId}`);
       setItems(items.filter(i => i.id !== itemId));
@@ -257,7 +258,7 @@ function InventoryPage() {
   };
 
   const deleteCategory = async (categoryId) => {
-    if (!window.confirm(t('deleteCategoryConfirmMessage'))) return;
+    if (!(await dialog.confirm({ title: t('ivDeleteCategoryTitle'), message: t('deleteCategoryConfirmMessage'), danger: true, confirmLabel: t('deleteAction') }))) return;
     try {
       await axios.delete(`${API_URL}/categories/${categoryId}`);
       fetchCategories();
@@ -296,9 +297,9 @@ function InventoryPage() {
         ws['!cols'] = [{ wch: 40 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 20 }];
         XLSX.utils.book_append_sheet(wb, ws, cd.name.substring(0, 31));
       });
-      XLSX.writeFile(wb, `inventaire_${activeSuperCat}_${new Date().toISOString().split('T')[0]}.xlsx`);
-      alert(t('exportSuccess'));
-    } catch { alert(t('exportError')); }
+      XLSX.writeFile(wb, `${t('ivExportFilePrefix')}_${activeSuperCat}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      dialog.toast(t('exportSuccess'));
+    } catch { await dialog.alert(t('exportError')); }
     finally { setExporting(false); }
   };
 
@@ -326,7 +327,7 @@ function InventoryPage() {
     return (
       <div className="inv-access-denied">
         <Lock size={40} strokeWidth={1.5} />
-        <h2>{t('accessDenied') || 'Accès refusé'}</h2>
+        <h2>{t('accessDenied')}</h2>
       </div>
     );
   }
@@ -350,7 +351,7 @@ function InventoryPage() {
           ))}
         </div>
         {can('admin.view') && (
-          <button className="super-cat-settings-btn" onClick={() => setShowSuperCatMgr(true)} title="Manage categories">
+          <button className="super-cat-settings-btn" onClick={() => setShowSuperCatMgr(true)} title={t('ivManageCategories')}>
             <Settings size={16} strokeWidth={2} />
           </button>
         )}
@@ -366,7 +367,7 @@ function InventoryPage() {
             </button>
           )}
           {canEdit && (
-            <button className="btn-outline" onClick={() => setShowAddItem(true)}>
+            <button className="btn-outline btn-outline--primary" onClick={() => setShowAddItem(true)}>
               <PackagePlus size={14} strokeWidth={2} />
               {t('addNewItem')}
             </button>
@@ -418,7 +419,7 @@ function InventoryPage() {
             onClick={() => setFilter(filter === 'ordered' ? 'all' : 'ordered')}
           >
             <ShoppingCart size={12} strokeWidth={2.5} />
-            Commandés
+            {t('ivOrdered')}
           </button>
 
           <div className="filter-divider" />
@@ -470,7 +471,7 @@ function InventoryPage() {
         </div>
       ) : (
         <>
-        <div className="inv-count">{filteredItems.length} / {total} article{total > 1 ? 's' : ''}</div>
+        <div className="inv-count">{t(total > 1 ? 'ivArticleCountMany' : 'ivArticleCountOne', { shown: filteredItems.length, total })}</div>
         <div className="items-grid">
           {filteredItems.map(item => (
             <ItemCard
@@ -492,7 +493,7 @@ function InventoryPage() {
         {hasMore && (
           <div ref={sentinelRef} className="inv-load-more">
             <button className="btn-outline" onClick={() => fetchItems({ more: true })} disabled={loadingMore}>
-              {loadingMore ? 'Chargement…' : `Afficher plus (${total - filteredItems.length} restants)`}
+              {loadingMore ? t('loadingShort') : t('ivShowMore', { n: total - filteredItems.length })}
             </button>
           </div>
         )}
@@ -547,7 +548,7 @@ function InventoryPage() {
 
       {addInModal && (
         <QuantityModal
-          title={t('addInTitle') || 'Ajouter au stock'}
+          title={t('addInTitle')}
           item={addInModal.item}
           language={language}
           isPoudre={isPoudre}
@@ -557,7 +558,7 @@ function InventoryPage() {
           onNoteChange={setAddInNote}
           onClose={() => setAddInModal(null)}
           onConfirm={handleAddInConfirm}
-          confirmLabel={t('addInConfirm') || 'Confirmer'}
+          confirmLabel={t('addInConfirm')}
           confirmStyle="success"
           t={t}
           icon={<Plus size={14} />}
@@ -635,7 +636,7 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
           </div>
         )}
         {item.categoryId && (
-          <div className="item-category-badge" style={{ backgroundColor: item.categoryId.color }}>
+          <div className="item-category-badge" style={{ '--cat-color': item.categoryId.color }}>
             {item.categoryId.name[language]}
           </div>
         )}
@@ -661,7 +662,7 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
           </div>
         </div>
 
-        <div className="status-pill" style={{ color: status.color, backgroundColor: status.bg }}>
+        <div className={`status-pill status-pill--${status.className}`}>
           {status.icon}
           {status.text}
         </div>
@@ -678,7 +679,7 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
           <button
             className="qty-btn qty-btn--plus"
             onClick={() => onPlusClick(item)}
-            title={t('addInTitle') || 'Ajouter'}
+            title={t('addInTitle')}
           >
             <Plus size={14} strokeWidth={2.5} />
           </button>
@@ -686,7 +687,7 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
             <button
               className="qty-btn qty-btn--order"
               onClick={() => onOrderRequest(item)}
-              title="Demander une commande"
+              title={t('ivRequestOrder')}
             >
               <ShoppingCart size={14} strokeWidth={2.5} />
             </button>
@@ -694,9 +695,9 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
         </div>
 
         {onShowOrders && (
-          <button className="item-orders-btn" onClick={() => onShowOrders(item)} title="Voir les bons de commande de cet article">
+          <button className="item-orders-btn" onClick={() => onShowOrders(item)} title={t('ivSeeItemOrders')}>
             <ClipboardList size={13} strokeWidth={2.5} />
-            Bons de commande
+            {t('ivPurchaseOrders')}
           </button>
         )}
 
@@ -793,7 +794,7 @@ function OrderRequestModal({ item, language, t, onClose, onSent }) {
 
   const handleSend = async () => {
     const q = parseFloat(qty);
-    if (!q || q <= 0) { setError('Veuillez entrer une quantité valide.'); return; }
+    if (!q || q <= 0) { setError(t('ivEnterValidQty')); return; }
     setSending(true); setError('');
     try {
       await axios.post(`${API_URL}/purchase-requests`, {
@@ -805,7 +806,7 @@ function OrderRequestModal({ item, language, t, onClose, onSent }) {
       });
       onSent();
     } catch (e) {
-      setError(e.response?.data?.error || "Erreur lors de l'envoi.");
+      setError(e.response?.data?.error || t('ivSendError'));
     } finally { setSending(false); }
   };
 
@@ -815,45 +816,43 @@ function OrderRequestModal({ item, language, t, onClose, onSent }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-head">
-          <span className="modal-head__icon" style={{ background: '#f59e0b' }}>
+          <span className="modal-head__icon modal-head__icon--warning">
             <ShoppingCart size={14} />
           </span>
-          <h2>Demande de commande</h2>
+          <h2>{t('ivOrderRequestTitle')}</h2>
         </div>
 
         <div className="modal-item-name">
           {item.image && (
-            <img src={item.image} alt={designation}
-              style={{ width: 36, height: 36, objectFit: 'contain', borderRadius: 6, border: '1px solid #e8e8e8', background: '#fff' }} />
+            <img src={item.image} alt={designation} className="inv-modal-thumb" />
           )}
           <div>
-            <div style={{ fontWeight: 700, fontSize: 13, color: '#111' }}>{designation}</div>
+            <div className="inv-modal-item-title">{designation}</div>
             <span className="modal-item-stock">
-              Stock : {item.quantity}{item.threshold > 0 ? ` · Seuil : ${item.threshold}` : ''}
+              {t('ivStockValue', { n: item.quantity })}{item.threshold > 0 ? t('ivThresholdSuffix', { n: item.threshold }) : ''}
             </span>
           </div>
         </div>
 
         <div className="form-group">
-          <label>Quantité à commander *</label>
+          <label>{t('ivQtyToOrder')}</label>
           <input
             type="number"
             min="0.01"
             step="0.01"
-            placeholder="ex: 50"
+            placeholder={t('ivQtyToOrderPlaceholder')}
             value={qty}
             onChange={e => setQty(e.target.value)}
             autoFocus
-            className="qty-input"
             style={{ width: '100%' }}
           />
         </div>
 
         <div className="form-group">
-          <label>Note / précision (optionnel)</label>
+          <label>{t('ivNoteOptional')}</label>
           <textarea
             rows={3}
-            placeholder="Ex: Priorité urgente, RAL 9010, fournisseur Technal…"
+            placeholder={t('ivNotePlaceholder')}
             value={note}
             onChange={e => setNote(e.target.value)}
           />
@@ -861,21 +860,20 @@ function OrderRequestModal({ item, language, t, onClose, onSent }) {
 
         {error && <div className="form-error">{error}</div>}
 
-        <div style={{ fontSize: 11, color: '#92400e', marginBottom: 12, padding: '7px 10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8 }}>
-          Visible par le rôle <strong>ACHAT</strong> dans les commandes. Le stock ne sera pas modifié.
+        <div className="inv-role-note">
+          {t('ivVisibleByRoleBefore')}<strong>ACHAT</strong>{t('ivVisibleByRoleAfter')}
         </div>
 
         <div className="modal-actions">
-          <button type="button" className="btn-cancel" onClick={onClose}>{t('cancel') || 'Annuler'}</button>
+          <button type="button" className="btn-cancel" onClick={onClose}>{t('cancel')}</button>
           <button
             type="button"
-            className="btn-confirm btn-confirm--primary"
+            className="btn-confirm btn-confirm--order"
             disabled={sending || !qty}
             onClick={handleSend}
-            style={{ background: '#f59e0b', borderColor: '#f59e0b', display: 'inline-flex', alignItems: 'center', gap: 7 }}
           >
             <ShoppingCart size={14} />
-            {sending ? '…' : 'Envoyer la demande'}
+            {sending ? '…' : t('ivSendRequest')}
           </button>
         </div>
       </div>
@@ -897,7 +895,7 @@ function CategoryModal({ language, superCategory, category, t, onClose, onSave }
       if (isEdit) await axios.put(`${API_URL}/categories/${category.id}`, { ...formData, superCategory });
       else await axios.post(`${API_URL}/categories`, { ...formData, superCategory });
       onSave();
-    } catch { alert('Erreur lors de la sauvegarde'); }
+    } catch { await dialog.alert(t('ivSaveError')); }
   };
 
   return (
@@ -908,10 +906,10 @@ function CategoryModal({ language, superCategory, category, t, onClose, onSave }
           <h2>{isEdit ? t('editCategory') : t('addCategory')}</h2>
         </div>
         <form onSubmit={handleSubmit}>
-          <div className="form-group"><label>Nom (Français)</label><input type="text" required value={formData.name.fr} onChange={e => setFormData({ ...formData, name: { ...formData.name, fr: e.target.value } })} /></div>
-          <div className="form-group"><label>Nome (Italiano)</label><input type="text" required value={formData.name.it} onChange={e => setFormData({ ...formData, name: { ...formData.name, it: e.target.value } })} /></div>
-          <div className="form-group"><label>Name (English)</label><input type="text" required value={formData.name.en} onChange={e => setFormData({ ...formData, name: { ...formData.name, en: e.target.value } })} /></div>
-          <div className="form-group"><label>{t('superCategoryColor') || 'Couleur'}</label><input type="color" value={formData.color} onChange={e => setFormData({ ...formData, color: e.target.value })} /></div>
+          <div className="form-group"><label>{t('ivNameFr')}</label><input type="text" required value={formData.name.fr} onChange={e => setFormData({ ...formData, name: { ...formData.name, fr: e.target.value } })} /></div>
+          <div className="form-group"><label>{t('ivNameIt')}</label><input type="text" required value={formData.name.it} onChange={e => setFormData({ ...formData, name: { ...formData.name, it: e.target.value } })} /></div>
+          <div className="form-group"><label>{t('ivNameEn')}</label><input type="text" required value={formData.name.en} onChange={e => setFormData({ ...formData, name: { ...formData.name, en: e.target.value } })} /></div>
+          <div className="form-group"><label>{t('superCategoryColor')}</label><input type="color" value={formData.color} onChange={e => setFormData({ ...formData, color: e.target.value })} /></div>
           <div className="modal-actions">
             <button type="button" className="btn-cancel" onClick={onClose}>{t('cancel')}</button>
             <button type="submit" className="btn-confirm btn-confirm--primary">{isEdit ? t('update') : t('create')}</button>
@@ -924,7 +922,7 @@ function CategoryModal({ language, superCategory, category, t, onClose, onSave }
 
 /* ── Item Modal ────────────────────────────────────────────── */
 /* ── Supplier Codes Editor (one code per supplier) ─────────── */
-function SupplierCodesEditor({ suppliers, value, onChange }) {
+function SupplierCodesEditor({ suppliers, value, onChange, t }) {
   const rows = value || [];
   const used = new Set(rows.map(r => r.supplierId));
   const add = () => onChange([...rows, { supplierId: '', code: '' }]);
@@ -933,36 +931,35 @@ function SupplierCodesEditor({ suppliers, value, onChange }) {
 
   return (
     <div className="form-group">
-      <label>Codes fournisseurs</label>
+      <label>{t('ivSupplierCodes')}</label>
       {suppliers.length === 0 && (
-        <p style={{ fontSize: 11, color: '#b45309', margin: '2px 0 6px' }}>
-          Aucun fournisseur disponible (rôle sans accès aux commandes ?).
+        <p className="inv-form-hint inv-form-hint--warning">
+          {t('ivNoSupplierAvailable')}
         </p>
       )}
       {rows.length === 0 && (
-        <p style={{ fontSize: 12, color: '#888', margin: '2px 0 6px' }}>
-          Aucun code. Ajoutez un code par fournisseur.
+        <p className="inv-form-hint">
+          {t('ivNoSupplierCodes')}
         </p>
       )}
       {rows.map((r, i) => (
-        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-          <select value={r.supplierId} onChange={e => upd(i, 'supplierId', e.target.value)} style={{ flex: 1 }} required>
-            <option value="">— Fournisseur —</option>
+        <div key={i} className="inv-supplier-row">
+          <select value={r.supplierId} onChange={e => upd(i, 'supplierId', e.target.value)} required>
+            <option value="">{t('ivSupplierOption')}</option>
             {suppliers.map(s => (
               <option key={s.id} value={s.id} disabled={used.has(s.id) && r.supplierId !== s.id}>{s.name}</option>
             ))}
           </select>
           <input
-            placeholder="Code chez ce fournisseur"
+            placeholder={t('ivSupplierCodePlaceholder')}
             value={r.code}
             onChange={e => upd(i, 'code', e.target.value)}
-            style={{ flex: 1 }}
           />
           <button type="button" className="btn-remove-line" onClick={() => del(i)}>×</button>
         </div>
       ))}
-      <button type="button" className="btn-add-line" onClick={add} style={{ marginTop: 4 }}>
-        + Ajouter un code fournisseur
+      <button type="button" className="btn-add-line" onClick={add}>
+        {t('ivAddSupplierCode')}
       </button>
     </div>
   );
@@ -1001,30 +998,32 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
       if (item) await axios.put(`${API_URL}/inventory/${item.id}`, payload);
       else await axios.post(`${API_URL}/inventory`, payload);
       onSave();
-    } catch { alert('Erreur lors de la sauvegarde'); }
+    } catch { await dialog.alert(t('ivSaveError')); }
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal--large" onClick={e => e.stopPropagation()}>
         <div className="modal-head">
+          <span className="modal-head__icon">{item ? <Pencil size={14} /> : <PackagePlus size={14} />}</span>
           <h2>{item ? t('editItem') : t('addNewItem')}</h2>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="form-group"><label>{t('imageUrl')}</label><input type="url" value={formData.image} onChange={e => setFormData({ ...formData, image: e.target.value })} /></div>
-          <div className="form-group"><label>Désignation (Français)</label><input type="text" required value={formData.designation.fr} onChange={e => setFormData({ ...formData, designation: { ...formData.designation, fr: e.target.value } })} /></div>
-          <div className="form-group"><label>Designazione (Italiano)</label><input type="text" required value={formData.designation.it} onChange={e => setFormData({ ...formData, designation: { ...formData.designation, it: e.target.value } })} /></div>
-          <div className="form-group"><label>Designation (English)</label><input type="text" required value={formData.designation.en} onChange={e => setFormData({ ...formData, designation: { ...formData.designation, en: e.target.value } })} /></div>
+          <div className="form-group"><label>{t('ivDesignationFr')}</label><input type="text" required value={formData.designation.fr} onChange={e => setFormData({ ...formData, designation: { ...formData.designation, fr: e.target.value } })} /></div>
+          <div className="form-group"><label>{t('ivDesignationIt')}</label><input type="text" required value={formData.designation.it} onChange={e => setFormData({ ...formData, designation: { ...formData.designation, it: e.target.value } })} /></div>
+          <div className="form-group"><label>{t('ivDesignationEn')}</label><input type="text" required value={formData.designation.en} onChange={e => setFormData({ ...formData, designation: { ...formData.designation, en: e.target.value } })} /></div>
 
           <div className="form-group">
-            <label>Code interne</label>
-            <input type="text" placeholder="ex: ALU-6063-5025" value={formData.codeInterne} onChange={e => setFormData({ ...formData, codeInterne: e.target.value })} />
+            <label>{t('ivInternalCode')}</label>
+            <input type="text" placeholder={t('ivInternalCodePlaceholder')} value={formData.codeInterne} onChange={e => setFormData({ ...formData, codeInterne: e.target.value })} />
           </div>
 
           <SupplierCodesEditor
             suppliers={suppliers}
             value={formData.supplierCodes}
             onChange={(v) => setFormData({ ...formData, supplierCodes: v })}
+            t={t}
           />
 
           <div className="form-group">
@@ -1043,8 +1042,8 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
               <label>{t('orderedQuantityLabel')}</label>
               {/* Read-only: computed by the server from the sent purchase orders (not editable by hand) */}
               <input type="number" value={formData.orderedQuantity} readOnly disabled
-                title="Calculée automatiquement à partir des bons de commande envoyés" />
-              <small style={{ fontSize: 10, color: '#888' }}>Calculée depuis les BC envoyés</small>
+                title={t('ivOrderedAutoTitle')} />
+              <small className="inv-form-hint">{t('ivOrderedAutoHint')}</small>
             </div>
             <div className="form-group">
               <label>{t('thresholdLabel')}</label>
@@ -1073,8 +1072,8 @@ function SuperCategoryManager({ superCats, language, t, onClose }) {
 
   const handleAdd = async (e) => {
     e.preventDefault();
-    if (!form.key || !form.labelFr) { setError('Identifiant et nom (FR) requis'); return; }
-    if (!/^[a-z0-9_]+$/.test(form.key)) { setError("L'identifiant: lettres minuscules, chiffres et _ uniquement"); return; }
+    if (!form.key || !form.labelFr) { setError(t('ivKeyAndNameRequired')); return; }
+    if (!/^[a-z0-9_]+$/.test(form.key)) { setError(t('ivKeyFormat')); return; }
     setSaving(true);
     try {
       const res = await axios.post(`${API_URL}/super-categories`, {
@@ -1086,16 +1085,16 @@ function SuperCategoryManager({ superCats, language, t, onClose }) {
       setAdding(false);
       setForm({ key: '', labelFr: '', labelIt: '', labelEn: '', color: '#6366f1' });
       setError('');
-    } catch (err) { setError(err.response?.data?.error || 'Erreur'); }
+    } catch (err) { setError(err.response?.data?.error || t('ivError')); }
     finally { setSaving(false); }
   };
 
   const handleDelete = async (key) => {
-    if (!window.confirm(t('deleteSuperCatConfirm'))) return;
+    if (!(await dialog.confirm({ title: t('ivDeleteSuperCatTitle'), message: t('deleteSuperCatConfirm'), danger: true, confirmLabel: t('deleteAction') }))) return;
     try {
       await axios.delete(`${API_URL}/super-categories/${key}`);
       setList(prev => prev.filter(s => s.key !== key));
-    } catch (err) { alert(err.response?.data?.error || 'Erreur'); }
+    } catch (err) { await dialog.alert(err.response?.data?.error || t('ivError')); }
   };
 
   const move = async (idx, dir) => {
@@ -1111,7 +1110,7 @@ function SuperCategoryManager({ superCats, language, t, onClose }) {
         orderedKeys: reordered.map(sc => sc.key),
       });
     } catch (err) {
-      alert(err.response?.data?.error || 'Erreur lors du réordonnancement');
+      await dialog.alert(err.response?.data?.error || t('ivReorderError'));
       setList(previous); // revert on failure
     } finally {
       setReordering(false);
@@ -1131,29 +1130,21 @@ function SuperCategoryManager({ superCats, language, t, onClose }) {
         <div className="supercat-list">
           {list.map((sc, idx) => (
             <div key={sc.key} className="supercat-row">
-              <div style={{ display: 'flex', flexDirection: 'column', marginRight: 8 }}>
+              <div className="supercat-move">
                 <button
                   type="button"
+                  className="supercat-move__btn"
                   onClick={() => move(idx, -1)}
                   disabled={idx === 0 || reordering}
-                  title="Monter"
-                  style={{
-                    border: 'none', background: 'none', cursor: idx === 0 ? 'default' : 'pointer',
-                    padding: 0, lineHeight: 1, fontSize: 11, color: '#666',
-                    opacity: idx === 0 ? 0.3 : 1,
-                  }}
-                >▲</button>
+                  title={t('ivMoveUp')}
+                ><ChevronUp size={14} strokeWidth={2.5} /></button>
                 <button
                   type="button"
+                  className="supercat-move__btn"
                   onClick={() => move(idx, 1)}
                   disabled={idx === list.length - 1 || reordering}
-                  title="Descendre"
-                  style={{
-                    border: 'none', background: 'none', cursor: idx === list.length - 1 ? 'default' : 'pointer',
-                    padding: 0, lineHeight: 1, fontSize: 11, color: '#666',
-                    opacity: idx === list.length - 1 ? 0.3 : 1,
-                  }}
-                >▼</button>
+                  title={t('ivMoveDown')}
+                ><ChevronDown size={14} strokeWidth={2.5} /></button>
               </div>
               <span className="supercat-icon">{getSCIcon(sc.key)}</span>
               <span className="supercat-color-dot" style={{ background: sc.color }} />
@@ -1163,7 +1154,7 @@ function SuperCategoryManager({ superCats, language, t, onClose }) {
                 className="supercat-delete-btn"
                 onClick={() => handleDelete(sc.key)}
                 disabled={SYSTEM_KEYS.includes(sc.key)}
-                title={SYSTEM_KEYS.includes(sc.key) ? 'Catégorie système' : t('delete')}
+                title={SYSTEM_KEYS.includes(sc.key) ? t('ivSystemCategory') : t('delete')}
               >
                 <Trash2 size={13} strokeWidth={2} />
               </button>
@@ -1172,7 +1163,7 @@ function SuperCategoryManager({ superCats, language, t, onClose }) {
         </div>
 
         {!adding ? (
-          <button className="btn-outline superbtn" style={{ marginTop: 16 }} onClick={() => setAdding(true)}>
+          <button className="btn-outline supercat-add-btn" onClick={() => setAdding(true)}>
             <Plus size={14} />
             {t('addSuperCategory')}
           </button>
@@ -1181,22 +1172,22 @@ function SuperCategoryManager({ superCats, language, t, onClose }) {
             <div className="form-grid-2">
               <div className="form-group">
                 <label>{t('superCategoryKey')} *</label>
-                <input type="text" placeholder="ex: composite" value={form.key} onChange={e => setForm(f => ({ ...f, key: e.target.value.toLowerCase().replace(/\s/g, '_') }))} required />
+                <input type="text" placeholder={t('ivKeyPlaceholder')} value={form.key} onChange={e => setForm(f => ({ ...f, key: e.target.value.toLowerCase().replace(/\s/g, '_') }))} required />
               </div>
               <div className="form-group">
                 <label>{t('superCategoryColor')}</label>
                 <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} />
               </div>
               <div className="form-group">
-                <label>Nom (Français) *</label>
+                <label>{t('ivNameFrRequired')}</label>
                 <input type="text" placeholder="Composite" value={form.labelFr} onChange={e => setForm(f => ({ ...f, labelFr: e.target.value }))} required />
               </div>
               <div className="form-group">
-                <label>Nome (Italiano)</label>
+                <label>{t('ivNameIt')}</label>
                 <input type="text" placeholder="Composito" value={form.labelIt} onChange={e => setForm(f => ({ ...f, labelIt: e.target.value }))} />
               </div>
               <div className="form-group">
-                <label>Name (English)</label>
+                <label>{t('ivNameEn')}</label>
                 <input type="text" placeholder="Composite" value={form.labelEn} onChange={e => setForm(f => ({ ...f, labelEn: e.target.value }))} />
               </div>
             </div>
@@ -1208,7 +1199,7 @@ function SuperCategoryManager({ superCats, language, t, onClose }) {
           </form>
         )}
 
-        <div className="modal-actions" style={{ marginTop: 20, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
+        <div className="modal-actions supercat-footer">
           <button className="btn-cancel" onClick={onClose}>{t('close')}</button>
         </div>
       </div>

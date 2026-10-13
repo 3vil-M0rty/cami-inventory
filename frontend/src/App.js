@@ -4,6 +4,7 @@ import { InventoryProvider } from './context/InventoryContext';
 import { ProjectProvider } from './context/ProjectContext';
 import { CompanyProvider } from './context/CompanyContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { useLanguage } from './context/LanguageContext';
 import Header from './components/layout/Header';
 import LoginPage from './features/admin/LoginPage';
 import InventoryPage from './features/inventory/InventoryPage';
@@ -18,6 +19,7 @@ import ChantierPage from './features/chantiers/ChantierPage';
 import './App.css';
 import AtelierTablesPage from './features/AtelierTables';
 import { PAGE_PATHS, pageFromLocation, setUrl } from './routes';
+import { DialogHost } from './components/common/dialog';
 
 const PROJECTS_DEFAULT_ROLES = new Set(['LOGISTIQUE', 'Coordinateur', 'BARREMAN']);
 const CHANTIER_DEFAULT_ROLES = new Set(['chefChantier', 'BARREMAN']);
@@ -34,6 +36,7 @@ function getDefaultPage(role) {
 
 function AppInner() {
   const { user, loading, can } = useAuth();
+  const { t } = useLanguage();
   const [activePage, setActivePage] = useState('inventory');
   const [pageInitialized, setPageInitialized] = useState(false);
 
@@ -77,7 +80,7 @@ function AppInner() {
         justifyContent: 'center', background: '#f0f0f0', flexDirection: 'column', gap: 12
       }}>
         <div style={{ width: 36, height: 36, border: '3px solid #e5e7eb', borderTopColor: '#1a1a1a', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <p style={{ color: '#888', fontSize: '0.9rem' }}>Vérification de la session...</p>
+        <p style={{ color: '#888', fontSize: '0.9rem' }}>{t('acCheckingSession')}</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -118,8 +121,8 @@ function AppInner() {
               {!currentAllowed ? (
                 <div style={{ textAlign: 'center', padding: 80 }}>
                   <div style={{ fontSize: '3rem', marginBottom: 12 }}>🔒</div>
-                  <h2 style={{ color: '#374151' }}>Accès refusé</h2>
-                  <p style={{ color: '#888' }}>Vous n'avez pas la permission d'accéder à cette page.</p>
+                  <h2 style={{ color: '#374151' }}>{t('acAccessDenied')}</h2>
+                  <p style={{ color: '#888' }}>{t('acNoPermission')}</p>
                 </div>
               ) : (
                 <>
@@ -149,6 +152,8 @@ function App() {
       <AuthProvider>
         <AppInner />
       </AuthProvider>
+      {/* Custom alert / confirm / prompt dialogs and toasts (no browser pop-ups) */}
+      <DialogHost />
     </LanguageProvider>
   );
 }
