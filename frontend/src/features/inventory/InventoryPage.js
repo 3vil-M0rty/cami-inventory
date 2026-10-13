@@ -55,6 +55,9 @@ const PAGE_SIZE = 40;
 const FILTER_TO_STOCK = { 'low-stock': 'critical', 'alert-stock': 'warning', ordered: 'ordered' };
 const inventoryViewCache = new Map(); // viewKey -> { items, total, page, hasMore }
 
+// Id d'un article qu'il soit un objet peuplé ({ id } / { _id }) ou une simple chaîne
+const refId = (ref) => (ref && typeof ref === 'object') ? (ref.id || ref._id) : ref;
+
 function getSuperCatLabel(sc, language) {
   if (!sc) return '';
   if (sc.label) return sc.label[language] || sc.label.fr || sc.key;
@@ -93,6 +96,8 @@ function InventoryPage() {
   const [ordersItem, setOrdersItem] = useState(null); // article whose purchase orders are shown
 
   const [suppliers, setSuppliers] = useState([]);
+  // itemId -> quantité totale dans des bons de commande en brouillon
+  const [draftMap, setDraftMap] = useState(() => new Map());
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -118,6 +123,33 @@ function InventoryPage() {
   }, [searchTerm]);
 
   const isPoudre = activeSuperCat === 'poudre';
+
+  // Somme, par article, des lignes des bons de commande au statut "brouillon".
+  // (Si le serveur renvoie déjà `item.draftQuantity`, cette valeur est prioritaire — voir ItemCard.)
+  const fetchDraftQuantities = useCallback(async () => {
+    if (!canSeeItemOrders) return;
+    try {
+      const res = await axios.get(`${API_URL}/orders`, { params: { status: 'brouillon' } });
+      const list = Array.isArray(res.data) ? res.data : (res.data?.orders || res.data?.items || []);
+      const map = new Map();
+      list.filter(o => o.status === 'brouillon').forEach(o => {
+        (o.lines || []).forEach(l => {
+          const id = refId(l.itemId);
+          if (!id) return;
+          map.set(id, (map.get(id) || 0) + (Number(l.quantityOrdered) || 0));
+        });
+      });
+      setDraftMap(map);
+    } catch (e) { /* silencieux : la carte retombe simplement sur 0 brouillon */ }
+  }, [canSeeItemOrders]);
+
+  // Au montage et au retour sur l'onglet (un brouillon a pu être créé / envoyé ailleurs)
+  useEffect(() => { fetchDraftQuantities(); }, [fetchDraftQuantities]);
+  useEffect(() => {
+    const onFocus = () => fetchDraftQuantities();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [fetchDraftQuantities]);
 
   const fetchSuperCats = useCallback(async () => {
     try {
@@ -206,7 +238,7 @@ function InventoryPage() {
   }, [hasMore, loading, loadingMore, items.length]);
 
   // After an edit, the cached views may be outdated
-  const refreshItems = () => { inventoryViewCache.clear(); fetchItems(); };
+  const refreshItems = () => { inventoryViewCache.clear(); fetchItems(); fetchDraftQuantities(); };
 
   useEffect(() => { fetchSuperCats(); }, [fetchSuperCats]);
   useEffect(() => { fetchCategories(); }, [fetchCategories]);
@@ -290,11 +322,12 @@ function InventoryPage() {
           [t('designation')]: item.designation[language] || item.designation.fr,
           [t('quantity')]: item.quantity,
           [t('orderedQuantity')]: item.orderedQuantity || 0,
+          [`${t('orderedQuantity')} (${t('orDraft')})`]: item.draftQuantity ?? draftMap.get(item.id) ?? 0,
           [t('threshold')]: item.threshold,
           [t('status')]: getStockStatus(item).text,
         }));
         const ws = XLSX.utils.json_to_sheet(rows);
-        ws['!cols'] = [{ wch: 40 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 20 }];
+        ws['!cols'] = [{ wch: 40 }, { wch: 15 }, { wch: 20 }, { wch: 28 }, { wch: 15 }, { wch: 20 }];
         XLSX.utils.book_append_sheet(wb, ws, cd.name.substring(0, 31));
       });
       XLSX.writeFile(wb, `${t('ivExportFilePrefix')}_${activeSuperCat}_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -485,6 +518,7 @@ function InventoryPage() {
               onDelete={canDelete ? deleteItem : null}
               onOrderRequest={can('admin.view') ? (i) => setOrderRequestModal({ item: i }) : null}
               onShowOrders={canSeeItemOrders ? (i) => setOrdersItem(i) : null}
+              draftQty={item.draftQuantity ?? draftMap.get(item.id) ?? 0}
               getStockStatus={getStockStatus}
               t={t}
             />
@@ -566,7 +600,7 @@ function InventoryPage() {
       )}
 
       {ordersItem && (
-        <ItemOrdersModal item={ordersItem} language={language} onClose={() => setOrdersItem(null)} />
+        <ItemOrdersModal item={ordersItem} language={language} onClose={() => { setOrdersItem(null); fetchDraftQuantities(); }} />
       )}
 
       {orderRequestModal && (
@@ -614,7 +648,7 @@ function ImagePreviewModal({ src, alt, onClose }) {
 }
 
 /* ── Item Card ──────────────────────────────────────────────── */
-function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit, onDelete, onOrderRequest, onShowOrders, getStockStatus, t }) {
+function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit, onDelete, onOrderRequest, onShowOrders, draftQty = 0, getStockStatus, t }) {
   const status = getStockStatus(item);
   const formatQty = (val) => isPoudre ? fmt(val) : Math.floor(val);
   const { user } = useAuth();
@@ -662,9 +696,17 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
           </div>
         </div>
 
-        <div className={`status-pill status-pill--${status.className}`}>
-          {status.icon}
-          {status.text}
+        <div className="item-badges">
+          <div className={`status-pill status-pill--${status.className}`}>
+            {status.icon}
+            {status.text}
+          </div>
+          {draftQty > 0 && (
+            <div className="qty-draft" title={t('orDraft')}>
+              <Pencil size={10} strokeWidth={2.5} />
+              <span>+{formatQty(draftQty)} {t('orDraft')}</span>
+            </div>
+          )}
         </div>
 
         <div className="quantity-controls">
