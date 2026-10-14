@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LanguageProvider } from './context/LanguageContext';
 import { InventoryProvider } from './context/InventoryContext';
 import { ProjectProvider } from './context/ProjectContext';
@@ -29,6 +29,15 @@ const CHANTIER_DEFAULT_ROLES = new Set(['chefChantier', 'BARREMAN']);
 const ORDERS_RECEIVING_ROLES = new Set(['Magasinier', 'Laquage', 'Coordinateur-vitrage']);
 const LS_PAGE = 'app_active_page';
 
+const pagePerms = {
+  inventory: 'inventory.view', orders: 'orders.view', projects: 'projects.view',
+  clients: 'clients.view', devis: 'devis.view', movements: 'movements.view',
+  analytics: 'analytics.view', admin: 'admin.view', ateliertables: 'ateliertables.view',
+  chantiers: 'chantiers.view',
+};
+// Fallback order when the requested page is not allowed for the account
+const PAGE_ORDER = ['inventory', 'orders', 'projects', 'chantiers', 'clients', 'devis', 'movements', 'analytics', 'ateliertables', 'admin'];
+
 function getDefaultPage(role) {
   if (CHANTIER_DEFAULT_ROLES.has(role)) return 'chantiers';
   if (PROJECTS_DEFAULT_ROLES.has(role)) return 'projects';
@@ -41,18 +50,38 @@ function AppInner() {
   const [activePage, setActivePage] = useState('inventory');
   const [pageInitialized, setPageInitialized] = useState(false);
 
-  // Page comes from the URL (/commandes, /projets…); "/" falls back to the last page / role default
+  // Page comes from the URL (/commandes, /projets…); "/" falls back to the last page / role default.
+  // Runs on load and again on each login (the last page saved on this device may be another user's → role default).
+  const pageUserRef = useRef(undefined);
   useEffect(() => {
-    if (!loading && !pageInitialized) {
-      if (user) {
-        const page = pageFromLocation() || localStorage.getItem(LS_PAGE) || getDefaultPage(user.role);
-        setActivePage(page);
-        localStorage.setItem(LS_PAGE, page);
-        if (!pageFromLocation()) setUrl(PAGE_PATHS[page] || '/', { replace: true });
-      }
-      setPageInitialized(true);
+    if (loading) return;
+    const uid = user?.id || null;
+    if (pageUserRef.current === uid) return;
+    const isLogin = pageUserRef.current === null;
+    pageUserRef.current = uid;
+    if (user) {
+      const page = pageFromLocation() || (!isLogin && localStorage.getItem(LS_PAGE)) || getDefaultPage(user.role);
+      setActivePage(page);
+      localStorage.setItem(LS_PAGE, page);
+      if (!pageFromLocation()) setUrl(PAGE_PATHS[page] || '/', { replace: true });
     }
-  }, [loading, user, pageInitialized]);
+    setPageInitialized(true);
+  }, [loading, user]);
+
+  const pageAllowed = (page) => (page === 'orders'
+    ? can('orders.view') || ORDERS_RECEIVING_ROLES.has(user?.role)
+    : (!pagePerms[page] || can(pagePerms[page])));
+
+  // Page not allowed for this account (last page of another user on this device, old link…) → first allowed page
+  useEffect(() => {
+    if (!user || !pageInitialized || pageAllowed(activePage)) return;
+    const target = [getDefaultPage(user.role), ...PAGE_ORDER].find(pageAllowed);
+    if (!target) return;
+    localStorage.setItem(LS_PAGE, target);
+    setActivePage(target);
+    setUrl(PAGE_PATHS[target] || '/', { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, pageInitialized, activePage]);
 
   // Browser back / forward buttons
   useEffect(() => {
@@ -97,20 +126,10 @@ function AppInner() {
     }} />;
   }
 
-  const pagePerms = {
-    inventory: 'inventory.view', orders: 'orders.view', projects: 'projects.view',
-    clients: 'clients.view', devis: 'devis.view', movements: 'movements.view',
-    analytics: 'analytics.view', admin: 'admin.view', ateliertables: 'ateliertables.view',
-    chantiers: 'chantiers.view',
-  };
-
   // ── Accès à "orders" : permission classique OU rôle de réception par catégorie ──
   const canAccessOrders = can('orders.view') || ORDERS_RECEIVING_ROLES.has(user?.role);
 
-  const currentAllowed =
-    activePage === 'orders'
-      ? canAccessOrders
-      : (!pagePerms[activePage] || can(pagePerms[activePage]));
+  const currentAllowed = pageAllowed(activePage);
 
   return (
     <CompanyProvider>
