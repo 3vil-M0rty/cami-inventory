@@ -67,6 +67,16 @@ const fr = {
   ivOrderedOn: 'Commandé le {date}',
   ivLastDeliveryNote: 'Dernier BL {n} ({date})',
   ivRef: 'Réf. {ref}',
+    ivAdminRequests: 'Demandes d\'admin',
+    ivSeeItemRequests: 'Voir les demandes d\'admin de cet article',
+    ivRequestsLoadError: 'Impossible de charger les demandes.',
+    ivRequestsAbbr: 'demande(s)',
+    ivPendingRequests: '{n} en attente',
+    ivPendingQty: 'Qté en attente : ',
+    ivNoRequestsForItem: 'Aucune demande d\'admin pour cet article.',
+    ivRequestedBy: 'Demandé par {name}',
+    ivOrderedBy: 'Commandé par {name} le {date}',
+    ivMoreRequests: '+ {n} demande(s) plus ancienne(s) — voir la page Commandes',
 };
 
 const it = {
@@ -136,6 +146,16 @@ const it = {
   ivOrderedOn: 'Ordinato il {date}',
   ivLastDeliveryNote: 'Ultimo DDT {n} ({date})',
   ivRef: 'Rif. {ref}',
+    ivAdminRequests: 'Richieste admin',
+    ivSeeItemRequests: 'Vedi le richieste admin di questo articolo',
+    ivRequestsLoadError: 'Impossibile caricare le richieste.',
+    ivRequestsAbbr: 'richiesta/e',
+    ivPendingRequests: '{n} in attesa',
+    ivPendingQty: 'Q.tà in attesa: ',
+    ivNoRequestsForItem: 'Nessuna richiesta admin per questo articolo.',
+    ivRequestedBy: 'Richiesto da {name}',
+    ivOrderedBy: 'Ordinato da {name} il {date}',
+    ivMoreRequests: '+ {n} richiesta/e meno recente/i — vedi la pagina Ordini',
 };
 
 const en = {
@@ -205,6 +225,16 @@ const en = {
   ivOrderedOn: 'Ordered on {date}',
   ivLastDeliveryNote: 'Last delivery note {n} ({date})',
   ivRef: 'Ref. {ref}',
+    ivAdminRequests: 'Admin requests',
+    ivSeeItemRequests: 'See admin requests for this item',
+    ivRequestsLoadError: 'Unable to load the requests.',
+    ivRequestsAbbr: 'request(s)',
+    ivPendingRequests: '{n} pending',
+    ivPendingQty: 'Pending qty: ',
+    ivNoRequestsForItem: 'No admin request for this item.',
+    ivRequestedBy: 'Requested by {name}',
+    ivOrderedBy: 'Ordered by {name} on {date}',
+    ivMoreRequests: '+ {n} older request(s) — see the Orders page',
 };
 
 export default { fr, it, en };

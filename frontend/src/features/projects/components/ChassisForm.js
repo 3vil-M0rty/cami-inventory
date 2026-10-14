@@ -16,6 +16,28 @@ function buildComponents(typeObj, existing = []) {
   return components;
 }
 
+// Profile series that derive the component sizes from the overall chassis L × H.
+// dormant = L × H ; each of the n vantaux = Lv × Hv (the allège, if any, lowers the vantaux)
+const PROFILE_SERIES = {
+  atla78:     { label: 'ATLA78',      hv: (H, a) => H - 77 - a, lv: (L, n) => (L - 9) / n },
+  atla78slim: { label: 'ATLA78-SLIM', hv: (H, a) => H - 78 - a, lv: (L, n) => (L + 32) / n },
+};
+const roundMm = (v) => Math.round(v); // nearest whole millimetre
+const toMm = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
+
+function applyProfile(components, profileKey, L, H, allege) {
+  const serie = PROFILE_SERIES[profileKey];
+  const l = parseFloat(L); const h = parseFloat(H);
+  const a = parseFloat(allege) || 0;
+  if (!serie || !Number.isFinite(l) || !Number.isFinite(h) || l <= 0 || h <= 0) return components;
+  const n = components.filter(c => c.role === 'vantail').length || 1;
+  const lv = roundMm(serie.lv(l, n));
+  const hv = roundMm(serie.hv(h, a));
+  return components.map(c => c.role === 'dormant'
+    ? { ...c, largeur: l, hauteur: h }
+    : { ...c, largeur: lv, hauteur: hv });
+}
+
 // A single dimension variant row: repere, largeur, hauteur, quantity for that size
 const EMPTY_VARIANT = { repere: '', largeur: '', hauteur: '', quantity: 1 };
 
@@ -55,10 +77,29 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
     components: buildComponents(getTypeObj(initialType), chassis?.components || [])
   });
 
-  const set = (key, val) => setFormData(prev => ({ ...prev, [key]: val }));
+  // ATLA78 / ATLA78-SLIM: components computed from the chassis L × H (only one series at a time)
+  const [profile, setProfile] = useState(chassis?.profileSerie || '');
+  const [allege, setAllege] = useState(chassis?.allege ? String(chassis.allege) : '');
+  const set = (key, val) => setFormData(prev => {
+    const next = { ...prev, [key]: val };
+    if (profile && (key === 'largeur' || key === 'hauteur')) next.components = applyProfile(prev.components, profile, next.largeur, next.hauteur, allege);
+    return next;
+  });
+  const toggleProfile = (key) => {
+    const nextProfile = profile === key ? '' : key;
+    setProfile(nextProfile);
+    if (nextProfile) setFormData(prev => ({ ...prev, components: applyProfile(prev.components, nextProfile, prev.largeur, prev.hauteur, allege) }));
+  };
+  const changeAllege = (val) => {
+    setAllege(val);
+    if (profile) setFormData(prev => ({ ...prev, components: applyProfile(prev.components, profile, prev.largeur, prev.hauteur, val) }));
+  };
 
   const handleTypeChange = (newType) => {
-    setFormData(prev => ({ ...prev, type: newType, components: buildComponents(getTypeObj(newType), prev.components) }));
+    setFormData(prev => {
+      const components = buildComponents(getTypeObj(newType), prev.components);
+      return { ...prev, type: newType, components: profile ? applyProfile(components, profile, prev.largeur, prev.hauteur, allege) : components };
+    });
   };
 
   const setComponent = (idx, key, val) => {
@@ -107,7 +148,9 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
           hauteur: parseInt(v.hauteur, 10) || 0,
           quantity: parseInt(v.quantity, 10) || 1,
         })),
-        components: formData.components.map(c => ({ ...c, largeur: parseInt(c.largeur, 10) || 0, hauteur: parseInt(c.hauteur, 10) || 0 }))
+        components: formData.components.map(c => ({ ...c, largeur: toMm(c.largeur), hauteur: toMm(c.hauteur) })),
+        profileSerie: isComposite ? profile : '',
+        allege: isComposite && profile ? (parseFloat(allege) || 0) : 0
       };
     } else {
       const qty = parseInt(formData.quantity, 10) || 1;
@@ -120,7 +163,9 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
         dimension: `${formData.largeur}×${formData.hauteur}`,
         multiDim: false,
         variants: [],
-        components: formData.components.map(c => ({ ...c, largeur: parseInt(c.largeur, 10) || 0, hauteur: parseInt(c.hauteur, 10) || 0 }))
+        components: formData.components.map(c => ({ ...c, largeur: toMm(c.largeur), hauteur: toMm(c.hauteur) })),
+        profileSerie: isComposite ? profile : '',
+        allege: isComposite && profile ? (parseFloat(allege) || 0) : 0
       };
     }
 
@@ -180,7 +225,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
             <label className="chassis-multidim-toggle">
               <span className="chassis-multidim-toggle__label">{t('cfMultiDim')}</span>
               <span className="chassis-multidim-toggle__hint">
-                Châssis coins, séries avec largeurs/hauteurs différentes…
+                {t('cfMultiDimHint')}
               </span>
               <button
                 type="button"
@@ -303,6 +348,37 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
           {isComposite && formData.components.length > 0 && (
             <div className="chassis-form__section chassis-form__section--composite">
               <label className="chassis-form__section-label">{t('componentsDimensions')}</label>
+              <div className="cf-profile">
+                <div className="cf-profile__checks">
+                  {Object.entries(PROFILE_SERIES).map(([key, serie]) => (
+                    <label key={key} className={`cf-profile__check${profile === key ? ' cf-profile__check--on' : ''}`}>
+                      <input type="checkbox" checked={profile === key} onChange={() => toggleProfile(key)} />
+                      <span>{serie.label}</span>
+                    </label>
+                  ))}
+                </div>
+                {profile && (
+                  <>
+                    <div className="cf-profile__dims">
+                      <div className="form-group form-group--sm">
+                        <label>{t('cfChassisL')}</label>
+                        <input type="number" min="0" step="1" value={formData.largeur} onChange={e => set('largeur', e.target.value)} />
+                      </div>
+                      <div className="form-group form-group--sm">
+                        <label>{t('cfChassisH')}</label>
+                        <input type="number" min="0" step="1" value={formData.hauteur} onChange={e => set('hauteur', e.target.value)} />
+                      </div>
+                      <div className="form-group form-group--sm">
+                        <label>{t('cfAllege')}</label>
+                        <input type="number" min="0" step="1" placeholder="0" value={allege} onChange={e => changeAllege(e.target.value)} />
+                      </div>
+                    </div>
+                    <p className="cf-profile__hint">
+                      {profile === 'atla78' ? t('cfAtla78Hint') : t('cfAtla78SlimHint')}
+                    </p>
+                  </>
+                )}
+              </div>
               <div className="composite-grid">
                 {formData.components.map((comp, idx) => (
                   <div key={idx} className="composite-card">

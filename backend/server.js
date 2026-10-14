@@ -121,7 +121,7 @@ const superCategorySchema = new mongoose.Schema({
 const SuperCategory = mongoose.model('SuperCategory', superCategorySchema);
 
 const ALL_PERMISSIONS = [
-  'inventory.view', 'inventory.edit', 'inventory.delete',
+  'inventory.view', 'inventory.edit', 'inventory.delete', 'inventory.quantity',
   'inventory.aluminium.view', 'inventory.aluminium.edit', 'inventory.aluminium.delete',
   'inventory.verre.view', 'inventory.verre.edit', 'inventory.verre.delete',
   'inventory.accessoires.view', 'inventory.accessoires.edit', 'inventory.accessoires.delete',
@@ -153,9 +153,23 @@ const userSchema = new mongoose.Schema({
   passwordHash: { type: String, required: true },
   roleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Role', required: true },
   active: { type: Boolean, default: true },
-  companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null }
+  companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
+  // Inventory articles this account may see / adjust. Empty = no restriction (all articles of its categories).
+  allowedItemIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Item' }],
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; delete ret.passwordHash; return ret; } } });
 const User = mongoose.model('User', userSchema);
+
+// Article restriction of the logged-in account (null = none)
+const allowedItemsOf = (req) => {
+  const ids = req.user?.allowedItemIds;
+  return Array.isArray(ids) && ids.length ? ids.map(id => String(id?._id || id)) : null;
+};
+const applyItemRestriction = (filter, req) => {
+  const ids = allowedItemsOf(req);
+  if (ids) filter._id = { $in: ids.map(id => new mongoose.Types.ObjectId(id)) };
+  return filter;
+};
+const isItemAllowed = (req, itemId) => { const ids = allowedItemsOf(req); return !ids || ids.includes(String(itemId)); };
 
 const sessionSchema = new mongoose.Schema({
   token: { type: String, required: true, unique: true },
@@ -399,6 +413,8 @@ const chassisSchema = new mongoose.Schema({
   multiDim: { type: Boolean, default: false },   // ← ADD THIS (already sent by ChassisForm)
   variants: { type: mongoose.Schema.Types.Mixed, default: [] }, // ← ADD THIS (already sent)
   components: [componentSchema],
+  profileSerie: { type: String, default: '' }, // 'atla78' | 'atla78slim': components derived from L × H
+  allege: { type: Number, default: 0 },          // allège (mm) subtracted from the vantaux height
   units: [unitSchema],
   accessories: [chassisAccessorySchema],
   remplissages: [remplissageSchema],
@@ -1242,6 +1258,14 @@ function canEditSC(permissions, sc) {
   return permissions.includes("inventory.edit");
 }
 
+// −/+ stock adjustment: full edit right, or the "adjust only" permission for a category the account can see
+function canAdjustQty(req, sc) {
+  if (canEditSC(req.permissions, sc)) return true;
+  if (!(req.permissions || []).includes('inventory.quantity')) return false;
+  const allowed = req.allowedSuperCategories;
+  return allowed === null || allowed === undefined || allowed.includes(sc);
+}
+
 function canDeleteSC(permissions, sc) {
   if (!permissions || permissions.length === 0) return false;
   if (permissions.includes(`inventory.${sc}.delete`)) return true;
@@ -1292,7 +1316,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!ok) return res.status(401).json({ error: 'Identifiants incorrects' });
     const token = crypto.randomBytes(48).toString('hex');
     await Session.create({ token, userId: user._id, expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) });
-    res.json({ token, user: { id: user.id, username: user.username, displayName: user.displayName, role: user.roleId?.name, permissions: user.roleId?.permissions || [], companyId: user.companyId } });
+    res.json({ token, user: { id: user.id, username: user.username, displayName: user.displayName, role: user.roleId?.name, permissions: user.roleId?.permissions || [], companyId: user.companyId, restrictedItems: (user.allowedItemIds || []).length } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1303,7 +1327,7 @@ app.post('/api/auth/logout', async (req, res) => {
 });
 
 app.get('/api/auth/me', requireAuth, (req, res) => {
-  res.json({ id: req.user.id, username: req.user.username, displayName: req.user.displayName, role: req.user.roleId?.name, permissions: req.permissions, companyId: req.user.companyId });
+  res.json({ id: req.user.id, username: req.user.username, displayName: req.user.displayName, role: req.user.roleId?.name, permissions: req.permissions, companyId: req.user.companyId, restrictedItems: (req.user.allowedItemIds || []).length });
 });
 
 app.post('/api/auth/change-password', requireAuth, async (req, res) => {
@@ -1357,18 +1381,19 @@ app.delete('/api/roles/:id', requireAuth, requirePermission('admin.view'), async
 
 // ==================== USER ROUTES ====================
 
+const cleanItemIds = (ids) => [...new Set((Array.isArray(ids) ? ids : []).map(id => String(id?.id || id?._id || id)).filter(id => mongoose.Types.ObjectId.isValid(id)))];
 app.get('/api/users', requireAuth, requirePermission('admin.view'), async (req, res) => {
-  try { res.json(await User.find().populate('roleId').populate('companyId').sort({ createdAt: -1 })); }
+  try { res.json(await User.find().populate('roleId').populate('companyId').populate('allowedItemIds', 'designation codeInterne image superCategory').sort({ createdAt: -1 })); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/users', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
-    const { username, displayName, password, roleId, companyId, active } = req.body;
+    const { username, displayName, password, roleId, companyId, active, allowedItemIds } = req.body;
     if (!username || !password || !roleId) return res.status(400).json({ error: 'username, password et roleId requis' });
     if (password.length < 4) return res.status(400).json({ error: 'Mot de passe trop court' });
     const hash = await bcrypt.hash(password, 10);
-    const u = await User.create({ username: username.toLowerCase().trim(), displayName, passwordHash: hash, roleId, companyId: companyId || null, active: active !== false });
-    await u.populate('roleId'); await u.populate('companyId');
+    const u = await User.create({ username: username.toLowerCase().trim(), displayName, passwordHash: hash, roleId, companyId: companyId || null, active: active !== false, allowedItemIds: cleanItemIds(allowedItemIds) });
+    await u.populate('roleId'); await u.populate('companyId'); await u.populate('allowedItemIds', 'designation codeInterne image superCategory');
     res.status(201).json(u);
   } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ error: e.message }); }
 });
@@ -1381,8 +1406,9 @@ app.put('/api/users/:id', requireAuth, requirePermission('admin.view'), async (r
     if (req.body.roleId) u.roleId = req.body.roleId;
     if (req.body.companyId !== undefined) u.companyId = req.body.companyId || null;
     if (req.body.active !== undefined) u.active = req.body.active;
+    if (req.body.allowedItemIds !== undefined) u.allowedItemIds = cleanItemIds(req.body.allowedItemIds);
     if (req.body.password && req.body.password.length >= 4) u.passwordHash = await bcrypt.hash(req.body.password, 10);
-    await u.save(); await u.populate('roleId'); await u.populate('companyId');
+    await u.save(); await u.populate('roleId'); await u.populate('companyId'); await u.populate('allowedItemIds', 'designation codeInterne image superCategory');
     res.json(u);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1415,6 +1441,7 @@ app.get('/api/permissions', requireAuth, requirePermission('admin.view'), async 
     { key: 'inventory.view', label: 'Inventaire — Voir (tout)', group: 'Inventaire' },
     { key: 'inventory.edit', label: 'Inventaire — Modifier (tout)', group: 'Inventaire' },
     { key: 'inventory.delete', label: 'Inventaire — Supprimer (tout)', group: 'Inventaire' },
+    { key: 'inventory.quantity', label: 'Inventaire — Ajuster le stock (− / +) uniquement', group: 'Inventaire' },
     ...scPerms,
     { key: 'orders.view', label: 'Commandes — Voir', group: 'Commandes' },
     { key: 'orders.edit', label: 'Commandes — Créer/Modifier', group: 'Commandes' },
@@ -1513,6 +1540,7 @@ app.get('/api/inventory/lookup', optionalAuth, async (req, res) => {
     if (req.query.superCategory && req.query.superCategory !== 'all') filter.superCategory = req.query.superCategory;
     if (req.query.categoryId && req.query.categoryId !== 'all' && mongoose.Types.ObjectId.isValid(req.query.categoryId)) filter.categoryId = req.query.categoryId;
     if (!applyScFilter(filter, req.allowedSuperCategories)) return res.json({ items: [], hasMore: false });
+    applyItemRestriction(filter, req);
     const and = searchWordsFilter(req.query.q);
     if (and.length) filter.$and = and;
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
@@ -1537,6 +1565,7 @@ app.get('/api/inventory', optionalAuth, async (req, res) => {
     if (req.query.superCategory && req.query.superCategory !== 'all') filter.superCategory = req.query.superCategory;
     const paged = req.query.page !== undefined;
     if (!applyScFilter(filter, req.allowedSuperCategories)) return res.json(paged ? { items: [], total: 0, page: 1, hasMore: false } : []);
+    applyItemRestriction(filter, req);
 
     if (!paged) return res.json(await Item.find(filter).populate('categoryId').sort({ createdAt: -1 }));
 
@@ -1572,6 +1601,7 @@ app.get('/api/inventory/filter/low-stock', optionalAuth, async (req, res) => {
   try {
     const filter = {};
     if (!applyScFilter(filter, req.allowedSuperCategories)) return res.json([]);
+    applyItemRestriction(filter, req);
     const items = await Item.find(filter).populate('categoryId');
     res.json(items.filter(i => i.quantity + (i.orderedQuantity || 0) < i.threshold));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1582,6 +1612,7 @@ app.get('/api/inventory/search', optionalAuth, async (req, res) => {
     if (req.query.categoryId && req.query.categoryId !== 'all') filter.categoryId = req.query.categoryId;
     if (req.query.superCategory && req.query.superCategory !== 'all') filter.superCategory = req.query.superCategory;
     if (!applyScFilter(filter, req.allowedSuperCategories)) return res.json([]);
+    applyItemRestriction(filter, req);
     const and = searchWordsFilter(req.query.q);
     if (and.length) filter.$and = and;
     res.json(await Item.find(filter).populate('categoryId').sort({ createdAt: -1 }));
@@ -1596,6 +1627,7 @@ app.get('/api/inventory/:id', optionalAuth, async (req, res, next) => {
     const sc = item.superCategory || 'aluminium';
     const allowed = req.allowedSuperCategories;
     if (allowed !== null && !allowed.includes(sc)) return res.status(403).json({ error: 'Accès refusé à cette catégorie' });
+    if (!isItemAllowed(req, item._id)) return res.status(403).json({ error: 'Accès refusé à cet article' });
     res.json(item);
   } catch (e) { res.status(e.kind === 'ObjectId' ? 400 : 500).json({ error: e.message }); }
 });
@@ -1645,7 +1677,8 @@ app.patch('/api/inventory/:id/quantity', optionalAuth, async (req, res) => {
     const item = await Item.findById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Not found' });
     const sc = item.superCategory || 'aluminium';
-    if (!canEditSC(req.permissions, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
+    if (!canAdjustQty(req, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
+    if (!isItemAllowed(req, item._id)) return res.status(403).json({ error: 'Accès refusé à cet article' });
     item.quantity = Math.max(0, item.quantity + amount);
     await item.save();
     await StockMovement.create({ itemId: item._id, type: amount >= 0 ? 'entree' : 'sortie', quantity: Math.abs(amount), balanceAfter: item.quantity, note: note || '' });
@@ -2792,6 +2825,8 @@ app.post('/api/projects/:id/chassis', async (req, res) => {
       multiDim: false,
       variants: [],
       components: req.body.components || [],
+      profileSerie: req.body.profileSerie || '',
+      allege: Number(req.body.allege) || 0,
       units: Array.from({ length: qty }, (_, i) => ({
         unitIndex: i, etat: req.body.etat || 'non_entame', deliveryDate: null, notes: ''
       })),
@@ -2830,6 +2865,8 @@ app.put('/api/projects/:id/chassis/:cid', async (req, res) => {
       chassis.multiDim = false;
       chassis.variants = [];
       if (req.body.components !== undefined) chassis.components = req.body.components;
+      if (req.body.profileSerie !== undefined) chassis.profileSerie = req.body.profileSerie || '';
+      if (req.body.allege !== undefined) chassis.allege = Number(req.body.allege) || 0;
       const newQty = Number(first.quantity) || 1, oldQty = chassis.quantity;
       chassis.quantity = newQty;
       if (newQty > oldQty) for (let i = oldQty; i < newQty; i++) chassis.units.push({ unitIndex: i, etat: 'non_entame', deliveryDate: null, notes: '' });
@@ -2848,6 +2885,8 @@ app.put('/api/projects/:id/chassis/:cid', async (req, res) => {
           multiDim: false,
           variants: [],
           components: req.body.components || [],
+          profileSerie: req.body.profileSerie || '',
+          allege: Number(req.body.allege) || 0,
           units: Array.from({ length: qty }, (_, i) => ({ unitIndex: i, etat: 'non_entame', deliveryDate: null, notes: '' })),
         });
       }
@@ -2861,6 +2900,8 @@ app.put('/api/projects/:id/chassis/:cid', async (req, res) => {
       chassis.multiDim = false;
       chassis.variants = [];
       if (req.body.components !== undefined) chassis.components = req.body.components;
+      if (req.body.profileSerie !== undefined) chassis.profileSerie = req.body.profileSerie || '';
+      if (req.body.allege !== undefined) chassis.allege = Number(req.body.allege) || 0;
       if (req.body.quantity !== undefined) {
         const newQty = Number(req.body.quantity), oldQty = chassis.quantity;
         chassis.quantity = newQty;
@@ -4643,6 +4684,7 @@ const purchaseRequestSchema = new mongoose.Schema({
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 purchaseRequestSchema.index({ status: 1, createdAt: -1 });
 purchaseRequestSchema.index({ createdAt: -1 });
+purchaseRequestSchema.index({ itemId: 1, createdAt: -1 });
 const PurchaseRequest = mongoose.model('PurchaseRequest', purchaseRequestSchema);
 
 // ==================== PURCHASE REQUEST ROUTES ====================
@@ -4668,6 +4710,7 @@ app.get('/api/purchase-requests', requireAuth, async (req, res) => {
   try {
     const filter = {};
     if (req.query.status && req.query.status !== 'all') filter.status = req.query.status;
+    if (req.query.itemId && mongoose.Types.ObjectId.isValid(req.query.itemId)) filter.itemId = req.query.itemId; // requests for one article
     if (req.query.page === undefined) {
       const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 200);
       const prs = await PurchaseRequest.find(filter).sort({ createdAt: -1 }).limit(limit).lean();

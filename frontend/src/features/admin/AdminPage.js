@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { dialog } from '../../components/common/dialog';
@@ -7,7 +7,7 @@ import AtelierTablesPage from '../AtelierTables';
 
 import './AdminPage.css';
 
-import { CornerDownRight } from 'lucide-react';
+import { CornerDownRight, Search, X, Package, Lock } from 'lucide-react';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 export default function AdminPage() {
@@ -149,6 +149,11 @@ export default function AdminPage() {
                           <span className="role-badge" style={{ '--c': u.roleId?.color || '#a1a1aa' }}>
                             {u.roleId?.name || '—'}
                           </span>
+                          {(u.allowedItemIds || []).length > 0 && (
+                            <span className="admin-items__badge" title={(u.allowedItemIds || []).map(it => it?.designation?.fr || it?.codeInterne).join('\n')}>
+                              <Lock size={10} /> {t('adAllowedItemsCount', { n: u.allowedItemIds.length })}
+                            </span>
+                          )}
                         </td>
                         <td>{u.companyId?.name || <span className="admin-muted">{t('adAllCompaniesShort')}</span>}</td>
                         <td>
@@ -338,12 +343,14 @@ function UserForm({ user, roles, companies, authFetch, onClose, onSave }) {
     companyId:   user?.companyId?.id || user?.companyId?._id || '',
     active:      user?.active !== false,
   });
+  // Articles this account is limited to (empty = all articles of its categories)
+  const [allowedItems, setAllowedItems] = useState(() => (user?.allowedItemIds || []).filter(Boolean));
   const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    const body = { ...form };
+    const body = { ...form, allowedItemIds: allowedItems.map(it => it.id || it._id) };
     if (!body.password && user) delete body.password; // don't change pw if empty on edit
     try {
       const url = user ? `${API_URL}/users/${user.id}` : `${API_URL}/users`;
@@ -398,6 +405,7 @@ function UserForm({ user, roles, companies, authFetch, onClose, onSave }) {
               <label htmlFor="active-check">{t('adAccountActive')}</label>
             </div>
           </div>
+          <ItemAccessPicker items={allowedItems} onChange={setAllowedItems} authFetch={authFetch} />
           {error && <div className="form-error">{error}</div>}
           <div className="modal-actions">
             <button type="button" onClick={onClose}>{t('cancel')}</button>
@@ -405,6 +413,78 @@ function UserForm({ user, roles, companies, authFetch, onClose, onSave }) {
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+// ─── Allowed inventory articles for one account ──────────────────────────────
+// Empty list = no restriction. Searching uses the server's indexed lookup (20 results max).
+function ItemAccessPicker({ items, onChange, authFetch }) {
+  const { t, currentLanguage: lang } = useLanguage();
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const reqId = useRef(0);
+  const name = (it) => it?.designation?.[lang] || it?.designation?.fr || it?.codeInterne || '—';
+  const selectedIds = new Set(items.map(it => String(it.id || it._id)));
+
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setResults([]); return undefined; }
+    const id = ++reqId.current;
+    setLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const r = await authFetch(`${API_URL}/inventory/lookup?limit=15&q=${encodeURIComponent(term)}`);
+        const data = await r.json();
+        if (id === reqId.current) setResults(data.items || []);
+      } catch { if (id === reqId.current) setResults([]); }
+      finally { if (id === reqId.current) setLoading(false); }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [q, authFetch]);
+
+  const add = (it) => { if (!selectedIds.has(String(it.id))) onChange([...items, it]); setQ(''); setResults([]); };
+  const remove = (id) => onChange(items.filter(it => String(it.id || it._id) !== String(id)));
+
+  return (
+    <div className="admin-items">
+      <div className="admin-items__head">
+        <Lock size={14} />
+        <span className="admin-items__title">{t('adAllowedItems')}</span>
+        <span className="admin-items__hint">{items.length ? t('adAllowedItemsCount', { n: items.length }) : t('adAllowedItemsAll')}</span>
+      </div>
+      {items.length > 0 && (
+        <div className="admin-items__chips">
+          {items.map(it => (
+            <span key={it.id || it._id} className="admin-items__chip">
+              {it.codeInterne && <code>{it.codeInterne}</code>}
+              <span>{name(it)}</span>
+              <button type="button" onClick={() => remove(it.id || it._id)} aria-label={t('delete')}><X size={12} /></button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="admin-items__search">
+        <Search size={14} />
+        <input type="text" value={q} placeholder={t('adAllowedItemsSearch')} onChange={e => setQ(e.target.value)} />
+      </div>
+      {(loading || results.length > 0) && q.trim().length >= 2 && (
+        <div className="admin-items__results">
+          {loading && results.length === 0 && <div className="admin-items__empty">{t('loadingShort')}</div>}
+          {results.map(it => {
+            const on = selectedIds.has(String(it.id));
+            return (
+              <button type="button" key={it.id} className={`admin-items__row${on ? ' is-on' : ''}`} onClick={() => add(it)} disabled={on}>
+                <Package size={14} />
+                {it.codeInterne && <code>{it.codeInterne}</code>}
+                <span>{name(it)}</span>
+                <em>{it.superCategory}</em>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

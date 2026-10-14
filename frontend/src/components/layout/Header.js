@@ -30,6 +30,8 @@ const Header = ({ activePage, onNavigate }) => {
   const { t, currentLanguage, changeLanguage, languageLabels } = useLanguage();
   const { companies, selectedCompany, setSelectedCompany } = useCompany();
   const { user, logout, can } = useAuth();
+  // Workshop accounts limited to a few articles: no company filter, oven status or notifications
+  const restricted = (user?.restrictedItems || 0) > 0;
 
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showChangePwd, setShowChangePwd] = useState(false);
@@ -154,11 +156,11 @@ const Header = ({ activePage, onNavigate }) => {
 
           {/* Desktop controls */}
           <div className="hdr__controls desktop-only">
-            <div className="hdr__companies">{companyPills}</div>
+            {!restricted && <div className="hdr__companies">{companyPills}</div>}
             {langPicker}
             {themeBtn}
-            <FourStatus />
-            <NotifBell />
+            {!restricted && <FourStatus />}
+            {!restricted && <NotifBell />}
 
             <div className="hdr__user" ref={userMenuRef}>
 
@@ -175,8 +177,8 @@ const Header = ({ activePage, onNavigate }) => {
           {/* Mobile top-bar controls */}
           <div className="hdr__controls mobile-only" style={{ gap: 8 }}>
             {langPicker}
-            <FourStatus />
-            <NotifBell />
+            {!restricted && <FourStatus />}
+            {!restricted && <NotifBell />}
             <div className="hdr__user" ref={userMenuRef}>
               <button className="hdr__user-btn" onClick={() => setShowUserMenu(v => !v)}>
                 <span className="hdr__avatar">{user?.displayName?.charAt(0).toUpperCase()}</span>
@@ -223,10 +225,12 @@ const Header = ({ activePage, onNavigate }) => {
               </button>
             </div>
 
-            <div style={{ padding: '14px 20px 14px', borderBottom: '1px solid var(--border)' }}>
-              <div className="hdr__mobile-label" style={{ marginBottom: 8 }}>{t('company') || 'Société'}</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{companyPills}</div>
-            </div>
+            {!restricted && (
+              <div style={{ padding: '14px 20px 14px', borderBottom: '1px solid var(--border)' }}>
+                <div className="hdr__mobile-label" style={{ marginBottom: 8 }}>{t('company') || 'Société'}</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{companyPills}</div>
+              </div>
+            )}
 
             <nav className="hdr__mobile-nav">
               {navItems.map(item => (

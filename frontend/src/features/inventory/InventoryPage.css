@@ -1444,3 +1444,10 @@
 @media (max-width:420px) {
   .item-action-btn svg { display: none; }
 }
+
+/* ── Workshop accounts: compact card (photo, name, stock, − / +) ── */
+.inventory-app .item-card--compact .quantity-section { grid-template-columns: 1fr; }
+.inventory-app .item-card--compact .quantity-section .qty-value { font-size: 30px; }
+.inventory-app .item-card--compact .quantity-controls { gap: 8px; }
+.inventory-app .item-card--compact .quantity-controls .qty-btn { flex: 1; width: auto; height: 44px; }
+.inventory-app .item-card--compact .quantity-controls .qty-btn svg { width: 18px; height: 18px; }

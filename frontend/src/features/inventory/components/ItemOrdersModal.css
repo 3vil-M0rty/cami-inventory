@@ -112,3 +112,15 @@
 }
 .item-orders-btn svg { flex-shrink:0;color:var(--ink-indigo); }
 .item-orders-btn:hover { background:rgba(129,140,248,.16);border-color:#818cf8;color:var(--ink-indigo); }
+
+/* Card: "Bons de commande" + small "Demandes d'admin" icon button side by side */
+.item-orders-row { display: flex; gap: 6px; align-items: stretch; }
+.item-orders-row .item-orders-btn { flex: 1; min-width: 0; }
+.item-requests-btn {
+  flex: 0 0 auto; width: 34px; height: 30px; padding: 0 !important;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px; cursor: pointer; transition: all var(--t);
+  background: rgba(251,191,36,.08); color: var(--ink-amber); border: 1px solid rgba(251,191,36,.3);
+}
+.item-requests-btn:hover { background: rgba(251,191,36,.16); border-color: rgba(251,191,36,.55); }
+.iom-row__status svg { margin-right: 3px; }

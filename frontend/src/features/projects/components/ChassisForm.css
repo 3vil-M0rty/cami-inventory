@@ -422,3 +422,23 @@
 .chassis-form__section--mode { border-bottom: none; }
 .chassis-variants-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 @media (max-width: 600px) { .chassis-variants-table { min-width: 440px; } }
+
+/* ── ATLA78 / ATLA78-SLIM: components computed from the chassis L × H ── */
+.cf-profile {
+  display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface-2);
+}
+.cf-profile__checks { display: flex; gap: 8px; flex-wrap: wrap; }
+.cf-profile__check {
+  display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px;
+  border: 1px solid var(--border-2); border-radius: var(--r-md); background: var(--surface);
+  font-size: 13px; font-weight: 700; letter-spacing: .02em; color: var(--text-2); cursor: pointer; user-select: none;
+  transition: all var(--t);
+}
+.cf-profile__check:hover { border-color: var(--400); color: var(--text); }
+.cf-profile__check input { width: 15px; height: 15px; margin: 0; accent-color: var(--info); cursor: pointer; }
+.cf-profile__check--on { border-color: var(--info-bd); background: var(--info-bg); color: var(--ink-blue); }
+.cf-profile__dims { display: grid; grid-template-columns: repeat(3, minmax(0, 160px)); gap: 10px; }
+@media (max-width: 520px) { .cf-profile__dims { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.cf-profile__dims .form-group { margin-bottom: 0; }
+.cf-profile__hint { margin: 0; font-size: 12px; color: var(--text-3); font-family: var(--mono); }

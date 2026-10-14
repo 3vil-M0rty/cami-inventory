@@ -7,8 +7,9 @@ import {
   Layers, GlassWater, Wrench, FlaskConical, Settings, Paintbrush, MirrorRectangular,
   Search, AlertTriangle, AlertCircle, Plus, Minus, Pencil, Trash2,
   FileDown, PackagePlus, Package, ChevronRight, ChevronUp, ChevronDown, Tag,
-  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn, ClipboardList, X } from 'lucide-react';
+  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn, ClipboardList, X, Inbox } from 'lucide-react';
 import ItemOrdersModal from './components/ItemOrdersModal';
+import ItemRequestsModal from './components/ItemRequestsModal';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { dialog } from '../../components/common/dialog';
@@ -90,6 +91,7 @@ function InventoryPage() {
   const [showSuperCatMgr, setShowSuperCatMgr] = useState(false);
   const [orderRequestModal, setOrderRequestModal] = useState(null);
   const [ordersItem, setOrdersItem] = useState(null); // article whose purchase orders are shown
+  const [requestsItem, setRequestsItem] = useState(null); // article whose admin requests are shown
 
   const [suppliers, setSuppliers] = useState([]);
   const [total, setTotal] = useState(0);
@@ -308,6 +310,8 @@ function InventoryPage() {
   const canEdit = activeSuperCat && (can(`inventory.${activeSuperCat}.edit`) || (!hasAnySCEdit && can('inventory.edit')));
   const canDelete = activeSuperCat && (can(`inventory.${activeSuperCat}.delete`) || (!hasAnySCDelete && can('inventory.delete')));
   const canView = activeSuperCat && superCats.some(sc => sc.key === activeSuperCat);
+  // Workshop accounts (e.g. usinage / coupeur): may only adjust stock with − / + → minimal screen and cards
+  const workshopMode = !canEdit && can('inventory.quantity');
   const { user } = useAuth();
   const userRole = user?.role;
   const adminThing = userRole === 'Admin';
@@ -390,6 +394,7 @@ function InventoryPage() {
       </header>
 
       {/* ── Controls ── */}
+      {!workshopMode && (
       <div className="controls">
         <div className="controls__top"></div>
         <div className="filter-buttons">
@@ -457,6 +462,7 @@ function InventoryPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* ── Grid ── */}
       {loading ? (
@@ -480,10 +486,12 @@ function InventoryPage() {
               isPoudre={isPoudre}
               onMinusClick={handleMinusClick}
               onPlusClick={handlePlusClick}
+              compact={workshopMode}
               onEdit={canEdit ? (i) => setEditingItem(i) : null}
               onDelete={canDelete ? deleteItem : null}
               onOrderRequest={can('admin.view') ? (i) => setOrderRequestModal({ item: i }) : null}
               onShowOrders={canSeeItemOrders ? (i) => setOrdersItem(i) : null}
+              onShowRequests={canSeeItemOrders ? (i) => setRequestsItem(i) : null}
               getStockStatus={getStockStatus}
               t={t}
             />
@@ -567,6 +575,9 @@ function InventoryPage() {
       {ordersItem && (
         <ItemOrdersModal item={ordersItem} language={language} onClose={() => setOrdersItem(null)} />
       )}
+      {requestsItem && (
+        <ItemRequestsModal item={requestsItem} language={language} onClose={() => setRequestsItem(null)} />
+      )}
 
       {orderRequestModal && (
         <OrderRequestModal
@@ -613,14 +624,14 @@ function ImagePreviewModal({ src, alt, onClose }) {
 }
 
 /* ── Item Card ──────────────────────────────────────────────── */
-function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit, onDelete, onOrderRequest, onShowOrders, getStockStatus, t }) {
+function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit, onDelete, onOrderRequest, onShowOrders, onShowRequests, getStockStatus, t, compact = false }) {
   const status = getStockStatus(item);
   const formatQty = (val) => isPoudre ? fmt(val) : Math.floor(val);
   const { user } = useAuth();
   const [previewImage, setPreviewImage] = useState(null);
 
   return (
-    <div className={`item-card ${status.className}`}>
+    <div className={`item-card ${status.className}${compact ? ' item-card--compact' : ''}`}>
       <div
         className={`item-image${item.image ? ' item-image--zoomable' : ''}`}
         onClick={() => item.image && setPreviewImage(item.image)}
@@ -651,20 +662,26 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
               {formatQty(item.quantity)}
             </span>
           </div>
-          <div className="qty-col">
-            <span className="qty-label">{t('orderedQuantity')}</span>
-            <span className="qty-value">{formatQty(item.orderedQuantity || 0)}</span>
-          </div>
-          <div className="qty-col">
-            <span className="qty-label">{t('threshold')}</span>
-            <span className="qty-value qty-value--muted">{formatQty(item.threshold)}</span>
-          </div>
+          {!compact && (
+            <>
+              <div className="qty-col">
+                <span className="qty-label">{t('orderedQuantity')}</span>
+                <span className="qty-value">{formatQty(item.orderedQuantity || 0)}</span>
+              </div>
+              <div className="qty-col">
+                <span className="qty-label">{t('threshold')}</span>
+                <span className="qty-value qty-value--muted">{formatQty(item.threshold)}</span>
+              </div>
+            </>
+          )}
         </div>
 
-        <div className={`status-pill status-pill--${status.className}`}>
-          {status.icon}
-          {status.text}
-        </div>
+        {!compact && (
+          <div className={`status-pill status-pill--${status.className}`}>
+            {status.icon}
+            {status.text}
+          </div>
+        )}
 
         <div className="quantity-controls">
           <button
@@ -682,7 +699,7 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
           >
             <Plus size={14} strokeWidth={2.5} />
           </button>
-          {onOrderRequest && (
+          {onOrderRequest && !compact && (
             <button
               className="qty-btn qty-btn--order"
               onClick={() => onOrderRequest(item)}
@@ -693,14 +710,23 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
           )}
         </div>
 
-        {onShowOrders && (
-          <button className="item-orders-btn" onClick={() => onShowOrders(item)} title={t('ivSeeItemOrders')}>
-            <ClipboardList size={13} strokeWidth={2.5} />
-            {t('ivPurchaseOrders')}
-          </button>
+        {!compact && (onShowOrders || onShowRequests) && (
+          <div className="item-orders-row">
+            {onShowOrders && (
+              <button className="item-orders-btn" onClick={() => onShowOrders(item)} title={t('ivSeeItemOrders')}>
+                <ClipboardList size={13} strokeWidth={2.5} />
+                {t('ivPurchaseOrders')}
+              </button>
+            )}
+            {onShowRequests && (
+              <button className="item-requests-btn" onClick={() => onShowRequests(item)} title={t('ivSeeItemRequests')} aria-label={t('ivSeeItemRequests')}>
+                <Inbox size={14} strokeWidth={2.4} />
+              </button>
+            )}
+          </div>
         )}
 
-        {(onEdit || onDelete) && (
+        {!compact && (onEdit || onDelete) && (
           <div className="item-actions">
             {onEdit && (
               <button className="item-action-btn item-action-btn--edit" onClick={() => onEdit(item)}>

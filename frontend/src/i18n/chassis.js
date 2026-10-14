@@ -16,6 +16,12 @@ const chassis = {
     ctNameFrPh: 'ex : Porte 2 vantaux', ctNameItPh: 'ex : Porta 2 ante', ctNameEnPh: 'ex : Door 2 leaves', ctLeaves: 'Nombre de vantaux',
     ctGeneratedId: 'Identifiant généré :', ctCreateType: 'Créer le type', ctColName: 'Nom', ctColId: 'Identifiant', ctColComposite: 'Composé',
     ctColLeaves: 'Vantaux', ctColAcc: 'Accessoires', ctColActions: 'Actions', ctConfigureAcc: 'Configurer les accessoires',
+    cfChassisL: 'L châssis (mm)',
+    cfChassisH: 'H châssis (mm)',
+    cfAtla78Hint: 'Dormant = L × H · Vantail : Lv = (L − 9) / n, Hv = H − 77 − allège',
+    cfAtla78SlimHint: 'Dormant = L × H · Vantail : Lv = (L + 32) / n, Hv = H − 78 − allège',
+    cfMultiDimHint: 'Châssis coins, séries avec largeurs/hauteurs différentes…',
+    cfAllege: 'Allège (mm)',
   },
   it: {
     ctAccTitle: 'Accessori — {name}', ctAccHint: 'Definisci gli accessori predefiniti per questo tipo di telaio. Saranno proposti automaticamente nella configurazione delle righe dei progetti. La quantità può essere fissa o calcolata con una formula che usa L (larghezza) e H (altezza) in mm.', ctConfigured: 'Accessori configurati ({n})', ctNoAcc: 'Nessun accessorio configurato. Usa il modulo qui sotto per aggiungerne.', ctAddAcc: 'Aggiungi un accessorio', ctDesignationReq: 'Descrizione *', ctTypeToSearch: '(digita per cercare nel magazzino)', ctFixedQty: 'Quantità fissa', ctLHHint: 'L = larghezza · H = altezza (mm)', ctReset: 'Reimposta', ctComposite: 'Telaio composto (telaio fisso + ante)', ctExisting: 'Tipi esistenti ({n})', ctColNameFr: 'Nome (FR)', ctAccNameReq: "Il nome dell'accessorio è obbligatorio",
@@ -34,6 +40,12 @@ const chassis = {
     ctNameFrPh: 'es: Porte 2 vantaux', ctNameItPh: 'es: Porta 2 ante', ctNameEnPh: 'es: Door 2 leaves', ctLeaves: 'Numero di ante',
     ctGeneratedId: 'Identificativo generato:', ctCreateType: 'Crea il tipo', ctColName: 'Nome', ctColId: 'Identificativo', ctColComposite: 'Composto',
     ctColLeaves: 'Ante', ctColAcc: 'Accessori', ctColActions: 'Azioni', ctConfigureAcc: 'Configura gli accessori',
+    cfChassisL: 'L telaio (mm)',
+    cfChassisH: 'H telaio (mm)',
+    cfAtla78Hint: 'Telaio fisso = L × H · Anta: Lv = (L − 9) / n, Hv = H − 77 − parapetto',
+    cfAtla78SlimHint: 'Telaio fisso = L × H · Anta: Lv = (L + 32) / n, Hv = H − 78 − parapetto',
+    cfMultiDimHint: 'Telai ad angolo, serie con larghezze/altezze diverse…',
+    cfAllege: 'Parapetto (mm)',
   },
   en: {
     ctAccTitle: 'Accessories — {name}', ctAccHint: 'Define the default accessories for this frame type. They are suggested automatically when configuring project lines. The quantity can be fixed or computed with a formula using L (width) and H (height) in mm.', ctConfigured: 'Configured accessories ({n})', ctNoAcc: 'No accessory configured. Use the form below to add some.', ctAddAcc: 'Add an accessory', ctDesignationReq: 'Description *', ctTypeToSearch: '(type to search the inventory)', ctFixedQty: 'Fixed quantity', ctLHHint: 'L = width · H = height (mm)', ctReset: 'Reset', ctComposite: 'Composite frame (frame + sashes)', ctExisting: 'Existing types ({n})', ctColNameFr: 'Name (FR)', ctAccNameReq: 'The accessory name is required',
@@ -52,6 +64,12 @@ const chassis = {
     ctNameFrPh: 'e.g. Porte 2 vantaux', ctNameItPh: 'e.g. Porta 2 ante', ctNameEnPh: 'e.g. Door 2 leaves', ctLeaves: 'Number of sashes',
     ctGeneratedId: 'Generated ID:', ctCreateType: 'Create type', ctColName: 'Name', ctColId: 'ID', ctColComposite: 'Composite',
     ctColLeaves: 'Sashes', ctColAcc: 'Accessories', ctColActions: 'Actions', ctConfigureAcc: 'Configure accessories',
+    cfChassisL: 'Frame W (mm)',
+    cfChassisH: 'Frame H (mm)',
+    cfAtla78Hint: 'Outer frame = W × H · Sash: Wv = (W − 9) / n, Hv = H − 77 − sill',
+    cfAtla78SlimHint: 'Outer frame = W × H · Sash: Wv = (W + 32) / n, Hv = H − 78 − sill',
+    cfMultiDimHint: 'Corner frames, series with different widths/heights…',
+    cfAllege: 'Sill height (mm)',
   },
 };
 export default chassis;

@@ -22,6 +22,10 @@ const admin = {
     adStateKeyPh: 'ex : pose_partielle', adStateKeyLocked: 'La clé ne peut pas être modifiée', adStateLabel: 'Libellé *', adStateLabelPh: 'ex : Posé partiellement',
     adColorShort: 'Couleur', adPreviewShort: 'Aperçu', adOrder: "Ordre d'affichage", adDefaultState: 'État par défaut (pour les nouvelles unités)',
     adCreateState: "Créer l'état",
+    adAllowedItems: 'Articles autorisés',
+    adAllowedItemsAll: 'Tous les articles (aucune restriction)',
+    adAllowedItemsCount: '{n} article(s)',
+    adAllowedItemsSearch: 'Ajouter un article : code ou désignation…',
   },
   it: {
     adTeams: 'Squadre', adChantierStates: 'Stati cantiere', adAccounts: '{n} account',
@@ -46,6 +50,10 @@ const admin = {
     adStateKeyPh: 'es: posa_parziale', adStateKeyLocked: 'La chiave non può essere modificata', adStateLabel: 'Etichetta *', adStateLabelPh: 'es: Posato parzialmente',
     adColorShort: 'Colore', adPreviewShort: 'Anteprima', adOrder: 'Ordine di visualizzazione', adDefaultState: 'Stato predefinito (per le nuove unità)',
     adCreateState: 'Crea lo stato',
+    adAllowedItems: 'Articoli autorizzati',
+    adAllowedItemsAll: 'Tutti gli articoli (nessuna restrizione)',
+    adAllowedItemsCount: '{n} articolo/i',
+    adAllowedItemsSearch: 'Aggiungi un articolo: codice o descrizione…',
   },
   en: {
     adTeams: 'Teams', adChantierStates: 'Site states', adAccounts: '{n} account(s)',
@@ -70,6 +78,10 @@ const admin = {
     adStateKeyPh: 'e.g. partial_install', adStateKeyLocked: 'The key cannot be changed', adStateLabel: 'Label *', adStateLabelPh: 'e.g. Partially installed',
     adColorShort: 'Colour', adPreviewShort: 'Preview', adOrder: 'Display order', adDefaultState: 'Default state (for new units)',
     adCreateState: 'Create state',
+    adAllowedItems: 'Allowed articles',
+    adAllowedItemsAll: 'All articles (no restriction)',
+    adAllowedItemsCount: '{n} article(s)',
+    adAllowedItemsSearch: 'Add an article: code or description…',
   },
 };
 export default admin;
