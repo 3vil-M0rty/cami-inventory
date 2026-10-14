@@ -121,7 +121,9 @@ export default function OrdersPage() {
   };
 
   // who may touch THIS order
-  const canEditOrder = (o) => o.status === 'brouillon' ? can('orders.edit') : isAdmin;
+  // ACHAT (orders.edit) can also edit a BC already sent (not a cancelled one); cancel / delete stay admin-only
+  const canEditSent = isAdmin || can('orders.edit');
+  const canEditOrder = (o) => o.status === 'brouillon' ? can('orders.edit') : (isAdmin || (o.status !== 'annulee' && can('orders.edit')));
   const canDeleteOrder = (o) => o.status === 'brouillon' ? (can('orders.delete') || isAdmin) : isAdmin;
   const canSendOrder = (o) => o.status === 'brouillon' && can('orders.edit');
   const canCancelOrder = (o) => (o.status === 'envoye' || o.status === 'partielle') && isAdmin;
@@ -723,7 +725,7 @@ export default function OrdersPage() {
             suppliers={suppliers}
             onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
             lang={lang}
-            isAdmin={isAdmin}
+            canEditSent={canEditSent}
             onClose={() => { setShowForm(false); setEditOrder(null); }}
             onSave={() => { setShowForm(false); setEditOrder(null); fetchOrders(); }}
           />
@@ -932,6 +934,7 @@ export default function OrdersPage() {
           suppliers={suppliers}
           onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
           lang={lang}
+          canEditSent={canEditSent}
           onClose={() => { setShowForm(false); setEditOrder(null); }}
           onSave={() => { setShowForm(false); setEditOrder(null); fetchOrders(); }}
         />
@@ -1182,7 +1185,7 @@ function ItemPicker({ item, lang, superCats, categories, onPick }) {
   );
 }
 
-function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, isAdmin, onClose, onSave }) {
+function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEditSent = false, onClose, onSave }) {
   const { t } = useLanguage();
   const today = new Date().toISOString().split('T')[0];
   const [showSupplierModal, setShowSupplierModal] = useState(false);
@@ -1216,6 +1219,7 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, isAdmin
       itemId: l.itemId?.id || l.itemId?._id || l.itemId,
       item: l.itemId && typeof l.itemId === 'object' ? l.itemId : null, // for display only
       quantityOrdered: l.quantityOrdered,
+      quantityReceived: l.quantityReceived || 0, // display only: the quantity cannot go below it
       unitPrice: l.unitPrice || 0,
       note: l.note || '',
     })),
@@ -1225,7 +1229,7 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, isAdmin
     orderDate: today, expectedDate: '', notes: '', tva: 20, status: 'brouillon', lines: [],
   });
 
-  const isLocked = order && order.status !== 'brouillon'; // admin-only edit beyond draft
+  const isLocked = order && order.status !== 'brouillon'; // sent: editable by Admin / ACHAT (canEditSent)
 
   const addLine = () => {
     setForm(f => ({ ...f, lines: [...f.lines, { itemId: '', item: null, quantityOrdered: 1, unitPrice: 0, note: '' }] }));
@@ -1248,7 +1252,7 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, isAdmin
     if (missing !== -1) { await dialog.alert({ variant: 'warning', message: t('orLineChooseItem', { n: missing + 1 }) }); return; }
     if (form.categories.length === 0) { await dialog.alert({ variant: 'warning', message: t('orSelectOneCategory') }); return; }
     // `item` is only kept for display in the form
-    const payload = { ...form, lines: form.lines.map(({ item, ...l }) => l) };
+    const payload = { ...form, lines: form.lines.map(({ item, quantityReceived, ...l }) => l) };
     try {
       if (order) {
         await axios.put(`${API_URL}/orders/${order.id}`, payload);
@@ -1282,7 +1286,7 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, isAdmin
               <div className="or-cat-grid">
                 {Object.entries(CATEGORY_LABELS).map(([key, label]) => {
                   const isChecked = form.categories.includes(key);
-                  const isDisabled = isLocked && !isAdmin;
+                  const isDisabled = isLocked && !canEditSent;
                   return (
                     <label
                       key={key}
@@ -1327,9 +1331,9 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, isAdmin
                 placeholder={t('orBcNumberPlaceholder')}
                 value={form.number}
                 onChange={e => setForm(f => ({ ...f, number: e.target.value }))}
-                disabled={isLocked && !isAdmin}
+                disabled={isLocked && !canEditSent}
               />
-              {isLocked && isAdmin && (
+              {isLocked && canEditSent && (
                 <p className="or-field-hint or-field-hint--warn">
                   <AlertTriangle size={13} style={{ marginRight: 5 }} />{t('orBcNumberAdminWarn')}
                 </p>
@@ -1396,10 +1400,13 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, isAdmin
                       <label>{t('orQty')}</label>
                       <input
                         type="number"
-                        min={1}
+                        min={Math.max(1, Math.ceil(line.quantityReceived || 0))}
                         value={line.quantityOrdered}
                         onChange={e => updateLine(idx, 'quantityOrdered', Number(e.target.value))}
                       />
+                      {line.quantityReceived > 0 && (
+                        <span className="or-field-hint">{t('orLineReceivedMin', { n: line.quantityReceived })}</span>
+                      )}
                     </div>
 
                     <div className="form-group order-line-price">

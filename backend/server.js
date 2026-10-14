@@ -664,6 +664,12 @@ function canMutateOrder(req, order) {
   if (order.status === 'brouillon') return true;
   return isAdmin(req);
 }
+// Editing (PUT) a sent order: Admin, or ACHAT (orders.edit) as long as it is not cancelled.
+// Cancel / delete / status change stay admin-only (canMutateOrder).
+function canEditOrderContent(req, order) {
+  if (order.status === 'brouillon' || isAdmin(req)) return true;
+  return order.status !== 'annulee' && (req.permissions || []).includes('orders.edit');
+}
 const CATEGORY_RECEIVE_ROLE = {
   accessoires: 'Magasinier',
   poudre: 'Laquage',
@@ -2048,8 +2054,9 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
   try {
     const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Not found' });
-    if (!canMutateOrder(req, o))
-      return res.status(403).json({ error: 'Bon de commande déjà envoyé — seul un administrateur peut le modifier.' });
+    if (!canEditOrderContent(req, o))
+      return res.status(403).json({ error: 'Bon de commande annulé — seul un administrateur peut le modifier.' });
+    const editable = canEditOrderContent(req, o);
 
     let supplierName = req.body.supplier || o.supplier;
     if (req.body.supplierId !== undefined) {
@@ -2060,7 +2067,7 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
 
     o.reference = req.body.reference ?? o.reference;
 
-    if (req.body.number !== undefined && (o.status === 'brouillon' || isAdmin(req))) {
+    if (req.body.number !== undefined && editable) {
       const newNumber = (req.body.number || '').trim();
       if (newNumber && newNumber !== o.number) {
         const existing = await Order.findOne({
@@ -2082,10 +2089,10 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
       const categories = Array.isArray(req.body.categories)
         ? req.body.categories.filter(c => c)
         : [];
-      if ((o.status === 'brouillon' || isAdmin(req)) && categories.length > 0) {
+      if (editable && categories.length > 0) {
         o.categories = categories;
       }
-    } else if (req.body.category !== undefined && (o.status === 'brouillon' || isAdmin(req))) {
+    } else if (req.body.category !== undefined && editable) {
       o.categories = [req.body.category];
     }
 
@@ -2101,9 +2108,20 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
     const touchedItemIds = o.lines.map(l => l.itemId);
 
     // ── LINES: persist edits, reverse stock for deleted received lines ──
-    if (req.body.lines !== undefined && (o.status === 'brouillon' || isAdmin(req))) {
+    if (req.body.lines !== undefined && editable) {
       await assertOrderItemsExist(req.body.lines);
       const existingById = new Map(o.lines.map(l => [String(l._id), l]));
+
+      // Lines already (partly) received: same article, quantity not below what came in — checked before any stock change
+      for (const l of req.body.lines) {
+        const existing = l._id ? existingById.get(String(l._id)) : null;
+        const received = existing ? (existing.quantityReceived || 0) : 0;
+        if (!received) continue;
+        if (String(l.itemId) !== String(existing.itemId))
+          return res.status(400).json({ error: `Une ligne déjà réceptionnée (${received}) ne peut pas changer d'article.` });
+        if ((Number(l.quantityOrdered) || 1) < received)
+          return res.status(400).json({ error: `Quantité commandée inférieure à la quantité déjà reçue (${received}).` });
+      }
       const incomingIds = new Set(req.body.lines.filter(l => l._id).map(l => String(l._id)));
 
       // 1) Lines removed entirely: reverse received stock, release pending reservation

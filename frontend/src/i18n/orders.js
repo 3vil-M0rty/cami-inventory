@@ -98,7 +98,7 @@ const fr = {
   // order form
   orEditOrder: 'Modifier {name}',
   orTheDraft: 'le brouillon',
-  orAlreadySentWarn: "Bon de commande déjà envoyé — modification réservée à l'administrateur.",
+  orAlreadySentWarn: "Bon de commande déjà envoyé — les modifications s'appliquent directement au bon envoyé (réservé à l'administrateur et à ACHAT).",
   orCompanyReq: 'Société *',
   orChoose: 'Choisir…',
   orCategoriesReq: 'Catégories *',
@@ -108,7 +108,7 @@ const fr = {
   orOptional: '(facultatif)',
   orBcNumber: 'Numéro BC',
   orBcNumberPlaceholder: "Laissez vide pour attribution auto à l'envoi",
-  orBcNumberAdminWarn: "Modification du numéro sur un bon déjà envoyé — action réservée à l'administrateur.",
+  orBcNumberAdminWarn: "Modification du numéro sur un bon déjà envoyé — vérifiez qu'il correspond au bon transmis au fournisseur.",
   orSupplier: 'Fournisseur',
   orChooseDash: '— Choisir —',
   orAddSupplier: 'Ajouter un fournisseur',
@@ -177,6 +177,7 @@ const fr = {
     orPageOf: 'Page {page} / {pages}',
     orPagePrev: 'Page précédente',
     orPageNext: 'Page suivante',
+    orLineReceivedMin: 'Déjà reçu : {n}',
 };
 
 const it = {
@@ -272,7 +273,7 @@ const it = {
   orCreateSupplier: 'Crea fornitore',
   orEditOrder: 'Modifica {name}',
   orTheDraft: 'la bozza',
-  orAlreadySentWarn: "Ordine d'acquisto già inviato — modifica riservata all'amministratore.",
+  orAlreadySentWarn: "Ordine d'acquisto già inviato — le modifiche si applicano direttamente all'ordine inviato (riservato all'amministratore e ad ACHAT).",
   orCompanyReq: 'Società *',
   orChoose: 'Scegli…',
   orCategoriesReq: 'Categorie *',
@@ -282,7 +283,7 @@ const it = {
   orOptional: '(facoltativo)',
   orBcNumber: 'Numero ordine',
   orBcNumberPlaceholder: "Lascia vuoto per l'assegnazione automatica all'invio",
-  orBcNumberAdminWarn: "Modifica del numero su un ordine già inviato — azione riservata all'amministratore.",
+  orBcNumberAdminWarn: "Modifica del numero su un ordine già inviato — verificate che corrisponda all'ordine trasmesso al fornitore.",
   orSupplier: 'Fornitore',
   orChooseDash: '— Scegli —',
   orAddSupplier: 'Aggiungi un fornitore',
@@ -349,6 +350,7 @@ const it = {
     orPageOf: 'Pagina {page} / {pages}',
     orPagePrev: 'Pagina precedente',
     orPageNext: 'Pagina successiva',
+    orLineReceivedMin: 'Già ricevuto: {n}',
 };
 
 const en = {
@@ -444,7 +446,7 @@ const en = {
   orCreateSupplier: 'Create supplier',
   orEditOrder: 'Edit {name}',
   orTheDraft: 'the draft',
-  orAlreadySentWarn: 'Purchase order already sent — editing reserved for the administrator.',
+  orAlreadySentWarn: 'Purchase order already sent — changes apply directly to the sent order (administrator and ACHAT only).',
   orCompanyReq: 'Company *',
   orChoose: 'Choose…',
   orCategoriesReq: 'Categories *',
@@ -454,7 +456,7 @@ const en = {
   orOptional: '(optional)',
   orBcNumber: 'PO number',
   orBcNumberPlaceholder: 'Leave empty for automatic numbering on sending',
-  orBcNumberAdminWarn: 'Changing the number of an order already sent — administrator only.',
+  orBcNumberAdminWarn: 'Changing the number of an order already sent — make sure it matches the order sent to the supplier.',
   orSupplier: 'Supplier',
   orChooseDash: '— Choose —',
   orAddSupplier: 'Add a supplier',
@@ -521,6 +523,7 @@ const en = {
     orPageOf: 'Page {page} / {pages}',
     orPagePrev: 'Previous page',
     orPageNext: 'Next page',
+    orLineReceivedMin: 'Already received: {n}',
 };
 
 export default { fr, it, en };
