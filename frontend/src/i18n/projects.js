@@ -11,6 +11,9 @@ const projects = {
     pjLoadError: 'Erreur de chargement : {msg}', pjLoadMore: 'Charger plus ({n} restants)', pjTabLaquage: 'Laquage', pjTabVitrage: 'Vitrage',
     pjNoLaquage: 'Aucun projet laquage pour le moment', pjNoVitrage: 'Aucun projet vitrage pour le moment',
     pjLoadingPowders: 'Chargement des poudres…',
+    pcLaqLot: '{n} lot',
+    pcLaqLots: '{n} lots',
+    pcLaqTitle: 'Barres envoyées au laquage',
   },
   it: {
     ubToday: 'Oggi alle {time}', ubYesterday: 'Ieri alle {time}', ubDateAt: '{date} alle {time}', ubLoadError: 'Impossibile caricare i movimenti', ubHistory: 'Storico dei consumi', ubNoMovement: 'Nessun movimento registrato per questo progetto.', ubColDate: 'Data / ora', ubColQty: 'Qtà', ubColCumul: 'Cumulato', ubCancelled: 'annullato', ubEntries: '{n} voce/i', ubTotal: 'Totale consumato', ubResults: '{n} risultato/i', ubColMovements: 'Movimenti', ubSeeMovements: 'Vedi i movimenti', ubDetails: 'Dettagli',
@@ -24,6 +27,9 @@ const projects = {
     pjLoadError: 'Errore di caricamento: {msg}', pjLoadMore: 'Carica altri ({n} rimanenti)', pjTabLaquage: 'Verniciatura', pjTabVitrage: 'Vetratura',
     pjNoLaquage: 'Nessun progetto di verniciatura per ora', pjNoVitrage: 'Nessun progetto di vetratura per ora',
     pjLoadingPowders: 'Caricamento delle polveri…',
+    pcLaqLot: '{n} lotto',
+    pcLaqLots: '{n} lotti',
+    pcLaqTitle: 'Barre inviate alla verniciatura',
   },
   en: {
     ubToday: 'Today at {time}', ubYesterday: 'Yesterday at {time}', ubDateAt: '{date} at {time}', ubLoadError: 'Unable to load movements', ubHistory: 'Consumption history', ubNoMovement: 'No movement recorded for this project.', ubColDate: 'Date / time', ubColQty: 'Qty', ubColCumul: 'Running total', ubCancelled: 'cancelled', ubEntries: '{n} entry(ies)', ubTotal: 'Total consumed', ubResults: '{n} result(s)', ubColMovements: 'Movements', ubSeeMovements: 'View movements', ubDetails: 'Details',
@@ -37,6 +43,9 @@ const projects = {
     pjLoadError: 'Loading error: {msg}', pjLoadMore: 'Load more ({n} remaining)', pjTabLaquage: 'Coating', pjTabVitrage: 'Glazing',
     pjNoLaquage: 'No coating project yet', pjNoVitrage: 'No glazing project yet',
     pjLoadingPowders: 'Loading powders…',
+    pcLaqLot: '{n} batch',
+    pcLaqLots: '{n} batches',
+    pcLaqTitle: 'Bars sent for powder coating',
   },
 };
 export default projects;

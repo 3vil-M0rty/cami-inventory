@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import ReactDOM from 'react-dom';
 import axios from 'axios';
 import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import './OrdersPage.css';
 import { exportOrdersExcel, exportOrderPDF } from '../../utils/orderExport';
-import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus, ClipboardList, RefreshCw, ZoomIn, XCircle } from 'lucide-react';
+import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus, ClipboardList, RefreshCw, X, Check, AlertTriangle, ArrowRight, StickyNote } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dialog, errorMessage } from '../../components/common/dialog';
 import { PAGE_PATHS, subPathFromLocation, getQueryParam, setUrl } from '../../routes';
@@ -34,11 +33,11 @@ function writeOrdersCache(userKey, data) {
 }
 
 const STATUS_COLORS = {
-  brouillon: { bg: 'rgba(161,161,170,.12)', text: '#d4d4d8', bd: 'rgba(161,161,170,.3)', label: { fr: 'Brouillon', en: 'Draft', it: 'Bozza' } },
-  envoye: { bg: 'rgba(96,165,250,.12)', text: '#93c5fd', bd: 'rgba(96,165,250,.3)', label: { fr: 'Envoyé', en: 'Sent', it: 'Inviato' } },
-  partielle: { bg: 'rgba(251,191,36,.12)', text: '#fcd34d', bd: 'rgba(251,191,36,.3)', label: { fr: 'Partielle', en: 'Partial', it: 'Parziale' } },
-  recue: { bg: 'rgba(74,222,128,.12)', text: '#86efac', bd: 'rgba(74,222,128,.3)', label: { fr: 'Reçue', en: 'Received', it: 'Ricevuta' } },
-  annulee: { bg: 'rgba(248,113,113,.12)', text: '#fca5a5', bd: 'rgba(248,113,113,.3)', label: { fr: 'Annulée', en: 'Cancelled', it: 'Annullata' } },
+  brouillon: { bg: 'rgba(161,161,170,.12)', text: 'var(--ink-grey)', bd: 'rgba(161,161,170,.3)', label: { fr: 'Brouillon', en: 'Draft', it: 'Bozza' } },
+  envoye: { bg: 'rgba(96,165,250,.12)', text: 'var(--ink-blue)', bd: 'rgba(96,165,250,.3)', label: { fr: 'Envoyé', en: 'Sent', it: 'Inviato' } },
+  partielle: { bg: 'rgba(251,191,36,.12)', text: 'var(--ink-amber)', bd: 'rgba(251,191,36,.3)', label: { fr: 'Partielle', en: 'Partial', it: 'Parziale' } },
+  recue: { bg: 'rgba(74,222,128,.12)', text: 'var(--ink-green)', bd: 'rgba(74,222,128,.3)', label: { fr: 'Reçue', en: 'Received', it: 'Ricevuta' } },
+  annulee: { bg: 'rgba(248,113,113,.12)', text: 'var(--ink-red)', bd: 'rgba(248,113,113,.3)', label: { fr: 'Annulée', en: 'Cancelled', it: 'Annullata' } },
 };
 
 const CATEGORY_LABELS = {
@@ -85,7 +84,6 @@ export default function OrdersPage() {
   const { companies, selectedCompany } = useCompany();
   const [orders, setOrders] = useState([]);
   const [displayCount, setDisplayCount] = useState(10);
-  const [items, setItems] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -147,19 +145,6 @@ export default function OrdersPage() {
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }, [userKey]);
 
-  // The full inventory is only needed by the order form → loaded the first time the form opens
-  const [itemsLoaded, setItemsLoaded] = useState(false);
-  const itemsRequested = useRef(false);
-  const fetchItems = useCallback(async () => {
-    if (itemsRequested.current) return;
-    itemsRequested.current = true;
-    try {
-      const res = await axios.get(`${API_URL}/inventory`);
-      setItems(res.data);
-      setItemsLoaded(true);
-    } catch (e) { console.error(e); itemsRequested.current = false; }
-  }, []);
-
   const fetchSuppliers = useCallback(async () => {
     try {
       const res = await axios.get(`${API_URL}/fournisseurs`);
@@ -194,7 +179,6 @@ export default function OrdersPage() {
   };
 
   useEffect(() => { fetchOrders(); fetchSuppliers(); fetchPurchaseRequests(); }, [fetchOrders, fetchSuppliers, fetchPurchaseRequests]);
-  useEffect(() => { if (showForm) fetchItems(); }, [showForm, fetchItems]);
 
   // Keep selectedOrder in sync after a re-fetch
   useEffect(() => {
@@ -547,7 +531,7 @@ export default function OrdersPage() {
               <div key={idx} className={`order-detail-line ${isComplete ? 'line-complete' : ''}`}>
                 <div className="detail-line-image">
                   {item?.image
-                    ? <ZoomableImg src={item.image} alt={item.designation?.[lang] || ''} />
+                    ? <img loading="lazy" decoding="async" src={item.image} alt={item.designation?.[lang] || ''} />
                     : <div className="detail-line-no-image"><Package size={15} /></div>
                   }
                 </div>
@@ -572,7 +556,7 @@ export default function OrdersPage() {
                       <span className="detail-line-price">{line.unitPrice.toFixed(2)} /u</span>
                     )}
                   </div>
-                  {line.note && <p className="detail-line-note">📝 {line.note}</p>}
+                  {line.note && <p className="detail-line-note"><StickyNote size={12} style={{ marginRight: 5 }} />{line.note}</p>}
                 </div>
                 <div className="detail-line-qty-block">
                   <div className="detail-line-qty-bar">
@@ -580,7 +564,7 @@ export default function OrdersPage() {
                   </div>
                   <div className="detail-line-qty-text">
                     {received} / {line.quantityOrdered}
-                    {isComplete && <span className="line-check"> ✓</span>}
+                    {isComplete && <span className="line-check"> <Check size={13} /></span>}
                   </div>
                   {line.closed && (
                     <div className="detail-line-closed"
@@ -677,7 +661,7 @@ export default function OrdersPage() {
                         return (
                           <div key={idx} className={`reception-row ${rec.cancelled ? 'reception-row--cancelled' : ''}`}>
                             <div className="reception-row__thumb">
-                              {item?.image ? <ZoomableImg src={item.image} alt={name} /> : <Package size={14} />}
+                              {item?.image ? <img loading="lazy" decoding="async" src={item.image} alt="" /> : <Package size={14} />}
                             </div>
                             <div className="reception-row__name" title={name}>
                               {name}
@@ -755,8 +739,6 @@ export default function OrdersPage() {
         {showForm && (
           <OrderForm
             order={editOrder}
-            items={items}
-            itemsLoaded={itemsLoaded}
             companies={companies}
             suppliers={suppliers}
             onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
@@ -840,11 +822,11 @@ export default function OrdersPage() {
         <>
           <div className="orders-stats">
             {[
-              { label: 'orStatTotal', value: stats.total, color: '#f4f4f5' },
+              { label: 'orStatTotal', value: stats.total, color: 'var(--text)' },
               { label: 'orStatDrafts', value: stats.brouillon, color: '#a1a1aa' },
-              { label: 'orStatSent', value: stats.envoye, color: '#93c5fd' },
-              { label: 'orStatPartial', value: stats.partielle, color: '#fcd34d' },
-              { label: 'orStatReceived', value: stats.recue, color: '#86efac' },
+              { label: 'orStatSent', value: stats.envoye, color: 'var(--ink-blue)' },
+              { label: 'orStatPartial', value: stats.partielle, color: 'var(--ink-amber)' },
+              { label: 'orStatReceived', value: stats.recue, color: 'var(--ink-green)' },
             ].map(s => (
               <div key={s.label} className="orders-stat-card" style={{ '--accent': s.color }}>
                 <span className="stat-value">{s.value}</span>
@@ -945,7 +927,7 @@ export default function OrdersPage() {
                         <span className="order-card-lines-count">
                           {t((order.lines || []).length !== 1 ? 'orArticleMany' : 'orArticleOne', { n: (order.lines || []).length })}
                         </span>
-                        <span className="order-card-open-hint">{t('orSeeDetails')}</span>
+                        <span className="order-card-open-hint">{t('orSeeDetails')} <ArrowRight size={13} /></span>
                       </div>
                     </div>
                   );
@@ -972,8 +954,6 @@ export default function OrdersPage() {
       {showForm && (
         <OrderForm
           order={editOrder}
-          items={items}
-          itemsLoaded={itemsLoaded}
           companies={companies}
           suppliers={suppliers}
           onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
@@ -1042,7 +1022,7 @@ function ReceiveModal({ receiveModal, receiveQty, lang, setReceiveQty, blNumber,
             onClick={onConfirm}
             disabled={Number(receiveQty) <= (receiveModal.line.quantityReceived || 0) || !blNumber.trim()}
           >
-            {t('orConfirmReception')}
+            <Check size={15} /> {t('orConfirmReception')}
           </button>
         </div>
       </div>
@@ -1098,63 +1078,151 @@ function SupplierModal({ onClose, onSaved }) {
 }
 
 /* ── Order Form ─────────────────────────────────────────────────── */
-/* ── Image Preview Modal (fullscreen, same as Inventory) ───── */
-function ImagePreviewModal({ src, alt, onClose }) {
+// ─── Article picker for an order line ─────────────────────────────────────────
+// Searches the server as you type (debounced, max 20 rows, indexed search) instead of
+// downloading the whole inventory into the browser.
+function ItemPicker({ item, lang, superCats, categories, onPick }) {
+  const { t } = useLanguage();
+  const [editing, setEditing] = useState(!item);
+  const [q, setQ] = useState('');
+  const [superCat, setSuperCat] = useState('');
+  const [category, setCategory] = useState('');
+  const [results, setResults] = useState([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [active, setActive] = useState(0);
+  const reqId = useRef(0);
+  const inputRef = useRef(null);
+
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+    if (!editing) return undefined;
+    const id = ++reqId.current;
+    setLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const params = { q, limit: 20 };
+        if (superCat) params.superCategory = superCat;
+        if (category) params.categoryId = category;
+        const res = await axios.get(`${API_URL}/inventory/lookup`, { params });
+        if (id !== reqId.current) return; // a newer search is running
+        setResults(res.data.items || []);
+        setHasMore(!!res.data.hasMore);
+        setActive(0);
+      } catch (e) {
+        if (id === reqId.current) setResults([]);
+      } finally {
+        if (id === reqId.current) setLoading(false);
+      }
+    }, q ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [q, superCat, category, editing]);
 
-  return ReactDOM.createPortal(
-    <div className="modal-overlay image-preview-overlay" onClick={onClose}>
-      <div className="image-preview-modal" onClick={e => e.stopPropagation()}>
-        <button type="button" className="image-preview-close" onClick={onClose}>
-          <XCircle size={22} strokeWidth={2} />
+  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
+
+  const choose = (it) => { onPick(it); setEditing(false); setQ(''); };
+  const name = (it) => it?.designation?.[lang] || it?.designation?.fr || '';
+  const scLabel = (sc) => sc.label?.[lang] || sc.label?.fr || sc.key;
+  const catOptions = categories.filter(c => !superCat || c.superCategory === superCat);
+
+  const onKeyDown = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => Math.min(a + 1, results.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(a => Math.max(a - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (results[active]) choose(results[active]); }
+    else if (e.key === 'Escape' && item) { e.preventDefault(); setEditing(false); }
+  };
+
+  if (!editing && item) {
+    return (
+      <div className="item-picker item-picker--selected">
+        {item.image
+          ? <img loading="lazy" decoding="async" className="item-picker__thumb" src={item.image} alt="" />
+          : <div className="item-picker__thumb item-picker__thumb--empty"><Package size={16} /></div>}
+        <div className="item-picker__info">
+          <span className="item-picker__name">{name(item)}</span>
+          <span className="item-picker__meta">
+            {item.codeInterne && <code>{item.codeInterne}</code>}
+            {item.quantity != null && <span>{t('orStock')} : {item.quantity}</span>}
+          </span>
+        </div>
+        <button type="button" className="item-picker__change" onClick={() => setEditing(true)}>
+          <Search size={14} /> {t('orChangeItem')}
         </button>
-        <img src={src} alt={alt} className="image-preview-img" />
       </div>
-    </div>,
-    document.body
-  );
-}
+    );
+  }
 
-/* Image that opens the fullscreen preview on click (manages its own modal) */
-function ZoomableImg({ src, alt = '', className = '' }) {
-  const [open, setOpen] = useState(false);
   return (
-    <>
-      <img
-        loading="lazy" decoding="async" src={src} alt={alt}
-        className={`${className} zoomable-img`.trim()}
-        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-      />
-      {open && <ImagePreviewModal src={src} alt={alt} onClose={() => setOpen(false)} />}
-    </>
+    <div className="item-picker">
+      <div className="item-picker__filters">
+        <select value={superCat} onChange={e => { setSuperCat(e.target.value); setCategory(''); }}>
+          <option value="">{t('orAllSuperCats')}</option>
+          {superCats.map(sc => <option key={sc.key} value={sc.key}>{scLabel(sc)}</option>)}
+        </select>
+        {superCat && catOptions.length > 0 && (
+          <select value={category} onChange={e => setCategory(e.target.value)}>
+            <option value="">{t('superCatAll')}</option>
+            {catOptions.map(c => <option key={c.id || c._id} value={c.id || c._id}>{c.name?.[lang] || c.name?.fr}</option>)}
+          </select>
+        )}
+        <div className="item-picker__search">
+          <Search size={14} />
+          <input
+            ref={inputRef}
+            type="text"
+            value={q}
+            placeholder={t('orSearchItemPlaceholder')}
+            onChange={e => setQ(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+          {loading && <LoaderCircle size={14} className="item-picker__spin" />}
+        </div>
+        {item && (
+          <button type="button" className="item-picker__cancel" onClick={() => setEditing(false)} title={t('cancel')}>
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      <div className="item-picker__results" role="listbox">
+        {!loading && results.length === 0 && <div className="item-picker__empty">{t('orNoItemFound')}</div>}
+        {results.map((it, i) => (
+          <button
+            type="button"
+            key={it.id}
+            role="option"
+            aria-selected={i === active}
+            className={`item-picker__row${i === active ? ' is-active' : ''}`}
+            onMouseEnter={() => setActive(i)}
+            onClick={() => choose(it)}
+          >
+            {it.image
+              ? <img loading="lazy" decoding="async" className="item-picker__thumb" src={it.image} alt="" />
+              : <div className="item-picker__thumb item-picker__thumb--empty"><Package size={14} /></div>}
+            <span className="item-picker__name">{name(it)}</span>
+            {it.codeInterne && <code className="item-picker__code">{it.codeInterne}</code>}
+            <span className={`item-picker__stock${it.quantity < (it.threshold || 0) ? ' is-low' : ''}`}>{it.quantity}</span>
+          </button>
+        ))}
+        {hasMore && <div className="item-picker__more">{t('orRefineSearch')}</div>}
+      </div>
+    </div>
   );
 }
 
-function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onSupplierAdded, lang, isAdmin, onClose, onSave }) {
+function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, isAdmin, onClose, onSave }) {
   const { t } = useLanguage();
   const today = new Date().toISOString().split('T')[0];
   const [showSupplierModal, setShowSupplierModal] = useState(false);
-  const [previewImage, setPreviewImage] = useState(null);
 
-  // Build super-categories and category maps from items list
-  const superCatMap = {};
-  items.forEach(it => {
-    const sc = it.superCategory || 'autre';
-    if (!superCatMap[sc]) superCatMap[sc] = { key: sc, label: sc, categories: {} };
-    const catId = it.categoryId?.id || it.categoryId?._id;
-    if (catId && it.categoryId) {
-      superCatMap[sc].categories[catId] = {
-        id: catId,
-        name: it.categoryId.name?.[lang] || it.categoryId.name?.fr || catId,
-        color: it.categoryId.color,
-      };
-    }
-  });
-  const superCats = Object.values(superCatMap);
+  // Super-categories / categories for the per-line filters (small lists, loaded once)
+  const [superCats, setSuperCats] = useState([]);
+  const [categories, setCategories] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    Promise.all([axios.get(`${API_URL}/super-categories`), axios.get(`${API_URL}/categories`)])
+      .then(([sc, cat]) => { if (alive) { setSuperCats(sc.data || []); setCategories(cat.data || []); } })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const [form, setForm] = useState(order ? {
     reference: order.reference || '',
@@ -1172,6 +1240,7 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
     lines: (order.lines || []).map(l => ({
       _id: l._id || l.id,
       itemId: l.itemId?.id || l.itemId?._id || l.itemId,
+      item: l.itemId && typeof l.itemId === 'object' ? l.itemId : null, // for display only
       quantityOrdered: l.quantityOrdered,
       unitPrice: l.unitPrice || 0,
       note: l.note || '',
@@ -1184,83 +1253,33 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
 
   const isLocked = order && order.status !== 'brouillon'; // admin-only edit beyond draft
 
-  // Per-line search/filter state — pre-populate one entry per existing line when editing
-  const [lineFilters, setLineFilters] = useState(
-    () => (order?.lines || []).map(() => ({ search: '', superCat: '', category: '' }))
-  );
-
   const addLine = () => {
-    setForm(f => ({ ...f, lines: [...f.lines, { itemId: items[0]?.id || '', quantityOrdered: 1, unitPrice: 0, note: '' }] }));
-    setLineFilters(f => [...f, { search: '', superCat: '', category: '' }]);
+    setForm(f => ({ ...f, lines: [...f.lines, { itemId: '', item: null, quantityOrdered: 1, unitPrice: 0, note: '' }] }));
   };
 
   const removeLine = (idx) => {
     setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }));
-    setLineFilters(f => f.filter((_, i) => i !== idx));
   };
 
   const updateLine = (idx, field, val) =>
     setForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, [field]: val } : l) }));
 
-  const updateLineFilter = (idx, field, val) => {
-    setLineFilters(f => f.map((lf, i) => i === idx ? { ...lf, [field]: val } : lf));
+  const pickItem = (idx, item) =>
+    setForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, itemId: item ? item.id : '', item } : l) }));
 
-    // Keep the selected article in sync with what the dropdown shows: if the current article is no
-    // longer in the filtered list, select the first match (a <select> whose value is not among its
-    // options DISPLAYS the first option but keeps the old value → the wrong article was saved)
-    if (field === 'search' || field === 'superCat' || field === 'category') {
-      const nextFilters = lineFilters.map((lf, i) => i === idx ? { ...lf, [field]: val } : lf);
-      const lf = nextFilters[idx];
-      const matches = items.filter(it => {
-        if (lf.superCat && (it.superCategory || 'autre') !== lf.superCat) return false;
-        if (lf.category) {
-          const catId = it.categoryId?.id || it.categoryId?._id;
-          if (catId !== lf.category) return false;
-        }
-        if (lf.search) {
-          const tokens = lf.search.toLowerCase().split(/\s+/).filter(Boolean);
-          const name = (it.designation?.[lang] || it.designation?.fr || '').toLowerCase();
-          const code = (it.codeInterne || '').toLowerCase();
-          const supplierCodes = (it.supplierCodes || []).map(sc => (sc.code || '').toLowerCase()).join(' ');
-          if (!tokens.every(tok => name.includes(tok) || code.includes(tok) || supplierCodes.includes(tok))) return false;
-        }
-        return true;
-      });
-      const currentId = String(form.lines[idx]?.itemId || '');
-      if (matches.length > 0 && !matches.some(m => String(m.id) === currentId)) {
-        updateLine(idx, 'itemId', matches[0].id);
-      }
-    }
-  };
-  const getFilteredItems = (idx) => {
-    const lf = lineFilters[idx] || { search: '', superCat: '', category: '' };
-    return items.filter(it => {
-      if (lf.superCat && (it.superCategory || 'autre') !== lf.superCat) return false;
-      if (lf.category) {
-        const catId = it.categoryId?.id || it.categoryId?._id;
-        if (catId !== lf.category) return false;
-      }
-      if (lf.search) {
-        const tokens = lf.search.toLowerCase().split(/\s+/).filter(Boolean);
-        const name = (it.designation?.[lang] || it.designation?.fr || '').toLowerCase();
-        const code = (it.codeInterne || '').toLowerCase();
-        const supplierCodes = (it.supplierCodes || []).map(sc => (sc.code || '').toLowerCase()).join(' ');
-        if (!tokens.every(tok => name.includes(tok) || code.includes(tok) || supplierCodes.includes(tok))) return false;
-      }
-      return true;
-    });
-  };
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.lines.length === 0) { await dialog.alert({ variant: 'warning', message: t('orAddOneLine') }); return; }
-    const missing = form.lines.findIndex(l => !l.itemId || !items.some(it => String(it.id) === String(l.itemId)));
-    if (itemsLoaded && missing !== -1) { await dialog.alert({ variant: 'warning', message: t('orLineChooseItem', { n: missing + 1 }) }); return; }
+    const missing = form.lines.findIndex(l => !l.itemId);
+    if (missing !== -1) { await dialog.alert({ variant: 'warning', message: t('orLineChooseItem', { n: missing + 1 }) }); return; }
     if (form.categories.length === 0) { await dialog.alert({ variant: 'warning', message: t('orSelectOneCategory') }); return; }
+    // `item` is only kept for display in the form
+    const payload = { ...form, lines: form.lines.map(({ item, ...l }) => l) };
     try {
       if (order) {
-        await axios.put(`${API_URL}/orders/${order.id}`, form);
+        await axios.put(`${API_URL}/orders/${order.id}`, payload);
       } else {
-        await axios.post(`${API_URL}/orders`, form);
+        await axios.post(`${API_URL}/orders`, payload);
       }
       onSave();
     } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
@@ -1272,7 +1291,7 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
         <h2>{order ? t('orEditOrder', { name: order.number || t('orTheDraft') }) : t('orderNew')}</h2>
         {isLocked && (
           <div className="order-detail-notes">
-            {t('orAlreadySentWarn')}
+            <AlertTriangle size={14} style={{ marginRight: 6 }} />{t('orAlreadySentWarn')}
           </div>
         )}
         <form onSubmit={handleSubmit}>
@@ -1338,7 +1357,7 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
               />
               {isLocked && isAdmin && (
                 <p className="or-field-hint or-field-hint--warn">
-                  {t('orBcNumberAdminWarn')}
+                  <AlertTriangle size={13} style={{ marginRight: 5 }} />{t('orBcNumberAdminWarn')}
                 </p>
               )}
             </div>
@@ -1376,8 +1395,8 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
           <div className="order-lines-section">
             <div className="order-lines-head">
               <h3>{t('orOrderedItems')}</h3>
-              <button type="button" className="btn-add-line" onClick={addLine} disabled={!itemsLoaded}>
-                {itemsLoaded ? t('orAddLine') : t('orLoadingItems')}
+              <button type="button" className="btn-add-line" onClick={addLine}>
+                {t('orAddLine')}
               </button>
             </div>
 
@@ -1388,86 +1407,16 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
             )}
 
             {form.lines.map((line, idx) => {
-              const lf = lineFilters[idx] || { search: '', superCat: '', category: '' };
-              const filteredForLine = getFilteredItems(idx);
-              const selectedItem = items.find(it => it.id === line.itemId || it._id === line.itemId);
-              const scCategories = lf.superCat ? Object.values(superCatMap[lf.superCat]?.categories || {}) : [];
-
               return (
                 <div key={idx} className="order-line-form order-line-form--rich">
-                  <div className="order-line-filters">
-                    <select
-                      className="line-filter-select"
-                      value={lf.superCat}
-                      onChange={e => updateLineFilter(idx, 'superCat', e.target.value)}
-                    >
-                      <option value="">{t('orAllSuperCats')}</option>
-                      {superCats.map(sc => (
-                        <option key={sc.key} value={sc.key}>{sc.label}</option>
-                      ))}
-                    </select>
-
-                    {scCategories.length > 0 && (
-                      <select
-                        className="line-filter-select"
-                        value={lf.category}
-                        onChange={e => updateLineFilter(idx, 'category', e.target.value)}
-                      >
-                        <option value="">{t('superCatAll')}</option>
-                        {scCategories.map(cat => (
-                          <option key={cat.id} value={cat.id}>{cat.name}</option>
-                        ))}
-                      </select>
-                    )}
-
-                    <input
-                      className="line-filter-search"
-                      type="text"
-                      placeholder={t('orSearchItemPlaceholder')}
-                      value={lf.search}
-                      onChange={e => updateLineFilter(idx, 'search', e.target.value)}
-                    />
-                  </div>
-
                   <div className="order-line-main">
-                    <div className="line-item-selector">
-                      {selectedItem?.image && (
-                        <button
-                          type="button"
-                          className="line-item-preview-btn"
-                          onClick={() => setPreviewImage({ src: selectedItem.image, alt: selectedItem.designation?.[lang] || '' })}
-                        >
-                          <img loading="lazy" decoding="async" className="line-item-preview" src={selectedItem.image} alt="" />
-                          <span className="line-item-zoom"><ZoomIn size={16} strokeWidth={2} /></span>
-                        </button>
-                      )}
-                      {!selectedItem?.image && (
-                        <div className="line-item-preview line-item-preview--placeholder"><Package size={16} /></div>
-                      )}
-                      <div className="form-group">
-                        <label>{t('orArticle')}</label>
-                        <select
-                          value={line.itemId}
-                          onChange={e => updateLine(idx, 'itemId', e.target.value)}
-                        >
-                          {/* The saved article is always shown, even when the search hides it,
-                              so what is displayed is always what will be saved */}
-                          {selectedItem && !filteredForLine.some(it => String(it.id) === String(selectedItem.id)) && (
-                            <option value={selectedItem.id}>
-                              {selectedItem.codeInterne ? `[${selectedItem.codeInterne}] ` : ''}{selectedItem.designation?.[lang] || selectedItem.designation?.fr} {t('orSelected')}
-                            </option>
-                          )}
-                          {!selectedItem && (
-                            <option value="">{filteredForLine.length === 0 ? t('orNoItemFound') : t('orChooseItem')}</option>
-                          )}
-                          {filteredForLine.map(it => (
-                            <option key={it.id} value={it.id}>
-                              {it.codeInterne ? `[${it.codeInterne}] ` : ''}{it.designation?.[lang] || it.designation?.fr}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
+                    <ItemPicker
+                      item={line.item}
+                      lang={lang}
+                      superCats={superCats}
+                      categories={categories}
+                      onPick={(it) => pickItem(idx, it)}
+                    />
 
                     <div className="form-group order-line-qty">
                       <label>{t('orQty')}</label>
@@ -1490,7 +1439,7 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
                       />
                     </div>
 
-                    <button type="button" className="btn-remove-line" onClick={() => removeLine(idx)}>×</button>
+                    <button type="button" className="btn-remove-line" onClick={() => removeLine(idx)}><X size={15} /></button>
                   </div>
 
                   <div className="form-group order-line-note">
@@ -1519,14 +1468,6 @@ function OrderForm({ order, items, itemsLoaded = true, companies, suppliers, onS
           <SupplierModal
             onClose={() => setShowSupplierModal(false)}
             onSaved={(s) => { onSupplierAdded(s); setForm(f => ({ ...f, supplierId: s.id })); setShowSupplierModal(false); }}
-          />
-        )}
-
-        {previewImage && (
-          <ImagePreviewModal
-            src={previewImage.src}
-            alt={previewImage.alt}
-            onClose={() => setPreviewImage(null)}
           />
         )}
       </div>
@@ -1620,7 +1561,7 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
                 <tr key={req.id || req._id} className={`pr-row pr-row--${req.status}`}>
                   <td>
                     {req.itemImage
-                      ? <ZoomableImg src={req.itemImage} alt={req.itemName} className="pr-img" />
+                      ? <img loading="lazy" decoding="async" src={req.itemImage} alt={req.itemName} className="pr-img" />
                       : <span className="pr-faint">—</span>
                     }
                   </td>

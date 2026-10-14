@@ -54,7 +54,7 @@
 /* Results */
 .ubp__results {
   border: 1px solid var(--border); border-radius: var(--r-xl); overflow: hidden; background: var(--surface);
-  box-shadow: var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03);
+  box-shadow: var(--sh-sm), inset 0 1px 0 var(--hairline);
 }
 .ubp__results-header { padding: 9px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-3); }
 .ubp__result-row {
@@ -91,7 +91,7 @@
 .ubp__no-results { text-align: center; color: var(--text-3); font-size: 13px; padding: 16px; }
 
 /* Used section */
-.ubp__used-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-xl); overflow: hidden; box-shadow: var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03); }
+.ubp__used-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-xl); overflow: hidden; box-shadow: var(--sh-sm), inset 0 1px 0 var(--hairline); }
 .ubp__used-header {
   display: flex; align-items: center; gap: 10px; padding: 12px 16px;
   border-bottom: 1px solid var(--border); background: transparent;
@@ -288,12 +288,12 @@
 .ubp-modal__qty-chip {
   display: inline-block;
   padding: 2px 10px; border-radius: 10px;
-  background: rgba(248,113,113,.12); color: #fca5a5;
+  background: rgba(248,113,113,.12); color: var(--ink-red);
   font-size: 12px; font-weight: 700;
   border: 1px solid rgba(248,113,113,.3);
 }
 .ubp-modal__qty-chip--return {
-  background: rgba(74,222,128,.12); color: #86efac;
+  background: rgba(74,222,128,.12); color: var(--ink-green);
   border-color: rgba(74,222,128,.3);
 }
 .ubp-modal__row--return td {
@@ -302,7 +302,7 @@
 .ubp-modal__return-tag {
   display: inline-block; margin-left: 6px;
   font-size: 10px; font-weight: 700; padding: 1px 6px;
-  border-radius: 999px; background: rgba(74,222,128,.12); color: #86efac;
+  border-radius: 999px; background: rgba(74,222,128,.12); color: var(--ink-green);
   border: 1px solid rgba(74,222,128,.3); vertical-align: middle;
 }
 .ubp-modal__running {

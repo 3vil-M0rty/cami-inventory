@@ -21,7 +21,7 @@
   border-radius: var(--r-xl);
   border: 1px solid var(--border);
   margin-bottom: 20px;
-  box-shadow: var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03);
+  box-shadow: var(--sh-sm), inset 0 1px 0 var(--hairline);
 }
 @media (min-width: 769px) {
   .projects-page__header {
@@ -117,7 +117,7 @@
   background: var(--surface);
   border-radius: var(--r-xl);
   border: 1px solid var(--border);
-  box-shadow: var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03);
+  box-shadow: var(--sh-sm), inset 0 1px 0 var(--hairline);
   overflow: hidden;
   cursor: pointer;
   transition: box-shadow var(--t), transform var(--t), border-color var(--t);
@@ -178,7 +178,7 @@
 
 /* Loading / empty / error states inside the projects page */
 .projects-page .loading,
-.projects-page .no-items { border-radius: var(--r-xl); box-shadow: var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03); }
+.projects-page .no-items { border-radius: var(--r-xl); box-shadow: var(--sh-sm), inset 0 1px 0 var(--hairline); }
 .projects-page .no-items button {
   margin-top: 4px; height: 32px; padding: 0 14px;
   background: var(--surface-2); color: var(--text); border: 1px solid var(--border-2);
@@ -421,7 +421,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  box-shadow: var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03);
+  box-shadow: var(--sh-sm), inset 0 1px 0 var(--hairline);
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
@@ -447,7 +447,7 @@
   color: var(--text);
   background: var(--surface-3);
   border-color: var(--border-2);
-  box-shadow: var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.04);
+  box-shadow: var(--sh-sm), inset 0 1px 0 var(--hairline);
 }
 
 .category-page__content {
@@ -465,11 +465,11 @@
   font-weight: 700;
   border: 1px solid transparent;
 }
-.laquage-status-pill--draft             { background: rgba(161,161,170,.12); color: #d4d4d8; border-color: rgba(161,161,170,.3); }
-.laquage-status-pill--sent_to_laquage   { background: rgba(251,191,36,.12);  color: #fcd34d; border-color: rgba(251,191,36,.3); }
-.laquage-status-pill--received_laquage  { background: rgba(96,165,250,.12);  color: #93c5fd; border-color: rgba(96,165,250,.3); }
-.laquage-status-pill--returned_to_coord { background: rgba(167,139,250,.12); color: #c4b5fd; border-color: rgba(167,139,250,.3); }
-.laquage-status-pill--received_coord    { background: rgba(74,222,128,.12);  color: #86efac; border-color: rgba(74,222,128,.3); }
+.laquage-status-pill--draft             { background: rgba(161,161,170,.12); color: var(--ink-grey); border-color: rgba(161,161,170,.3); }
+.laquage-status-pill--sent_to_laquage   { background: rgba(251,191,36,.12);  color: var(--ink-amber); border-color: rgba(251,191,36,.3); }
+.laquage-status-pill--received_laquage  { background: rgba(96,165,250,.12);  color: var(--ink-blue); border-color: rgba(96,165,250,.3); }
+.laquage-status-pill--returned_to_coord { background: rgba(167,139,250,.12); color: var(--ink-violet); border-color: rgba(167,139,250,.3); }
+.laquage-status-pill--received_coord    { background: rgba(74,222,128,.12);  color: var(--ink-green); border-color: rgba(74,222,128,.3); }
 
 @media (max-width: 768px) {
   .projects-page-shell__categories,
@@ -483,4 +483,16 @@
   .category-page__tabs { padding-top: 12px; }
   .category-page__seg { display: flex; width: 100%; }
   .category-page__tab { flex: 1; padding: 0 10px; }
+}
+
+/* Laquage marker on the project card: bars sent to laquage + number of lots */
+.project-card__laq {
+  display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+  margin: -4px 0 12px; padding: 3px 9px 3px 7px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; color: var(--lq-fg);
+  background: var(--lq-bg); border: 1px solid var(--lq-bd);
+}
+.project-card__laq-lots {
+  padding-left: 7px; margin-left: 1px; border-left: 1px solid var(--lq-bd);
+  font-variant-numeric: tabular-nums; font-weight: 800;
 }

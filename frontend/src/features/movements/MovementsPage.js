@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useLanguage } from '../../context/LanguageContext';
 import { dialog } from '../../components/common/dialog';
 import './MovementsPage.css';
-import { PackageOpen, ChartNetwork, LineChart, X, RotateCw, Trash2, Inbox } from 'lucide-react';
+import { PackageOpen, ChartNetwork, LineChart, X, RotateCw, Trash2, Inbox, ArrowUp, ArrowDown, ArrowDownLeft, ArrowUpRight, Cog, ArrowRight } from 'lucide-react';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -19,22 +19,22 @@ function fmt(val) {
 }
 
 const TYPE_META = {
-  entree: { color: '#4ade80', bg: 'rgba(74,222,128,.10)', icon: '↑' },
-  sortie: { color: '#f87171', bg: 'rgba(248,113,113,.10)', icon: '↓' },
-  project_use: { color: '#fbbf24', bg: 'rgba(251,191,36,.10)', icon: '↙' },
-  project_return: { color: '#60a5fa', bg: 'rgba(96,165,250,.10)', icon: '↗' },
-  order_reception: { color: '#e879f9', bg: 'rgba(232,121,249,.10)', icon: '↑' },
+  entree: { color: '#4ade80', bg: 'rgba(74,222,128,.10)', icon: ArrowUp },
+  sortie: { color: '#f87171', bg: 'rgba(248,113,113,.10)', icon: ArrowDown },
+  project_use: { color: '#fbbf24', bg: 'rgba(251,191,36,.10)', icon: ArrowDownLeft },
+  project_return: { color: '#60a5fa', bg: 'rgba(96,165,250,.10)', icon: ArrowUpRight },
+  order_reception: { color: '#e879f9', bg: 'rgba(232,121,249,.10)', icon: ArrowUp },
 };
 
 const PAGE_SIZE = 200;
 
 // label = translation key
 const SUPER_CATS = [
-  { key: 'all', icon: '', label: 'superCatAll' },
-  { key: 'aluminium', icon: '🔩 ', label: 'superCatAluminium' },
-  { key: 'verre', icon: '💎 ', label: 'superCatVerre' },
-  { key: 'accessoires', icon: '🔧 ', label: 'superCatAccessoires' },
-  { key: 'poudre', icon: '🎨 ', label: 'superCatPoudre' },
+  { key: 'all', label: 'superCatAll' },
+  { key: 'aluminium', label: 'superCatAluminium' },
+  { key: 'verre', label: 'superCatVerre' },
+  { key: 'accessoires', label: 'superCatAccessoires' },
+  { key: 'poudre', label: 'superCatPoudre' },
 ];
 
 const GROUP_OPTIONS = [
@@ -335,9 +335,9 @@ export default function MovementsPage() {
     manual_out: t('mvManualOut'),
   };
   const TABLE_TYPE_META = {
-    chassis_assignment: { color: '#fbbf24', bg: 'rgba(251,191,36,.10)', icon: '⚙' },
-    manual_in: { color: '#4ade80', bg: 'rgba(74,222,128,.10)', icon: '↑' },
-    manual_out: { color: '#f87171', bg: 'rgba(248,113,113,.10)', icon: '↓' },
+    chassis_assignment: { color: '#fbbf24', bg: 'rgba(251,191,36,.10)', icon: Cog },
+    manual_in: { color: '#4ade80', bg: 'rgba(74,222,128,.10)', icon: ArrowUp },
+    manual_out: { color: '#f87171', bg: 'rgba(248,113,113,.10)', icon: ArrowDown },
   };
 
   const filteredTableMovements = tableMovements.filter(m => {
@@ -377,11 +377,11 @@ export default function MovementsPage() {
                   ↩ Restaurer ({hiddenCount})
                 </button>
               )} */}
-              <button className="mv-refresh-btn" onClick={load}><RotateCw />{t('refresh') || 'Actualiser'}</button>
+              <button className="mv-refresh-btn" onClick={load}><RotateCw />{t('refresh')}</button>
             </>
           )}
           {mainTab === 'tables' && (
-            <button className="mv-refresh-btn" onClick={loadTableMovements}><RotateCw />{t('refresh') || 'Actualiser'}</button>
+            <button className="mv-refresh-btn" onClick={loadTableMovements}><RotateCw />{t('refresh')}</button>
           )}
         </div>
       </div>
@@ -411,7 +411,7 @@ export default function MovementsPage() {
         <div className="mv-summary">
           {Object.entries(TYPE_META).map(([type, meta]) => (
             <div key={type} className="mv-chip" style={{ '--mv-c': meta.color, '--mv-bg': meta.bg }}>
-              <span className="mv-chip__icon">{meta.icon}</span>
+              <span className="mv-chip__icon">{meta.icon && <meta.icon size={13} strokeWidth={2.4} />}</span>
               <span className="mv-chip__label">{TYPE_LABELS[type]}</span>
               <span className="mv-chip__val">
                 {fmt(totals[type] || 0)}
@@ -429,7 +429,7 @@ export default function MovementsPage() {
             onChange={e => setSuperCat(e.target.value)}
           >
             {SUPER_CATS.map(sc => (
-              <option key={sc.key} value={sc.key}>{sc.icon}{t(sc.label)}</option>
+              <option key={sc.key} value={sc.key}>{t(sc.label)}</option>
             ))}
           </select>
 
@@ -447,7 +447,7 @@ export default function MovementsPage() {
 
           <div className="mv-dates">
             <input type="date" className="mv-date-input" value={fromDate} onChange={e => setFromDate(e.target.value)} />
-            <span className="mv-date-sep">→</span>
+            <span className="mv-date-sep"><ArrowRight size={14} /></span>
             <input type="date" className="mv-date-input" value={toDate} onChange={e => setToDate(e.target.value)} />
           </div>
 
@@ -509,7 +509,7 @@ export default function MovementsPage() {
                         : undefined}
                       onClick={() => toggleType(type)}
                     >
-                      {meta.icon} {TYPE_LABELS[type]}
+                      {meta.icon && <meta.icon size={13} strokeWidth={2.4} />} {TYPE_LABELS[type]}
                     </button>
                   ))}
                 </div>
@@ -573,7 +573,7 @@ export default function MovementsPage() {
               </thead>
               <tbody>
                 {filtered.map((m, i) => {
-                  const meta = TYPE_META[m.type] || { color: '#a1a1aa', bg: 'rgba(161,161,170,.10)', icon: '•' };
+                  const meta = TYPE_META[m.type] || { color: '#a1a1aa', bg: 'rgba(161,161,170,.10)', icon: null };
                   const designation = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '—';
                   const sc = m.itemId?.superCategory || null;
                   const scMeta = SUPER_CATS.find(s => s.key === sc);
@@ -589,7 +589,7 @@ export default function MovementsPage() {
                       <td className="mv-col-date">{fmtDate(m.createdAt)}</td>
                       <td>
                         <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '4d' }}>
-                          {meta.icon} {TYPE_LABELS[m.type] || m.type}
+                          {meta.icon && <meta.icon size={13} strokeWidth={2.4} />} {TYPE_LABELS[m.type] || m.type}
                         </span>
                       </td>
                       <td>
@@ -627,7 +627,7 @@ export default function MovementsPage() {
             {hasMore && (
               <div className="mv-load-more">
                 <button className="mv-refresh-btn" onClick={loadMore} disabled={loadingMore}>
-                  {loadingMore ? t('loadingShort') : t('mvLoadMore', { n: totalCount - movements.length })}
+                  {loadingMore ? t('loadingShort') : <><ArrowDown size={14} /> {t('mvLoadMore', { n: totalCount - movements.length })}</>}
                 </button>
               </div>
             )}
@@ -637,7 +637,7 @@ export default function MovementsPage() {
         {/* Detail modal */}
         {selectedMovement && (() => {
           const m = selectedMovement;
-          const meta = TYPE_META[m.type] || { color: '#a1a1aa', bg: 'rgba(161,161,170,.10)', icon: '•' };
+          const meta = TYPE_META[m.type] || { color: '#a1a1aa', bg: 'rgba(161,161,170,.10)', icon: null };
           const designation = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '—';
           const sc = m.itemId?.superCategory || null;
           const scMeta = SUPER_CATS.find(s => s.key === sc);
@@ -648,7 +648,7 @@ export default function MovementsPage() {
               <div className="mv-modal" onClick={e => e.stopPropagation()}>
                 <div className="mv-modal-header">
                   <span className="mv-type-badge mv-type-badge--lg" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '4d' }}>
-                    {meta.icon} {TYPE_LABELS[m.type] || m.type}
+                    {meta.icon && <meta.icon size={13} strokeWidth={2.4} />} {TYPE_LABELS[m.type] || m.type}
                   </span>
                   <button className="mv-modal-close" onClick={() => setSelectedMovement(null)} aria-label={t('close')}><X size={16} /></button>
                 </div>
@@ -735,7 +735,7 @@ export default function MovementsPage() {
                 .reduce((s, m) => s + (m.quantity || 0), 0);
               return (
                 <div key={type} className="mv-chip" style={{ '--mv-c': meta.color, '--mv-bg': meta.bg }}>
-                  <span className="mv-chip__icon">{meta.icon}</span>
+                  <span className="mv-chip__icon">{meta.icon && <meta.icon size={13} strokeWidth={2.4} />}</span>
                   <span className="mv-chip__label">{TABLE_TYPE_LABELS[type]}</span>
                   <span className="mv-chip__val">{fmt(total)}</span>
                 </div>
@@ -789,14 +789,14 @@ export default function MovementsPage() {
                 </thead>
                 <tbody>
                   {filteredTableMovements.map((m, i) => {
-                    const meta = TABLE_TYPE_META[m.type] || { color: '#a1a1aa', bg: 'rgba(161,161,170,.10)', icon: '•' };
+                    const meta = TABLE_TYPE_META[m.type] || { color: '#a1a1aa', bg: 'rgba(161,161,170,.10)', icon: null };
                     const isOut = m.type === 'chassis_assignment' || m.type === 'manual_out';
                     return (
                       <tr key={m._id || i}>
                         <td className="mv-col-date">{fmtDate(m.date || m.createdAt)}</td>
                         <td>
                           <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '4d' }}>
-                            {meta.icon} {TABLE_TYPE_LABELS[m.type] || m.type}
+                            {meta.icon && <meta.icon size={13} strokeWidth={2.4} />} {TABLE_TYPE_LABELS[m.type] || m.type}
                           </span>
                         </td>
                         <td><strong>{m.tableName || '—'}</strong></td>

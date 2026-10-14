@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
     HardHat, Users, Calendar, Package, Plus, Edit2, Trash2,
     X, Check, Layers, ArrowRight, BarChart2, Wrench,
-    ClipboardList, Box, FileText, ChevronLeft, StepBack, Camera, Image, ExternalLink
-} from 'lucide-react';
+    ClipboardList, Box, FileText, ChevronLeft, StepBack, Camera, Image, ExternalLink, CornerDownRight, ArrowDown, LayoutGrid, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { dialog } from '../../components/common/dialog';
@@ -151,9 +150,9 @@ function PhotoLightbox({ photos, onClose, onDelete }) {
                 </div>
                 {photos.length > 1 && (
                     <div className="ch-lightbox-nav">
-                        <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}>‹</button>
+                        <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}><ChevronLeft size={18} /></button>
                         <span>{idx + 1} / {photos.length}</span>
-                        <button onClick={() => setIdx(i => Math.min(photos.length - 1, i + 1))} disabled={idx === photos.length - 1}>›</button>
+                        <button onClick={() => setIdx(i => Math.min(photos.length - 1, i + 1))} disabled={idx === photos.length - 1}><ChevronRight size={18} /></button>
                     </div>
                 )}
                 <a href={photos[idx].url} target="_blank" rel="noopener noreferrer" className="ch-lightbox-open">
@@ -839,7 +838,7 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                                     <tr key={`${row.chId}-${row.unitIndex}-head`} className="ch-ct-row ch-ct-row--head">
                                         <td>
                                             <strong>{row.label}</strong>
-                                            <span className="ch-ct-composite-badge" title={t('chComposite')}>⊞</span>
+                                            <span className="ch-ct-composite-badge" title={t('chComposite')}><LayoutGrid size={12} /></span>
                                             {isPartial && (
                                                 <span className="ch-ct-partial-badge" title={t('chDeliveredOf', { a: row.deliveredCount, b: row.totalComps })}>
                                                     {t('chDeliveredShort', { a: row.deliveredCount, b: row.totalComps })}
@@ -855,7 +854,7 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                                             <span className="ch-state-badge--derived" title={t('chDerived')}>
                                                 <span className="ch-state-badge-dot" style={{ background: derivedState?.color || '#6b7280' }} />
                                                 {derivedState?.label || '—'}
-                                                <span className="ch-state-badge-hint">{t('chInherited')}</span>
+                                                <span className="ch-state-badge-hint"><ArrowDown size={11} /> {t('chInherited')}</span>
                                             </span>
                                         </td>
                                         <td className="ch-ct-photo-td">
@@ -877,12 +876,12 @@ function ChantierProjectBlock({ project, chantier, chantierStates, defaultState,
                                 const compL = comp.largeur || row.ch.largeur;
                                 const compH = comp.hauteur || row.ch.hauteur;
                                 const compM2 = m2(compL, compH);
-                                const roleLabel = comp.role === 'dormant' ? 'Dormant' : 'Vantail';
+                                const roleLabel = comp.role === 'dormant' ? t('pdDormant') : t('pdVantailWord');
                                 const compState = getComponentState(row.chId, row.unitIndex, row.ci);
                                 const compCameraId = `${row.chId}__comp__${row.ci}__${row.unitIndex}`;
                                 return (
                                     <tr key={`${row.chId}-${row.unitIndex}-c${row.ci}`} className="ch-ct-row ch-ct-row--comp">
-                                        <td className="ch-ct-comp-indent">↳ <strong>{row.label}</strong></td>
+                                        <td className="ch-ct-comp-indent"><CornerDownRight size={13} style={{ color: 'var(--text-4)', marginRight: 4 }} /><strong>{row.label}</strong></td>
                                         <td className="ch-ct-comp-role">{roleLabel}</td>
                                         <td className="ch-ct-num">{compL || '—'}</td>
                                         <td className="ch-ct-num">{compH || '—'}</td>
@@ -1225,7 +1224,7 @@ function ProjectSearchPicker({ projects, selectedIds, onChange, loading }) {
                             <span className="ch-proj-tag__dot" style={{ background: p.ralColor || '#ccc' }} />
                             <span className="ch-proj-tag__name">{p.name}</span>
                             <span className="ch-proj-tag__ref">{p.reference}</span>
-                            <button type="button" className="ch-proj-tag__rm" onClick={e => remove(p.id, e)}>×</button>
+                            <button type="button" className="ch-proj-tag__rm" onClick={e => remove(p.id, e)}><X size={12} /></button>
                         </span>
                     ))}
                 </div>
@@ -1238,7 +1237,7 @@ function ProjectSearchPicker({ projects, selectedIds, onChange, loading }) {
                     onChange={e => { setQuery(e.target.value); setOpen(true); }}
                     onFocus={() => setOpen(true)}
                 />
-                {query && <button type="button" className="ch-proj-picker__clear" onClick={() => setQuery('')}>×</button>}
+                {query && <button type="button" className="ch-proj-picker__clear" onClick={() => setQuery('')}><X size={14} /></button>}
             </div>
             {open && !loading && (
                 <div className="ch-proj-picker__dropdown">

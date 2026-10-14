@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import {
   Package, ShoppingCart, HardHat, Users, FileText,
   BarChart2, TrendingUp, Settings, Factory,
-  Lock, LogOut, ChevronDown, Menu, X, Building2, Shovel
+  Lock, LogOut, ChevronDown, Menu, X, Building2, Shovel, Sun, Moon
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
@@ -34,6 +34,14 @@ const Header = ({ activePage, onNavigate }) => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [theme, setTheme] = useState(() => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'));
+  const toggleTheme = () => {
+    const next = theme === 'light' ? 'dark' : 'light';
+    setTheme(next);
+    if (next === 'light') document.documentElement.dataset.theme = 'light';
+    else delete document.documentElement.dataset.theme;
+    try { localStorage.setItem('app_theme', next); } catch (e) { }
+  };
 
   const userMenuRef = useRef(null);
 
@@ -94,6 +102,13 @@ const Header = ({ activePage, onNavigate }) => {
     </div>
   );
 
+  const themeLabel = theme === 'light' ? t('themeDark') : t('themeLight');
+  const themeBtn = (
+    <button type="button" className="hdr__theme-btn" onClick={toggleTheme} title={themeLabel} aria-label={themeLabel}>
+      {theme === 'light' ? <Moon size={15} /> : <Sun size={15} />}
+    </button>
+  );
+
   const companyPills = (
     <>
       <button
@@ -141,6 +156,7 @@ const Header = ({ activePage, onNavigate }) => {
           <div className="hdr__controls desktop-only">
             <div className="hdr__companies">{companyPills}</div>
             {langPicker}
+            {themeBtn}
             <FourStatus />
             <NotifBell />
 
@@ -226,7 +242,7 @@ const Header = ({ activePage, onNavigate }) => {
             <div className="hdr__mobile-footer">
               {/* Language switcher — moved here from the crowded top bar */}
               <div className="hdr__mobile-section">
-                <div className="hdr__mobile-label">{t('language') || 'Langue'}</div>
+                <div className="hdr__mobile-label">{t('language')}</div>
                 <div className="hdr__mobile-lang">
                   {Object.keys(languageLabels).map(code => (
                     <button key={code}
@@ -236,6 +252,13 @@ const Header = ({ activePage, onNavigate }) => {
                     </button>
                   ))}
                 </div>
+              </div>
+              <div className="hdr__mobile-section">
+                <div className="hdr__mobile-label">{t('themeTitle')}</div>
+                <button type="button" className="hdr__mobile-theme" onClick={toggleTheme}>
+                  {theme === 'light' ? <Moon size={15} /> : <Sun size={15} />}
+                  {themeLabel}
+                </button>
               </div>
               <div className="hdr__mobile-section hdr__mobile-user">
                 <span className="hdr__avatar hdr__avatar--lg">

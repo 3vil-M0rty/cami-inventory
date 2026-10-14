@@ -4,6 +4,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { fetchChassisTypes, ETAT_OPTIONS, STATIC_CHASSIS_TYPES } from './ChassisTypesConfig';
 import './ChassisForm.css';
 
+import { Copy, Package, ChevronDown, ChevronUp, X } from 'lucide-react';
 function buildComponents(typeObj, existing = []) {
   if (!typeObj?.composite) return [];
   const dormantEx = existing.find(c => c.role === 'dormant') || {};
@@ -51,7 +52,6 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
     largeur: chassis?.largeur ?? '',
     hauteur: chassis?.hauteur ?? '',
     etat: chassis?.etat || 'non_entame',
-    atla78: chassis?.atla78 ?? false,
     components: buildComponents(getTypeObj(initialType), chassis?.components || [])
   });
 
@@ -95,7 +95,6 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
       payload = {
         ...formData,
         keepAsOne,
-        atla78: !!(isComposite && formData.atla78),
         repere: first.repere || formData.repere,
         largeur: parseInt(first.largeur, 10) || 0,
         hauteur: parseInt(first.hauteur, 10) || 0,
@@ -115,7 +114,6 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
       payload = {
         ...formData,
         keepAsOne,
-        atla78: !!(isComposite && formData.atla78),
         quantity: qty,
         largeur: parseInt(formData.largeur, 10) || 0,
         hauteur: parseInt(formData.hauteur, 10) || 0,
@@ -143,36 +141,12 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
 
   const isComposite = getTypeObj(formData.type)?.composite;
 
-  // ── ATLA78: dormant = L × H, vantaux: Hv = H - 77, Lv = (L - 9) / n ──
-  const mainL = multiDim ? variants[0]?.largeur : formData.largeur;
-  const mainH = multiDim ? variants[0]?.hauteur : formData.hauteur;
-  useEffect(() => {
-    if (!formData.atla78 || !isComposite) return;
-    const L = parseFloat(mainL);
-    const H = parseFloat(mainH);
-    const hasL = Number.isFinite(L);
-    const hasH = Number.isFinite(H);
-    setFormData(prev => {
-      const n = prev.components.filter(c => c.role === 'vantail').length;
-      if (!n) return prev;
-      let changed = false;
-      const components = prev.components.map(c => {
-        const largeur = c.role === 'dormant' ? (hasL ? L : '') : (hasL ? Math.round((L - 9) / n) : '');
-        const hauteur = c.role === 'dormant' ? (hasH ? H : '') : (hasH ? H - 77 : '');
-        if (String(c.largeur) === String(largeur) && String(c.hauteur) === String(hauteur)) return c;
-        changed = true;
-        return { ...c, largeur, hauteur };
-      });
-      return changed ? { ...prev, components } : prev;
-    });
-  }, [formData.atla78, isComposite, mainL, mainH, formData.type, formData.components.length]);
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal chassis-form-modal" onClick={e => e.stopPropagation()}>
         <div className="chassis-form__header">
           <h2>{isEdit ? t('edit') : t('add')}</h2>
-          <button className="chassis-form__close" onClick={onClose}>×</button>
+          <button className="chassis-form__close" onClick={onClose}><X size={18} /></button>
         </div>
         <form onSubmit={handleSubmit} className="chassis-form">
 
@@ -310,7 +284,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
                               className="chassis-variant-remove"
                               onClick={() => removeVariant(idx)}
                               title={t('cfDeleteVariant')}
-                            >×</button>
+                            ><X size={14} /></button>
                           )}
                         </td>
                       </tr>
@@ -329,15 +303,6 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
           {isComposite && formData.components.length > 0 && (
             <div className="chassis-form__section chassis-form__section--composite">
               <label className="chassis-form__section-label">{t('componentsDimensions')}</label>
-              <label className="chassis-atla78" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                <input
-                  type="checkbox"
-                  checked={!!formData.atla78}
-                  onChange={e => set('atla78', e.target.checked)}
-                  style={{ width: 16, height: 16, accentColor: 'var(--600, #3b82f6)', cursor: 'pointer' }}
-                />
-                ATLA78
-              </label>
               <div className="composite-grid">
                 {formData.components.map((comp, idx) => (
                   <div key={idx} className="composite-card">
@@ -378,7 +343,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
                   onClick={() => setKeepAsOne(false)}
                   className={`chassis-mode-choice chassis-mode-choice--spread ${!keepAsOne ? 'chassis-mode-choice--active' : ''}`}
                 >
-                  📋 {t('cfSpread', { n: formData.quantity })}
+                  <Copy size={14} /> {t('cfSpread', { n: formData.quantity })}
                   <div className="chassis-mode-choice__hint">{t('cfSpreadHint')}</div>
                 </button>
                 <button
@@ -386,7 +351,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
                   onClick={() => setKeepAsOne(true)}
                   className={`chassis-mode-choice chassis-mode-choice--keep ${keepAsOne ? 'chassis-mode-choice--active' : ''}`}
                 >
-                  📦 {t('cfKeepOne', { n: formData.quantity })}
+                  <Package size={14} /> {t('cfKeepOne', { n: formData.quantity })}
                   <div className="chassis-mode-choice__hint">{t('cfKeepOneHint')}</div>
                 </button>
               </div>
@@ -444,7 +409,7 @@ function ChassisTypeSearch({ chassisTypes, value, lang, onChange }) {
         ) : (
           <span className="ct-search__placeholder">{t('cfSelectType')}</span>
         )}
-        <span className="ct-search__arrow">{open ? '▲' : '▼'}</span>
+        <span className="ct-search__arrow">{open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
       </div>
       {open && (
         <div className="ct-search__dropdown">

@@ -4,6 +4,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { dialog } from '../../components/common/dialog';
 import './AtelierTablesPage.css';
 
+import { ArrowUpRight, AlertTriangle, X } from 'lucide-react';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const DEFAULT_LAYOUT = [
@@ -359,7 +360,7 @@ function TableDetailPopup({ table, onClose }) {
             {workers.map((w, i) => (
               <span key={i} className="atp__worker-chip">
                 {w}
-                <button onClick={() => removeWorker(i)} className="atp__worker-rm">×</button>
+                <button onClick={() => removeWorker(i)} className="atp__worker-rm"><X size={13} /></button>
               </span>
             ))}
             <div className="atp__worker-add">
@@ -894,7 +895,7 @@ function AtelierTablesPage() {
           <span className="atp__info-badge">#{selectedTable.number}</span>
           <strong>{selectedTable.name}</strong>
           <span className="atp__info-hint">{t('atHint')}</span>
-          <button className="atp__info-open-btn" onClick={() => setPopupTable(selectedTable)}>{t('atOpen')}</button>
+          <button className="atp__info-open-btn" onClick={() => setPopupTable(selectedTable)}>{t('atOpen')} <ArrowUpRight size={13} /></button>
         </div>
       )}
 
@@ -910,12 +911,12 @@ function AtelierTablesPage() {
             <defs>
               <filter id="blur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="4" /></filter>
               <pattern id="floor-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <rect width="40" height="40" fill="#0e0e11" />
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.045)" strokeWidth="1" />
+                <rect width="40" height="40" style={{ fill: 'var(--surface)' }} />
+                <path d="M 40 0 L 0 0 0 40" fill="none" style={{ stroke: 'var(--grid-line)' }} strokeWidth="1" />
               </pattern>
               <pattern id="wall-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                <rect width="8" height="8" fill="#1c1c21" />
-                <line x1="0" y1="4" x2="8" y2="4" stroke="#2c2c33" strokeWidth="1.5" />
+                <rect width="8" height="8" style={{ fill: 'var(--surface-2)' }} />
+                <line x1="0" y1="4" x2="8" y2="4" style={{ stroke: 'var(--border-2)' }} strokeWidth="1.5" />
               </pattern>
             </defs>
             <rect className="atp__floor" x={0} y={0} width={CANVAS_W} height={CANVAS_H} fill="url(#floor-grid)" rx={4} />
@@ -923,10 +924,10 @@ function AtelierTablesPage() {
             <rect x={0} y={CANVAS_H - 16} width={CANVAS_W} height={16} fill="url(#wall-hatch)" />
             <rect x={0} y={0} width={16} height={CANVAS_H} fill="url(#wall-hatch)" />
             <rect x={CANVAS_W - 16} y={0} width={16} height={CANVAS_H} fill="url(#wall-hatch)" />
-            <rect x={16} y={16} width={CANVAS_W - 32} height={CANVAS_H - 32} fill="none" stroke="#34343b" strokeWidth="1" />
-            <rect x={CANVAS_W / 2 - 60} y={CANVAS_H - 17} width={120} height={18} fill="#0e0e11" />
-            <path d={`M ${CANVAS_W / 2 - 60} ${CANVAS_H - 16} A 60 60 0 0 1 ${CANVAS_W / 2} ${CANVAS_H - 76}`} fill="none" stroke="#3f3f46" strokeWidth="1" strokeDasharray="3 4" />
-            <line x1={CANVAS_W / 2} y1={CANVAS_H - 16} x2={CANVAS_W / 2} y2={CANVAS_H - 76} stroke="#3f3f46" strokeWidth="1" />
+            <rect x={16} y={16} width={CANVAS_W - 32} height={CANVAS_H - 32} fill="none" style={{ stroke: 'var(--border-2)' }} strokeWidth="1" />
+            <rect x={CANVAS_W / 2 - 60} y={CANVAS_H - 17} width={120} height={18} style={{ fill: 'var(--surface)' }} />
+            <path d={`M ${CANVAS_W / 2 - 60} ${CANVAS_H - 16} A 60 60 0 0 1 ${CANVAS_W / 2} ${CANVAS_H - 76}`} fill="none" style={{ stroke: 'var(--300)' }} strokeWidth="1" strokeDasharray="3 4" />
+            <line x1={CANVAS_W / 2} y1={CANVAS_H - 16} x2={CANVAS_W / 2} y2={CANVAS_H - 76} style={{ stroke: 'var(--300)' }} strokeWidth="1" />
             <text x={CANVAS_W / 2 + 30} y={CANVAS_H - 30} textAnchor="middle" className="atp__door-label">{t('atEntrance')}</text>
             {[1, 2, 3, 4].map(i => (
               <line key={`vr${i}`} x1={i * (CANVAS_W / 5)} y1={16} x2={i * (CANVAS_W / 5)} y2={CANVAS_H - 16}
@@ -974,8 +975,8 @@ function AtelierTablesPage() {
               <span className="atp__list-num">#{table.number}</span>
               <span className="atp__list-name">{table.name}</span>
               {(workloads[table.id] || 0) > 0 && <span className="atp__list-workload">{t('atChassisCount', { n: workloads[table.id] })}</span>}
-              {stockAlerts[table.id] && <span className="atp__list-alert">{t('atLowStock')}</span>}
-              <button className="atp__list-open-btn" onClick={e => { e.stopPropagation(); setPopupTable(table); }}>{t('atDetails')}</button>
+              {stockAlerts[table.id] && <span className="atp__list-alert"><AlertTriangle size={11} /> {t('atLowStock')}</span>}
+              <button className="atp__list-open-btn" onClick={e => { e.stopPropagation(); setPopupTable(table); }}>{t('atDetails')} <ArrowUpRight size={13} /></button>
             </div>
           ))}
           {tables.length === 0 && <div className="atp__list-empty">{t('atNoTable')}</div>}

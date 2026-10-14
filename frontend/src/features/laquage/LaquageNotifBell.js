@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import {
   Bell, Clock, X, CheckCircle2, AlertTriangle,
-  Send, RotateCcw, PackageCheck, Trash2, ShoppingCart, Package
-} from 'lucide-react';
+  Send, RotateCcw, PackageCheck, Trash2, ShoppingCart, Package, StickyNote } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { dialog } from '../../components/common/dialog';
@@ -83,7 +82,7 @@ function LotPill({ lotIndex }) {
   return (
     <span style={{
       fontSize: 9, fontWeight: 800, letterSpacing: '.04em',
-      background: 'rgba(129,140,248,.12)', color: '#a5b4fc',
+      background: 'rgba(129,140,248,.12)', color: 'var(--ink-indigo)',
       border: '1px solid rgba(129,140,248,.3)',
       borderRadius: 4, padding: '1px 5px', flexShrink: 0,
       display: 'inline-flex', alignItems: 'center', gap: 3,
@@ -242,7 +241,7 @@ export default function NotifBell() {
             <ShoppingCart size={13} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#fcd34d', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-amber)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
               {t('lnPurchase')}
               {isRead && <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-3)', background: 'var(--surface-3)', border: '1px solid var(--border-2)', borderRadius: 4, padding: '0 5px' }}>{t('lnSeen')}</span>}
             </div>
@@ -256,7 +255,7 @@ export default function NotifBell() {
             </div>
             {ev.note && (
               <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 5, padding: '3px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6 }}>
-                📝 {ev.note}
+                <StickyNote size={12} style={{ marginRight: 5 }} />{ev.note}
               </div>
             )}
           </div>
@@ -276,9 +275,9 @@ export default function NotifBell() {
     const meta = ev._type === 'reception' ? RECEPTION_META : getLaquageMeta(ev.action);
     const laqType = ev.laqType || ev.recordType;
     const laqBadge = laqType === 'barres'
-      ? { label: t('lnBars'), bg: 'rgba(251,146,60,.14)', color: '#fdba74', bd: 'rgba(251,146,60,.35)' }
+      ? { label: t('lnBars'), bg: 'rgba(251,146,60,.14)', color: 'var(--ink-orange)', bd: 'rgba(251,146,60,.35)' }
       : laqType === 'accessoires'
-        ? { label: t('lnAcc'), bg: 'rgba(248,113,113,.14)', color: '#fca5a5', bd: 'rgba(248,113,113,.35)' }
+        ? { label: t('lnAcc'), bg: 'rgba(248,113,113,.14)', color: 'var(--ink-red)', bd: 'rgba(248,113,113,.35)' }
         : null;
 
     return (
@@ -319,14 +318,14 @@ export default function NotifBell() {
           {/* Note (e.g. reception observation) */}
           {ev.note && (
             <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 5, padding: '3px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6 }}>
-              📝 {ev.note}
+              <StickyNote size={12} style={{ marginRight: 5 }} />{ev.note}
             </div>
           )}
 
           {/* Partial qty (e.g. received more/less than expected) */}
           {ev.partialQty != null && (
-            <div style={{ fontSize: 11, color: '#93c5fd', marginTop: 5, padding: '3px 8px', background: 'rgba(96,165,250,.1)', border: '1px solid rgba(96,165,250,.25)', borderRadius: 6 }}>
-              📦 {t('lnQtyReceived')} <strong>{ev.partialQty}</strong>
+            <div style={{ fontSize: 11, color: 'var(--ink-blue)', marginTop: 5, padding: '3px 8px', background: 'rgba(96,165,250,.1)', border: '1px solid rgba(96,165,250,.25)', borderRadius: 6 }}>
+              <Package size={12} style={{ marginRight: 5 }} />{t('lnQtyReceived')} <strong>{ev.partialQty}</strong>
             </div>
           )}
         </div>
@@ -423,7 +422,7 @@ export default function NotifBell() {
               <Bell size={15} style={{ color: 'var(--text-3)' }} />
               <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', letterSpacing: '-.01em' }}>{t('lnTitle')}</span>
               {unreadCount > 0 && (
-                <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--danger-bg)', color: '#fca5a5', border: '1px solid var(--danger-bd)', borderRadius: 999, padding: '0 7px' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--danger-bg)', color: 'var(--ink-red)', border: '1px solid var(--danger-bd)', borderRadius: 999, padding: '0 7px' }}>
                   {t('lnUnread', { n: unreadCount })}
                 </span>
               )}

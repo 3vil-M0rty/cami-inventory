@@ -117,7 +117,7 @@
 .hdr__dropdown {
   position: absolute; top: calc(100% + 8px); right: 0;
   min-width: 230px; background: var(--surface); padding: 4px;
-  border-radius: 12px; box-shadow: var(--sh-lg), inset 0 1px 0 rgba(255,255,255,.04);
+  border-radius: 12px; box-shadow: var(--sh-lg), inset 0 1px 0 var(--hairline);
   border: 1px solid var(--border); overflow: hidden; z-index: 400;
   animation: modalIn .15s ease-out;
 }
@@ -321,3 +321,17 @@
 /* Drawer: show the role chip at every width */
 .hdr__mobile-user .hdr__role { display: inline-block; }
 .hdr__mobile-drawer .hdr__company-pill { height: 30px; }
+
+/* Light / dark theme switch */
+.hdr .hdr__theme-btn {
+  width: 34px; height: 34px; padding: 0 !important; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px; border: 1px solid var(--border-2); background: var(--surface-2);
+  color: var(--text-2); cursor: pointer; transition: all var(--t);
+}
+.hdr .hdr__theme-btn:hover { color: var(--text); border-color: var(--400); }
+.hdr .hdr__mobile-theme {
+  display: inline-flex; align-items: center; gap: 8px; height: 36px; border-radius: 8px;
+  border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}

@@ -15,7 +15,7 @@
 .ch-tab-toggle { display:flex;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;gap:4px; }
 .ch-tab-btn { display:flex;align-items:center;gap:6px;height:30px;padding:0 14px;background:transparent;border:none;border-radius:7px;font-size:13px;font-weight:600;color:var(--text-3);cursor:pointer;transition:all .15s;font-family:inherit;white-space:nowrap; }
 .ch-tab-btn:hover  { color:var(--text); }
-.ch-tab-btn.active { background:var(--surface-3);color:var(--text);box-shadow:var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.04); }
+.ch-tab-btn.active { background:var(--surface-3);color:var(--text);box-shadow:var(--sh-sm), inset 0 1px 0 var(--hairline); }
 
 /* ── Primary button ── */
 .ch-new-btn { display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;background:var(--900);color:var(--text-inv);border:1px solid var(--900);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s,box-shadow .15s;white-space:nowrap; }
@@ -34,8 +34,8 @@
 .ch-cards-grid { display:grid;grid-template-columns:1fr;gap:16px; }
 
 /* ── Chantier / Team Card ── */
-.ch-card { position:relative;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;box-shadow:var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03);transition:border-color .15s,box-shadow .15s,transform .15s; }
-.ch-card:hover { border-color:var(--border-2);box-shadow:var(--sh-md, 0 8px 24px rgba(0,0,0,.4)), inset 0 1px 0 rgba(255,255,255,.04);transform:translateY(-1px); }
+.ch-card { position:relative;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;box-shadow:var(--sh-sm), inset 0 1px 0 var(--hairline);transition:border-color .15s,box-shadow .15s,transform .15s; }
+.ch-card:hover { border-color:var(--border-2);box-shadow:var(--sh-md, 0 8px 24px rgba(0,0,0,.4)), inset 0 1px 0 var(--hairline);transform:translateY(-1px); }
 .ch-card__accent { height:2px;width:100%;flex-shrink:0;opacity:.9; }
 .ch-card__inner { padding:16px 18px 14px;flex:1;display:flex;flex-direction:column;gap:12px; }
 .ch-card__head { display:flex;align-items:flex-start;justify-content:space-between;gap:10px; }
@@ -76,7 +76,7 @@
 .ch-icon-btn.blue   { background:transparent;color:var(--info);border-color:var(--info-bd); }
 .ch-icon-btn.blue:hover   { background:var(--info-bg);border-color:var(--info); }
 
-.ch-detail__hero { margin:16px 16px 0;padding:20px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--border-2);border-radius:12px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03); }
+.ch-detail__hero { margin:16px 16px 0;padding:20px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--border-2);border-radius:12px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--sh-sm), inset 0 1px 0 var(--hairline); }
 .ch-detail__hero-top { display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap; }
 .ch-detail__name { font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--text);margin:0 0 4px; }
 .ch-detail__ref { font-family:var(--mono);font-size:12px;color:var(--text-3); }
@@ -89,11 +89,11 @@
 .ch-detail__content { padding:16px;display:flex;flex-direction:column;gap:16px; }
 
 /* ── Sections ── */
-.ch-section { background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03); }
+.ch-section { background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--sh-sm), inset 0 1px 0 var(--hairline); }
 .ch-section__title { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);padding:12px 16px;margin:0;border-bottom:1px solid var(--border); }
 
 /* ── Project block ── */
-.ch-proj-block { background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03); }
+.ch-proj-block { background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--sh-sm), inset 0 1px 0 var(--hairline); }
 .ch-proj-block__header { display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap; }
 .ch-proj-block__title { display:flex;align-items:center;gap:8px;font-size:14px;flex:1;min-width:0;flex-wrap:wrap;color:var(--text); }
 .ch-proj-block__dot  { width:10px;height:10px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 2px rgba(255,255,255,.08); }
@@ -164,11 +164,11 @@
 .ch-ct-row--comp td:first-child { padding-left:32px;color:var(--text-2); }
 .ch-ct-comp-indent { padding-left:32px; }
 .ch-ct-comp-role   { font-style:italic;color:var(--text-3); }
-.ch-ct-composite-badge { display:inline-block;margin-left:6px;font-size:12px;color:#c4b5fd;font-weight:700; }
+.ch-ct-composite-badge { display:inline-block;margin-left:6px;font-size:12px;color:var(--ink-violet);font-weight:700; }
 .ch-ct-type { font-size:12px;color:var(--text-2); }
 .ch-ct-num  { text-align:right;font-variant-numeric:tabular-nums;font-size:12px;color:var(--text-2);white-space:nowrap; }
 .ch-ct-dim  { font-family:var(--mono);font-size:12px;color:var(--text-2);white-space:nowrap; }
-.ch-ct-partial-badge { display:inline-block;margin-left:8px;padding:0 7px;line-height:16px;background:var(--warning-bg);color:#fcd34d;border:1px solid var(--warning-bd);border-radius:999px;font-size:10px;font-weight:700;vertical-align:middle; }
+.ch-ct-partial-badge { display:inline-block;margin-left:8px;padding:0 7px;line-height:16px;background:var(--warning-bg);color:var(--ink-amber);border:1px solid var(--warning-bd);border-radius:999px;font-size:10px;font-weight:700;vertical-align:middle; }
 
 /* ── Inline chantier state select ── */
 .ch-state-select-wrap { position:relative;display:inline-block; }
@@ -196,8 +196,8 @@
 .ch-camera-btn.uploading { opacity:.6;cursor:wait; }
 .ch-camera-spinner { width:12px;height:12px;border:2px solid var(--border-2);border-top-color:var(--text);border-radius:50%;animation:ch-spin .7s linear infinite; }
 @keyframes ch-spin { to { transform:rotate(360deg); } }
-.ch-camera-count { display:flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:999px;border:1px solid var(--info-bd);background:var(--info-bg);color:#93c5fd;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit; }
-.ch-camera-count:hover { background:rgba(96,165,250,.2);color:#bfdbfe; }
+.ch-camera-count { display:flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:999px;border:1px solid var(--info-bd);background:var(--info-bg);color:var(--ink-blue);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit; }
+.ch-camera-count:hover { background:rgba(96,165,250,.2);color:var(--ink-blue); }
 .ch-ct-photo-th { width:120px;text-align:center!important;color:var(--text-3); }
 .ch-ct-photo-th svg { vertical-align:middle; }
 .ch-ct-photo-td { text-align:center;padding:4px 8px!important; }
@@ -216,8 +216,8 @@
 .ch-lightbox-nav button { width:32px;height:32px;border-radius:8px;border:1px solid var(--border-2);background:var(--surface-2);color:var(--text);font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s; }
 .ch-lightbox-nav button:hover:not(:disabled) { background:var(--surface-3); }
 .ch-lightbox-nav button:disabled { opacity:.35;cursor:default; }
-.ch-lightbox-open { display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 16px;font-size:12px;font-weight:600;color:#93c5fd;text-decoration:none;border-top:1px solid var(--border);background:var(--surface);transition:background .15s; }
-.ch-lightbox-open:hover { background:var(--surface-2);color:#bfdbfe; }
+.ch-lightbox-open { display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 16px;font-size:12px;font-weight:600;color:var(--ink-blue);text-decoration:none;border-top:1px solid var(--border);background:var(--surface);transition:background .15s; }
+.ch-lightbox-open:hover { background:var(--surface-2);color:var(--ink-blue); }
 
 /* ── Responsive ── */
 @media (min-width:640px) {

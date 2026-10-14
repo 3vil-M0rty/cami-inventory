@@ -9,6 +9,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { dialog, errorMessage } from '../../../components/common/dialog';
 
+import { Search, Loader2, X, Package, Wrench, CircleCheck, Plus, Save, AppWindow, Pencil, Trash2 } from 'lucide-react';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const EMPTY_FORM = { fr: '', it: '', en: '', composite: false, vantaux: 2 };
@@ -75,10 +76,7 @@ function InventoryAutocompleteInput({ value, onChange, onSelect, placeholder, ca
   return (
     <div ref={wrapRef} style={{ position: 'relative', width: '100%' }}>
       <div style={{ position: 'relative' }}>
-        <span style={{
-          position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)',
-          fontSize: 15, color: 'var(--text-4)', pointerEvents: 'none', lineHeight: 1,
-        }}>🔍</span>
+        <span style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', display: 'flex', color: 'var(--text-4)', pointerEvents: 'none' }}><Search size={15} /></span>
         <input
           className="ct-acc-search-input"
           onFocus={() => {
@@ -90,18 +88,17 @@ function InventoryAutocompleteInput({ value, onChange, onSelect, placeholder, ca
           autoComplete="off"
         />
         {loading ? (
-          <span style={{
-            position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)',
-            fontSize: 12, color: 'var(--text-3)', fontWeight: 600,
-          }}>⏳</span>
+          <span style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', display: 'flex', color: 'var(--text-3)' }}>
+            <Loader2 size={15} style={{ animation: 'spin .8s linear infinite' }} />
+          </span>
         ) : value && (
           <span
             style={{
               position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)',
-              fontSize: 15, color: 'var(--text-3)', cursor: 'pointer', lineHeight: 1,
+              display: 'flex', color: 'var(--text-3)', cursor: 'pointer',
             }}
             onMouseDown={() => { onChange(''); setSuggestions([]); setOpen(false); }}
-          >✕</span>
+          ><X size={15} /></span>
         )}
       </div>
       {open && suggestions.length > 0 && (
@@ -120,7 +117,7 @@ function InventoryAutocompleteInput({ value, onChange, onSelect, placeholder, ca
                 className="ct-acc-dropdown__item"
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 14 }}>📦</span>
+                  <Package size={14} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
                   <span>{label}</span>
                 </span>
                 {unit && <span className="ct-acc-dropdown__unit">{unit}</span>}
@@ -209,8 +206,8 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
 
         {/* Header */}
         <div className="ct-manager__header">
-          <h2>🔧 {t('ctAccTitle', { name: chassisTypeName })}</h2>
-          <button className="chassis-form__close" onClick={onClose}>×</button>
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Wrench size={18} /> {t('ctAccTitle', { name: chassisTypeName })}</h2>
+          <button className="chassis-form__close" onClick={onClose}><X size={18} /></button>
         </div>
 
         {error && <div className="ct-manager__error">{error}</div>}
@@ -224,7 +221,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
             {/* ── Configured accessories table ── */}
             {linked.length > 0 ? (
               <div className="ct-acc-linked">
-                <h3>✅ {t('ctConfigured', { n: linked.length })}</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CircleCheck size={15} style={{ color: 'var(--success)' }} /> {t('ctConfigured', { n: linked.length })}</h3>
                 <table className="proj-acc-table ct-acc-linked-table">
                   <thead>
                     <tr>
@@ -288,7 +285,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
                           />
                         </td>
                         <td>
-                          <button className="delete-btn" onClick={() => removeLinked(idx)}>✕</button>
+                          <button className="delete-btn" onClick={() => removeLinked(idx)}><X size={14} /></button>
                         </td>
                       </tr>
                     ))}
@@ -304,7 +301,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
             {/* ── Add new accessory form (same as ProjectDetail) ── */}
             <div className="proj-acc-add-form">
               <div className="proj-acc-add-form__title">
-                ➕ {t('ctAddAcc')}
+                <Plus size={15} /> {t('ctAddAcc')}
               </div>
 
               <div className="proj-acc-add-form__grid">
@@ -407,7 +404,7 @@ function AccessoryEditor({ chassisTypeId, chassisTypeName, onClose }) {
             <div className="modal-actions">
               <button onClick={onClose}>{t('cancel')}</button>
               <button className="primary" onClick={handleSave} disabled={saving}>
-                {saving ? '…' : `💾 ${t('save')}`}
+                {saving ? '…' : <><Save size={14} /> {t('save')}</>}
               </button>
             </div>
           </>
@@ -495,13 +492,13 @@ function ChassisTypeManager({ onClose }) {
       <div className="modal-overlay modal-ctt" onClick={onClose}>
         <div className="modal ct-manager-modal" onClick={e => e.stopPropagation()}>
           <div className="ct-manager__header">
-            <h2>🪟 {t('ctTitle')}</h2>
-            <button className="chassis-form__close" onClick={onClose}>×</button>
+            <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><AppWindow size={18} /> {t('ctTitle')}</h2>
+            <button className="chassis-form__close" onClick={onClose}><X size={18} /></button>
           </div>
 
           {/* Form */}
           <form className="ct-manager__form" onSubmit={handleSave}>
-            <h3>{editingId ? `✏️ ${t('ctEditType')}` : `➕ ${t('ctNewType')}`}</h3>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{editingId ? <><Pencil size={15} /> {t('ctEditType')}</> : <><Plus size={15} /> {t('ctNewType')}</>}</h3>
             {error && <div className="ct-manager__error">{error}</div>}
             <div className="ct-manager__fields">
               <div className="form-group">
@@ -575,13 +572,13 @@ function ChassisTypeManager({ onClose }) {
                             onClick={() => setAccEditor({ id: ct._id || ct.id, name: ct.fr })}
                             title={t('ctConfigureAcc')}
                           >
-                            🔧 {ct.accessoryCount > 0 ? `${ct.accessoryCount}` : ''}
+                            <Wrench size={14} /> {ct.accessoryCount > 0 ? `${ct.accessoryCount}` : ''}
                           </button>
                         </td>
                         <td>
                           <div className="ct-manager__actions">
-                            <button className="edit-btn" onClick={() => handleEdit(ct)}>✏️</button>
-                            <button className="delete-btn" onClick={() => handleDelete(ct)}>🗑</button>
+                            <button className="edit-btn" onClick={() => handleEdit(ct)}><Pencil size={14} /></button>
+                            <button className="delete-btn" onClick={() => handleDelete(ct)}><Trash2 size={14} /></button>
                           </div>
                         </td>
                       </tr>

@@ -2,6 +2,7 @@ import { useEffect, useContext } from 'react';
 import LanguageContext, { tx } from '../../context/LanguageContext';
 import './Modal.css';
 
+import { X } from 'lucide-react';
 /**
  * Modal Component
  * 
@@ -53,7 +54,7 @@ const Modal = ({
             onClick={onClose}
             aria-label={(lang ? lang.t : tx)('close')}
           >
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal__content">

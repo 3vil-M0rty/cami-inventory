@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { Flame } from 'lucide-react';
+import { Flame, Snowflake } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 const ROLE_LAQUAGE = 'Laquage';
@@ -154,7 +154,7 @@ export default function FourStatus() {
                     pointerEvents: 'none',
                     zIndex: 999,
                 }}>
-                    {isOn ? `🔥 ${t('fsOn')}` : `❄️ ${t('fsOff')}`}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{isOn ? <><Flame size={13} style={{ color: '#fb923c' }} /> {t('fsOn')}</> : <><Snowflake size={13} style={{ color: 'var(--ink-blue)' }} /> {t('fsOff')}</>}</span>
                     {!canToggle && (
                         <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 500, marginTop: 2 }}>
                             {t('fsOnlyLaquage')}

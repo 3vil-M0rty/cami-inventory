@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import '../RalPicker.css';
 
+import { ArrowLeft, X, Check } from 'lucide-react';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 export default function RalPicker({ language, value, colorValue, onChange, t }) {
@@ -54,7 +55,7 @@ export default function RalPicker({ language, value, colorValue, onChange, t }) 
         </div>
         {poudres.length > 0 && (
           <button type="button" className="ral-picker__switch-btn" onClick={() => setManualMode(false)}>
-            ← {t('ralPickerSwitch') || 'Choisir depuis les poudres'}
+            <ArrowLeft size={14} /> {t('ralPickerSwitch')}
           </button>
         )}
       </div>
@@ -70,7 +71,7 @@ export default function RalPicker({ language, value, colorValue, onChange, t }) 
             {selectedPoudre.designation[language] || selectedPoudre.designation.fr}
           </span>
           <button type="button" className="ral-picker__clear-btn"
-            onClick={() => onChange({ ralCode: '', ralColor: '#ffffff' })}>✕</button>
+            onClick={() => onChange({ ralCode: '', ralColor: '#ffffff' })}><X size={14} /></button>
         </div>
       ) : (
         <div className="ral-picker__placeholder">
@@ -110,9 +111,9 @@ export default function RalPicker({ language, value, colorValue, onChange, t }) 
               }
               <span className="ral-picker__option-name">{name}</span>
               <span className="ral-picker__option-stock">
-                {t('inStock') || 'En stock'}: {p.quantity}
+                {t('inStock')}: {p.quantity}
               </span>
-              {isActive && <span className="ral-picker__checkmark">✓</span>}
+              {isActive && <span className="ral-picker__checkmark"><Check size={14} /></span>}
             </button>
           );
         })}

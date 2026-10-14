@@ -162,7 +162,7 @@ function buildDisplayRows(chassis, chassisLabels, lang) {
             : translate(lang, 'anPdfRoleLeaf', { n: ci });
           rows.push({
             kind:      'component',
-            repere:    `  ↳ ${comp.repere || roleLabel}`,
+            repere:    `  - ${comp.repere || roleLabel}`,
             type:      roleLabel,
             largeur:   String(comp.largeur || 0),
             hauteur:   String(comp.hauteur || 0),

@@ -8,11 +8,11 @@ import './ItemOrdersModal.css';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const STATUS = {
-  brouillon: { bg: 'rgba(161,161,170,.12)', text: '#d4d4d8', bd: 'rgba(161,161,170,.3)', label: 'ivStDraft' },
-  envoye: { bg: 'rgba(96,165,250,.12)', text: '#93c5fd', bd: 'rgba(96,165,250,.3)', label: 'ivStSent' },
-  partielle: { bg: 'rgba(251,191,36,.12)', text: '#fcd34d', bd: 'rgba(251,191,36,.3)', label: 'ivStPartial' },
-  recue: { bg: 'rgba(74,222,128,.1)', text: '#86efac', bd: 'rgba(74,222,128,.28)', label: 'ivStReceived' },
-  annulee: { bg: 'rgba(248,113,113,.12)', text: '#fca5a5', bd: 'rgba(248,113,113,.3)', label: 'ivStCancelled' },
+  brouillon: { bg: 'rgba(161,161,170,.12)', text: 'var(--ink-grey)', bd: 'rgba(161,161,170,.3)', label: 'ivStDraft' },
+  envoye: { bg: 'rgba(96,165,250,.12)', text: 'var(--ink-blue)', bd: 'rgba(96,165,250,.3)', label: 'ivStSent' },
+  partielle: { bg: 'rgba(251,191,36,.12)', text: 'var(--ink-amber)', bd: 'rgba(251,191,36,.3)', label: 'ivStPartial' },
+  recue: { bg: 'rgba(74,222,128,.1)', text: 'var(--ink-green)', bd: 'rgba(74,222,128,.28)', label: 'ivStReceived' },
+  annulee: { bg: 'rgba(248,113,113,.12)', text: 'var(--ink-red)', bd: 'rgba(248,113,113,.3)', label: 'ivStCancelled' },
 };
 
 const LOCALES = { fr: 'fr-FR', it: 'it-IT', en: 'en-GB' };

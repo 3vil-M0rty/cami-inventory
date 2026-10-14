@@ -196,21 +196,21 @@ button { transition: all var(--t); min-width: fit-content; padding-inline: 12px 
 body {
   background-color: var(--bg);
   background-image:
-    radial-gradient(1200px 600px at 50% -200px, rgba(255,255,255,.045), transparent 70%),
-    linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    radial-gradient(1200px 600px at 50% -200px, var(--bg-glow), transparent 70%),
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: auto, 24px 24px, 24px 24px;
   background-attachment: fixed;
 }
 
 /* ── Page headers that sit directly on the dark grid background ── */
-.clients-header h1, .devis-header h1, .orders-header h1, .mv-header__title { color:#fff; }
-.clients-subtitle, .devis-subtitle { color:#a3a3a3; }
+.clients-header h1, .devis-header h1, .orders-header h1, .mv-header__title { color:var(--text); }
+.clients-subtitle, .devis-subtitle { color:var(--text-3); }
 .clients-header .btn-primary, .devis-header .btn-primary, .orders-header .btn-primary {
-  background:#fff; color: var(--text-inv); border-color:#fff; box-shadow:none;
+  background:var(--900); color: var(--text-inv); border-color:var(--900); box-shadow:none;
 }
 .clients-header .btn-primary:hover:not(:disabled), .devis-header .btn-primary:hover:not(:disabled), .orders-header .btn-primary:hover:not(:disabled) {
-  background:var(--150); border-color:var(--150);
+  background:var(--850); border-color:var(--850);
 }
 .clients-header .btn-primary svg, .orders-header .btn-primary svg { color:currentColor; }
 
@@ -236,7 +236,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.75); cur
 .search-input:focus { border-color:var(--600); box-shadow:0 0 0 3px var(--focus); }
 
 /* Generic panel / card surface */
-.panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--r-xl); box-shadow:var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03); }
+.panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--r-xl); box-shadow:var(--sh-sm), inset 0 1px 0 var(--hairline); }
 
 /* Filter pills (Tous / Brouillon / …) */
 .filter-tabs { display:flex; gap:6px; flex-wrap:wrap; }
@@ -247,11 +247,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.75); cur
 .filter-tab:hover { color:var(--text); border-color:var(--400); background:var(--surface-2); }
 .filter-tab.active { background:var(--900); color:var(--text-inv); border-color:var(--900); }
 
-
-/* Shared zoom cursor: clean Lucide ZoomIn icon (white with a soft dark outline for any background) */
-:root { --cursor-zoom: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='32'%20height='32'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cg%20stroke='black'%20stroke-opacity='0.55'%20stroke-width='4.5'%3E%3Ccircle%20cx='11'%20cy='11'%20r='8'/%3E%3Cpath%20d='m21%2021-4.3-4.3'/%3E%3Cpath%20d='M11%208v6'/%3E%3Cpath%20d='M8%2011h6'/%3E%3C/g%3E%3Cg%20stroke='white'%20stroke-width='2'%3E%3Ccircle%20cx='11'%20cy='11'%20r='8'/%3E%3Cpath%20d='m21%2021-4.3-4.3'/%3E%3Cpath%20d='M11%208v6'/%3E%3Cpath%20d='M8%2011h6'/%3E%3C/g%3E%3C/svg%3E") 15 15, zoom-in; }
-
-/* Apply anywhere an element opens a zoom/preview */
-.zoomable-img,
-.item-image--zoomable,
-.line-item-preview-btn { cursor: var(--cursor-zoom); }
+/* Square icon buttons keep their own geometry (the global button padding-inline would crush the icon) */
+.edit-btn, .btn-edit, .delete-btn, .btn-delete, .print-btn, .project-detail .ct-acc-btn, .chassis-form__close, .modal__close,
+.bl-print-btn, .btn-remove-line, .atp__worker-rm, .ch-proj-tag__rm, .ch-proj-picker__clear, .ubp__search-clear {
+  padding-inline: 0 !important; display: inline-flex; align-items: center; justify-content: center;
+}

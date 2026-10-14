@@ -7,6 +7,7 @@ import AtelierTablesPage from '../AtelierTables';
 
 import './AdminPage.css';
 
+import { CornerDownRight } from 'lucide-react';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 export default function AdminPage() {
@@ -494,7 +495,7 @@ function RoleForm({ role, permissions, grouped, authFetch, onClose, onSave }) {
                         id={`group-${group}`}
                       />
                       <label htmlFor={`group-${group}`} style={{ fontWeight: isSubGroup ? 600 : 700, cursor: 'pointer', fontSize: isSubGroup ? '0.82rem' : '0.9rem' }}>
-                        {isSubGroup ? <><span style={{opacity:0.4,marginRight:4}}>└</span>{group.split('›')[1]?.trim()}</> : group}
+                        {isSubGroup ? <><CornerDownRight size={13} style={{ opacity: 0.5, marginRight: 4 }} />{group.split('›')[1]?.trim()}</> : group}
                       </label>
                     </div>
                     <div className="perm-items">

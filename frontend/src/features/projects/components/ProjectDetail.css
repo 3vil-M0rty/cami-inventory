@@ -35,7 +35,7 @@
   border-radius: var(--r-xl);
   padding: 16px;
   margin-bottom: 12px;
-  box-shadow: var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03);
+  box-shadow: var(--sh-sm), inset 0 1px 0 var(--hairline);
   gap: 14px;
   flex-wrap: wrap;
 }
@@ -143,7 +143,7 @@
 .project-detail__tab--active {
   background: var(--surface-3);
   color: var(--text);
-  box-shadow: var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.04);
+  box-shadow: var(--sh-sm), inset 0 1px 0 var(--hairline);
 }
 
 .tab-count {
@@ -163,7 +163,7 @@
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
   padding: 14px 14px 18px;
-  box-shadow: var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03);
+  box-shadow: var(--sh-sm), inset 0 1px 0 var(--hairline);
 }
 @media (min-width: 481px) { .project-detail__panel { padding: 16px 18px 20px; } }
 @media (min-width: 769px) { .project-detail__panel { padding: 20px 24px 24px; } }
@@ -191,9 +191,9 @@
 
 /* Tinted toolbar buttons (remplissage labels / bulk states) */
 .pd-tone-btn { border: 1px solid transparent !important; }
-.pd-tone-btn--violet { background: rgba(129,140,248,.12) !important; color: #c7d2fe !important; border-color: rgba(129,140,248,.35) !important; }
+.pd-tone-btn--violet { background: rgba(129,140,248,.12) !important; color: var(--ink-indigo) !important; border-color: rgba(129,140,248,.35) !important; }
 .pd-tone-btn--violet:hover { background: rgba(129,140,248,.2) !important; }
-.pd-tone-btn--cyan { background: rgba(34,211,238,.10) !important; color: #a5f3fc !important; border-color: rgba(34,211,238,.32) !important; }
+.pd-tone-btn--cyan { background: rgba(34,211,238,.10) !important; color: var(--ink-cyan) !important; border-color: rgba(34,211,238,.32) !important; }
 .pd-tone-btn--cyan:hover { background: rgba(34,211,238,.18) !important; }
 
 /* Bulk état chooser */
@@ -208,7 +208,7 @@
   border: 1px solid var(--info-bd);
   border-radius: var(--r-md);
 }
-.pd-bulk-etat__label { font-size: 12px; font-weight: 600; color: #93c5fd; }
+.pd-bulk-etat__label { font-size: 12px; font-weight: 600; color: var(--ink-blue); }
 
 /* Tinted état badge (read-only + bulk buttons) */
 .pd-etat-badge {
@@ -516,7 +516,7 @@
   border-radius: var(--r-xl);
   padding: 14px 16px;
   margin-bottom: 12px;
-  box-shadow: var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03);
+  box-shadow: var(--sh-sm), inset 0 1px 0 var(--hairline);
 }
 
 .progress-bar {
@@ -592,7 +592,7 @@
   display: inline-block;
   margin-left: 6px;
   font-size: 11px;
-  color: #c4b5fd;
+  color: var(--ink-violet);
   font-weight: 700;
 }
 
@@ -1121,12 +1121,12 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
   border-radius: var(--r-full);
   font-size: 12px;
   font-weight: 600;
-  color: #93c5fd;
+  color: var(--ink-blue);
 }
 .ct-acc-formula-preview--invalid {
   background: var(--danger-bg);
   border-color: var(--danger-bd);
-  color: #fca5a5;
+  color: var(--ink-red);
 }
 
 .ct-acc-add-form__actions {
@@ -1219,7 +1219,7 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
 .proj-acc-preview-cell {
   font-size: 12px;
   font-weight: 700;
-  color: #93c5fd;
+  color: var(--ink-blue);
   white-space: nowrap;
 }
 .proj-acc-preview-cell--invalid { color: var(--danger); }
@@ -1354,12 +1354,12 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
   border-radius: var(--r-full);
   font-size: 12px;
   font-weight: 600;
-  color: #93c5fd;
+  color: var(--ink-blue);
 }
 .proj-acc-formula-preview--invalid {
   background: var(--danger-bg);
   border-color: var(--danger-bd);
-  color: #fca5a5;
+  color: var(--ink-red);
 }
 
 .proj-acc-load-defaults-btn {
@@ -1724,13 +1724,13 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
   border-radius: var(--r-md);
   font-size: 11px;
   font-weight: 600;
-  color: #93c5fd;
+  color: var(--ink-blue);
   cursor: pointer;
   transition: all var(--t);
   white-space: nowrap;
   font-family: inherit;
 }
-.laq-line-btn:hover { background: rgba(96,165,250,.2); color: #bfdbfe; }
+.laq-line-btn:hover { background: rgba(96,165,250,.2); color: var(--ink-blue); }
 .laq-line-btn--done {
   background: var(--success-bg);
   border-color: var(--success-bd);
@@ -1818,14 +1818,14 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
   font-family: inherit;
 }
 
-.laq-wf-btn--send { background: var(--warning-bg); color: #fcd34d; border-color: var(--warning-bd); }
+.laq-wf-btn--send { background: var(--warning-bg); color: var(--ink-amber); border-color: var(--warning-bd); }
 .laq-wf-btn--send:hover { background: rgba(251,191,36,.2); }
 
-.laq-wf-btn--receive { background: var(--info-bg); color: #93c5fd; border-color: var(--info-bd); }
+.laq-wf-btn--receive { background: var(--info-bg); color: var(--ink-blue); border-color: var(--info-bd); }
 .laq-wf-btn--receive:hover { background: rgba(96,165,250,.2); }
 .laq-wf-btn--receive.laq-wf-btn--done { background: var(--success-bg); color: var(--success); border-color: var(--success-bd); cursor: default; }
 
-.laq-wf-btn--return { background: rgba(167,139,250,.12); color: #c4b5fd; border-color: rgba(167,139,250,.35); }
+.laq-wf-btn--return { background: rgba(167,139,250,.12); color: var(--ink-violet); border-color: rgba(167,139,250,.35); }
 .laq-wf-btn--return:hover { background: rgba(167,139,250,.2); }
 
 .laq-wf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -1939,7 +1939,7 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #a5b4fc;
+  color: var(--ink-indigo);
 }
 
 .laq-add-input {
@@ -2034,7 +2034,7 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
   border-radius: var(--r-md);
   font-size: 11px;
   font-weight: 600;
-  color: #a5b4fc;
+  color: var(--ink-indigo);
   cursor: pointer;
   transition: all var(--t);
   margin-top: 4px;
@@ -2052,7 +2052,7 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
   border-radius: var(--r-full);
   font-size: 11px;
   font-weight: 700;
-  color: #fcd34d;
+  color: var(--ink-amber);
 }
 
 
@@ -2076,7 +2076,7 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
   border-radius: var(--r-md); font-size: 12px; color: var(--text-2);
   flex-wrap: wrap;
 }
-.laq-select-bar svg { color: #93c5fd; flex-shrink: 0; }
+.laq-select-bar svg { color: var(--ink-blue); flex-shrink: 0; }
 .laq-select-all-btn {
   margin-left: auto; padding: 4px 12px;
   background: var(--900); color: var(--text-inv); border: none;
@@ -2085,7 +2085,7 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
 }
 .laq-select-all-btn:hover { background: var(--black); }
 .laq-select-count {
-  font-weight: 700; color: #93c5fd; font-size: 12px;
+  font-weight: 700; color: var(--ink-blue); font-size: 12px;
 }
 
 /* ── Incomplete button ──────────────────────────────────── */
@@ -2210,7 +2210,7 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #a5b4fc;
+  color: var(--ink-indigo);
   margin-bottom: 4px;
 }
 .laq-add-form .laq-add-form__field label { margin-bottom: 0; }

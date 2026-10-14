@@ -1,7 +1,7 @@
 /* Modal.css — <Modal> component (shares .modal-overlay/.modal with App.css) */
 .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:var(--sp-4);animation:fadeUp .18s ease-out; }
 .modal { background:var(--surface);border-radius:var(--r-xl);box-shadow:var(--sh-xl);max-height:90vh;overflow:hidden;display:flex;flex-direction:column;animation:modalIn .22s cubic-bezier(.4,0,.2,1);border:1px solid var(--border); }
-.modal--small, .modal--medium, .modal--large { border-radius:14px;padding:0;box-shadow:var(--sh-xl), inset 0 1px 0 rgba(255,255,255,.04); }
+.modal--small, .modal--medium, .modal--large { border-radius:14px;padding:0;box-shadow:var(--sh-xl), inset 0 1px 0 var(--hairline); }
 .modal--small { width:100%;max-width:400px; }
 .modal--medium { width:100%;max-width:600px; }
 .modal--large { width:100%;max-width:900px; }

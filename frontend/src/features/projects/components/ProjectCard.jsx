@@ -1,14 +1,15 @@
 // components/ProjectCard.jsx
 import { useAuth } from '../../../context/AuthContext';
+import { User, PaintBucket } from 'lucide-react';
 
 // Tinted badge tones (dark theme): [text, background, border]
 const STATUS_TONES = {
-  non_entame:    ['#d4d4d8', 'rgba(161,161,170,.12)', 'rgba(161,161,170,.3)'],
-  en_cours:      ['#fcd34d', 'rgba(251,191,36,.12)',  'rgba(251,191,36,.3)'],
-  fabrique:      ['#93c5fd', 'rgba(96,165,250,.12)',  'rgba(96,165,250,.3)'],
-  cloture:       ['#86efac', 'rgba(74,222,128,.12)',  'rgba(74,222,128,.3)'],
-  non_vitre:     ['#c4b5fd', 'rgba(167,139,250,.12)', 'rgba(167,139,250,.3)'],
-  pret_a_livrer: ['#fca5a5', 'rgba(248,113,113,.12)', 'rgba(248,113,113,.3)'],
+  non_entame:    ['var(--ink-grey)', 'rgba(161,161,170,.12)', 'rgba(161,161,170,.3)'],
+  en_cours:      ['var(--ink-amber)', 'rgba(251,191,36,.12)',  'rgba(251,191,36,.3)'],
+  fabrique:      ['var(--ink-blue)', 'rgba(96,165,250,.12)',  'rgba(96,165,250,.3)'],
+  cloture:       ['var(--ink-green)', 'rgba(74,222,128,.12)',  'rgba(74,222,128,.3)'],
+  non_vitre:     ['var(--ink-violet)', 'rgba(167,139,250,.12)', 'rgba(167,139,250,.3)'],
+  pret_a_livrer: ['var(--ink-red)', 'rgba(248,113,113,.12)', 'rgba(248,113,113,.3)'],
 };
 
 const ETAT_COLORS = {
@@ -18,6 +19,14 @@ const ETAT_COLORS = {
   fabrique: '#3b82f6',
   pret_a_livrer: '#ef4444',
   livre: '#16a34a',
+};
+
+// Laquage stage of the bars sent for this project (least advanced lot) → [label key, text, bg, border]
+const LAQ_STAGES = {
+  sent_to_laquage:   ['lqStSent',      'var(--ink-amber)', 'rgba(251,191,36,.12)',  'rgba(251,191,36,.3)'],
+  received_laquage:  ['lqStRecvLaq',   'var(--ink-blue)', 'rgba(96,165,250,.12)',  'rgba(96,165,250,.3)'],
+  returned_to_coord: ['lqStReturned',  'var(--ink-violet)', 'rgba(167,139,250,.12)', 'rgba(167,139,250,.3)'],
+  received_coord:    ['lqStRecvCoord', 'var(--ink-green)', 'rgba(74,222,128,.12)',  'rgba(74,222,128,.3)'],
 };
 
 const ETAT_ORDER = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
@@ -111,8 +120,23 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
         </div>
 
         {project.clientId && (
-          <div className="project-client-tag">👤 {project.clientId.name}</div>
+          <div className="project-client-tag"><User size={13} /> {project.clientId.name}</div>
         )}
+
+        {project.laquage?.lots > 0 && (() => {
+          const st = LAQ_STAGES[project.laquage.stage] || LAQ_STAGES.sent_to_laquage;
+          return (
+            <div
+              className="project-card__laq"
+              style={{ '--lq-fg': st[1], '--lq-bg': st[2], '--lq-bd': st[3] }}
+              title={t('pcLaqTitle')}
+            >
+              <PaintBucket size={13} />
+              <span>{t(st[0])}</span>
+              <span className="project-card__laq-lots">{t(project.laquage.lots > 1 ? 'pcLaqLots' : 'pcLaqLot', { n: project.laquage.lots })}</span>
+            </div>
+          );
+        })()}
 
         {total > 0 && (
           <>

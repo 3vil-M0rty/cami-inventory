@@ -3,8 +3,7 @@ import axios from 'axios';
 import {
   Printer, Save, CheckCircle2, AlertTriangle, XCircle,
   Send, RotateCcw, PackageCheck, Clock, ChevronDown,
-  ChevronUp, History, MousePointerClick, Plus, Package
-} from 'lucide-react';
+  ChevronUp, History, MousePointerClick, Plus, Package, StickyNote, PaintBucket, Nut } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage, tx, activeLanguage } from '../../../context/LanguageContext';
 
@@ -16,11 +15,11 @@ const ROLE_LAQUAGE = 'Laquage';
 const ROLE_COORDINATEUR = 'Coordinateur';
 
 const LOT_STATUSES = {
-  draft: { label: 'lqStDraft', color: '#9ca3af', ink: '#d4d4d8' },
-  sent_to_laquage: { label: 'lqStSent', color: '#f59e0b', ink: '#fcd34d' },
-  received_laquage: { label: 'lqStRecvLaq', color: '#3b82f6', ink: '#93c5fd' },
-  returned_to_coord: { label: 'lqStReturned', color: '#8b5cf6', ink: '#c4b5fd' },
-  received_coord: { label: 'lqStRecvCoord', color: '#16a34a', ink: '#86efac' },
+  draft: { label: 'lqStDraft', color: '#9ca3af', ink: 'var(--ink-grey)' },
+  sent_to_laquage: { label: 'lqStSent', color: '#f59e0b', ink: 'var(--ink-amber)' },
+  received_laquage: { label: 'lqStRecvLaq', color: '#3b82f6', ink: 'var(--ink-blue)' },
+  returned_to_coord: { label: 'lqStReturned', color: '#8b5cf6', ink: 'var(--ink-violet)' },
+  received_coord: { label: 'lqStRecvCoord', color: '#16a34a', ink: 'var(--ink-green)' },
 };
 
 function fmtDT(d) {
@@ -82,7 +81,7 @@ function LotBadge({ lotIndex }) {
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
       padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-      background: 'rgba(99,102,241,.12)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.3)'
+      background: 'rgba(99,102,241,.12)', color: 'var(--ink-indigo)', border: '1px solid rgba(99,102,241,.3)'
     }}>
       <Package size={10} /> {t('lqLot', { n: lotIndex + 1 })}
     </span>
@@ -229,7 +228,7 @@ function HistoryLog({ history }) {
                   <span className="laq-history__meta">
                     {t('lqBy')} <strong>{h.by || '—'}</strong> · <Clock size={10} /> {fmtDT(h.at)}
                   </span>
-                  {h.note && <span className="laq-history__note">📝 {h.note}</span>}
+                  {h.note && <span className="laq-history__note"><StickyNote size={11} style={{ marginRight: 4 }} />{h.note}</span>}
                   {h.partialQty != null && <span className="laq-history__note">{t('lqQtyReceived')} <strong>{h.partialQty}</strong></span>}
                 </div>
               </div>
@@ -359,7 +358,7 @@ function RowActions({ lKey, lineLabel, lineStatuses, side, onConfirm, onIncomple
         </button>
       )}
       {ls.incomplete && (
-        <span className="laq-incomplete-flag" title={ls.incompleteNote || t('lqIncomplete')}>⚠️
+        <span className="laq-incomplete-flag" title={ls.incompleteNote || t('lqIncomplete')}><AlertTriangle size={13} />
           {ls.partialQty != null && <span style={{ fontSize: 10, marginLeft: 3 }}>{ls.partialQty}</span>}
         </span>
       )}
@@ -414,10 +413,10 @@ function RowActions({ lKey, lineLabel, lineStatuses, side, onConfirm, onIncomple
         });
       });
       if (lot.receptionLaquageNote) {
-        allRows.push(`<tr><td colspan="7" style="color:#3b82f6;font-size:11px;padding:4px 12px">📝 Note Laquage: ${lot.receptionLaquageNote}${lot.receptionLaquageQty != null ? ` (Qté reçue: ${lot.receptionLaquageQty})` : ''}</td></tr>`);
+        allRows.push(`<tr><td colspan="7" style="color:#3b82f6;font-size:11px;padding:4px 12px">Note Laquage: ${lot.receptionLaquageNote}${lot.receptionLaquageQty != null ? ` (Qté reçue: ${lot.receptionLaquageQty})` : ''}</td></tr>`);
       }
       if (lot.receptionCoordNote) {
-        allRows.push(`<tr><td colspan="7" style="color:#16a34a;font-size:11px;padding:4px 12px">📝 Note Coord: ${lot.receptionCoordNote}${lot.receptionCoordQty != null ? ` (Qté reçue: ${lot.receptionCoordQty})` : ''}</td></tr>`);
+        allRows.push(`<tr><td colspan="7" style="color:#16a34a;font-size:11px;padding:4px 12px">Note Coord: ${lot.receptionCoordNote}${lot.receptionCoordQty != null ? ` (Qté reçue: ${lot.receptionCoordQty})` : ''}</td></tr>`);
       }
     } else {
       (lot.accessoires || []).forEach((a, i) => {
@@ -439,7 +438,7 @@ function RowActions({ lKey, lineLabel, lineStatuses, side, onConfirm, onIncomple
   const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>${title}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;padding:28px 36px}h1{font-size:18px;font-weight:800;margin-bottom:12px}h2{font-size:14px;font-weight:700;margin:24px 0 10px;padding-bottom:6px;border-bottom:2px solid #1a1a1a}.meta{display:flex;gap:16px;font-size:12px;color:#555;margin-bottom:20px;flex-wrap:wrap}table{width:100%;border-collapse:collapse;margin-bottom:20px}thead tr{background:#1a1a1a;color:#fff}th{padding:9px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em}td{padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:12.5px;vertical-align:middle}tr:nth-child(even) td{background:#f9fafb}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm 16mm}@page{size:A4;margin:0}}</style>
 </head><body>
-<h1>🎨 ${title}</h1>
+<h1>${title}</h1>
 <div class="meta"><span>Projet : <strong>${project.name}</strong></span><span>Réf : <strong>${project.reference}</strong></span><span>RAL : <strong>${project.ralCode}</strong></span><span>Date : <strong>${date}</strong></span><span>Lots : <strong>${lots.length}</strong></span></div>
 <table><thead>${thead}</thead><tbody>${allRows.join('') || '<tr><td colspan="7" style="text-align:center;color:#aaa">Aucune ligne</td></tr>'}</tbody></table>
 ${histRows ? `<h2>Historique des actions</h2><table><thead><tr><th>Action</th><th>Par</th><th>Date / Heure</th><th>Remarque</th><th>Qté reçue</th><th>Lot</th></tr></thead><tbody>${histRows}</tbody></table>` : ''}
@@ -497,10 +496,10 @@ function printPDF(record, project, type, selectedKeys, imageMap, lotIndex, lotOn
         });
       });
       if (lot.receptionLaquageNote) {
-        allRows.push(`<tr><td colspan="7" style="color:#3b82f6;font-size:11px;padding:4px 12px">📝 ${tx('lqNoteLaq')} ${lot.receptionLaquageNote}${lot.receptionLaquageQty != null ? ` (${tx('lqQtyRecvN', { n: lot.receptionLaquageQty })})` : ''}</td></tr>`);
+        allRows.push(`<tr><td colspan="7" style="color:#3b82f6;font-size:11px;padding:4px 12px">${tx('lqNoteLaq')} ${lot.receptionLaquageNote}${lot.receptionLaquageQty != null ? ` (${tx('lqQtyRecvN', { n: lot.receptionLaquageQty })})` : ''}</td></tr>`);
       }
       if (lot.receptionCoordNote) {
-        allRows.push(`<tr><td colspan="7" style="color:#16a34a;font-size:11px;padding:4px 12px">📝 ${tx('lqNoteCoord')} ${lot.receptionCoordNote}${lot.receptionCoordQty != null ? ` (${tx('lqQtyRecvN', { n: lot.receptionCoordQty })})` : ''}</td></tr>`);
+        allRows.push(`<tr><td colspan="7" style="color:#16a34a;font-size:11px;padding:4px 12px">${tx('lqNoteCoord')} ${lot.receptionCoordNote}${lot.receptionCoordQty != null ? ` (${tx('lqQtyRecvN', { n: lot.receptionCoordQty })})` : ''}</td></tr>`);
       }
     } else {
       (lot.accessoires || []).forEach((a, i) => {
@@ -527,7 +526,7 @@ function printPDF(record, project, type, selectedKeys, imageMap, lotIndex, lotOn
   const html = `<!DOCTYPE html><html lang="${lang}"><head><meta charset="utf-8"><title>${title}${lotLabel}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;padding:28px 36px}h1{font-size:18px;font-weight:800;margin-bottom:12px}h2{font-size:14px;font-weight:700;margin:24px 0 10px;padding-bottom:6px;border-bottom:2px solid #1a1a1a}.meta{display:flex;gap:16px;font-size:12px;color:#555;margin-bottom:20px;flex-wrap:wrap}table{width:100%;border-collapse:collapse;margin-bottom:20px}thead tr{background:#1a1a1a;color:#fff}th{padding:9px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em}td{padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:12.5px;vertical-align:middle}tr:nth-child(even) td{background:#f9fafb}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{padding:12mm 16mm}@page{size:A4;margin:0}}</style>
 </head><body>
-<h1>🎨 ${title}${lotLabel}</h1>
+<h1>${title}${lotLabel}</h1>
 <div class="meta"><span>${tx('lqPdfProject')} <strong>${project.name}</strong></span><span>${tx('lqPdfRef')} <strong>${project.reference}</strong></span><span>RAL : <strong>${project.ralCode}</strong></span><span>${tx('lqPdfDate')} <strong>${date}</strong></span><span>${tx('lqPdfLots')} <strong>${lots.length}</strong></span></div>
 <table><thead>${thead}</thead><tbody>${allRows.join('') || `<tr><td colspan="7" style="text-align:center;color:#aaa">${tx('lqNoLine')}</td></tr>`}</tbody></table>
 ${histRows ? `<h2>${tx('lqHistoryTitle')}</h2><table><thead><tr><th>${tx('lqAction')}</th><th>${tx('lqByCol')}</th><th>${tx('lqDateTime')}</th><th>${tx('lqRemark')}</th><th>${tx('lqQtyRecvCol')}</th><th>${tx('lqLotCol')}</th></tr></thead><tbody>${histRows}</tbody></table>` : ''}
@@ -543,9 +542,9 @@ function AddLotBanner({ canEdit, addingLot, onAdd }) {
   if (!canEdit) return null;
   return (
     <div className="laq-addlot">
-      <Plus size={16} style={{ color: '#a5b4fc', flexShrink: 0 }} />
+      <Plus size={16} style={{ color: 'var(--ink-indigo)', flexShrink: 0 }} />
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#a5b4fc' }}>{t('lqAddLotTitle')}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-indigo)' }}>{t('lqAddLotTitle')}</div>
         <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
           {t('lqAddLotDesc')}
         </div>
@@ -825,7 +824,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
       {/* Header */}
       <div className="laq-panel-header">
         <div className="laq-panel-title">
-          <span>🎨</span><h3>{t('lqBarresTitle')}</h3>
+          <PaintBucket size={18} /><h3>{t('lqBarresTitle')}</h3>
           <StatusBadge status={lotStatus} />
         </div>
         <div className="laq-panel-actions">
@@ -894,14 +893,14 @@ export function BarresLaquerPanel({ project, currentUser }) {
               {t('lqProgress', { n: activeLot.lotIndex + 1 })}
             </span>
             {activeLot.receptionLaquageNote && (
-              <span style={{ fontSize: 11, color: '#93c5fd', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                📝 {t('lqLaqColon')} {activeLot.receptionLaquageNote}
+              <span style={{ fontSize: 11, color: 'var(--ink-blue)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <StickyNote size={12} style={{ marginRight: 4 }} />{t('lqLaqColon')} {activeLot.receptionLaquageNote}
                 {activeLot.receptionLaquageQty != null ? ` (${activeLot.receptionLaquageQty})` : ''}
               </span>
             )}
             {activeLot.receptionCoordNote && (
-              <span style={{ fontSize: 11, color: '#86efac', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                📝 {t('lqCoordColon')} {activeLot.receptionCoordNote}
+              <span style={{ fontSize: 11, color: 'var(--ink-green)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <StickyNote size={12} style={{ marginRight: 4 }} />{t('lqCoordColon')} {activeLot.receptionCoordNote}
                 {activeLot.receptionCoordQty != null ? ` (${activeLot.receptionCoordQty})` : ''}
               </span>
             )}
@@ -1306,7 +1305,7 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
       )}
 
       <div className="laq-panel-header">
-        <div className="laq-panel-title"><span>🔩</span><h3>{t('lqAccTitle')}</h3><StatusBadge status={lotStatus} /></div>
+        <div className="laq-panel-title"><Nut size={18} /><h3>{t('lqAccTitle')}</h3><StatusBadge status={lotStatus} /></div>
         <div className="laq-panel-actions">
           {canEdit && isDraft && (
             <button className="laq-save-btn" disabled={saving} onClick={saveLot}>
@@ -1362,8 +1361,8 @@ export function AccessoiresLaquerPanel({ project, currentUser }) {
         <div className="laq-lot-progress">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>{t('lqProgress', { n: activeLot.lotIndex + 1 })}</span>
-            {activeLot.receptionLaquageNote && <span style={{ fontSize: 11, color: '#93c5fd' }}>📝 {activeLot.receptionLaquageNote}{activeLot.receptionLaquageQty != null ? ` (${activeLot.receptionLaquageQty})` : ''}</span>}
-            {activeLot.receptionCoordNote && <span style={{ fontSize: 11, color: '#86efac' }}>📝 {activeLot.receptionCoordNote}{activeLot.receptionCoordQty != null ? ` (${activeLot.receptionCoordQty})` : ''}</span>}
+            {activeLot.receptionLaquageNote && <span style={{ fontSize: 11, color: 'var(--ink-blue)' }}><StickyNote size={11} style={{ marginRight: 4 }} />{activeLot.receptionLaquageNote}{activeLot.receptionLaquageQty != null ? ` (${activeLot.receptionLaquageQty})` : ''}</span>}
+            {activeLot.receptionCoordNote && <span style={{ fontSize: 11, color: 'var(--ink-green)' }}><StickyNote size={11} style={{ marginRight: 4 }} />{activeLot.receptionCoordNote}{activeLot.receptionCoordQty != null ? ` (${activeLot.receptionCoordQty})` : ''}</span>}
           </div>
           <LotTimeline lot={activeLot} history={history} />
         </div>

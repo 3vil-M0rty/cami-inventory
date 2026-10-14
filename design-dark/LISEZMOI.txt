@@ -1,7 +1,0 @@
-Refonte du design — thème sombre (inclut aussi la passe traductions + modales précédente)
-
-Copiez le dossier "frontend/src" par-dessus votre "frontend/src" (même arborescence, remplacez les fichiers).
-Ce paquet remplace ui-pass.zip : il contient TOUS les fichiers modifiés depuis votre dernière version.
-Backend : aucun changement (gardez le server.js livré précédemment).
-
-Après copie : dans frontend/  →  npm start   (puis npm run build / déploiement Vercel comme d'habitude)

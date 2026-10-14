@@ -10,10 +10,10 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 // label = translation key
 const STATUS_CONFIG = {
-  brouillon: { label: 'dvStBrouillon', bg: 'rgba(161,161,170,.12)', text: '#d4d4d8', bd: 'rgba(161,161,170,.3)' },
-  envoye:    { label: 'dvStEnvoye',    bg: 'rgba(96,165,250,.12)',  text: '#93c5fd', bd: 'rgba(96,165,250,.3)' },
-  accepte:   { label: 'dvStAccepte',   bg: 'rgba(74,222,128,.12)',  text: '#86efac', bd: 'rgba(74,222,128,.3)' },
-  refuse:    { label: 'dvStRefuse',    bg: 'rgba(248,113,113,.12)', text: '#fca5a5', bd: 'rgba(248,113,113,.3)' },
+  brouillon: { label: 'dvStBrouillon', bg: 'rgba(161,161,170,.12)', text: 'var(--ink-grey)', bd: 'rgba(161,161,170,.3)' },
+  envoye:    { label: 'dvStEnvoye',    bg: 'rgba(96,165,250,.12)',  text: 'var(--ink-blue)', bd: 'rgba(96,165,250,.3)' },
+  accepte:   { label: 'dvStAccepte',   bg: 'rgba(74,222,128,.12)',  text: 'var(--ink-green)', bd: 'rgba(74,222,128,.3)' },
+  refuse:    { label: 'dvStRefuse',    bg: 'rgba(248,113,113,.12)', text: 'var(--ink-red)', bd: 'rgba(248,113,113,.3)' },
 };
 
 export default function DevisPage() {

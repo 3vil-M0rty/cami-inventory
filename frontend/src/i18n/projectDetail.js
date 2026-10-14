@@ -104,6 +104,8 @@ const projectDetail = {
     pdReadyMany: '{a}/{b} prêts',
     pdPartial: 'partiel',
     pdSet: 'Définir',
+    pdRempLabels: 'Étiquettes remplissages ({n})',
+    pdBulkRempBtn: 'États remplissages en lot',
   },
   it: {
     qtTel: 'Tel:', qtEmail: 'Email:', qtIce: 'ICE:', qtRc: 'RC:', qtReference: 'Riferimento:', qtDate: 'Data:', qtNumber: 'Preventivo n°:', qtTitle: 'PREVENTIVO — {name}', qtColType: 'Tipo', qtColDescription: 'Descrizione', qtColComponents: 'Componenti', qtColDetails: 'Dettagli', qtColValues: 'Valori', qtColUnitPrice: 'Prezzo unitario', qtColPrice: 'Prezzo (imponibile)', qtQuantity: 'Quantità', qtAluminium: 'Alluminio', qtAluQty: 'Alluminio quantità', qtAluM2Total: 'Alluminio m² (totale)', qtTotalHT: 'TOTALE IMPONIBILE:', qtTva20: 'IVA 20 %:', qtTotalTTC: 'TOTALE IVA INCLUSA:', qtTotalML: 'TOTALE ML TAMPONAMENTO:', qtSheet: 'Preventivo', qtFile: 'preventivo',
@@ -209,6 +211,8 @@ const projectDetail = {
     pdReadyMany: '{a}/{b} pronti',
     pdPartial: 'parziale',
     pdSet: 'Imposta',
+    pdRempLabels: 'Etichette tamponamenti ({n})',
+    pdBulkRempBtn: 'Stati tamponamenti in blocco',
   },
   en: {
     qtTel: 'Tel:', qtEmail: 'Email:', qtIce: 'ICE:', qtRc: 'RC:', qtReference: 'Reference:', qtDate: 'Date:', qtNumber: 'Quote no.:', qtTitle: 'QUOTE — {name}', qtColType: 'Type', qtColDescription: 'Description', qtColComponents: 'Components', qtColDetails: 'Details', qtColValues: 'Values', qtColUnitPrice: 'Unit price', qtColPrice: 'Price excl. VAT', qtQuantity: 'Quantity', qtAluminium: 'Aluminium', qtAluQty: 'Aluminium quantity', qtAluM2Total: 'Aluminium m² (total)', qtTotalHT: 'TOTAL EXCL. VAT:', qtTva20: 'VAT 20%:', qtTotalTTC: 'TOTAL INCL. VAT:', qtTotalML: 'TOTAL INFILL LM:', qtSheet: 'Quote', qtFile: 'quote',
@@ -314,6 +318,8 @@ const projectDetail = {
     pdReadyMany: '{a}/{b} ready',
     pdPartial: 'partial',
     pdSet: 'Set',
+    pdRempLabels: 'Infill labels ({n})',
+    pdBulkRempBtn: 'Bulk infill status',
   },
 };
 export default projectDetail;

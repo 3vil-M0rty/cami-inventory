@@ -11,6 +11,9 @@ const common = {
     errUpload: "Erreur lors de l'envoi du fichier : {msg}",
     deleteTitle: 'Supprimer', deleteAction: 'Supprimer', optionalReason: 'Motif (optionnel)',
     loadingShort: 'Chargement…', yes: 'Oui', no: 'Non',
+    themeLight: 'Thème clair',
+    themeDark: 'Thème sombre',
+    themeTitle: 'Apparence',
   },
   it: {
     superCatAll: 'Tutte le categorie', superCatAluminium: 'Alluminio', superCatVerre: 'Vetro', superCatAccessoires: 'Accessori', superCatPoudre: 'Polvere',
@@ -23,6 +26,9 @@ const common = {
     errUpload: "Errore durante l'invio del file: {msg}",
     deleteTitle: 'Elimina', deleteAction: 'Elimina', optionalReason: 'Motivo (facoltativo)',
     loadingShort: 'Caricamento…', yes: 'Sì', no: 'No',
+    themeLight: 'Tema chiaro',
+    themeDark: 'Tema scuro',
+    themeTitle: 'Aspetto',
   },
   en: {
     superCatAll: 'All categories', superCatAluminium: 'Aluminium', superCatVerre: 'Glass', superCatAccessoires: 'Accessories', superCatPoudre: 'Powder',
@@ -35,6 +41,9 @@ const common = {
     errUpload: 'File upload error: {msg}',
     deleteTitle: 'Delete', deleteAction: 'Delete', optionalReason: 'Reason (optional)',
     loadingShort: 'Loading…', yes: 'Yes', no: 'No',
+    themeLight: 'Light theme',
+    themeDark: 'Dark theme',
+    themeTitle: 'Appearance',
   },
 };
 export default common;

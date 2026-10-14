@@ -43,7 +43,7 @@ const ORDERS_CACHE_MS = 5 * 60 * 1000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aluminum-inventory';
 
 mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => { console.log('✅ MongoDB connected'); initSampleData(); migrateExistingData(); migrateLaquageToLots(); fixStuckLaquageLots(); seedSuperCategories(); resyncAllOrderedQuantities(); })
+  .then(() => { console.log('✅ MongoDB connected'); initSampleData(); migrateExistingData(); migrateLaquageToLots(); fixStuckLaquageLots(); seedSuperCategories(); resyncAllOrderedQuantities(); backfillItemSearchText(); })
   .catch(err => { console.error('❌ MongoDB error:', err); process.exit(1); });
 
 
@@ -186,9 +186,22 @@ const itemSchema = new mongoose.Schema({
     supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Fournisseur', required: true },
     code: { type: String, default: '' },
   }],
-  superCategory: { type: String, default: 'aluminium' }
-}, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; } } });
+  superCategory: { type: String, default: 'aluminium' },
+  // Lowercase, accent-free copy of designations + codes, kept in sync on save → fast server-side search
+  searchText: { type: String, default: '', select: false },
+}, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; delete ret.searchText; } } });
+// "Fenêtre ALU 20x40" → "fenetre alu 20x40"
+const normalizeSearch = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const buildItemSearchText = (it) => normalizeSearch([
+  it.designation?.fr, it.designation?.it, it.designation?.en, it.codeInterne,
+  ...(it.supplierCodes || []).map(sc => sc.code),
+].filter(Boolean).join(' '));
+itemSchema.pre('save', function (next) { this.searchText = buildItemSearchText(this); next(); });
 itemSchema.index({ updatedAt: -1 });
+itemSchema.index({ createdAt: -1 });
+itemSchema.index({ searchText: 1 });
+itemSchema.index({ codeInterne: 1 });
+itemSchema.index({ 'supplierCodes.code': 1 });
 itemSchema.index({ superCategory: 1, createdAt: -1 });
 itemSchema.index({ superCategory: 1, categoryId: 1, createdAt: -1 });
 const Item = mongoose.model('Item', itemSchema);
@@ -879,6 +892,21 @@ function syncUnits(chassis) {
 
 
 
+// Fills searchText for items created before the field existed (or edited by a bulk update)
+async function backfillItemSearchText() {
+  try {
+    const missing = await Item.find({ $or: [{ searchText: { $exists: false } }, { searchText: '' }] })
+      .select('designation codeInterne supplierCodes.code').lean();
+    if (!missing.length) return;
+    for (let i = 0; i < missing.length; i += 500) {
+      await Item.bulkWrite(missing.slice(i, i + 500).map(it => ({
+        updateOne: { filter: { _id: it._id }, update: { $set: { searchText: buildItemSearchText(it) } } },
+      })));
+    }
+    console.log(`✅ searchText filled for ${missing.length} item(s)`);
+  } catch (e) { console.error('searchText backfill error:', e.message); }
+}
+
 async function seedSuperCategories() {
   const BUILTIN = [
     { key: 'aluminium', label: { fr: 'Aluminium', it: 'Alluminio', en: 'Aluminium' }, color: '#3b82f6', order: 0 },
@@ -1468,6 +1496,35 @@ app.get('/api/inventory/allowed-supercategories', optionalAuth, (req, res) => {
 //  - with ?page=1&limit=40 → { items, total, page, limit, hasMore }: the Inventory page loads
 //    only what is on screen. Search (?q=) and filters (?stock=critical|warning|ordered) run in MongoDB.
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Every word must appear in the item's searchText (one indexed field instead of 5 regexes)
+const searchWordsFilter = (q) => normalizeSearch(q).split(' ').filter(Boolean).slice(0, 8)
+  .map(w => ({ searchText: { $regex: escapeRegex(w) } }));
+
+// GET /api/inventory/lookup?q=&superCategory=&categoryId=&limit=20
+// Lightweight search for pickers (order form lines…): only the fields a picker shows, max 50 rows.
+app.get('/api/inventory/lookup', optionalAuth, async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.superCategory && req.query.superCategory !== 'all') filter.superCategory = req.query.superCategory;
+    if (req.query.categoryId && req.query.categoryId !== 'all' && mongoose.Types.ObjectId.isValid(req.query.categoryId)) filter.categoryId = req.query.categoryId;
+    if (!applyScFilter(filter, req.allowedSuperCategories)) return res.json({ items: [], hasMore: false });
+    const and = searchWordsFilter(req.query.q);
+    if (and.length) filter.$and = and;
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
+    const rows = await Item.find(filter)
+      .select('designation codeInterne image superCategory categoryId quantity threshold orderedQuantity supplierCodes.code')
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .populate('categoryId', 'name color')
+      .lean();
+    const items = rows.slice(0, limit).map(it => ({
+      ...it, id: String(it._id), _id: undefined,
+      categoryId: it.categoryId ? { ...it.categoryId, id: String(it.categoryId._id) } : null,
+    }));
+    res.json({ items, hasMore: rows.length > limit });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/inventory', optionalAuth, async (req, res) => {
   try {
     const filter = {};
@@ -1479,11 +1536,7 @@ app.get('/api/inventory', optionalAuth, async (req, res) => {
     if (!paged) return res.json(await Item.find(filter).populate('categoryId').sort({ createdAt: -1 }));
 
     // Every word must appear in the designation, the internal code or a supplier code
-    const words = String(req.query.q || '').trim().split(/\s+/).filter(Boolean).slice(0, 8);
-    const and = words.map(w => {
-      const rx = new RegExp(escapeRegex(w), 'i');
-      return { $or: [{ 'designation.fr': rx }, { 'designation.it': rx }, { 'designation.en': rx }, { codeInterne: rx }, { 'supplierCodes.code': rx }] };
-    });
+    const and = searchWordsFilter(req.query.q);
     // Stock filters, same rules as the badges on the cards
     const total = { $add: ['$quantity', { $ifNull: ['$orderedQuantity', 0] }] };
     if (req.query.stock === 'critical') and.push({ $expr: { $lt: [total, '$threshold'] } });
@@ -1524,12 +1577,8 @@ app.get('/api/inventory/search', optionalAuth, async (req, res) => {
     if (req.query.categoryId && req.query.categoryId !== 'all') filter.categoryId = req.query.categoryId;
     if (req.query.superCategory && req.query.superCategory !== 'all') filter.superCategory = req.query.superCategory;
     if (!applyScFilter(filter, req.allowedSuperCategories)) return res.json([]);
-    if (req.query.q) filter.$or = [
-      { 'designation.it': { $regex: req.query.q, $options: 'i' } },
-      { 'designation.fr': { $regex: req.query.q, $options: 'i' } },
-      { 'designation.en': { $regex: req.query.q, $options: 'i' } },
-      { codeInterne: { $regex: req.query.q, $options: 'i' } },
-    ];
+    const and = searchWordsFilter(req.query.q);
+    if (and.length) filter.$and = and;
     res.json(await Item.find(filter).populate('categoryId').sort({ createdAt: -1 }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1578,6 +1627,7 @@ app.put('/api/inventory/:id', optionalAuth, async (req, res) => {
       superCategory: sc,
       codeInterne: req.body.codeInterne || '',
       supplierCodes: sanitizeSupplierCodes(req.body.supplierCodes),
+      searchText: buildItemSearchText({ designation: req.body.designation, codeInterne: req.body.codeInterne, supplierCodes: req.body.supplierCodes }),
     }, { new: true, runValidators: true }).populate('categoryId');
     if (!item) return res.status(404).json({ error: 'Not found' });
     res.json(item);
@@ -2121,6 +2171,24 @@ app.patch('/api/orders/:id/receive', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Take `qty` out of an article's stock. If the stock is lower (part already used), refuse with
+// 409 INSUFFICIENT_STOCK unless `force` → then the stock goes down to 0 (never negative).
+// Returns { item, removed } or { conflict: { available } }.
+async function takeOutStock(itemId, qty, force) {
+  const item = await Item.findOneAndUpdate(
+    { _id: itemId, quantity: { $gte: qty } },
+    { $inc: { quantity: -qty } },
+    { new: true }
+  );
+  if (item) return { item, removed: qty };
+  const current = await Item.findById(itemId, 'quantity');
+  if (!current) return { item: null, removed: 0 };
+  if (!force) return { conflict: { available: current.quantity || 0 } };
+  const before = current.quantity || 0;
+  const forced = await Item.findByIdAndUpdate(itemId, { $set: { quantity: 0 } }, { new: true });
+  return { item: forced, removed: before };
+}
+
 // Cancel a reception entered by mistake: the quantity leaves the stock and the line again.
 // The entry stays in the history (struck through) — then receive again with the right quantity.
 app.post('/api/orders/:id/receptions/:receptionId/cancel', requireAuth, async (req, res) => {
@@ -2142,23 +2210,22 @@ app.post('/api/orders/:id/receptions/:receptionId/cancel', requireAuth, async (r
     const qty = rec.quantityReceived || 0;
     const blLabel = `${o.number || o.reference} — BL ${rec.blNumber}`;
 
-    // Take the quantity back out of the stock (refused if it was already used)
-    const item = await Item.findOneAndUpdate(
-      { _id: line.itemId, quantity: { $gte: qty } },
-      { $inc: { quantity: -qty } },
-      { new: true }
-    );
-    if (!item) {
-      const current = await Item.findById(line.itemId, 'quantity');
-      return res.status(400).json({
-        error: `Stock insuffisant pour annuler : ${qty} à retirer, ${current?.quantity ?? 0} en stock (une partie a déjà été consommée). Corrigez d'abord le stock dans l'inventaire.`,
+    // Take the quantity back out of the stock. If part of it was already used, ask for confirmation
+    // (409) — with force the stock goes down to 0.
+    const out = await takeOutStock(line.itemId, qty, !!req.body.force);
+    if (out.conflict) {
+      return res.status(409).json({
+        code: 'INSUFFICIENT_STOCK', needed: qty, available: out.conflict.available,
+        error: `Le stock actuel (${out.conflict.available}) est inférieur à la quantité de la réception (${qty}) : une partie a déjà été utilisée.`,
       });
     }
-    await StockMovement.create({
-      itemId: item._id, type: 'sortie', quantity: qty,
-      balanceAfter: item.quantity, orderId: o._id,
-      note: `Annulation réception ${blLabel}${req.body.note ? ` — ${req.body.note}` : ''}`,
-    });
+    if (out.item) {
+      await StockMovement.create({
+        itemId: out.item._id, type: 'sortie', quantity: out.removed,
+        balanceAfter: out.item.quantity, orderId: o._id,
+        note: `Annulation réception ${blLabel}${out.removed < qty ? ` (stock insuffisant : ${out.removed} retiré(s) sur ${qty})` : ''}${req.body.note ? ` — ${req.body.note}` : ''}`,
+      });
+    }
 
     line.quantityReceived = Math.max(0, (line.quantityReceived || 0) - qty);
     rec.cancelled = true;
@@ -2199,23 +2266,27 @@ app.patch('/api/orders/:id/receptions/:receptionId', requireAuth, async (req, re
     const delta = newQty - oldQty;
     if (delta === 0) return res.status(400).json({ error: 'La quantité est inchangée.' });
 
-    // Stock: -delta when lowering (refused if already consumed), +delta when raising
-    const item = await Item.findOneAndUpdate(
-      delta < 0 ? { _id: line.itemId, quantity: { $gte: -delta } } : { _id: line.itemId },
-      { $inc: { quantity: delta } },
-      { new: true }
-    );
-    if (!item) {
-      const current = await Item.findById(line.itemId, 'quantity');
-      return res.status(400).json({
-        error: `Stock insuffisant pour ajuster : ${-delta} à retirer, ${current?.quantity ?? 0} en stock (une partie a déjà été consommée). Corrigez d'abord le stock dans l'inventaire.`,
-      });
+    // Stock: +delta when raising; -delta when lowering (confirmation asked if part was already used)
+    let item, moved = Math.abs(delta);
+    if (delta > 0) {
+      item = await Item.findByIdAndUpdate(line.itemId, { $inc: { quantity: delta } }, { new: true });
+    } else {
+      const out = await takeOutStock(line.itemId, -delta, !!req.body.force);
+      if (out.conflict) {
+        return res.status(409).json({
+          code: 'INSUFFICIENT_STOCK', needed: -delta, available: out.conflict.available,
+          error: `Le stock actuel (${out.conflict.available}) est inférieur aux ${-delta} à retirer : une partie a déjà été utilisée.`,
+        });
+      }
+      item = out.item;
+      moved = out.removed;
     }
+    if (!item) return res.status(404).json({ error: 'Article introuvable dans l\'inventaire' });
     const note = (req.body.note || '').trim();
     await StockMovement.create({
       itemId: item._id,
       type: delta > 0 ? 'entree' : 'sortie',
-      quantity: Math.abs(delta),
+      quantity: moved,
       balanceAfter: item.quantity,
       orderId: o._id,
       note: `Ajustement réception ${o.number || o.reference} — BL ${rec.blNumber} : ${oldQty} → ${newQty}${note ? ` — ${note}` : ''}`,
@@ -2547,6 +2618,21 @@ app.get('/api/projects/list', async (req, res) => {
       companyId: p.company ? { ...p.company, id: p.company._id?.toString(), _id: undefined } : null,
       clientId: p.client ? { ...p.client, id: p.client._id?.toString(), _id: undefined } : null,
     }));
+
+    // Laquage summary per project card (bars sent to laquage, number of lots) — one indexed query for the page
+    if (projects.length) {
+      const laq = await LaquageBarres.find({ projectId: { $in: result.data.map(p => p._id) } })
+        .select('projectId lots.status').lean();
+      const byProject = new Map(laq.map(r => [String(r.projectId), r.lots || []]));
+      for (const pr of projects) {
+        const lots = byProject.get(pr.id) || [];
+        const sent = lots.filter(l => l.status && l.status !== 'draft');
+        if (sent.length) {
+          // stage = least advanced lot: sent_to_laquage → received_laquage → returned_to_coord → received_coord
+          pr.laquage = { lots: sent.length, stage: deriveLaquageRecordStatus(sent) };
+        }
+      }
+    }
 
     res.json({ projects, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
   } catch (e) { res.status(500).json({ error: e.message }); }

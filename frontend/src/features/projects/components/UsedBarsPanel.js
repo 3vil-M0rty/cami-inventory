@@ -299,7 +299,7 @@ function UsedBarsPanel({ project }) {
           onChange={e => setSearchTerm(e.target.value)}
         />
         {searchTerm && (
-          <button className="ubp__search-clear" onClick={() => { setSearchTerm(''); setSearchResults([]); }}>✕</button>
+          <button className="ubp__search-clear" onClick={() => { setSearchTerm(''); setSearchResults([]); }}><X size={14} /></button>
         )}
       </div>
 

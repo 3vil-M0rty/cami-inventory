@@ -17,7 +17,7 @@
 .devis-list { display:flex;flex-direction:column;gap:12px; }
 .devis-card {
   background:var(--surface);border-radius:var(--r-xl);border:1px solid var(--border);padding:16px 18px;
-  box-shadow:var(--sh-sm), inset 0 1px 0 rgba(255,255,255,.03);
+  box-shadow:var(--sh-sm), inset 0 1px 0 var(--hairline);
   transition:border-color var(--t), background var(--t);animation:fadeUp .2s ease-out;
 }
 .devis-card:hover { border-color:var(--border-2);background:#151518; }

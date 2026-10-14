@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useLanguage } from '../../../context/LanguageContext';
 import { dialog, errorMessage } from '../../../components/common/dialog';
 
+import { X, Check } from 'lucide-react';
 const API = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 /**
@@ -111,7 +112,7 @@ export default function CompanySettings() {
               </div>
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
                 {isSaved && (
-                  <span style={{ fontSize: 13, color: 'var(--success)', fontWeight: 500 }}>{t('lqCsSaved')}</span>
+                  <span style={{ fontSize: 13, color: 'var(--success)', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Check size={14} /> {t('lqCsSaved')}</span>
                 )}
                 <button
                   onClick={() => handleSave(c.id)}
@@ -146,7 +147,7 @@ export default function CompanySettings() {
                     <button
                       onClick={() => set(c.id, 'logo', '')}
                       style={{ padding: '0 10px', height: 36, border: '1px solid var(--border-2)', borderRadius: 7, background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', fontSize: 13 }}
-                    >✕</button>
+                    ><X size={14} /></button>
                   )}
                 </div>
                 {f.logo && (

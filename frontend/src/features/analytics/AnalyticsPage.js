@@ -5,7 +5,7 @@ import {
   PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, RadialBarChart, RadialBar,
 } from 'recharts';
 import { useLanguage } from '../../context/LanguageContext';
-import { FolderOpen, Cog, Package, AlertTriangle, Truck, ArrowUpDown, RotateCw } from 'lucide-react';
+import { FolderOpen, Cog, Package, AlertTriangle, Truck, ArrowUpDown, RotateCw, TrendingDown, TrendingUp } from 'lucide-react';
 import './AnalyticsLayout.css';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -65,7 +65,7 @@ function KpiCard({ label, value, icon, color, delta, sub, index }) {
       {sub && <div className="an-kpi-card__sub">{sub}</div>}
       {delta !== undefined && (
         <div style={{ fontSize: 11, color: delta >= 0 ? '#4ade80' : '#f87171', marginTop: 4, fontWeight: 600 }}>
-          {delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}%
+          {delta >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />} {Math.abs(delta)}%
         </div>
       )}
     </div>
@@ -310,7 +310,7 @@ export default function AnalyticsPage() {
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    {cat.critical > 0 && <span style={{ fontSize: 11, color: '#f87171', fontWeight: 700 }}>⚠ {cat.critical}</span>}
+                    {cat.critical > 0 && <span style={{ fontSize: 11, color: '#f87171', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><AlertTriangle size={11} /> {cat.critical}</span>}
                     <span style={{ fontSize: 11, color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>{cat.total}</span>
                   </div>
                 </div>

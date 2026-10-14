@@ -21,6 +21,7 @@ import AtelierTablesPage from './features/AtelierTables';
 import { PAGE_PATHS, pageFromLocation, setUrl } from './routes';
 import { DialogHost } from './components/common/dialog';
 
+import { Lock } from 'lucide-react';
 const PROJECTS_DEFAULT_ROLES = new Set(['LOGISTIQUE', 'Coordinateur', 'BARREMAN']);
 const CHANTIER_DEFAULT_ROLES = new Set(['chefChantier', 'BARREMAN']);
 // Rôles qui reçoivent des commandes par catégorie (accessoires / poudre / verre)
@@ -120,9 +121,9 @@ function AppInner() {
             <main className="app__main">
               {!currentAllowed ? (
                 <div style={{ textAlign: 'center', padding: 80 }}>
-                  <div style={{ fontSize: '3rem', marginBottom: 12 }}>🔒</div>
-                  <h2 style={{ color: '#374151' }}>{t('acAccessDenied')}</h2>
-                  <p style={{ color: '#888' }}>{t('acNoPermission')}</p>
+                  <div style={{ width: 56, height: 56, margin: '0 auto 14px', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-3)' }}><Lock size={24} /></div>
+                  <h2 style={{ color: 'var(--text)' }}>{t('acAccessDenied')}</h2>
+                  <p style={{ color: 'var(--text-3)' }}>{t('acNoPermission')}</p>
                 </div>
               ) : (
                 <>

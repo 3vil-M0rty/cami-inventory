@@ -4,7 +4,7 @@ const fr = {
   anFilterAll: 'Tout',
   anFilter_aluminium: 'Aluminium',
   anFilter_accessoires: 'Accessoires',
-  anKpiOk: '✓ OK',
+  anKpiOk: 'OK',
 
   // PDF exports
   anPdfProjectSheet: 'Fiche Projet',
@@ -51,7 +51,7 @@ const it = {
   anFilterAll: 'Tutto',
   anFilter_aluminium: 'Alluminio',
   anFilter_accessoires: 'Accessori',
-  anKpiOk: '✓ OK',
+  anKpiOk: 'OK',
 
   anPdfProjectSheet: 'Scheda Progetto',
   anPdfChassisSheet: 'Scheda Telai',
@@ -96,7 +96,7 @@ const en = {
   anFilterAll: 'All',
   anFilter_aluminium: 'Aluminium',
   anFilter_accessoires: 'Accessories',
-  anKpiOk: '✓ OK',
+  anKpiOk: 'OK',
 
   anPdfProjectSheet: 'Project Sheet',
   anPdfChassisSheet: 'Chassis Sheet',

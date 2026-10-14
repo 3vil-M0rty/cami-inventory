@@ -286,17 +286,17 @@
   border-color: var(--900);
 }
 
-.filter-btn--alert { color: #fca5a5; border-color: var(--danger-bd); }
-.filter-btn--alert:hover { background: var(--danger-bg); border-color: var(--danger); color: #fecaca; }
-.filter-btn--alert.active { background: rgba(248, 113, 113, .2); border-color: var(--danger); color: #fecaca; }
+.filter-btn--alert { color: var(--ink-red); border-color: var(--danger-bd); }
+.filter-btn--alert:hover { background: var(--danger-bg); border-color: var(--danger); color: var(--ink-red); }
+.filter-btn--alert.active { background: rgba(248, 113, 113, .2); border-color: var(--danger); color: var(--ink-red); }
 
-.filter-btn--warning { color: #fcd34d; border-color: var(--warning-bd); }
-.filter-btn--warning:hover { background: var(--warning-bg); border-color: var(--warning); color: #fde68a; }
-.filter-btn--warning.active { background: rgba(251, 191, 36, .2); border-color: var(--warning); color: #fde68a; }
+.filter-btn--warning { color: var(--ink-amber); border-color: var(--warning-bd); }
+.filter-btn--warning:hover { background: var(--warning-bg); border-color: var(--warning); color: var(--ink-amber); }
+.filter-btn--warning.active { background: rgba(251, 191, 36, .2); border-color: var(--warning); color: var(--ink-amber); }
 
-.filter-btn--ordered { color: #c7d2fe; border-color: rgba(129, 140, 248, .35); }
-.filter-btn--ordered:hover { background: rgba(129, 140, 248, .1); border-color: #818cf8; color: #e0e7ff; }
-.filter-btn--ordered.active { background: rgba(129, 140, 248, .22); border-color: #818cf8; color: #e0e7ff; }
+.filter-btn--ordered { color: var(--ink-indigo); border-color: rgba(129, 140, 248, .35); }
+.filter-btn--ordered:hover { background: rgba(129, 140, 248, .1); border-color: #818cf8; color: var(--ink-indigo); }
+.filter-btn--ordered.active { background: rgba(129, 140, 248, .22); border-color: #818cf8; color: var(--ink-indigo); }
 
 .filter-btn--add {
   border-style: dashed;
@@ -613,7 +613,7 @@
   background: rgba(9, 9, 11, .72);
   border: 1px solid rgba(255, 255, 255, .08);
   backdrop-filter: blur(6px);
-  color: var(--text-2);
+  color: #e4e4e7; /* always over a dark glass chip on the photo */
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .04em;
@@ -740,9 +740,9 @@
 }
 
 .inventory-app .status-pill svg { flex-shrink: 0; }
-.inventory-app .status-pill--status-critical { background: rgba(248, 113, 113, .12); color: #fca5a5; border-color: rgba(248, 113, 113, .3); }
-.inventory-app .status-pill--status-warning { background: rgba(251, 191, 36, .12); color: #fcd34d; border-color: rgba(251, 191, 36, .3); }
-.inventory-app .status-pill--status-ok { background: rgba(74, 222, 128, .1); color: #86efac; border-color: rgba(74, 222, 128, .28); }
+.inventory-app .status-pill--status-critical { background: rgba(248, 113, 113, .12); color: var(--ink-red); border-color: rgba(248, 113, 113, .3); }
+.inventory-app .status-pill--status-warning { background: rgba(251, 191, 36, .12); color: var(--ink-amber); border-color: rgba(251, 191, 36, .3); }
+.inventory-app .status-pill--status-ok { background: rgba(74, 222, 128, .1); color: var(--ink-green); border-color: rgba(74, 222, 128, .28); }
 
 /* +/- / order controls */
 .quantity-controls {
@@ -792,13 +792,13 @@
 .inventory-app .qty-btn--order {
   background: rgba(251, 191, 36, .08);
   border-color: rgba(251, 191, 36, .3);
-  color: #fcd34d;
+  color: var(--ink-amber);
 }
 
 .inventory-app .qty-btn--order:hover:not(:disabled) {
   background: rgba(251, 191, 36, .16);
   border-color: var(--warning);
-  color: #fde68a;
+  color: var(--ink-amber);
 }
 
 /* Edit / Delete */
@@ -1057,7 +1057,7 @@
   line-height: 1.4;
 }
 
-.inv-form-hint--warning { color: #fcd34d; }
+.inv-form-hint--warning { color: var(--ink-amber); }
 
 /* Supplier codes editor */
 .inv-supplier-row {
@@ -1120,7 +1120,7 @@
 
 .inv-role-note {
   font-size: 12px;
-  color: #fcd34d;
+  color: var(--ink-amber);
   margin-bottom: 4px;
   padding: 9px 12px;
   background: var(--warning-bg);
@@ -1129,7 +1129,7 @@
   line-height: 1.45;
 }
 
-.inv-role-note strong { color: #fde68a; }
+.inv-role-note strong { color: var(--ink-amber); }
 
 /* Super-cat manager */
 .supercat-list {
@@ -1403,7 +1403,7 @@
 .modal-actions .btn-confirm--danger,
 .btn-confirm--danger {
   background: var(--danger-bg);
-  color: #fca5a5;
+  color: var(--ink-red);
   border-color: var(--danger-bd);
 }
 
@@ -1411,13 +1411,13 @@
 .btn-confirm--danger:hover:not(:disabled) {
   background: rgba(248, 113, 113, .2);
   border-color: var(--danger);
-  color: #fecaca;
+  color: var(--ink-red);
 }
 
 .modal-actions .btn-confirm--success,
 .btn-confirm--success {
   background: var(--success-bg);
-  color: #86efac;
+  color: var(--ink-green);
   border-color: var(--success-bd);
 }
 
@@ -1425,13 +1425,13 @@
 .btn-confirm--success:hover:not(:disabled) {
   background: rgba(74, 222, 128, .2);
   border-color: var(--success);
-  color: #bbf7d0;
+  color: var(--ink-green);
 }
 
 .modal-actions .btn-confirm--order,
 .btn-confirm--order {
   background: rgba(251, 191, 36, .14);
-  color: #fde68a;
+  color: var(--ink-amber);
   border-color: rgba(251, 191, 36, .45);
 }
 
@@ -1444,31 +1444,3 @@
 @media (max-width:420px) {
   .item-action-btn svg { display: none; }
 }
-
-/* Ligne de badges centrée : statut + quantité en brouillon (bons non envoyés).
-   Même gabarit que .status-pill ; palette grise = badge "Brouillon" de la page Commandes, pointillés = pas confirmé. */
-.inventory-app .item-badges {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-.inventory-app .item-badges .status-pill { align-self: auto; }
-
-.inventory-app .qty-draft {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px dashed rgba(161, 161, 170, .55);
-  background: rgba(161, 161, 170, .12);
-  color: #d4d4d8;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  white-space: nowrap;
-}
-.inventory-app .qty-draft svg { flex-shrink: 0; }
