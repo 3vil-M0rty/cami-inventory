@@ -77,6 +77,8 @@ const fr = {
     ivRequestedBy: 'Demandé par {name}',
     ivOrderedBy: 'Commandé par {name} le {date}',
     ivMoreRequests: '+ {n} demande(s) plus ancienne(s) — voir la page Commandes',
+    ivDraftQtyTitle: '{qty} dans {n} bon(s) de commande brouillon',
+    ivPendingReqTitle: '{n} demande(s) d\'admin non commandée(s) — {qty} au total',
 };
 
 const it = {
@@ -156,6 +158,8 @@ const it = {
     ivRequestedBy: 'Richiesto da {name}',
     ivOrderedBy: 'Ordinato da {name} il {date}',
     ivMoreRequests: '+ {n} richiesta/e meno recente/i — vedi la pagina Ordini',
+    ivDraftQtyTitle: '{qty} in {n} buono/i d\'ordine in bozza',
+    ivPendingReqTitle: '{n} richiesta/e admin non ordinata/e — {qty} in totale',
 };
 
 const en = {
@@ -235,6 +239,8 @@ const en = {
     ivRequestedBy: 'Requested by {name}',
     ivOrderedBy: 'Ordered by {name} on {date}',
     ivMoreRequests: '+ {n} older request(s) — see the Orders page',
+    ivDraftQtyTitle: '{qty} in {n} draft purchase order(s)',
+    ivPendingReqTitle: '{n} admin request(s) not yet ordered — {qty} in total',
 };
 
 export default { fr, it, en };

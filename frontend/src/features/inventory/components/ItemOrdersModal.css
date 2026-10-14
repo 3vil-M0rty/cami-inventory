@@ -124,3 +124,25 @@
 }
 .item-requests-btn:hover { background: rgba(251,191,36,.16); border-color: rgba(251,191,36,.55); }
 .iom-row__status svg { margin-right: 3px; }
+
+/* Card badges: quantity in DRAFT purchase orders + admin requests not yet ordered */
+.item-orders-btn__label { overflow: hidden; text-overflow: ellipsis; }
+.item-draft-badge {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 3px;
+  height: 18px; padding: 0 6px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1;
+  background: rgba(161,161,170,.16); color: var(--text-2, #d4d4d8); border: 1px dashed rgba(161,161,170,.55);
+}
+.item-draft-badge svg { color: currentColor !important; }
+.item-requests-btn { position: relative; }
+.item-requests-badge {
+  position: absolute; top: -7px; right: -7px; min-width: 18px; height: 18px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center; border-radius: 999px;
+  font-size: 10.5px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums;
+  background: #f59e0b; color: #1c1206; box-shadow: 0 0 0 2px var(--surface, #18181b);
+  pointer-events: none;
+}
+/* Narrow cards (2 per row on phones): icon + draft badge only, the cut label said nothing */
+@media (max-width: 600px) {
+  .item-orders-btn--badge .item-orders-btn__label { display: none; }
+}

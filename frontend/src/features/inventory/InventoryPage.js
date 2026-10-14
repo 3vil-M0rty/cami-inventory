@@ -7,7 +7,7 @@ import {
   Layers, GlassWater, Wrench, FlaskConical, Settings, Paintbrush, MirrorRectangular,
   Search, AlertTriangle, AlertCircle, Plus, Minus, Pencil, Trash2,
   FileDown, PackagePlus, Package, ChevronRight, ChevronUp, ChevronDown, Tag,
-  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn, ClipboardList, X, Inbox } from 'lucide-react';
+  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn, ClipboardList, X, Inbox, FilePen } from 'lucide-react';
 import ItemOrdersModal from './components/ItemOrdersModal';
 import ItemRequestsModal from './components/ItemRequestsModal';
 import { useLanguage } from '../../context/LanguageContext';
@@ -312,6 +312,32 @@ function InventoryPage() {
   const canView = activeSuperCat && superCats.some(sc => sc.key === activeSuperCat);
   // Workshop accounts (e.g. usinage / coupeur): may only adjust stock with − / + → minimal screen and cards
   const workshopMode = !canEdit && can('inventory.quantity');
+
+  // Card badges: quantity in draft purchase orders + admin requests not yet ordered (fetched for the articles on screen)
+  const showBadges = canSeeItemOrders && !workshopMode;
+  const [badges, setBadges] = useState({});
+  const badgesRef = useRef(badges);
+  badgesRef.current = badges;
+  const loadBadges = useCallback(async (ids) => {
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200);
+      try {
+        const res = await axios.get(`${API_URL}/inventory/order-badges`, { params: { ids: chunk.join(',') } });
+        setBadges(prev => {
+          const next = { ...prev };
+          chunk.forEach(id => { next[id] = res.data?.[id] || null; });
+          return next;
+        });
+      } catch (e) { console.error(e); }
+    }
+  }, []);
+  const itemIdsKey = filteredItems.map(i => i.id).join(',');
+  useEffect(() => {
+    if (!showBadges) return;
+    const missing = filteredItems.map(i => i.id).filter(id => !(id in badgesRef.current));
+    if (missing.length) loadBadges(missing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemIdsKey, showBadges, loadBadges]);
   const { user } = useAuth();
   const userRole = user?.role;
   const adminThing = userRole === 'Admin';
@@ -492,6 +518,7 @@ function InventoryPage() {
               onOrderRequest={can('admin.view') ? (i) => setOrderRequestModal({ item: i }) : null}
               onShowOrders={canSeeItemOrders ? (i) => setOrdersItem(i) : null}
               onShowRequests={canSeeItemOrders ? (i) => setRequestsItem(i) : null}
+              badges={showBadges ? badges[item.id] : null}
               getStockStatus={getStockStatus}
               t={t}
             />
@@ -585,7 +612,7 @@ function InventoryPage() {
           language={language}
           t={t}
           onClose={() => setOrderRequestModal(null)}
-          onSent={() => setOrderRequestModal(null)}
+          onSent={() => { const id = orderRequestModal.item.id; setOrderRequestModal(null); loadBadges([id]); }}
         />
       )}
 
@@ -624,7 +651,7 @@ function ImagePreviewModal({ src, alt, onClose }) {
 }
 
 /* ── Item Card ──────────────────────────────────────────────── */
-function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit, onDelete, onOrderRequest, onShowOrders, onShowRequests, getStockStatus, t, compact = false }) {
+function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit, onDelete, onOrderRequest, onShowOrders, onShowRequests, getStockStatus, t, compact = false, badges = null }) {
   const status = getStockStatus(item);
   const formatQty = (val) => isPoudre ? fmt(val) : Math.floor(val);
   const { user } = useAuth();
@@ -713,14 +740,22 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
         {!compact && (onShowOrders || onShowRequests) && (
           <div className="item-orders-row">
             {onShowOrders && (
-              <button className="item-orders-btn" onClick={() => onShowOrders(item)} title={t('ivSeeItemOrders')}>
+              <button className={`item-orders-btn${badges?.draftQty > 0 ? ' item-orders-btn--badge' : ''}`} onClick={() => onShowOrders(item)} title={t('ivSeeItemOrders')}>
                 <ClipboardList size={13} strokeWidth={2.5} />
-                {t('ivPurchaseOrders')}
+                <span className="item-orders-btn__label">{t('ivPurchaseOrders')}</span>
+                {badges?.draftQty > 0 && (
+                  <span className="item-draft-badge" title={t('ivDraftQtyTitle', { qty: fmt(badges.draftQty), n: badges.draftOrders })}>
+                    <FilePen size={10} strokeWidth={2.5} />{fmt(badges.draftQty)}
+                  </span>
+                )}
               </button>
             )}
             {onShowRequests && (
-              <button className="item-requests-btn" onClick={() => onShowRequests(item)} title={t('ivSeeItemRequests')} aria-label={t('ivSeeItemRequests')}>
+              <button className="item-requests-btn" onClick={() => onShowRequests(item)}
+                title={badges?.pendingReqs > 0 ? t('ivPendingReqTitle', { n: badges.pendingReqs, qty: fmt(badges.pendingReqQty) }) : t('ivSeeItemRequests')}
+                aria-label={t('ivSeeItemRequests')}>
                 <Inbox size={14} strokeWidth={2.4} />
+                {badges?.pendingReqs > 0 && <span className="item-requests-badge">{badges.pendingReqs > 99 ? '99+' : badges.pendingReqs}</span>}
               </button>
             )}
           </div>

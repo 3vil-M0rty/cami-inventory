@@ -1618,6 +1618,40 @@ app.get('/api/inventory/search', optionalAuth, async (req, res) => {
     res.json(await Item.find(filter).populate('categoryId').sort({ createdAt: -1 }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// GET /api/inventory/order-badges?ids=a,b,c (max 200) — badges of the article cards:
+//   draftQty    = quantity of the article in DRAFT purchase orders (only ACHAT / Admin see drafts)
+//   pendingReqs = admin requests not yet marked "commandé"
+app.get('/api/inventory/order-badges', requireAuth, async (req, res) => {
+  try {
+    const ids = String(req.query.ids || '').split(',').filter(id => mongoose.Types.ObjectId.isValid(id)).slice(0, 200)
+      .map(id => new mongoose.Types.ObjectId(id));
+    if (!ids.length) return res.json({});
+    const seesDrafts = isAdmin(req) || (req.permissions || []).includes('orders.edit');
+    // Few drafts / pending requests at a time → plain indexed finds, summed here
+    const [drafts, requests] = await Promise.all([
+      seesDrafts
+        ? Order.find({ status: 'brouillon', 'lines.itemId': { $in: ids } }).select('lines.itemId lines.quantityOrdered').lean()
+        : [],
+      PurchaseRequest.find({ status: 'pending', itemId: { $in: ids } }).select('itemId quantity').lean(),
+    ]);
+    const wanted = new Set(ids.map(String));
+    const out = {};
+    const row = (id) => (out[id] ||= { draftQty: 0, draftOrders: 0, pendingReqs: 0, pendingReqQty: 0 });
+    drafts.forEach(o => {
+      const seen = new Set();
+      (o.lines || []).forEach(l => {
+        const id = String(l.itemId);
+        if (!wanted.has(id)) return;
+        const r = row(id);
+        r.draftQty += l.quantityOrdered || 0;
+        if (!seen.has(id)) { seen.add(id); r.draftOrders += 1; }
+      });
+    });
+    requests.forEach(pr => { const r = row(String(pr.itemId)); r.pendingReqs += 1; r.pendingReqQty += pr.quantity || 0; });
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/inventory/:id', optionalAuth, async (req, res, next) => {
   // Not an id (e.g. /api/inventory/poudres) → let the later named route handle it
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next();
