@@ -4,7 +4,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import './OrdersPage.css';
 import { exportOrdersExcel, exportOrderPDF } from '../../utils/orderExport';
-import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus, ClipboardList, RefreshCw, X, Check, AlertTriangle, ArrowRight, StickyNote } from 'lucide-react';
+import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus, ClipboardList, RefreshCw, X, Check, AlertTriangle, ArrowRight, StickyNote, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dialog, errorMessage } from '../../components/common/dialog';
 import { PAGE_PATHS, subPathFromLocation, getQueryParam, setUrl } from '../../routes';
@@ -108,8 +108,7 @@ export default function OrdersPage() {
       return requiredRole && user?.role === requiredRole;
     });
   };
-  const [purchaseRequests, setPurchaseRequests] = useState([]);
-  const [prLoading, setPrLoading] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState(0); // badge on the "Demandes admin" tab
   const ORDER_TABS = ['orders', 'requests', 'suivi'];
   // 'orders' | 'requests' | 'suivi' — kept in the URL (?onglet=suivi) so a refresh stays on the same tab
   const [activeTab, setActiveTab] = useState(() => {
@@ -120,7 +119,6 @@ export default function OrdersPage() {
     setActiveTab(tab);
     setUrl(PAGE_PATHS.orders, { replace: true, query: { onglet: tab === 'orders' ? null : tab } });
   };
-  const [markingId, setMarkingId] = useState(null);
 
   // who may touch THIS order
   const canEditOrder = (o) => o.status === 'brouillon' ? can('orders.edit') : isAdmin;
@@ -152,33 +150,15 @@ export default function OrdersPage() {
     } catch (e) { console.error(e); }
   }, []);
 
-  const fetchPurchaseRequests = useCallback(async () => {
-    setPrLoading(true);
+  // Only the number of pending requests is needed here (tab badge) — the list itself is paginated in its panel
+  const fetchPendingCount = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_URL}/purchase-requests`);
-      setPurchaseRequests(res.data || []);
-    } catch (e) { console.error(e); } finally { setPrLoading(false); }
+      const res = await axios.get(`${API_URL}/purchase-requests/count`);
+      setPendingRequests(res.data?.pending || 0);
+    } catch (e) { console.error(e); }
   }, []);
 
-  const markOrdered = async (id) => {
-    setMarkingId(id);
-    try {
-      await axios.patch(`${API_URL}/purchase-requests/${id}/mark-ordered`);
-      await fetchPurchaseRequests();
-    } catch (e) { console.error(e); } finally { setMarkingId(null); }
-  };
-
-  const [deletingPrId, setDeletingPrId] = useState(null);
-  const deletePurchaseRequest = async (id) => {
-    if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('orDeleteRequestConfirm'), danger: true, confirmLabel: t('deleteAction') }))) return;
-    setDeletingPrId(id);
-    try {
-      await axios.delete(`${API_URL}/purchase-requests/${id}`);
-      setPurchaseRequests(prev => prev.filter(r => (r.id || r._id) !== id));
-    } catch (e) { console.error(e); } finally { setDeletingPrId(null); }
-  };
-
-  useEffect(() => { fetchOrders(); fetchSuppliers(); fetchPurchaseRequests(); }, [fetchOrders, fetchSuppliers, fetchPurchaseRequests]);
+  useEffect(() => { fetchOrders(); fetchSuppliers(); fetchPendingCount(); }, [fetchOrders, fetchSuppliers, fetchPendingCount]);
 
   // Keep selectedOrder in sync after a re-fetch
   useEffect(() => {
@@ -768,13 +748,13 @@ export default function OrdersPage() {
           {can('orders.edit') && (
             <button
               className={`orders-tab-btn ${activeTab === 'requests' ? 'active' : ''}`}
-              onClick={() => { changeTab('requests'); fetchPurchaseRequests(); }}
+              onClick={() => changeTab('requests')}
             >
               <ShoppingCart size={13} />
               {t('Demandesadmin')}
-              {purchaseRequests.filter(r => r.status === 'pending').length > 0 && (
+              {pendingRequests > 0 && (
                 <span className="orders-tab-badge orders-tab-badge--orange">
-                  {purchaseRequests.filter(r => r.status === 'pending').length}
+                  {pendingRequests}
                 </span>
               )}
             </button>
@@ -806,13 +786,7 @@ export default function OrdersPage() {
       {/* ── Tab content ──────────────────────────────────────────── */}
       {activeTab === 'requests' ? (
         <PurchaseRequestsPanel
-          requests={purchaseRequests}
-          loading={prLoading}
-          markingId={markingId}
-          deletingId={deletingPrId}
-          onMarkOrdered={markOrdered}
-          onDelete={deletePurchaseRequest}
-          onRefresh={fetchPurchaseRequests}
+          onChanged={fetchPendingCount}
           isAdmin={isAdmin}
           lang={lang}
         />
@@ -1480,22 +1454,107 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, isAdmin
    ACHAT role sees all pending requests, can mark them as "commandé".
    Admin sees full history (pending + done).
 ────────────────────────────────────────────────────────────────────────── */
-function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMarkOrdered, onDelete, onRefresh, isAdmin, lang }) {
+// ─── Paginated server lists (Demandes admin / Suivi) ─────────────────────────
+// Results are cached per query for the session: switching tabs or pages shows the cached
+// page instantly while a fresh copy loads in the background (stale-while-revalidate).
+const pagedCache = new Map();
+function usePagedList(url, params, debounceMs = 0) {
+  const key = url + '?' + new URLSearchParams(params).toString();
+  const [data, setData] = useState(() => pagedCache.get(key) || null);
+  const [loading, setLoading] = useState(!pagedCache.has(key));
+  const reqId = useRef(0);
+
+  const load = useCallback(async (k, p) => {
+    const id = ++reqId.current;
+    if (!pagedCache.has(k)) setLoading(true);
+    try {
+      const res = await axios.get(url, { params: p });
+      pagedCache.set(k, res.data);
+      if (id === reqId.current) setData(res.data);
+    } catch (e) { console.error(e); }
+    finally { if (id === reqId.current) setLoading(false); }
+  }, [url]);
+
+  useEffect(() => {
+    if (pagedCache.has(key)) { setData(pagedCache.get(key)); setLoading(false); }
+    const timer = setTimeout(() => load(key, params), debounceMs);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  const reload = useCallback(() => {
+    for (const k of [...pagedCache.keys()]) if (k.startsWith(url + '?')) pagedCache.delete(k);
+    return load(key, params);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, load]);
+  // Local edit of the cached page (optimistic updates)
+  const patch = useCallback((fn) => setData(d => { const nd = d ? fn(d) : d; if (nd) pagedCache.set(key, nd); return nd; }), [key]);
+  // After a successful edit: other cached pages/filters of this list may be outdated
+  const dropOthers = useCallback(() => {
+    for (const k of [...pagedCache.keys()]) if (k.startsWith(url + '?') && k !== key) pagedCache.delete(k);
+  }, [url, key]);
+  return { data, loading, reload, patch, dropOthers };
+}
+
+function Pager({ page, pages, total, limit, onPage }) {
+  const { t } = useLanguage();
+  if (!total || pages <= 1) return null;
+  const from = (page - 1) * limit + 1;
+  const to = Math.min(page * limit, total);
+  return (
+    <div className="pr-pager">
+      <span className="pr-pager__info">{t('orRowsRange', { from, to, total })}</span>
+      <div className="pr-pager__btns">
+        <button type="button" className="pr-pager__btn" disabled={page <= 1} onClick={() => onPage(page - 1)} title={t('orPagePrev')}>
+          <ChevronLeft size={15} />
+        </button>
+        <span className="pr-pager__page">{t('orPageOf', { page, pages })}</span>
+        <button type="button" className="pr-pager__btn" disabled={page >= pages} onClick={() => onPage(page + 1)} title={t('orPageNext')}>
+          <ChevronRight size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const PAGE_SIZE = 25;
+
+function PurchaseRequestsPanel({ onChanged, isAdmin, lang }) {
   const { t } = useLanguage();
   const [filter, setFilter] = useState('pending'); // 'pending' | 'all'
+  const [page, setPage] = useState(1);
+  const [markingId, setMarkingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const { data, loading, reload } = usePagedList(`${API_URL}/purchase-requests`, { status: filter, page, limit: PAGE_SIZE });
 
-  const visible = filter === 'pending'
-    ? requests.filter(r => r.status === 'pending')
-    : requests;
+  const visible = data?.items || [];
+  const pendingCount = data?.pendingCount || 0;
+  const changeFilter = (f) => { setFilter(f); setPage(1); };
+  const refresh = async () => { await reload(); onChanged && onChanged(); };
 
-  const pendingCount = requests.filter(r => r.status === 'pending').length;
+  const onMarkOrdered = async (id) => {
+    setMarkingId(id);
+    try {
+      await axios.patch(`${API_URL}/purchase-requests/${id}/mark-ordered`);
+      await refresh();
+    } catch (e) { dialog.alert(errorMessage(e, t('dlgError'))); } finally { setMarkingId(null); }
+  };
+  const onDelete = async (id) => {
+    if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('orDeleteRequestConfirm'), danger: true, confirmLabel: t('deleteAction') }))) return;
+    setDeletingId(id);
+    try {
+      await axios.delete(`${API_URL}/purchase-requests/${id}`);
+      if (visible.length === 1 && page > 1) setPage(p => p - 1);
+      await refresh();
+    } catch (e) { dialog.alert(errorMessage(e, t('dlgError'))); } finally { setDeletingId(null); }
+  };
 
   function fmtDate(d) {
     if (!d) return '—';
     return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="orders-loading">
         <LoaderCircle size={22} />
@@ -1518,19 +1577,19 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
           <div className="pr-filter-tabs">
             <button
               className={`pr-filter-tab ${filter === 'pending' ? 'active' : ''}`}
-              onClick={() => setFilter('pending')}
+              onClick={() => changeFilter('pending')}
             >
               <Clock size={11} /> {t('orPending')}
             </button>
             <button
               className={`pr-filter-tab ${filter === 'all' ? 'active' : ''}`}
-              onClick={() => setFilter('all')}
+              onClick={() => changeFilter('all')}
             >
               {t('orSeeAll')}
             </button>
           </div>
-          <button className="pr-refresh-btn orders-icon-btn orders-icon-btn--sm" onClick={onRefresh} title={t('orRefresh')}>
-            <RefreshCw size={14} />
+          <button className="pr-refresh-btn orders-icon-btn orders-icon-btn--sm" onClick={refresh} title={t('orRefresh')}>
+            <RefreshCw size={14} className={loading ? 'spin' : undefined} />
           </button>
         </div>
       </div>
@@ -1541,7 +1600,7 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
           <p>{filter === 'pending' ? t('orNoPendingRequests') : t('orNoRequests')}</p>
         </div>
       ) : (
-        <div className="pr-table-wrap">
+        <div className={`pr-table-wrap${loading ? ' pr-table-wrap--loading' : ''}`}>
           <table className="pr-table">
             <thead>
               <tr>
@@ -1630,6 +1689,7 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
               ))}
             </tbody>
           </table>
+          <Pager page={data.page} pages={Math.ceil(data.total / data.limit)} total={data.total} limit={data.limit} onPage={setPage} />
         </div>
       )}
     </div>
@@ -1651,28 +1711,28 @@ function PurchaseRequestsPanel({ requests, loading, markingId, deletingId, onMar
 ────────────────────────────────────────────────────────────────────────── */
 function SuiviCommandesPanel() {
   const { t, currentLanguage: lang } = useLanguage();
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [factureFilter, setFactureFilter] = useState('all'); // 'all' | 'recue' | 'non_recue'
-
-  const fetchRows = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get(`${API_URL}/order-tracking`);
-      setRows(res.data || []);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { fetchRows(); }, [fetchRows]);
+  const [page, setPage] = useState(1);
+  // Search runs on the server (debounced while typing); filters + totals + pagination too
+  const { data, loading, reload, patch, dropOthers } = usePagedList(
+    `${API_URL}/order-tracking`,
+    { page, limit: PAGE_SIZE, q: searchTerm.trim(), facture: factureFilter },
+    searchTerm ? 300 : 0,
+  );
+  const rows = data?.rows || [];
+  const visibleRows = rows;
+  const totals = data?.totals || { bc: 0, bl: 0 };
+  const total = data?.total || 0;
+  const fetchRows = reload;
+  const changeFilter = (f) => { setFactureFilter(f); setPage(1); };
 
   const rowKey = (r) => `${r.orderId}::${r.blNumber}`;
 
   const updateField = async (row, field, value) => {
     const key = rowKey(row);
-    setRows(prev => prev.map(r => rowKey(r) === key ? { ...r, [field]: value } : r));
+    patch(d => ({ ...d, rows: d.rows.map(r => rowKey(r) === key ? { ...r, [field]: value } : r) }));
     setSavingKey(key);
     try {
       await axios.patch(`${API_URL}/order-tracking`, {
@@ -1680,6 +1740,7 @@ function SuiviCommandesPanel() {
         blNumber: row.blNumber,
         [field]: value,
       });
+      dropOthers();
     } catch (e) {
       console.error(e);
       dialog.alert(t('errSave'));
@@ -1687,22 +1748,7 @@ function SuiviCommandesPanel() {
     } finally { setSavingKey(null); }
   };
 
-  const visibleRows = rows.filter(r => {
-    if (factureFilter !== 'all' && r.factureStatus !== factureFilter) return false;
-    if (searchTerm.trim()) {
-      const tokens = searchTerm.toLowerCase().split(/\s+/).filter(Boolean);
-      const haystack = [r.supplierName, r.orderNumber, r.blNumber, r.remarque].join(' ').toLowerCase();
-      if (!tokens.every(tok => haystack.includes(tok))) return false;
-    }
-    return true;
-  });
-
-  const totals = visibleRows.reduce((acc, r) => ({
-    bc: acc.bc + (r.montantBC || 0),
-    bl: acc.bl + (r.montantBL || 0),
-  }), { bc: 0, bl: 0 });
-
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="orders-loading">
         <LoaderCircle size={22} />
@@ -1718,32 +1764,32 @@ function SuiviCommandesPanel() {
           <ClipboardList size={16} />
           <span>{t('orTracking')}</span>
           <span className="pr-badge pr-badge--neutral">
-            {t(visibleRows.length !== 1 ? 'orLineMany' : 'orLineOne', { n: visibleRows.length })}
+            {t(total !== 1 ? 'orLineMany' : 'orLineOne', { n: total })}
           </span>
         </div>
         <div className="pr-panel__tools">
           <div className="pr-filter-tabs">
             <button
               className={`pr-filter-tab ${factureFilter === 'all' ? 'active' : ''}`}
-              onClick={() => setFactureFilter('all')}
+              onClick={() => changeFilter('all')}
             >
               {t('orAll')}
             </button>
             <button
               className={`pr-filter-tab ${factureFilter === 'non_recue' ? 'active' : ''}`}
-              onClick={() => setFactureFilter('non_recue')}
+              onClick={() => changeFilter('non_recue')}
             >
               {t('orInvoiceNotReceived')}
             </button>
             <button
               className={`pr-filter-tab ${factureFilter === 'recue' ? 'active' : ''}`}
-              onClick={() => setFactureFilter('recue')}
+              onClick={() => changeFilter('recue')}
             >
               {t('orInvoiceReceived')}
             </button>
           </div>
           <button className="pr-refresh-btn orders-icon-btn orders-icon-btn--sm" onClick={fetchRows} title={t('orRefresh')}>
-            <RefreshCw size={14} />
+            <RefreshCw size={14} className={loading ? 'spin' : undefined} />
           </button>
         </div>
       </div>
@@ -1754,7 +1800,7 @@ function SuiviCommandesPanel() {
             className="search-input"
             placeholder={t('orTrackingSearchPlaceholder')}
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
           />
         </div>
       </div>
@@ -1765,7 +1811,7 @@ function SuiviCommandesPanel() {
           <p>{t('orNoOrdersToShow')}</p>
         </div>
       ) : (
-        <div className="pr-table-wrap">
+        <div className={`pr-table-wrap${loading ? ' pr-table-wrap--loading' : ''}`}>
           <table className="pr-table">
             <thead>
               <tr>
@@ -1861,6 +1907,7 @@ function SuiviCommandesPanel() {
               </tr>
             </tfoot>
           </table>
+          <Pager page={data.page} pages={data.pages} total={total} limit={data.limit} onPage={setPage} />
         </div>
       )}
     </div>

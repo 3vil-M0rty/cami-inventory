@@ -173,6 +173,10 @@ const fr = {
     orChangeItem: 'Changer',
     orRefineSearch: 'Plus de résultats — affinez la recherche',
     orStock: 'Stock',
+    orRowsRange: '{from}–{to} sur {total}',
+    orPageOf: 'Page {page} / {pages}',
+    orPagePrev: 'Page précédente',
+    orPageNext: 'Page suivante',
 };
 
 const it = {
@@ -341,6 +345,10 @@ const it = {
     orChangeItem: 'Cambia',
     orRefineSearch: 'Altri risultati — affina la ricerca',
     orStock: 'Stock',
+    orRowsRange: '{from}–{to} di {total}',
+    orPageOf: 'Pagina {page} / {pages}',
+    orPagePrev: 'Pagina precedente',
+    orPageNext: 'Pagina successiva',
 };
 
 const en = {
@@ -509,6 +517,10 @@ const en = {
     orChangeItem: 'Change',
     orRefineSearch: 'More results — refine your search',
     orStock: 'Stock',
+    orRowsRange: '{from}–{to} of {total}',
+    orPageOf: 'Page {page} / {pages}',
+    orPagePrev: 'Previous page',
+    orPageNext: 'Next page',
 };
 
 export default { fr, it, en };

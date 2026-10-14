@@ -279,6 +279,7 @@ const orderSchema = new mongoose.Schema({
 orderSchema.index({ companyId: 1, number: 1 });
 orderSchema.index({ createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ status: 1, orderDate: -1 });
 orderSchema.index({ 'lines.itemId': 1 });
 orderSchema.index({ updatedAt: -1 });
 const Order = mongoose.model('Order', orderSchema);
@@ -581,6 +582,7 @@ const orderTrackingSchema = new mongoose.Schema({
   toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } }
 });
 orderTrackingSchema.index({ orderId: 1, blNumber: 1 }, { unique: true });
+orderTrackingSchema.index({ remarque: 1 });
 const OrderTracking = mongoose.model('OrderTracking', orderTrackingSchema);
 
 
@@ -1496,6 +1498,9 @@ app.get('/api/inventory/allowed-supercategories', optionalAuth, (req, res) => {
 //  - with ?page=1&limit=40 → { items, total, page, limit, hasMore }: the Inventory page loads
 //    only what is on screen. Search (?q=) and filters (?stock=critical|warning|ordered) run in MongoDB.
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Accent-insensitive regex for an already normalized (accent-free) word: "fenetre" matches "Fenêtre"
+const ACCENT_CLASSES = { a: '[aàáâãäå]', c: '[cç]', e: '[eèéêë]', i: '[iìíîï]', n: '[nñ]', o: '[oòóôõö]', u: '[uùúûü]', y: '[yýÿ]' };
+const accentRegex = (w) => new RegExp(escapeRegex(w).replace(/[aceinouy]/g, ch => ACCENT_CLASSES[ch]), 'i');
 // Every word must appear in the item's searchText (one indexed field instead of 5 regexes)
 const searchWordsFilter = (q) => normalizeSearch(q).split(' ').filter(Boolean).slice(0, 8)
   .map(w => ({ searchText: { $regex: escapeRegex(w) } }));
@@ -2378,18 +2383,51 @@ app.delete('/api/orders/:id', requireAuth, async (req, res) => {
 // ==================== ORDER TRACKING ROUTES ====================
 // Access: only users with 'orders.edit' — i.e. Achat role + Admin (Admin has ALL_PERMISSIONS).
 
+// GET /api/order-tracking?page=1&limit=25&q=&facture=all|recue|non_recue
+// One row per (order, BL). Only the fields the table needs are read (lean + projection), tracking
+// docs are fetched for the matching orders only, then rows are filtered, totalled and paginated.
+// Without ?page the full array is returned (backward compatible).
 app.get('/api/order-tracking', requireAuth, requirePermission('orders.edit'), async (req, res) => {
   try {
-    const orders = await Order.find({ status: { $ne: 'brouillon' } })
-      .populate('companyId').populate('supplierId')
-      .sort({ orderDate: -1 });
+    const words = normalizeSearch(req.query.q).split(' ').filter(Boolean).slice(0, 6);
+    const facture = ['recue', 'non_recue'].includes(req.query.facture) ? req.query.facture : 'all';
 
-    const trackingDocs = await OrderTracking.find({});
+    const orderFilter = { status: { $ne: 'brouillon' } };
+    // Narrow the orders in MongoDB when searching: each word must hit the order number/reference,
+    // the supplier (free text or linked supplier), a BL number or a tracking remark.
+    if (words.length) {
+      const and = [];
+      for (const w of words) {
+        const rx = accentRegex(w);
+        const [sups, trk] = await Promise.all([
+          Fournisseur.find({ name: rx }).select('_id').lean(),
+          OrderTracking.find({ remarque: rx }).select('orderId').lean(),
+        ]);
+        and.push({ $or: [
+          { number: rx }, { reference: rx }, { supplier: rx }, { 'receptions.blNumber': rx },
+          { supplierId: { $in: sups.map(x => x._id) } },
+          { _id: { $in: trk.map(x => x.orderId) } },
+        ] });
+      }
+      orderFilter.$and = and;
+    }
+
+    const orders = await Order.find(orderFilter)
+      .select('number reference orderDate tva status supplier supplierId lines._id lines.quantityOrdered lines.unitPrice receptions.blNumber receptions.cancelled receptions.lineId receptions.quantityReceived receptions.receivedAt')
+      .populate('supplierId', 'name')
+      .sort({ orderDate: -1 })
+      .lean();
+
+    const trackingDocs = orders.length
+      ? await OrderTracking.find({ orderId: { $in: orders.map(o => o._id) } })
+        .select('orderId blNumber factureStatus modePaiement typeFacture remarque').lean()
+      : [];
     const trackingMap = {};
     trackingDocs.forEach(t => { trackingMap[`${t.orderId}::${t.blNumber || ''}`] = t; });
 
-    const rows = [];
+    let rows = [];
     for (const o of orders) {
+      const priceByLine = new Map((o.lines || []).map(l => [String(l._id), l.unitPrice || 0]));
       const totalHT = (o.lines || []).reduce((s, l) => s + (l.quantityOrdered || 0) * (l.unitPrice || 0), 0);
       const tvaRate = o.tva != null ? Number(o.tva) : 20;
       const montantBC = parseFloat((totalHT * (1 + tvaRate / 100)).toFixed(2));
@@ -2408,7 +2446,7 @@ app.get('/api/order-tracking', requireAuth, requirePermission('orders.edit'), as
       const buildRow = (blNumber, date, montantBL) => {
         const t = trackingMap[`${o._id}::${blNumber}`];
         return {
-          orderId: o._id.toString(),
+          orderId: String(o._id),
           blNumber,
           date,
           supplierName,
@@ -2429,10 +2467,7 @@ app.get('/api/order-tracking', requireAuth, requirePermission('orders.edit'), as
         for (const bl of blKeys) {
           const recs = blGroups[bl];
           let montantBLHT = 0;
-          for (const rec of recs) {
-            const line = (o.lines || []).find(l => String(l._id) === String(rec.lineId));
-            montantBLHT += (rec.quantityReceived || 0) * (line?.unitPrice || 0);
-          }
+          for (const rec of recs) montantBLHT += (rec.quantityReceived || 0) * (priceByLine.get(String(rec.lineId)) || 0);
           const montantBL = parseFloat((montantBLHT * (1 + tvaRate / 100)).toFixed(2));
           const lastDate = recs.reduce((max, r) => new Date(r.receivedAt) > new Date(max) ? r.receivedAt : max, recs[0].receivedAt);
           rows.push(buildRow(bl, lastDate, montantBL));
@@ -2440,9 +2475,27 @@ app.get('/api/order-tracking', requireAuth, requirePermission('orders.edit'), as
       }
     }
 
+    // Row-level filters (same rules as the screen): invoice status + every word in the row text
+    if (facture !== 'all') rows = rows.filter(r => r.factureStatus === facture);
+    if (words.length) rows = rows.filter(r => {
+      const hay = normalizeSearch([r.supplierName, r.orderNumber, r.blNumber, r.remarque].join(' '));
+      return words.every(w => hay.includes(w));
+    });
+
     // Most recent first
     rows.sort((a, b) => new Date(b.date) - new Date(a.date));
-    res.json(rows);
+    if (req.query.page === undefined) return res.json(rows);
+
+    const totals = rows.reduce((acc, r) => ({ bc: acc.bc + (r.montantBC || 0), bl: acc.bl + (r.montantBL || 0) }), { bc: 0, bl: 0 });
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
+    const total = rows.length;
+    const pages = Math.max(1, Math.ceil(total / limit));
+    const page = Math.min(Math.max(parseInt(req.query.page, 10) || 1, 1), pages);
+    res.json({
+      rows: rows.slice((page - 1) * limit, page * limit),
+      total, page, pages, limit,
+      totals: { bc: parseFloat(totals.bc.toFixed(2)), bl: parseFloat(totals.bl.toFixed(2)) },
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -4588,6 +4641,8 @@ const purchaseRequestSchema = new mongoose.Schema({
   orderedBy: { type: String, default: '' },
   orderedAt: { type: Date, default: null },
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
+purchaseRequestSchema.index({ status: 1, createdAt: -1 });
+purchaseRequestSchema.index({ createdAt: -1 });
 const PurchaseRequest = mongoose.model('PurchaseRequest', purchaseRequestSchema);
 
 // ==================== PURCHASE REQUEST ROUTES ====================
@@ -4601,12 +4656,36 @@ app.post('/api/purchase-requests', requireAuth, requirePermission('admin.view'),
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/purchase-requests
+//  - without ?page → plain array (notification bell), ?limit honoured (max 200)
+//  - with ?page=1&limit=25[&status=pending|ordered][&q=] → { items, total, page, limit, hasMore, pendingCount }
+const toPR = (d) => { d.id = String(d._id); delete d._id; delete d.__v; return d; };
+app.get('/api/purchase-requests/count', requireAuth, async (req, res) => {
+  try { res.json({ pending: await PurchaseRequest.countDocuments({ status: 'pending' }) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.get('/api/purchase-requests', requireAuth, async (req, res) => {
   try {
     const filter = {};
-    if (req.query.status) filter.status = req.query.status;
-    const prs = await PurchaseRequest.find(filter).sort({ createdAt: -1 }).limit(200);
-    res.json(prs);
+    if (req.query.status && req.query.status !== 'all') filter.status = req.query.status;
+    if (req.query.page === undefined) {
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 200);
+      const prs = await PurchaseRequest.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
+      return res.json(prs.map(toPR));
+    }
+    const words = String(req.query.q || '').trim().split(/\s+/).filter(Boolean).slice(0, 6);
+    if (words.length) filter.$and = words.map(w => {
+      const rx = new RegExp(escapeRegex(w), 'i');
+      return { $or: [{ itemName: rx }, { note: rx }, { requestedBy: rx }] };
+    });
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const [items, total, pendingCount] = await Promise.all([
+      PurchaseRequest.find(filter).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      PurchaseRequest.countDocuments(filter),
+      PurchaseRequest.countDocuments({ status: 'pending' }),
+    ]);
+    res.json({ items: items.map(toPR), total, page, limit, hasMore: page * limit < total, pendingCount });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
