@@ -41,3 +41,10 @@ export function setUrl(path, { replace = false, query } = {}) {
   if (url === window.location.pathname + window.location.search) return;
   window.history[replace ? 'replaceState' : 'pushState'](null, '', url);
 }
+
+/** Merge params into the current query string (null / '' removes a param). path defaults to the current one. */
+export function updateQuery(patch, { replace = true, path = window.location.pathname } = {}) {
+  const query = Object.fromEntries(new URLSearchParams(window.location.search));
+  Object.entries(patch).forEach(([k, v]) => { if (v == null || v === '') delete query[k]; else query[k] = v; });
+  setUrl(path, { replace, query });
+}

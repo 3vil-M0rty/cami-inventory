@@ -1,825 +1,812 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
+import {
+  ArrowDownToLine, ArrowUpFromLine, FolderOutput, FolderInput, PackageCheck, PackagePlus, ClipboardPlus, ClipboardMinus,
+  History, CalendarClock, ScrollText, Boxes, Search, X, ExternalLink, FileSpreadsheet, RotateCw,
+  AlertTriangle, Inbox, BarChart3, GitCompareArrows, User, ArrowUp, ArrowDown, ArrowUpDown,
+} from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
-import { dialog } from '../../components/common/dialog';
-import './MovementsPage.css';
-import { PackageOpen, ChartNetwork, LineChart, X, RotateCw, Trash2, Inbox, ArrowUp, ArrowDown, ArrowDownLeft, ArrowUpRight, Cog, ArrowRight } from 'lucide-react';
+import { PAGE_PATHS, getQueryParam, updateQuery, setUrl } from '../../routes';
+import WorkshopTab from './WorkshopTab';
+import './Movements.css';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const LOCALES = { fr: 'fr-FR', it: 'it-IT', en: 'en-GB' };
+const TZ = () => new Date().getTimezoneOffset();
 
-/**
- * Format a quantity to at most 2 decimal places, stripping trailing zeros.
- * 102.8000000000001 → "102.8"   |   145.23 → "145.23"   |   100 → "100"
- */
-function fmt(val) {
-  if (val === null || val === undefined) return '0';
-  const n = parseFloat(val);
-  if (isNaN(n)) return '0';
-  return parseFloat(n.toFixed(2)).toString();
-}
-
-const TYPE_META = {
-  entree: { color: '#4ade80', bg: 'rgba(74,222,128,.10)', icon: ArrowUp },
-  sortie: { color: '#f87171', bg: 'rgba(248,113,113,.10)', icon: ArrowDown },
-  project_use: { color: '#fbbf24', bg: 'rgba(251,191,36,.10)', icon: ArrowDownLeft },
-  project_return: { color: '#60a5fa', bg: 'rgba(96,165,250,.10)', icon: ArrowUpRight },
-  order_reception: { color: '#e879f9', bg: 'rgba(232,121,249,.10)', icon: ArrowUp },
+// Movement types: direction (+1 in / −1 out), icon, label key
+const TYPES = {
+  entree: { sign: 1, Icon: ArrowDownToLine, label: 'mxT_entree' },
+  order_reception: { sign: 1, Icon: PackageCheck, label: 'mxT_order_reception' },
+  project_return: { sign: 1, Icon: FolderInput, label: 'mxT_project_return' },
+  initial: { sign: 1, Icon: PackagePlus, label: 'mxT_initial' },
+  correction_plus: { sign: 1, Icon: ClipboardPlus, label: 'mxT_correction_plus' },
+  sortie: { sign: -1, Icon: ArrowUpFromLine, label: 'mxT_sortie' },
+  project_use: { sign: -1, Icon: FolderOutput, label: 'mxT_project_use' },
+  correction_moins: { sign: -1, Icon: ClipboardMinus, label: 'mxT_correction_moins' },
 };
-
-const PAGE_SIZE = 200;
-
-// label = translation key
-const SUPER_CATS = [
-  { key: 'all', label: 'superCatAll' },
-  { key: 'aluminium', label: 'superCatAluminium' },
-  { key: 'verre', label: 'superCatVerre' },
-  { key: 'accessoires', label: 'superCatAccessoires' },
-  { key: 'poudre', label: 'superCatPoudre' },
+const TYPE_ORDER = Object.keys(TYPES);
+const TABS = [
+  { key: 'journal', Icon: ScrollText, label: 'mxTabJournal' },
+  { key: 'stock', Icon: CalendarClock, label: 'mxTabStock' },
+  { key: 'fiche', Icon: History, label: 'mxTabLedger' },
+  { key: 'ateliers', Icon: Boxes, label: 'mvTabWorkshop' },
 ];
+const PERIODS = ['all', 'today', '7d', '30d', 'month', 'year', 'custom'];
 
-const GROUP_OPTIONS = [
-  { value: 'day', label: 'mvGroupDay' },
-  { value: 'week', label: 'mvGroupWeek' },
-  { value: 'month', label: 'mvGroupMonth' },
-];
+// ── Formatting ───────────────────────────────────────────────────────────────
+const ymd = (d) => { const x = new Date(d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+function periodRange(p, from, to) {
+  const today = new Date();
+  if (p === 'today') return { from: ymd(today), to: ymd(today) };
+  if (p === '7d') return { from: ymd(addDays(today, -6)), to: ymd(today) };
+  if (p === '30d') return { from: ymd(addDays(today, -29)), to: ymd(today) };
+  if (p === 'month') return { from: ymd(new Date(today.getFullYear(), today.getMonth(), 1)), to: ymd(today) };
+  if (p === 'year') return { from: ymd(new Date(today.getFullYear(), 0, 1)), to: ymd(today) };
+  if (p === 'custom') return { from: from || '', to: to || '' };
+  return { from: '', to: '' };
+}
+function useFmt(lang) {
+  return useMemo(() => {
+    const loc = LOCALES[lang] || 'fr-FR';
+    const nf = new Intl.NumberFormat(loc, { maximumFractionDigits: 3 });
+    const sp = (s) => s.replace(/ /g, ' '); // the app font has no narrow no-break space
+    const dt = new Intl.DateTimeFormat(loc, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const d = new Intl.DateTimeFormat(loc, { day: 'numeric', month: 'short', year: 'numeric' });
+    const dShort = new Intl.DateTimeFormat(loc, { day: '2-digit', month: '2-digit' });
+    const mShort = new Intl.DateTimeFormat(loc, { month: 'short', year: '2-digit', timeZone: 'UTC' });
+    return {
+      n: (v) => (v == null ? '—' : sp(nf.format(v))),
+      signed: (v, sign) => `${sign > 0 ? '+' : '−'}${sp(nf.format(Math.abs(v)))}`,
+      dt: (v) => (v ? dt.format(new Date(v)) : '—'),
+      d: (v) => (v ? d.format(new Date(v.length === 10 ? `${v}T12:00:00` : v)) : '—'),
+      bucket: (key, b) => (b === 'month' ? mShort.format(new Date(`${key}-01T00:00:00Z`)) : dShort.format(new Date(`${key}T12:00:00`))),
+    };
+  }, [lang]);
+}
+const nameOf = (item, lang) => item?.designation?.[lang] || item?.designation?.fr || '—';
+const goTo = (path, query) => { setUrl(path, { query }); window.dispatchEvent(new PopStateEvent('popstate')); };
 
-function fmtDate(d) {
-  if (!d) return '—';
-  const date = new Date(d);
-  return date.toLocaleDateString('fr-FR') + ' ' + date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+function useDebounced(value, ms = 350) {
+  const [v, setV] = useState(value);
+  useEffect(() => { const id = setTimeout(() => setV(value), ms); return () => clearTimeout(id); }, [value, ms]);
+  return v;
 }
 
-function getPeriodKey(dateStr, groupBy) {
-  const d = new Date(dateStr);
-  if (groupBy === 'month') {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  }
-  if (groupBy === 'week') {
-    const jan1 = new Date(d.getFullYear(), 0, 1);
-    const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
-    return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
-  }
-  return d.toISOString().split('T')[0];
+function exportSheet(rows, sheet, file) {
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = Object.keys(rows[0] || {}).map(k => ({ wch: Math.max(10, Math.min(48, k.length + 4, ...rows.slice(0, 200).map(r => String(r[k] ?? '').length + 2))) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheet.slice(0, 31));
+  XLSX.writeFile(wb, file);
 }
 
-function buildChartData(movements, groupBy, activeTypes) {
-  const periodMap = {};
-  movements.forEach(m => {
-    if (!activeTypes.includes(m.type)) return;
-    const key = getPeriodKey(m.createdAt, groupBy);
-    if (!periodMap[key]) periodMap[key] = { entree: 0, sortie: 0, project_use: 0, project_return: 0 };
-    periodMap[key][m.type] = (periodMap[key][m.type] || 0) + m.quantity;
-  });
-  const labels = Object.keys(periodMap).sort();
-  return {
-    labels,
-    datasets: Object.keys(TYPE_META)
-      .filter(t => activeTypes.includes(t))
-      .map(type => ({
-        label: type,
-        data: labels.map(l => periodMap[l]?.[type] || 0),
-        backgroundColor: TYPE_META[type].color + 'cc',
-        borderColor: TYPE_META[type].color,
-        borderWidth: 1.5,
-        tension: 0.3,
-        fill: false,
-        pointRadius: 3,
-      })),
-  };
-}
-
-function MovementsChart({ movements, groupBy, activeTypes, chartType, typeLabels = {} }) {
-  const { t } = useLanguage();
-  const ariaLabel = t('mvChartAria');
-  const canvasRef = useRef(null);
-  const chartRef = useRef(null);
-
-  useEffect(() => {
-    if (!window.Chart || !canvasRef.current) return;
-    const data = buildChartData(movements, groupBy, activeTypes);
-
-    if (chartRef.current) {
-      chartRef.current.destroy();
-      chartRef.current = null;
-    }
-
-    if (data.labels.length === 0) return;
-
-    const isBar = chartType === 'bar';
-
-    chartRef.current = new window.Chart(canvasRef.current, {
-      type: isBar ? 'bar' : 'line',
-      data: {
-        labels: data.labels,
-        datasets: data.datasets.map(ds => ({
-          ...ds,
-          label: typeLabels[ds.label] || ds.label,
-          ...(isBar ? { borderRadius: 3, borderSkipped: false } : {}),
-        })),
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#222227',
-            borderColor: '#34343b',
-            borderWidth: 1,
-            titleColor: '#f4f4f5',
-            bodyColor: '#b4b4bd',
-            padding: 10,
-            cornerRadius: 8,
-            callbacks: {
-              label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)}`,
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid: { color: 'rgba(255,255,255,0.06)' }, border: { color: '#27272c' },
-            ticks: { color: '#8b8b94', font: { size: 11 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 12 },
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: 'rgba(255,255,255,0.06)' }, border: { color: '#27272c' },
-            ticks: { color: '#8b8b94', font: { size: 11 } },
-          },
-        },
-      },
-    });
-    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
-  }, [movements, groupBy, activeTypes, chartType, JSON.stringify(typeLabels)]); // eslint-disable-line react-hooks/exhaustive-deps
-
+// ── Small pieces ─────────────────────────────────────────────────────────────
+function TypeBadge({ type, t }) {
+  const meta = TYPES[type] || { sign: 0, Icon: ArrowUpDown, label: type };
   return (
-    <div style={{ position: 'relative', width: '100%', height: 280 }}>
-      <canvas
-        ref={canvasRef}
-        role="img"
-        aria-label={ariaLabel}
-      >
-        {ariaLabel}
-      </canvas>
+    <span className={`mx-type mx-type--${meta.sign > 0 ? 'in' : meta.sign < 0 ? 'out' : 'na'}`}>
+      <meta.Icon size={13} strokeWidth={2.2} /><span className="mx-type__txt">{t(meta.label)}</span>
+    </span>
+  );
+}
+function Qty({ m, f }) {
+  return <span className={`mx-qty mx-qty--${m.sign > 0 ? 'in' : 'out'}`}>{f.signed(m.quantity, m.sign)}</span>;
+}
+function Empty({ icon: Icon = Inbox, children }) {
+  return <div className="mx-empty"><Icon size={20} strokeWidth={1.8} />{children}</div>;
+}
+function Origin({ m, t }) {
+  if (m.projectName) return <span className="mx-origin"><FolderOutput size={12} />{m.projectName}</span>;
+  if (m.orderId) return <span className="mx-origin"><PackageCheck size={12} />{t('mxOrder')}{m.note ? ` · ${m.note}` : ''}</span>;
+  return <span className="mx-origin mx-origin--note">{m.note || '—'}</span>;
+}
+
+function Periods({ value, from, to, onChange, t }) {
+  return (
+    <div className="mx-period">
+      <select className="mx-select" value={value} onChange={e => onChange(e.target.value, from, to)} aria-label={t('mxPeriod')}>
+        {PERIODS.map(p => <option key={p} value={p}>{t(`mxP_${p}`)}</option>)}
+      </select>
+      {value === 'custom' && (
+        <>
+          <input type="date" className="mx-input mx-input--date" value={from} max={to || undefined} onChange={e => onChange('custom', e.target.value, to)} aria-label={t('mxFrom')} />
+          <span className="mx-period__sep">→</span>
+          <input type="date" className="mx-input mx-input--date" value={to} min={from || undefined} onChange={e => onChange('custom', from, e.target.value)} aria-label={t('mxTo')} />
+        </>
+      )}
     </div>
   );
 }
 
-export default function MovementsPage() {
-  const { t, currentLanguage: lang } = useLanguage();
-
-  // Main tab: 'inventory' | 'tables'
-  const [mainTab, setMainTab] = useState('inventory');
-
-  const [movements, setMovements] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [chartJsReady, setChartJsReady] = useState(false);
-
-  // Table consumptions state
-  const [tableMovements, setTableMovements] = useState([]);
-  const [tableLoading, setTableLoading] = useState(false);
-  const [tableError, setTableError] = useState(null);
-  const [tableSearch, setTableSearch] = useState('');
-  const [tableTypeFilter, setTableTypeFilter] = useState('all');
-
-  // Filters
-  const [superCat, setSuperCat] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [search, setSearch] = useState('');
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [totalCount, setTotalCount] = useState(0);
-  // Hidden movements (soft-delete, persisted in localStorage)
-  const [hiddenIds, setHiddenIds] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('mv_hidden') || '[]')); }
-    catch { return new Set(); }
-  });
-
-  // Detail modal
-  const [selectedMovement, setSelectedMovement] = useState(null);
-
-  const hideMovement = async (id, e) => {
-    e.stopPropagation();
-    if (!(await dialog.confirm({ title: t('mvHideTitle'), message: t('mvHideConfirm'), confirmLabel: t('mvHideAction') }))) return;
-    setHiddenIds(prev => {
-      const next = new Set(prev);
-      next.add(id);
-      localStorage.setItem('mv_hidden', JSON.stringify([...next]));
-      return next;
-    });
-  };
-
-  const restoreAll = () => {
-    setHiddenIds(new Set());
-    localStorage.removeItem('mv_hidden');
-  };
-
-  // Graph controls
-  const [showGraph, setShowGraph] = useState(false);
-  const [groupBy, setGroupBy] = useState('day');
-  const [chartType, setChartType] = useState('line');
-  const [activeTypes, setActiveTypes] = useState(Object.keys(TYPE_META));
-
-  // Load Chart.js once
-  useEffect(() => {
-    if (window.Chart) { setChartJsReady(true); return; }
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
-    script.onload = () => setChartJsReady(true);
-    document.head.appendChild(script);
-  }, []);
-
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const params = new URLSearchParams();
-      if (typeFilter !== 'all') params.set('type', typeFilter);
-      if (fromDate) params.set('from', fromDate);
-      if (toDate) params.set('to', toDate);
-      params.set('limit', String(PAGE_SIZE));
-      params.set('skip', '0');
-      const res = await axios.get(`${API}/movements?${params}`);
-      setMovements(res.data.movements);
-      setTotalCount(res.data.total);
-      setHasMore(res.data.hasMore);
-    } catch (e) { setError(e.message); }
-    finally { setLoading(false); }
-  }, [typeFilter, fromDate, toDate]);
-
-
-  const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    try {
-      const params = new URLSearchParams();
-      if (typeFilter !== 'all') params.set('type', typeFilter);
-      if (fromDate) params.set('from', fromDate);
-      if (toDate) params.set('to', toDate);
-      params.set('limit', String(PAGE_SIZE));
-      params.set('skip', String(movements.length));
-      const res = await axios.get(`${API}/movements?${params}`);
-      setMovements(prev => [...prev, ...res.data.movements]);
-      setTotalCount(res.data.total);
-      setHasMore(res.data.hasMore);
-    } catch (e) { setError(e.message); }
-    finally { setLoadingMore(false); }
-  }, [typeFilter, fromDate, toDate, movements.length, hasMore, loadingMore]);
-
-  useEffect(() => { load(); }, [load]);
-
-  // Load table consumptions when on table tab
-  const loadTableMovements = useCallback(async () => {
-    setTableLoading(true); setTableError(null);
-    try {
-      const res = await axios.get(`${API}/table-consumption`);
-      setTableMovements(res.data || []);
-    } catch (e) { setTableError(e.message); }
-    finally { setTableLoading(false); }
-  }, []);
-
-  useEffect(() => {
-    if (mainTab === 'tables') loadTableMovements();
-  }, [mainTab, loadTableMovements]);
-
-  const toggleType = (type) => {
-    setActiveTypes(prev =>
-      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
-    );
-  };
-
-  // Client-side filtering (supercategory + search + hidden)
-  const filtered = movements.filter(m => {
-    if (hiddenIds.has(m._id || m.id)) return false;
-    if (superCat !== 'all') {
-      const sc = m.itemId?.superCategory;
-      if (!sc || sc !== superCat) return false;
-    }
-    if (!search.trim()) return true;
-    const des = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '';
-    return (
-      des.toLowerCase().includes(search.toLowerCase()) ||
-      (m.projectName || '').toLowerCase().includes(search.toLowerCase()) ||
-      (m.note || '').toLowerCase().includes(search.toLowerCase())
-    );
-  });
-
-  // Summary totals
-  const totals = filtered.reduce((acc, m) => {
-    acc[m.type] = (acc[m.type] || 0) + m.quantity;
-    return acc;
-  }, {});
-
-  const typeOptions = [
-    { value: 'all', label: t('mvAll') || 'Tous' },
-    { value: 'entree', label: t('mvEntrees') || 'Entrées' },
-    { value: 'sortie', label: t('mvSorties') || 'Sorties' },
-    { value: 'project_use', label: t('mvProjectUse') || 'Usage projet' },
-    { value: 'project_return', label: t('mvProjectReturn') || 'Retour projet' },
-    { value: 'order_reception', label: t('mvOrderReception') || 'Réception commande' },
-  ];
-
-  const TYPE_LABELS = {
-    entree: t('mvEntrees') || 'Entrées',
-    sortie: t('mvSorties') || 'Sorties',
-    project_use: t('mvProjectUse') || 'Usage projet',
-    project_return: t('mvProjectReturn') || 'Retour projet',
-    order_reception: t('mvOrderReception') || 'Réception commande',
-  };
-
-  const TABLE_TYPE_LABELS = {
-    chassis_assignment: t('mvChassisAssign'),
-    manual_in: t('mvManualIn'),
-    manual_out: t('mvManualOut'),
-  };
-  const TABLE_TYPE_META = {
-    chassis_assignment: { color: '#fbbf24', bg: 'rgba(251,191,36,.10)', icon: Cog },
-    manual_in: { color: '#4ade80', bg: 'rgba(74,222,128,.10)', icon: ArrowUp },
-    manual_out: { color: '#f87171', bg: 'rgba(248,113,113,.10)', icon: ArrowDown },
-  };
-
-  const filteredTableMovements = tableMovements.filter(m => {
-    if (tableTypeFilter !== 'all' && m.type !== tableTypeFilter) return false;
-    if (!tableSearch.trim()) return true;
-    const q = tableSearch.toLowerCase();
-    return (
-      (m.label || '').toLowerCase().includes(q) ||
-      (m.tableName || '').toLowerCase().includes(q) ||
-      (m.projectName || '').toLowerCase().includes(q) ||
-      (m.chassisRef || '').toLowerCase().includes(q)
-    );
-  });
-
-  const hasActiveFilters = fromDate || toDate || typeFilter !== 'all' || search || superCat !== 'all';
-  const hiddenCount = hiddenIds.size;
-
+function SuperCatSelect({ value, onChange, superCats, lang, t }) {
   return (
-    <div className="mv-page">
-      <div className="mv-header">
-        <div className="mv-header__heading">
-          <span className="mv-header__icon"><ChartNetwork size={18} strokeWidth={2} /></span>
-          <h2 className="mv-header__title">{t('navMovements') || 'Mouvements'}</h2>
-        </div>
-        <div className="mv-header__actions">
-          {mainTab === 'inventory' && (
-            <>
-              <button
-                className={`mv-refresh-btn ${showGraph ? 'is-active' : ''}`}
-                onClick={() => setShowGraph(g => !g)}
-              >
-                {showGraph ? <X /> : <LineChart />}
-                {showGraph ? t('mvHideChart') : t('mvChart')}
-              </button>
-              {/* {hiddenCount > 0 && (
-                <button className="mv-refresh-btn" onClick={restoreAll} style={{ background: '#6b7280' }}>
-                  ↩ Restaurer ({hiddenCount})
-                </button>
-              )} */}
-              <button className="mv-refresh-btn" onClick={load}><RotateCw />{t('refresh')}</button>
-            </>
-          )}
-          {mainTab === 'tables' && (
-            <button className="mv-refresh-btn" onClick={loadTableMovements}><RotateCw />{t('refresh')}</button>
-          )}
-        </div>
-      </div>
+    <select className="mx-select" value={value} onChange={e => onChange(e.target.value)} aria-label={t('mxSuperCat')}>
+      <option value="all">{t('mxAllSuperCats')}</option>
+      {superCats.map(sc => <option key={sc.key} value={sc.key}>{sc.label?.[lang] || sc.label?.fr || sc.key}</option>)}
+    </select>
+  );
+}
 
-      {/* Main tab switcher */}
-      <div className="mv-tabs" role="tablist">
-        {[
-          { key: 'inventory', label: t('mvTabInventory') },
-          { key: 'tables', label: t('mvTabWorkshop') },
-        ].map(tab => (
-          <button
-            key={tab.key}
-            role="tab"
-            aria-selected={mainTab === tab.key}
-            className={`mv-tab ${mainTab === tab.key ? 'active' : ''}`}
-            onClick={() => setMainTab(tab.key)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── INVENTORY TAB ── */}
-      {mainTab === 'inventory' && (<>
-
-        {/* Summary chips */}
-        <div className="mv-summary">
-          {Object.entries(TYPE_META).map(([type, meta]) => (
-            <div key={type} className="mv-chip" style={{ '--mv-c': meta.color, '--mv-bg': meta.bg }}>
-              <span className="mv-chip__icon">{meta.icon && <meta.icon size={13} strokeWidth={2.4} />}</span>
-              <span className="mv-chip__label">{TYPE_LABELS[type]}</span>
-              <span className="mv-chip__val">
-                {fmt(totals[type] || 0)}
-              </span>
+// In / out activity: two thin columns per period, one shared axis
+function ActivityChart({ data, bucket, f, t }) {
+  const [tip, setTip] = useState(null);
+  const max = Math.max(1, ...data.map(d => Math.max(d.in, d.out)));
+  const every = Math.max(1, Math.ceil(data.length / 14));
+  return (
+    <div className="mx-activity">
+      <ul className="mx-legend">
+        <li><i className="mx-sw mx-sw--in" />{t('mxIn')}<strong>{f.n(data.reduce((s, d) => s + d.in, 0))}</strong></li>
+        <li><i className="mx-sw mx-sw--out" />{t('mxOut')}<strong>{f.n(data.reduce((s, d) => s + d.out, 0))}</strong></li>
+        <li className="mx-legend__note">{t('mxActivityNote', { b: t(`mxB_${bucket}`) })}</li>
+      </ul>
+      <div className="mx-bars" onPointerLeave={() => setTip(null)}>
+        {data.map((d, i) => (
+          <div key={d.key} className="mx-bars__col" onPointerEnter={() => setTip(i)} tabIndex={0} onFocus={() => setTip(i)} onBlur={() => setTip(null)}>
+            <div className="mx-bars__pair">
+              <span className="mx-bars__bar mx-bars__bar--in" style={{ height: `${(d.in / max) * 100}%` }} />
+              <span className="mx-bars__bar mx-bars__bar--out" style={{ height: `${(d.out / max) * 100}%` }} />
             </div>
-          ))}
-        </div>
-
-        {/* Filters */}
-        <div className="mv-filters">
-          {/* Supercategory filter */}
-          <select
-            className="mv-select"
-            value={superCat}
-            onChange={e => setSuperCat(e.target.value)}
-          >
-            {SUPER_CATS.map(sc => (
-              <option key={sc.key} value={sc.key}>{t(sc.label)}</option>
-            ))}
-          </select>
-
-          <input
-            className="mv-search"
-            type="text"
-            placeholder={t('mvSearch') || 'Rechercher article, projet, note…'}
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-
-          <select className="mv-select" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
-            {typeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-
-          <div className="mv-dates">
-            <input type="date" className="mv-date-input" value={fromDate} onChange={e => setFromDate(e.target.value)} />
-            <span className="mv-date-sep"><ArrowRight size={14} /></span>
-            <input type="date" className="mv-date-input" value={toDate} onChange={e => setToDate(e.target.value)} />
-          </div>
-
-          {hasActiveFilters && (
-            <button className="mv-clear-btn" onClick={() => {
-              setFromDate(''); setToDate(''); setTypeFilter('all'); setSearch(''); setSuperCat('all');
-            }}>
-              <X size={13} />{t('mvClear') || 'Effacer'}
-            </button>
-          )}
-        </div>
-
-        {/* Graph panel */}
-        {showGraph && (
-          <div className="mv-graph-panel">
-            {/* Graph controls */}
-            <div className="mv-graph-controls">
-              {/* Grouping */}
-              <div className="mv-graph-control-group">
-                <span className="mv-graph-label">{t('mvGroupBy')}</span>
-                <div className="mv-graph-toggle-row">
-                  {GROUP_OPTIONS.map(g => (
-                    <button
-                      key={g.value}
-                      className={`mv-toggle-btn ${groupBy === g.value ? 'active' : ''}`}
-                      onClick={() => setGroupBy(g.value)}
-                    >
-                      {t(g.label)}
-                    </button>
-                  ))}
-                </div>
+            <span className="mx-bars__lab">{i % every === 0 ? f.bucket(d.key, bucket) : ''}</span>
+            {tip === i && (
+              <div className={`mx-tip${i > data.length / 2 ? ' mx-tip--left' : ''}`}>
+                <div className="mx-tip__title">{f.bucket(d.key, bucket)}</div>
+                <div><i className="mx-sw mx-sw--in" /><strong>{d.in}</strong> {t('mxIn')}</div>
+                <div><i className="mx-sw mx-sw--out" /><strong>{d.out}</strong> {t('mxOut')}</div>
               </div>
-
-              {/* Chart type */}
-              <div className="mv-graph-control-group">
-                <span className="mv-graph-label">{t('mvChartType')}</span>
-                <div className="mv-graph-toggle-row">
-                  <button
-                    className={`mv-toggle-btn ${chartType === 'line' ? 'active' : ''}`}
-                    onClick={() => setChartType('line')}
-                  >{t('mvLine')}</button>
-                  <button
-                    className={`mv-toggle-btn ${chartType === 'bar' ? 'active' : ''}`}
-                    onClick={() => setChartType('bar')}
-                  >{t('mvBars')}</button>
-                </div>
-              </div>
-
-              {/* Series toggles */}
-              <div className="mv-graph-control-group">
-                <span className="mv-graph-label">{t('mvSeries')}</span>
-                <div className="mv-graph-toggle-row">
-                  {Object.entries(TYPE_META).map(([type, meta]) => (
-                    <button
-                      key={type}
-                      className={`mv-toggle-btn mv-series-btn ${activeTypes.includes(type) ? 'active' : ''}`}
-                      style={activeTypes.includes(type)
-                        ? { borderColor: meta.color, color: meta.color, background: meta.bg }
-                        : undefined}
-                      onClick={() => toggleType(type)}
-                    >
-                      {meta.icon && <meta.icon size={13} strokeWidth={2.4} />} {TYPE_LABELS[type]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Custom legend */}
-            <div className="mv-legend">
-              {Object.entries(TYPE_META)
-                .filter(([t]) => activeTypes.includes(t))
-                .map(([type, meta]) => (
-                  <span key={type} className="mv-legend__item">
-                    <span className="mv-legend__swatch" style={{ background: meta.color }}></span>
-                    {TYPE_LABELS[type]}
-                  </span>
-                ))}
-            </div>
-
-            {!chartJsReady ? (
-              <div className="mv-graph-empty">
-                {t('mvChartLoading')}
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="mv-graph-empty">
-                {t('mvNoChartData')}
-              </div>
-            ) : (
-              <MovementsChart
-                movements={filtered}
-                groupBy={groupBy}
-                activeTypes={activeTypes}
-                chartType={chartType}
-                typeLabels={TYPE_LABELS}
-              />
             )}
           </div>
-        )}
+        ))}
+      </div>
+    </div>
+  );
+}
 
-        {/* Table */}
-        {loading ? (
-          <div className="mv-state">{t('loading') || 'Chargement…'}</div>
-        ) : error ? (
-          <div className="mv-state mv-state--error">{t('errorWithMsg', { msg: error })}</div>
-        ) : filtered.length === 0 ? (
-          <div className="mv-state"><span className="mv-state__icon"><Inbox size={20} strokeWidth={1.8} /></span>{t('mvNoMovement')}</div>
-        ) : (
-          <div className="mv-table-wrap">
-            <table className="mv-table">
-              <thead>
-                <tr>
-                  <th>{t('mvColDate') || 'Date'}</th>
-                  <th>{t('mvColType') || 'Type'}</th>
-                  <th>{t('mvColCategory')}</th>
-                  <th>{t('mvColItem') || 'Article'}</th>
-                  <th className="td-right">{t('mvColQty') || 'Qté'}</th>
-                  <th className="td-right">{t('mvColBalance') || 'Solde'}</th>
-                  <th>{t('mvColProject') || 'Projet'}</th>
-                  <th>{t('mvColNote') || 'Note'}</th>
-                  <th></th>
-                </tr>
-              </thead>
+// ═══ JOURNAL ════════════════════════════════════════════════════════════════
+function Journal({ t, lang, f, superCats, onOpenItem, reloadKey }) {
+  const [q, setQ] = useState('');
+  const dq = useDebounced(q.trim());
+  const [period, setPeriod] = useState('30d');
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('');
+  const [types, setTypes] = useState([]);
+  const [sc, setSc] = useState('all');
+  const [rows, setRows] = useState([]);
+  const [meta, setMeta] = useState(null); // total, byType, activity
+  const [cursor, setCursor] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [more, setMore] = useState(false);
+  const [error, setError] = useState('');
+  const [showChart, setShowChart] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [open, setOpen] = useState(null);
+  const req = useRef(0);
+  const sentinel = useRef(null);
+
+  const range = periodRange(period, from, to);
+  const params = useMemo(() => ({
+    q: dq || undefined, type: types.length ? types.join(',') : undefined, superCategory: sc !== 'all' ? sc : undefined,
+    from: range.from || undefined, to: range.to || undefined, tz: TZ(),
+  }), [dq, types, sc, range.from, range.to]);
+
+  // First page: whenever a filter changes (the search is sent to the server, never filtered here)
+  useEffect(() => {
+    const id = ++req.current;
+    setLoading(true); setError('');
+    axios.get(`${API}/movements`, { params: { ...params, limit: 50 } })
+      .then(res => {
+        if (id !== req.current) return;
+        setRows(res.data.movements); setCursor(res.data.nextCursor); setMeta({ total: res.data.total, byType: res.data.byType || {}, activity: res.data.activity });
+      })
+      .catch(e => { if (id === req.current) setError(e.response?.data?.error || e.message); })
+      .finally(() => { if (id === req.current) setLoading(false); });
+  }, [params, reloadKey]);
+
+  // Next page: same filters + the cursor
+  const loadMore = useCallback(async () => {
+    if (!cursor || more) return;
+    const id = req.current;
+    setMore(true);
+    try {
+      const res = await axios.get(`${API}/movements`, { params: { ...params, limit: 50, cursor } });
+      if (id !== req.current) return;
+      setRows(prev => [...prev, ...res.data.movements]); setCursor(res.data.nextCursor);
+    } catch (e) { setError(e.response?.data?.error || e.message); }
+    finally { setMore(false); }
+  }, [cursor, more, params]);
+
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !cursor) return undefined;
+    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) loadMore(); }, { rootMargin: '400px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [cursor, loadMore]);
+
+  const toggleType = (k) => setTypes(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
+  const filtersOn = dq || types.length || sc !== 'all' || period !== '30d';
+  const reset = () => { setQ(''); setTypes([]); setSc('all'); setPeriod('30d'); setFrom(''); setTo(''); };
+
+  const doExport = async () => {
+    setExporting(true);
+    try {
+      const res = await axios.get(`${API}/movements`, { params: { ...params, export: '1' } });
+      const data = res.data.movements.map(m => ({
+        [t('mxColDate')]: f.dt(m.createdAt), [t('mxColCode')]: m.item?.code || '', [t('mxColItem')]: nameOf(m.item, lang),
+        [t('mxColType')]: t(TYPES[m.type]?.label || m.type), [t('mxColQty')]: m.sign * m.quantity, [t('mxColAfter')]: m.balanceAfter,
+        [t('mxColProject')]: m.projectName, [t('mxColNote')]: m.note, [t('mxColUser')]: m.user,
+      }));
+      if (data.length) exportSheet(data, t('mxTabJournal'), `mouvements_${range.from || 'debut'}_${range.to || ymd(new Date())}.xlsx`);
+    } catch (e) { setError(e.response?.data?.error || e.message); }
+    finally { setExporting(false); }
+  };
+
+  return (
+    <>
+      <div className="mx-filters">
+        <div className="mx-search">
+          <Search size={15} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('mxSearchJournal')} aria-label={t('mxSearchJournal')} />
+          {q && <button type="button" className="mx-search__clear" onClick={() => setQ('')} aria-label={t('mxClear')}><X size={14} /></button>}
+        </div>
+        <Periods value={period} from={from} to={to} t={t} onChange={(p, a, b) => { setPeriod(p); setFrom(a || ''); setTo(b || ''); }} />
+        <SuperCatSelect value={sc} onChange={setSc} superCats={superCats} lang={lang} t={t} />
+        {filtersOn ? <button type="button" className="mx-btn mx-btn--ghost" onClick={reset}><X size={14} />{t('mxClear')}</button> : null}
+        <div className="mx-filters__end">
+          <button type="button" className={`mx-btn${showChart ? ' is-on' : ''}`} onClick={() => setShowChart(v => !v)}><BarChart3 size={14} />{t('mxActivity')}</button>
+          <button type="button" className="mx-btn" onClick={doExport} disabled={exporting || !meta?.total}><FileSpreadsheet size={14} />{exporting ? t('mxExporting') : t('mxExport')}</button>
+        </div>
+      </div>
+
+      {/* Types: the counts are for the whole filter (not only the loaded rows) — click to filter */}
+      <div className="mx-types">
+        {TYPE_ORDER.map(k => {
+          const n = meta?.byType?.[k] || 0;
+          const on = types.includes(k);
+          if (!n && !on) return null;
+          const M = TYPES[k];
+          return (
+            <button key={k} type="button" className={`mx-tchip mx-tchip--${M.sign > 0 ? 'in' : 'out'}${on ? ' is-on' : ''}`} onClick={() => toggleType(k)} aria-pressed={on}>
+              <M.Icon size={13} />{t(M.label)}<strong>{f.n(n)}</strong>
+            </button>
+          );
+        })}
+      </div>
+
+      {showChart && meta?.activity && <div className="mx-card mx-card--pad"><ActivityChart data={meta.activity.series} bucket={meta.activity.bucket} f={f} t={t} /></div>}
+
+      {error && <div className="mx-error"><AlertTriangle size={14} />{error}</div>}
+
+      <div className={`mx-card${loading ? ' is-loading' : ''}`}>
+        <div className="mx-card__head">
+          <strong>{meta ? t('mxCount', { n: f.n(meta.total) }) : '—'}</strong>
+          {meta && meta.total > 0 && <span>{t('mxShown', { n: f.n(rows.length), total: f.n(meta.total) })}</span>}
+        </div>
+        {loading && !rows.length ? <Empty icon={RotateCw}>{t('loadingShort')}</Empty>
+          : !rows.length ? <Empty>{t('mxNoMovements')}</Empty> : (
+            <div className="mx-table-wrap">
+              <table className="mx-table">
+                <thead><tr>
+                  <th className="hide-sm">{t('mxColDate')}</th><th>{t('mxColItem')}</th><th>{t('mxColType')}</th>
+                  <th className="num">{t('mxColQty')}</th><th className="num">{t('mxColAfter')}</th>
+                  <th className="hide-md">{t('mxColOrigin')}</th><th className="hide-md">{t('mxColUser')}</th>
+                </tr></thead>
+                <tbody>
+                  {rows.map(m => (
+                    <tr key={m.id} className="is-link" tabIndex={0} onClick={() => setOpen(m)} onKeyDown={e => { if (e.key === 'Enter') setOpen(m); }}>
+                      <td className="mx-nowrap mx-muted hide-sm">{f.dt(m.createdAt)}</td>
+                      <td>
+                        <div className="mx-item">
+                          {m.item?.code && <span className="mx-code">{m.item.code}</span>}
+                          <span className="mx-item__name">{m.item ? nameOf(m.item, lang) : t('mxDeletedItem')}</span>
+                        </div>
+                        <div className="mx-sub show-sm">{f.dt(m.createdAt)}</div>
+                      </td>
+                      <td><TypeBadge type={m.type} t={t} /></td>
+                      <td className="num"><Qty m={m} f={f} /></td>
+                      <td className="num"><strong>{f.n(m.balanceAfter)}</strong></td>
+                      <td className="hide-md"><Origin m={m} t={t} /></td>
+                      <td className="hide-md mx-muted">{m.user || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div ref={sentinel} className="mx-more">
+                {cursor
+                  ? <button type="button" className="mx-btn" onClick={loadMore} disabled={more}>{more ? t('loadingShort') : t('mxLoadMore')}</button>
+                  : rows.length > 20 ? <span>{t('mxAllShown')}</span> : null}
+              </div>
+            </div>
+          )}
+      </div>
+
+      {open && <MovementDrawer m={open} t={t} lang={lang} f={f} onClose={() => setOpen(null)} onOpenItem={(id) => { setOpen(null); onOpenItem(id); }} />}
+    </>
+  );
+}
+
+function MovementDrawer({ m, t, lang, f, onClose, onOpenItem }) {
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
+  const before = m.balanceAfter - m.sign * m.quantity;
+  return (
+    <div className="mx-overlay" onClick={onClose}>
+      <aside className="mx-drawer" onClick={e => e.stopPropagation()} role="dialog" aria-label={t('mxDetail')}>
+        <header className="mx-drawer__head">
+          <TypeBadge type={m.type} t={t} />
+          <button type="button" className="mx-icon" onClick={onClose} aria-label={t('close')}><X size={16} /></button>
+        </header>
+        <h3 className="mx-drawer__title">{m.item ? nameOf(m.item, lang) : t('mxDeletedItem')}</h3>
+        {m.item?.code && <div className="mx-code mx-code--lg">{m.item.code}</div>}
+        <div className="mx-flow">
+          <div><span>{t('mxBefore')}</span><strong>{f.n(Math.round(before * 1000) / 1000)}</strong></div>
+          <div className={`mx-flow__delta mx-qty--${m.sign > 0 ? 'in' : 'out'}`}>{m.sign > 0 ? <ArrowUp size={14} /> : <ArrowDown size={14} />}{f.signed(m.quantity, m.sign)}</div>
+          <div><span>{t('mxColAfter')}</span><strong>{f.n(m.balanceAfter)}</strong></div>
+        </div>
+        <dl className="mx-dl">
+          <dt>{t('mxColDate')}</dt><dd>{f.dt(m.createdAt)}</dd>
+          <dt>{t('mxColUser')}</dt><dd>{m.user ? <><User size={13} /> {m.user}</> : <span className="mx-muted">{t('mxUnknownUser')}</span>}</dd>
+          {m.projectName && <><dt>{t('mxColProject')}</dt><dd>{m.projectName}</dd></>}
+          {m.note && <><dt>{t('mxColNote')}</dt><dd>{m.note}</dd></>}
+        </dl>
+        <div className="mx-drawer__actions">
+          {m.item && <button type="button" className="mx-btn" onClick={() => onOpenItem(m.item.id)}><History size={14} />{t('mxOpenLedger')}</button>}
+          {m.projectId && <button type="button" className="mx-btn" onClick={() => goTo(`${PAGE_PATHS.projects}/${m.projectId}`)}><ExternalLink size={14} />{t('mxOpenProject')}</button>}
+          {m.orderId && <button type="button" className="mx-btn" onClick={() => goTo(`${PAGE_PATHS.orders}/${m.orderId}`)}><ExternalLink size={14} />{t('mxOpenOrder')}</button>}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+// ═══ STOCK AT A DATE ═══════════════════════════════════════════════════════
+function StockAtDate({ t, lang, f, superCats, onOpenItem, reloadKey }) {
+  const today = ymd(new Date());
+  const [date, setDate] = useState(() => getQueryParam('date') || today);
+  const [compareOn, setCompareOn] = useState(() => !!getQueryParam('compare'));
+  const [compare, setCompare] = useState(() => getQueryParam('compare') || ymd(addDays(new Date(), -30)));
+  const [q, setQ] = useState('');
+  const dq = useDebounced(q.trim());
+  const [sc, setSc] = useState('all');
+  const [cat, setCat] = useState('all');
+  const [cats, setCats] = useState([]);
+  const [hideZero, setHideZero] = useState(false);
+  const [onlyChanged, setOnlyChanged] = useState(false);
+  const [sort, setSort] = useState({ key: 'name', dir: 1 });
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [limit, setLimit] = useState(200);
+  const req = useRef(0);
+
+  useEffect(() => { updateQuery({ date: date === today ? null : date, compare: compareOn ? compare : null }); }, [date, compare, compareOn, today]);
+  useEffect(() => {
+    setCat('all');
+    if (sc === 'all') { setCats([]); return; }
+    axios.get(`${API}/categories`, { params: { superCategory: sc } }).then(r => setCats(r.data || [])).catch(() => setCats([]));
+  }, [sc]);
+  useEffect(() => {
+    const id = ++req.current;
+    setLoading(true); setError('');
+    axios.get(`${API}/movements/snapshot`, { params: { date, compare: compareOn ? compare : undefined, q: dq || undefined, superCategory: sc !== 'all' ? sc : undefined, categoryId: cat !== 'all' ? cat : undefined, tz: TZ() } })
+      .then(r => { if (id === req.current) { setData(r.data); setLimit(200); } })
+      .catch(e => { if (id === req.current) setError(e.response?.data?.error || e.message); })
+      .finally(() => { if (id === req.current) setLoading(false); });
+  }, [date, compare, compareOn, dq, sc, cat, reloadKey]);
+
+  const rows = useMemo(() => {
+    if (!data) return [];
+    let r = data.rows.filter(x => x.atDate !== null); // articles created after the date are not part of that stock
+    if (hideZero) r = r.filter(x => x.atDate > 0 || (compareOn && x.atCompare > 0));
+    if (compareOn && onlyChanged) r = r.filter(x => (x.atDate ?? 0) !== (x.atCompare ?? 0));
+    const val = (x) => {
+      if (sort.key === 'name') return nameOf(x, lang).toLowerCase();
+      if (sort.key === 'diff') return (x.atDate ?? 0) - (x.atCompare ?? 0);
+      return x[sort.key] ?? -Infinity;
+    };
+    return [...r].sort((a, b) => { const va = val(a), vb = val(b); return (va < vb ? -1 : va > vb ? 1 : 0) * sort.dir; });
+  }, [data, hideZero, onlyChanged, compareOn, sort, lang]);
+
+  const stats = useMemo(() => {
+    const all = (data?.rows || []).filter(x => x.atDate !== null);
+    return {
+      items: all.length,
+      inStock: all.filter(x => x.atDate > 0).length,
+      out: all.filter(x => x.atDate <= 0).length,
+      low: all.filter(x => x.threshold > 0 && x.atDate > 0 && x.atDate < x.threshold).length,
+      up: compareOn ? all.filter(x => (x.atDate ?? 0) > (x.atCompare ?? 0)).length : 0,
+      down: compareOn ? all.filter(x => (x.atDate ?? 0) < (x.atCompare ?? 0)).length : 0,
+      untracked: all.filter(x => x.untracked).length,
+    };
+  }, [data, compareOn]);
+
+  const th = (key, label, num) => (
+    <th className={`${num ? 'num ' : ''}mx-sort${sort.key === key ? ' is-on' : ''}`} onClick={() => setSort(s => ({ key, dir: s.key === key ? -s.dir : (key === 'name' ? 1 : -1) }))}
+      aria-sort={sort.key === key ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}>
+      {label}{sort.key === key && (sort.dir > 0 ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+    </th>
+  );
+  const scName = (k) => { const s = superCats.find(x => x.key === k); return s?.label?.[lang] || s?.label?.fr || k; };
+
+  const doExport = () => {
+    const data2 = rows.map(x => ({
+      [t('mxColCode')]: x.code, [t('mxColItem')]: nameOf(x, lang), [t('mxSuperCat')]: scName(x.superCategory),
+      [t('mxColCategory')]: x.category ? (x.category.name?.[lang] || x.category.name?.fr) : '',
+      [t('mxStockOn', { d: f.d(date) })]: x.atDate,
+      ...(compareOn ? { [t('mxStockOn', { d: f.d(compare) })]: x.atCompare ?? '', [t('mxColDiff')]: (x.atDate ?? 0) - (x.atCompare ?? 0) } : {}),
+      [t('mxColThreshold')]: x.threshold, [t('mxColCurrent')]: x.current,
+    }));
+    if (data2.length) exportSheet(data2, t('mxTabStock'), `stock_${date}${compareOn ? `_vs_${compare}` : ''}.xlsx`);
+  };
+
+  return (
+    <>
+      <div className="mx-filters">
+        <label className="mx-field">
+          <span>{t('mxStockDate')}</span>
+          <input type="date" className="mx-input mx-input--date" value={date} max={today} onChange={e => setDate(e.target.value || today)} />
+        </label>
+        <button type="button" className={`mx-btn${compareOn ? ' is-on' : ''}`} onClick={() => setCompareOn(v => !v)} aria-pressed={compareOn}>
+          <GitCompareArrows size={14} />{t('mxCompare')}
+        </button>
+        {compareOn && (
+          <label className="mx-field">
+            <span>{t('mxCompareWith')}</span>
+            <input type="date" className="mx-input mx-input--date" value={compare} max={today} onChange={e => setCompare(e.target.value || compare)} />
+          </label>
+        )}
+        <div className="mx-quick">
+          {[['mxQ_today', 0], ['mxQ_monthEnd', 'm'], ['mxQ_yearEnd', 'y']].map(([k, v]) => {
+            const d = v === 0 ? today : v === 'm' ? ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 0)) : ymd(new Date(new Date().getFullYear() - 1, 11, 31));
+            return <button key={k} type="button" className={`mx-chipbtn${date === d ? ' is-on' : ''}`} onClick={() => setDate(d)}>{t(k)}</button>;
+          })}
+        </div>
+      </div>
+      <div className="mx-filters">
+        <div className="mx-search">
+          <Search size={15} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('mxSearchItem')} aria-label={t('mxSearchItem')} />
+          {q && <button type="button" className="mx-search__clear" onClick={() => setQ('')} aria-label={t('mxClear')}><X size={14} /></button>}
+        </div>
+        <SuperCatSelect value={sc} onChange={setSc} superCats={superCats} lang={lang} t={t} />
+        {cats.length > 0 && (
+          <select className="mx-select" value={cat} onChange={e => setCat(e.target.value)} aria-label={t('mxColCategory')}>
+            <option value="all">{t('mxAllCats')}</option>
+            {cats.map(c => <option key={c.id || c._id} value={c.id || c._id}>{c.name?.[lang] || c.name?.fr}</option>)}
+          </select>
+        )}
+        <label className="mx-check"><input type="checkbox" checked={hideZero} onChange={e => setHideZero(e.target.checked)} />{t('mxHideZero')}</label>
+        {compareOn && <label className="mx-check"><input type="checkbox" checked={onlyChanged} onChange={e => setOnlyChanged(e.target.checked)} />{t('mxOnlyChanged')}</label>}
+        <div className="mx-filters__end">
+          <button type="button" className="mx-btn" onClick={doExport} disabled={!rows.length}><FileSpreadsheet size={14} />{t('mxExport')}</button>
+        </div>
+      </div>
+
+      <div className="mx-stats">
+        <div className="mx-stat"><span>{t('mxStItems')}</span><strong>{f.n(stats.items)}</strong></div>
+        <div className="mx-stat"><span>{t('mxStInStock')}</span><strong>{f.n(stats.inStock)}</strong></div>
+        <div className="mx-stat mx-stat--warn"><span>{t('mxStLow')}</span><strong>{f.n(stats.low)}</strong></div>
+        <div className="mx-stat mx-stat--bad"><span>{t('mxStOut')}</span><strong>{f.n(stats.out)}</strong></div>
+        {compareOn && <div className="mx-stat"><span>{t('mxStUp')}</span><strong className="mx-qty--in">{f.n(stats.up)}</strong></div>}
+        {compareOn && <div className="mx-stat"><span>{t('mxStDown')}</span><strong className="mx-qty--out">{f.n(stats.down)}</strong></div>}
+      </div>
+
+      {error && <div className="mx-error"><AlertTriangle size={14} />{error}</div>}
+
+      <div className={`mx-card${loading ? ' is-loading' : ''}`}>
+        <div className="mx-card__head">
+          <strong>{t('mxStockTitle', { d: f.d(date) })}</strong>
+          <span>{t('mxArticles', { n: f.n(rows.length) })}</span>
+        </div>
+        {loading && !data ? <Empty icon={RotateCw}>{t('loadingShort')}</Empty> : !rows.length ? <Empty>{t('mxNoItems')}</Empty> : (
+          <div className="mx-table-wrap">
+            <table className="mx-table">
+              <thead><tr>
+                {th('name', t('mxColItem'))}
+                <th className="hide-md">{t('mxColCategory')}</th>
+                {th('atDate', t('mxStockOn', { d: f.d(date) }), true)}
+                {compareOn && th('atCompare', t('mxStockOn', { d: f.d(compare) }), true)}
+                {compareOn && th('diff', t('mxColDiff'), true)}
+                {th('threshold', t('mxColThreshold'), true)}
+                {th('current', t('mxColCurrent'), true)}
+              </tr></thead>
               <tbody>
-                {filtered.map((m, i) => {
-                  const meta = TYPE_META[m.type] || { color: '#a1a1aa', bg: 'rgba(161,161,170,.10)', icon: null };
-                  const designation = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '—';
-                  const sc = m.itemId?.superCategory || null;
-                  const scMeta = SUPER_CATS.find(s => s.key === sc);
-                  const isPositive = m.type === 'entree' || m.type === 'project_return' || m.type === 'order_reception';
-                  const qty = fmt(m.quantity);
-                  const bal = fmt(m.balanceAfter);
+                {rows.slice(0, limit).map(x => {
+                  const diff = (x.atDate ?? 0) - (x.atCompare ?? 0);
+                  const low = x.threshold > 0 && x.atDate < x.threshold;
                   return (
-                    <tr
-                      key={m._id || i}
-                      className="mv-row-clickable"
-                      onClick={() => setSelectedMovement(m)}
-                    >
-                      <td className="mv-col-date">{fmtDate(m.createdAt)}</td>
+                    <tr key={x.id} className="is-link" tabIndex={0} onClick={() => onOpenItem(x.id, compareOn ? [compare < date ? compare : date, compare < date ? date : compare] : [ymd(addDays(new Date(`${date}T12:00:00`), -30)), date])}
+                      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.click(); }}>
                       <td>
-                        <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '4d' }}>
-                          {meta.icon && <meta.icon size={13} strokeWidth={2.4} />} {TYPE_LABELS[m.type] || m.type}
-                        </span>
+                        <div className="mx-item">
+                          {x.code && <span className="mx-code">{x.code}</span>}
+                          <span className="mx-item__name">{nameOf(x, lang)}</span>
+                          {x.untracked && <span className="mx-warn" title={t('mxUntrackedTip')}><AlertTriangle size={13} /></span>}
+                        </div>
                       </td>
-                      <td>
-                        <span className="mv-supercat-badge">
-                          {scMeta ? t(scMeta.label) : (sc || '—')}
-                        </span>
+                      <td className="hide-md mx-muted">
+                        {scName(x.superCategory)}{x.category && <> › {x.category.name?.[lang] || x.category.name?.fr}</>}
                       </td>
-                      <td className="mv-col-item">{designation}</td>
-                      <td className="td-right">
-                        <span className="mv-qty" style={{ color: meta.color }}>
-                          {isPositive ? '+' : '−'}{qty}
-                        </span>
-                      </td>
-                      <td className="td-right mv-balance">{bal}</td>
-                      <td className="mv-col-project">{m.projectName || '—'}</td>
-                      <td className="mv-col-note">{m.note || '—'}</td>
-                      <td>
-                        <button
-                          className="mv-delete-btn"
-                          onClick={(e) => hideMovement(m._id || m.id, e)}
-                          title={t('mvHideBtn')}
-                        >
-                          <X size={13} />
-                        </button>
-                      </td>
+                      <td className={`num${x.atDate <= 0 ? ' mx-zero' : low ? ' mx-low' : ''}`}><strong>{f.n(x.atDate)}</strong></td>
+                      {compareOn && <td className="num mx-muted">{x.atCompare === null ? '—' : f.n(x.atCompare)}</td>}
+                      {compareOn && <td className="num">{diff === 0 ? <span className="mx-muted">0</span> : <span className={`mx-qty mx-qty--${diff > 0 ? 'in' : 'out'}`}>{f.signed(diff, diff > 0 ? 1 : -1)}</span>}</td>}
+                      <td className="num mx-muted">{f.n(x.threshold)}</td>
+                      <td className="num">{f.n(x.current)}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-            <div className="mv-count">
-              {filtered.length} {t('mvRows') || 'lignes'}
-              {totalCount > movements.length && t('mvLoaded', { n: movements.length, total: totalCount })}
-            </div>
-            {hasMore && (
-              <div className="mv-load-more">
-                <button className="mv-refresh-btn" onClick={loadMore} disabled={loadingMore}>
-                  {loadingMore ? t('loadingShort') : <><ArrowDown size={14} /> {t('mvLoadMore', { n: totalCount - movements.length })}</>}
-                </button>
-              </div>
-            )}
+            {rows.length > limit && <div className="mx-more"><button type="button" className="mx-btn" onClick={() => setLimit(l => l + 300)}>{t('mxShowMore', { n: f.n(rows.length - limit) })}</button></div>}
           </div>
         )}
+      </div>
+      <p className="mx-note">
+        {t('mxStockNote')}
+        {stats.untracked > 0 && <> <AlertTriangle size={12} /> {t('mxUntrackedCount', { n: stats.untracked })}</>}
+      </p>
+    </>
+  );
+}
 
-        {/* Detail modal */}
-        {selectedMovement && (() => {
-          const m = selectedMovement;
-          const meta = TYPE_META[m.type] || { color: '#a1a1aa', bg: 'rgba(161,161,170,.10)', icon: null };
-          const designation = m.itemId?.designation?.[lang] || m.itemId?.designation?.fr || '—';
-          const sc = m.itemId?.superCategory || null;
-          const scMeta = SUPER_CATS.find(s => s.key === sc);
-          const isPositive = m.type === 'entree' || m.type === 'project_return' || m.type === 'order_reception';
-          const mid = m._id || m.id;
-          return (
-            <div className="mv-modal-overlay" onClick={() => setSelectedMovement(null)}>
-              <div className="mv-modal" onClick={e => e.stopPropagation()}>
-                <div className="mv-modal-header">
-                  <span className="mv-type-badge mv-type-badge--lg" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '4d' }}>
-                    {meta.icon && <meta.icon size={13} strokeWidth={2.4} />} {TYPE_LABELS[m.type] || m.type}
-                  </span>
-                  <button className="mv-modal-close" onClick={() => setSelectedMovement(null)} aria-label={t('close')}><X size={16} /></button>
-                </div>
-
-                <div className="mv-modal-title">{designation}</div>
-
-                <div className="mv-modal-grid">
-                  <div className="mv-modal-field">
-                    <span className="mv-modal-field__label">{t('mvColDate')}</span>
-                    <span className="mv-modal-field__val">{fmtDate(m.createdAt)}</span>
-                  </div>
-                  <div className="mv-modal-field">
-                    <span className="mv-modal-field__label">{t('mvColCategory')}</span>
-                    <span className="mv-modal-field__val">
-                      <span className="mv-supercat-badge">{scMeta ? t(scMeta.label) : (sc || '—')}</span>
-                    </span>
-                  </div>
-                  <div className="mv-modal-field">
-                    <span className="mv-modal-field__label">{t('mvQuantity')}</span>
-                    <span className="mv-modal-field__val mv-qty" style={{ color: meta.color }}>
-                      {isPositive ? '+' : '−'}{fmt(m.quantity)}
-                    </span>
-                  </div>
-                  <div className="mv-modal-field">
-                    <span className="mv-modal-field__label">{t('mvBalanceAfter')}</span>
-                    <span className="mv-modal-field__val mv-balance">{fmt(m.balanceAfter)}</span>
-                  </div>
-                  {m.projectName && (
-                    <div className="mv-modal-field">
-                      <span className="mv-modal-field__label">{t('mvProject')}</span>
-                      <span className="mv-modal-field__val mv-col-project">{m.projectName}</span>
-                    </div>
-                  )}
-                  {m.user && (
-                    <div className="mv-modal-field">
-                      <span className="mv-modal-field__label">{t('mvUser')}</span>
-                      <span className="mv-modal-field__val">{m.user}</span>
-                    </div>
-                  )}
-                </div>
-
-                {m.note && (
-                  <div className="mv-modal-note">
-                    <div className="mv-modal-field__label mv-modal-note__label">{t('mvNote')}</div>
-                    <div className="mv-modal-note__body">{m.note}</div>
-                  </div>
-                )}
-
-                <div className="mv-modal-actions">
-                  <button
-                    className="mv-modal-hide-btn"
-                    onClick={async () => {
-                      if (!(await dialog.confirm({ title: t('mvHideTitle'), message: t('mvHideConfirm'), confirmLabel: t('mvHideAction') }))) return;
-                      setHiddenIds(prev => {
-                        const next = new Set(prev);
-                        next.add(mid);
-                        localStorage.setItem('mv_hidden', JSON.stringify([...next]));
-                        return next;
-                      });
-                      setSelectedMovement(null);
-                    }}
-                  >
-                    <Trash2 size={14} />{t('mvHideBtn')}
-                  </button>
-                  <button className="mv-modal-close-btn" onClick={() => setSelectedMovement(null)}>
-                    {t('close')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-      </>)}
-
-      {/* ── TABLES ATELIER TAB ── */}
-      {mainTab === 'tables' && (
-        <div>
-          {/* Summary chips for table movements */}
-          <div className="mv-summary">
-            {Object.entries(TABLE_TYPE_META).map(([type, meta]) => {
-              const total = filteredTableMovements
-                .filter(m => m.type === type)
-                .reduce((s, m) => s + (m.quantity || 0), 0);
-              return (
-                <div key={type} className="mv-chip" style={{ '--mv-c': meta.color, '--mv-bg': meta.bg }}>
-                  <span className="mv-chip__icon">{meta.icon && <meta.icon size={13} strokeWidth={2.4} />}</span>
-                  <span className="mv-chip__label">{TABLE_TYPE_LABELS[type]}</span>
-                  <span className="mv-chip__val">{fmt(total)}</span>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Filters */}
-          <div className="mv-filters">
-            <input
-              className="mv-search"
-              type="text"
-              placeholder={t('mvWsSearch')}
-              value={tableSearch}
-              onChange={e => setTableSearch(e.target.value)}
-            />
-            <select className="mv-select" value={tableTypeFilter} onChange={e => setTableTypeFilter(e.target.value)}>
-              <option value="all">{t('mvAllTypes')}</option>
-              {Object.entries(TABLE_TYPE_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
-            {(tableSearch || tableTypeFilter !== 'all') && (
-              <button className="mv-clear-btn" onClick={() => { setTableSearch(''); setTableTypeFilter('all'); }}>
-                <X size={13} />{t('mvClear')}
+// ═══ ARTICLE LEDGER ═════════════════════════════════════════════════════════
+function ItemPicker({ t, lang, onPick }) {
+  const [q, setQ] = useState('');
+  const dq = useDebounced(q.trim(), 250);
+  const [res, setRes] = useState([]);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (dq.length < 2) { setRes([]); return; }
+    let live = true;
+    axios.get(`${API}/inventory/lookup`, { params: { q: dq, limit: 12 } }).then(r => { if (live) setRes(r.data.items || []); }).catch(() => {});
+    return () => { live = false; };
+  }, [dq]);
+  return (
+    <div className="mx-picker">
+      <div className="mx-search mx-search--lg">
+        <Search size={16} />
+        <input value={q} onChange={e => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} placeholder={t('mxPickItem')} aria-label={t('mxPickItem')} />
+      </div>
+      {open && res.length > 0 && (
+        <ul className="mx-picker__list" role="listbox">
+          {res.map(it => (
+            <li key={it.id}>
+              <button type="button" onClick={() => { onPick(it.id); setOpen(false); setQ(''); }}>
+                {it.codeInterne && <span className="mx-code">{it.codeInterne}</span>}
+                <span className="mx-item__name">{nameOf(it, lang)}</span>
+                <span className="mx-muted">{f2(it.quantity)}</span>
               </button>
-            )}
-          </div>
-
-          {/* Table */}
-          {tableLoading ? (
-            <div className="mv-state">{t('loadingShort')}</div>
-          ) : tableError ? (
-            <div className="mv-state mv-state--error">{t('errorWithMsg', { msg: tableError })}</div>
-          ) : filteredTableMovements.length === 0 ? (
-            <div className="mv-state"><span className="mv-state__icon"><Inbox size={20} strokeWidth={1.8} /></span>{t('mvNoWorkshop')}</div>
-          ) : (
-            <div className="mv-table-wrap">
-              <table className="mv-table">
-                <thead>
-                  <tr>
-                    <th>{t('mvColDate')}</th>
-                    <th>{t('mvColType')}</th>
-                    <th>{t('mvColTable')}</th>
-                    <th>{t('mvColAccessory')}</th>
-                    <th className="td-right">{t('mvColQty')}</th>
-                    <th>{t('mvColUnit')}</th>
-                    <th>{t('mvColProject')}</th>
-                    <th>{t('mvColChassis')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTableMovements.map((m, i) => {
-                    const meta = TABLE_TYPE_META[m.type] || { color: '#a1a1aa', bg: 'rgba(161,161,170,.10)', icon: null };
-                    const isOut = m.type === 'chassis_assignment' || m.type === 'manual_out';
-                    return (
-                      <tr key={m._id || i}>
-                        <td className="mv-col-date">{fmtDate(m.date || m.createdAt)}</td>
-                        <td>
-                          <span className="mv-type-badge" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '4d' }}>
-                            {meta.icon && <meta.icon size={13} strokeWidth={2.4} />} {TABLE_TYPE_LABELS[m.type] || m.type}
-                          </span>
-                        </td>
-                        <td><strong>{m.tableName || '—'}</strong></td>
-                        <td className="mv-col-item">{m.label || '—'}</td>
-                        <td className="td-right">
-                          <span className="mv-qty" style={{ color: meta.color }}>
-                            {isOut ? '−' : '+'}{fmt(m.quantity)}
-                          </span>
-                        </td>
-                        <td>{m.unit || '—'}</td>
-                        <td className="mv-col-project">{m.projectName || '—'}</td>
-                        <td>{m.chassisRef ? <code className="mv-code">{m.chassisRef}</code> : '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <div className="mv-count">{t('mvLines', { n: filteredTableMovements.length })}</div>
-            </div>
-          )}
-        </div>
+            </li>
+          ))}
+        </ul>
       )}
-
     </div>
   );
 }
+const f2 = (v) => (v == null ? '' : String(Math.round(v * 1000) / 1000));
+
+// Stock level over the period: one step line (the stock holds until the next movement), threshold as a reference
+function StockChart({ points, threshold, from, to, f, t }) {
+  const ref = useRef(null);
+  const [w, setW] = useState(0);
+  const [hover, setHover] = useState(null);
+  useEffect(() => {
+    if (!ref.current) return undefined;
+    const ro = new ResizeObserver(([e]) => setW(Math.floor(e.contentRect.width)));
+    ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, []);
+  const H = 220, padL = 44, padR = 12, padT = 12, padB = 26;
+  const t0 = from.getTime(), t1 = Math.max(to.getTime(), t0 + 1);
+  const maxV = Math.max(1, threshold || 0, ...points.map(p => p.v)) * 1.1;
+  const x = (tt) => padL + ((tt - t0) / (t1 - t0)) * (w - padL - padR);
+  const y = (v) => padT + (1 - v / maxV) * (H - padT - padB);
+  let d = '';
+  points.forEach((p, i) => { const px = x(p.t), py = y(p.v); d += i === 0 ? `M${px},${py}` : ` H${px} V${py}`; });
+  if (points.length) d += ` H${x(t1)}`;
+  const ticks = [0, maxV / 2, maxV].map(v => Math.round(v));
+  const nearest = (clientX) => {
+    const r = ref.current.getBoundingClientRect();
+    const tt = t0 + ((clientX - r.left - padL) / (w - padL - padR)) * (t1 - t0);
+    let best = 0;
+    points.forEach((p, i) => { if (p.t <= tt) best = i; });
+    setHover(best);
+  };
+  return (
+    <div ref={ref} className="mx-chart" style={{ height: H }} onPointerMove={e => points.length && nearest(e.clientX)} onPointerLeave={() => setHover(null)}>
+      {w > 0 && (
+        <svg width={w} height={H} role="img" aria-label={t('mxChartAria')}>
+          {ticks.map((v, i) => (
+            <g key={i}>
+              <line x1={padL} x2={w - padR} y1={y(v)} y2={y(v)} className={i === 0 ? 'mx-axis' : 'mx-grid'} />
+              <text x={padL - 8} y={y(v)} className="mx-tick" textAnchor="end" dominantBaseline="middle">{f.n(v)}</text>
+            </g>
+          ))}
+          {threshold > 0 && (
+            <g>
+              <line x1={padL} x2={w - padR} y1={y(threshold)} y2={y(threshold)} className="mx-threshold" />
+              <text x={w - padR} y={y(threshold) - 5} className="mx-tick" textAnchor="end">{t('mxColThreshold')} {f.n(threshold)}</text>
+            </g>
+          )}
+          <path d={`${d} V${y(0)} H${x(points[0]?.t ?? t0)} Z`} className="mx-area" />
+          <path d={d} className="mx-line" />
+          <text x={padL} y={H - 6} className="mx-tick">{f.d(from)}</text>
+          <text x={w - padR} y={H - 6} className="mx-tick" textAnchor="end">{f.d(to)}</text>
+          {hover != null && points[hover] && (
+            <g>
+              <line x1={x(points[hover].t)} x2={x(points[hover].t)} y1={padT} y2={H - padB} className="mx-cross" />
+              <circle cx={x(points[hover].t)} cy={y(points[hover].v)} r="4.5" className="mx-dot" />
+            </g>
+          )}
+        </svg>
+      )}
+      {hover != null && points[hover] && (
+        <div className="mx-tip mx-tip--chart" style={{ left: Math.min(x(points[hover].t) + 12, w - 190) }}>
+          <div className="mx-tip__title">{points[hover].label}</div>
+          <div><strong>{f.n(points[hover].v)}</strong> {t('mxInStockShort')}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Ledger({ t, lang, f, itemId, initialRange, onPick, reloadKey }) {
+  const [period, setPeriod] = useState(initialRange ? 'custom' : '30d');
+  const [from, setFrom] = useState(initialRange?.[0] || ''); const [to, setTo] = useState(initialRange?.[1] || '');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => { if (initialRange) { setPeriod('custom'); setFrom(initialRange[0]); setTo(initialRange[1]); } }, [initialRange]);
+  const range = periodRange(period, from, to);
+  useEffect(() => {
+    if (!itemId) { setData(null); return; }
+    let live = true;
+    setLoading(true); setError('');
+    axios.get(`${API}/movements/item/${itemId}`, { params: { from: range.from || undefined, to: range.to || undefined, tz: TZ() } })
+      .then(r => { if (live) setData(r.data); })
+      .catch(e => { if (live) { setError(e.response?.data?.error || e.message); setData(null); } })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [itemId, range.from, range.to, reloadKey]);
+
+  const chart = useMemo(() => {
+    if (!data) return null;
+    const ms = data.movements;
+    const start = range.from ? new Date(`${range.from}T00:00:00`) : (ms[0] ? new Date(ms[0].createdAt) : new Date(data.item.createdAt));
+    const end = range.to ? new Date(`${range.to}T23:59:59`) : new Date();
+    const pts = [{ t: start.getTime(), v: data.opening, label: `${f.d(start)} — ${t('mxOpening')}` }];
+    ms.forEach(m => pts.push({ t: new Date(m.createdAt).getTime(), v: m.balanceAfter, label: `${f.dt(m.createdAt)} · ${t(TYPES[m.type]?.label || m.type)} ${f.signed(m.quantity, m.sign)}` }));
+    return { pts, start, end: new Date(Math.min(end.getTime(), Date.now())) };
+  }, [data, range.from, range.to, f, t]);
+
+  const doExport = () => {
+    if (!data) return;
+    const rows = [
+      { [t('mxColDate')]: range.from ? f.d(range.from) : '', [t('mxColType')]: t('mxOpening'), [t('mxColQty')]: '', [t('mxColAfter')]: data.opening },
+      ...data.movements.map(m => ({ [t('mxColDate')]: f.dt(m.createdAt), [t('mxColType')]: t(TYPES[m.type]?.label || m.type), [t('mxColQty')]: m.sign * m.quantity, [t('mxColAfter')]: m.balanceAfter, [t('mxColProject')]: m.projectName, [t('mxColNote')]: m.note, [t('mxColUser')]: m.user })),
+    ];
+    exportSheet(rows, t('mxTabLedger'), `fiche_${data.item.code || 'article'}_${range.from || 'debut'}_${range.to || ymd(new Date())}.xlsx`);
+  };
+
+  return (
+    <>
+      <div className="mx-filters">
+        <ItemPicker t={t} lang={lang} onPick={onPick} />
+        <Periods value={period} from={from} to={to} t={t} onChange={(p, a, b) => { setPeriod(p); setFrom(a || ''); setTo(b || ''); }} />
+        {data && <div className="mx-filters__end"><button type="button" className="mx-btn" onClick={doExport}><FileSpreadsheet size={14} />{t('mxExport')}</button></div>}
+      </div>
+      {error && <div className="mx-error"><AlertTriangle size={14} />{error}</div>}
+      {!itemId ? <div className="mx-card"><Empty icon={History}>{t('mxPickHint')}</Empty></div> : !data ? (
+        <div className="mx-card"><Empty icon={RotateCw}>{loading ? t('loadingShort') : '—'}</Empty></div>
+      ) : (
+        <div className={loading ? 'is-loading' : ''}>
+          <div className="mx-card mx-card--pad mx-art">
+            <div className="mx-art__id">
+              {data.item.image
+                ? <img src={data.item.image} alt="" onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'inline-flex'; }} />
+                : null}
+              <span className="mx-art__ph" style={{ display: data.item.image ? 'none' : 'inline-flex' }}><Boxes size={20} /></span>
+              <div>
+                <h3>{nameOf(data.item, lang)}</h3>
+                <div className="mx-muted">
+                  {data.item.code && <span className="mx-code">{data.item.code}</span>}
+                  {data.item.category ? (data.item.category.name?.[lang] || data.item.category.name?.fr) : data.item.superCategory}
+                </div>
+              </div>
+            </div>
+            <div className="mx-art__now">
+              <div><span>{t('mxColCurrent')}</span><strong>{f.n(data.item.quantity)}</strong></div>
+              <div><span>{t('mxColThreshold')}</span><strong>{f.n(data.item.threshold)}</strong></div>
+              <div><span>{t('mxOrdered')}</span><strong>{f.n(data.item.ordered)}</strong></div>
+            </div>
+          </div>
+          <div className="mx-stats">
+            <div className="mx-stat"><span>{t('mxOpening')}</span><strong>{f.n(data.opening)}</strong></div>
+            <div className="mx-stat"><span>{t('mxIn')}</span><strong className="mx-qty--in">{f.signed(data.totalIn, 1)}</strong></div>
+            <div className="mx-stat"><span>{t('mxOut')}</span><strong className="mx-qty--out">{f.signed(data.totalOut, -1)}</strong></div>
+            <div className="mx-stat"><span>{t('mxClosing')}</span><strong>{f.n(data.closing)}</strong></div>
+            <div className="mx-stat"><span>{t('mxMovements')}</span><strong>{f.n(data.movements.length)}</strong></div>
+          </div>
+          {data.untracked && <div className="mx-error mx-error--warn"><AlertTriangle size={14} />{t('mxUntrackedTip')}</div>}
+          <div className="mx-card mx-card--pad">
+            <div className="mx-card__head mx-card__head--flat"><strong>{t('mxChartTitle')}</strong><span>{range.from ? `${f.d(range.from)} → ${f.d(range.to || ymd(new Date()))}` : t('mxP_all')}</span></div>
+            {chart && <StockChart points={chart.pts} threshold={data.item.threshold} from={chart.start} to={chart.end} f={f} t={t} />}
+          </div>
+          <div className="mx-card">
+            <div className="mx-card__head"><strong>{t('mxLedgerTitle')}</strong><span>{t('mxCount', { n: f.n(data.movements.length) })}</span></div>
+            {!data.movements.length ? <Empty>{t('mxNoMovementsItem')}</Empty> : (
+              <div className="mx-table-wrap">
+                <table className="mx-table">
+                  <thead><tr><th>{t('mxColDate')}</th><th>{t('mxColType')}</th><th className="num">{t('mxColQty')}</th><th className="num">{t('mxColAfter')}</th><th className="hide-md">{t('mxColOrigin')}</th><th className="hide-md">{t('mxColUser')}</th></tr></thead>
+                  <tbody>
+                    {[...data.movements].reverse().map(m => (
+                      <tr key={m.id}>
+                        <td className="mx-nowrap mx-muted">{f.dt(m.createdAt)}</td>
+                        <td><TypeBadge type={m.type} t={t} /></td>
+                        <td className="num"><Qty m={m} f={f} /></td>
+                        <td className="num"><strong>{f.n(m.balanceAfter)}</strong></td>
+                        <td className="hide-md"><Origin m={m} t={t} /></td>
+                        <td className="hide-md mx-muted">{m.user || '—'}</td>
+                      </tr>
+                    ))}
+                    <tr className="mx-row-open"><td colSpan={3}>{t('mxOpening')}{range.from ? ` — ${f.d(range.from)}` : ''}</td><td className="num"><strong>{f.n(data.opening)}</strong></td><td className="hide-md" colSpan={2} /></tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+export default function MovementsPage() {
+  const { t, currentLanguage: lang } = useLanguage();
+  const f = useFmt(lang);
+  const [tab, setTab] = useState(() => { const o = getQueryParam('onglet'); return TABS.some(x => x.key === o) ? o : 'journal'; });
+  const [itemId, setItemId] = useState(() => getQueryParam('article') || null);
+  const [ledgerRange, setLedgerRange] = useState(null);
+  const [superCats, setSuperCats] = useState([]);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => { axios.get(`${API}/super-categories`).then(r => setSuperCats(r.data || [])).catch(() => {}); }, []);
+  // Tab and article in the URL: a refresh stays on the same view
+  const changeTab = (k) => { setTab(k); updateQuery({ onglet: k === 'journal' ? null : k, article: k === 'fiche' ? itemId : null, date: null, compare: null }); };
+  const openItem = (id, range = null) => {
+    setItemId(id); setLedgerRange(range); setTab('fiche');
+    updateQuery({ onglet: 'fiche', article: id, date: null, compare: null }, { replace: false });
+  };
+
+  return (
+    <div className="mx">
+      <div className="mx-head">
+        <div>
+          <h1 className="mx-head__title">{t('mxTitle')}</h1>
+          <div className="mx-head__sub">{t('mxSubtitle')}</div>
+        </div>
+        <button type="button" className="mx-btn" onClick={() => setReloadKey(k => k + 1)}><RotateCw size={14} />{t('refresh')}</button>
+      </div>
+
+      <div className="mx-tabs" role="tablist">
+        {TABS.map(x => (
+          <button key={x.key} type="button" role="tab" aria-selected={tab === x.key} className={`mx-tab${tab === x.key ? ' is-on' : ''}`} onClick={() => changeTab(x.key)}>
+            <x.Icon size={15} />{t(x.label)}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'journal' && <Journal t={t} lang={lang} f={f} superCats={superCats} onOpenItem={(id) => openItem(id)} reloadKey={reloadKey} />}
+      {tab === 'stock' && <StockAtDate t={t} lang={lang} f={f} superCats={superCats} onOpenItem={openItem} reloadKey={reloadKey} />}
+      {tab === 'fiche' && <Ledger t={t} lang={lang} f={f} itemId={itemId} initialRange={ledgerRange} reloadKey={reloadKey}
+        onPick={(id) => { setItemId(id); setLedgerRange(null); updateQuery({ article: id }); }} />}
+      {tab === 'ateliers' && <WorkshopTab reloadKey={reloadKey} />}
+    </div>
+  );
+}
+

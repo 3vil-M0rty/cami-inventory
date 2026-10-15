@@ -1,475 +1,783 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import axios from 'axios';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, RadialBarChart, RadialBar,
-} from 'recharts';
+  RefreshCw, Truck, FolderKanban, Gauge, AlertTriangle, PackageX, Clock, ShoppingCart, FileCheck2,
+  CheckCircle2, CircleDot, AlertOctagon, ArrowUpRight, ArrowDownRight, Minus, Table2, BarChart3, ChevronRight, Inbox,
+} from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
-import { FolderOpen, Cog, Package, AlertTriangle, Truck, ArrowUpDown, RotateCw, TrendingDown, TrendingUp } from 'lucide-react';
-import './AnalyticsLayout.css';
+import { useCompany } from '../../context/CompanyContext';
+import { PAGE_PATHS, setUrl } from '../../routes';
+import './Dashboard.css';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
-const ETAT_COLORS = {
-  non_entame:    '#71717a',
-  en_cours:      '#fbbf24',
-  non_vitre:     '#c084fc',
-  fabrique:      '#60a5fa',
-  pret_a_livrer: '#fb923c',
-  livre:         '#4ade80',
+// Production pipeline, in order. Colours are CSS tokens (validated for both themes, see Dashboard.css)
+const ETATS = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'pret_a_livrer', 'livre'];
+const DONE = ['non_vitre', 'fabrique', 'pret_a_livrer', 'livre']; // fabricated or further
+const RANGES = ['7d', '30d', '90d', '12m', 'ytd'];
+const TABS = ['aluminium', 'vitrage', 'laquage'];
+const LOCALES = { fr: 'fr-FR', it: 'it-IT', en: 'en-GB' };
+const STATUS_LABEL = {
+  non_entame: 'etat_non_entame', en_cours: 'etat_en_cours', non_vitre: 'etat_non_vitre', fabrique: 'etat_fabrique',
+  pret_a_livrer: 'etat_pret_a_livrer', livre: 'etat_livre', cloture: 'chStCloture',
 };
+const TAB_LABEL = { aluminium: 'superCatAluminium', laquage: 'pjTabLaquage', vitrage: 'pjTabVitrage' };
 
-const ETAT_ORDER = ['non_entame','en_cours','non_vitre','fabrique','pret_a_livrer','livre'];
+const sum = (o, keys) => keys.reduce((s, k) => s + (o?.[k] || 0), 0);
+const pctOf = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
 
-// ── Palette for categories ────────────────────────────────────────────────────
-const CAT_PALETTE = ['#60a5fa','#fbbf24','#c084fc','#4ade80','#fb923c','#f472b6','#2dd4bf','#f87171'];
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function fmt(n) {
-  if (n === null || n === undefined) return '—';
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
-  return String(n);
+// ── Number / date formatting ────────────────────────────────────────────────
+function useFormat(lang) {
+  return useMemo(() => {
+    const loc = LOCALES[lang] || 'fr-FR';
+    const nf = new Intl.NumberFormat(loc, { maximumFractionDigits: 2 });
+    const cf = new Intl.NumberFormat(loc, { notation: 'compact', maximumFractionDigits: 1 });
+    const money = new Intl.NumberFormat(loc, { style: 'currency', currency: 'MAD', maximumFractionDigits: 0 });
+    const moneyC = new Intl.NumberFormat(loc, { style: 'currency', currency: 'MAD', notation: 'compact', maximumFractionDigits: 1 });
+    const d = (opts) => new Intl.DateTimeFormat(loc, { timeZone: 'UTC', ...opts });
+    const day = d({ day: '2-digit', month: '2-digit' });
+    const dayLong = d({ day: 'numeric', month: 'short', year: 'numeric' });
+    const month = d({ month: 'short', year: '2-digit' });
+    const monthLong = d({ month: 'long', year: 'numeric' });
+    const time = new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit' });
+    // fr-FR groups thousands with a narrow no-break space the app font has no glyph for → regular no-break space
+    const sp = (str) => str.replace(/\u202f/g, '\u00a0');
+    return {
+      n: (v) => sp(nf.format(v || 0)),
+      c: (v) => sp(Math.abs(v || 0) >= 10000 ? cf.format(v) : nf.format(v || 0)),
+      money: (v) => sp(Math.abs(v || 0) >= 1000000 ? moneyC.format(v) : money.format(v || 0)),
+      moneyFull: (v) => sp(money.format(v || 0)),
+      date: (v) => (v ? dayLong.format(new Date(v)) : '—'),
+      time: (v) => time.format(new Date(v)),
+      // bucket key → short axis label / long tooltip label
+      bucket: (key, bucket) => {
+        if (bucket === 'month') { const [y, m] = key.split('-'); return month.format(new Date(Date.UTC(+y, +m - 1, 1))); }
+        return day.format(new Date(`${key}T00:00:00Z`));
+      },
+      bucketLong: (key, bucket, t) => {
+        if (bucket === 'month') { const [y, m] = key.split('-'); return monthLong.format(new Date(Date.UTC(+y, +m - 1, 1))); }
+        const label = dayLong.format(new Date(`${key}T00:00:00Z`));
+        return bucket === 'week' ? t('dbWeekOf', { date: label }) : label;
+      },
+    };
+  }, [lang]);
 }
 
-function pct(a, b) { return b === 0 ? 0 : Math.round(a / b * 100); }
-
-// ── Custom Tooltip ────────────────────────────────────────────────────────────
-function DarkTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
+// ── Floating tooltip (one for the page) ────────────────────────────────────
+const TipContext = React.createContext(() => {});
+function TipLayer({ tip }) {
+  if (!tip) return null;
+  const left = Math.min(tip.x + 14, window.innerWidth - 240);
   return (
-    <div style={{
-      background: 'var(--surface-3)', border: '1px solid var(--border-2)', borderRadius: 10,
-      padding: '10px 14px', fontSize: 12, color: 'var(--text)',
-      boxShadow: 'var(--sh-lg)',
-    }}>
-      {label && <p style={{ color: 'var(--text-3)', fontWeight: 700, marginBottom: 6, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</p>}
-      {payload.map((p, i) => (
-        <p key={i} style={{ color: p.color || p.fill, margin: '2px 0', fontWeight: 600 }}>
-          {p.name}: <span style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{p.value}</span>
-        </p>
+    <div className="db-tip" style={{ left, top: tip.y + 14 }} role="status">
+      {tip.title && <div className="db-tip__title">{tip.title}</div>}
+      {tip.rows.map((r, i) => (
+        <div key={i} className="db-tip__row">
+          {r.color && <span className="db-tip__key" style={{ background: r.color }} />}
+          <strong className="db-tip__val">{r.value}</strong>
+          <span className="db-tip__lab">{r.label}</span>
+        </div>
       ))}
     </div>
   );
 }
 
-// ── KPI Card ──────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, icon, color, delta, sub, index }) {
+// ── Sparkline (thin line + area wash, current period dot) ──────────────────
+function Sparkline({ values, color = 'var(--viz-1)', height = 34 }) {
+  const w = 120;
+  if (!values?.length) return null;
+  const max = Math.max(1, ...values);
+  const step = values.length > 1 ? w / (values.length - 1) : 0;
+  const pts = values.map((v, i) => [i * step, height - 3 - (v / max) * (height - 6)]);
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const last = pts[pts.length - 1];
+  // The svg stretches with the tile, so the end dot is HTML (stays round)
   return (
-    <div className="an-kpi-card" style={{ '--an-c': color, animationDelay: `${index * 60}ms` }}>
-      <div className="an-kpi-card__head">
-        <div className="an-kpi-card__label">{label}</div>
-        <span className="an-kpi-card__icon">{icon}</span>
+    <div className="db-spark" aria-hidden="true">
+      <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none">
+        <path d={`${d} L${w},${height} L0,${height} Z`} fill={color} opacity=".1" />
+        <path d={d} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <span className="db-spark__dot" style={{ top: `${(last[1] / height) * 100}%`, background: color }} />
+    </div>
+  );
+}
+
+// ── Delta vs previous period ────────────────────────────────────────────────
+function Delta({ now, prev, t, upIsGood = true }) {
+  if (!prev && !now) return null;
+  if (!prev) return <span className="db-delta db-delta--flat">{t('dbDeltaNew')}</span>;
+  const d = Math.round(((now - prev) / prev) * 100);
+  const dir = d > 0 ? 'up' : d < 0 ? 'down' : 'flat';
+  const good = dir === 'flat' ? 'flat' : ((dir === 'up') === upIsGood ? 'good' : 'bad');
+  const Icon = dir === 'up' ? ArrowUpRight : dir === 'down' ? ArrowDownRight : Minus;
+  return (
+    <span className={`db-delta db-delta--${good}`} title={t('dbVsPrev')}>
+      <Icon size={13} strokeWidth={2.5} />{d > 0 ? '+' : ''}{d}%<span className="db-delta__vs"> {t('dbVsPrevShort')}</span>
+    </span>
+  );
+}
+
+// ── Stat tile ───────────────────────────────────────────────────────────────
+function Tile({ icon: Icon, label, value, sub, delta, spark, sparkColor, meter, tone, hero, onClick }) {
+  const Tag = onClick ? 'button' : 'div';
+  return (
+    <Tag type={onClick ? 'button' : undefined} className={`db-tile${hero ? ' db-tile--hero' : ''}${tone ? ` db-tile--${tone}` : ''}${onClick ? ' db-tile--link' : ''}`} onClick={onClick}>
+      <div className="db-tile__head">
+        <span className="db-tile__icon"><Icon size={15} strokeWidth={2.2} /></span>
+        <span className="db-tile__label">{label}</span>
       </div>
-      <div className="an-kpi-card__value">{fmt(value)}</div>
-      {sub && <div className="an-kpi-card__sub">{sub}</div>}
-      {delta !== undefined && (
-        <div style={{ fontSize: 11, color: delta >= 0 ? '#4ade80' : '#f87171', marginTop: 4, fontWeight: 600 }}>
-          {delta >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />} {Math.abs(delta)}%
+      <div className="db-tile__body">
+        <div className="db-tile__main">
+          <div className="db-tile__value">{value}</div>
+          {delta}
         </div>
+        {spark && <Sparkline values={spark} color={sparkColor} height={hero ? 56 : 34} />}
+      </div>
+      {meter != null && (
+        <div className="db-meter" aria-hidden="true"><div className="db-meter__fill" style={{ width: `${Math.min(100, meter)}%` }} /></div>
+      )}
+      {sub && <div className="db-tile__sub">{sub}</div>}
+    </Tag>
+  );
+}
+
+// ── Panel with optional chart ↔ table switch ────────────────────────────────
+function Panel({ title, sub, children, table, t, className = '', action }) {
+  const [asTable, setAsTable] = useState(false);
+  return (
+    <section className={`db-panel ${className}`}>
+      <header className="db-panel__head">
+        <div>
+          <h3 className="db-panel__title">{title}</h3>
+          {sub && <div className="db-panel__sub">{sub}</div>}
+        </div>
+        <div className="db-panel__actions">
+          {action}
+          {table && (
+            <button type="button" className="db-iconbtn" onClick={() => setAsTable(v => !v)}
+              title={asTable ? t('dbShowChart') : t('dbShowTable')} aria-label={asTable ? t('dbShowChart') : t('dbShowTable')}>
+              {asTable ? <BarChart3 size={14} /> : <Table2 size={14} />}
+            </button>
+          )}
+        </div>
+      </header>
+      {asTable ? table : children}
+    </section>
+  );
+}
+
+// ── Horizontal stacked bar (2px surface gaps, rounded outer ends) ──────────
+function StackBar({ segments, total, height = 14, scale = 1, tipTitle, labels = false, fmt }) {
+  const setTip = React.useContext(TipContext);
+  if (!total) return <div className="db-stack db-stack--empty" style={{ height }} />;
+  const visible = segments.filter(s => s.value > 0);
+  const tipFor = (s) => ({ title: tipTitle, rows: [{ color: s.color, value: `${fmt(s.value)} · ${pctOf(s.value, total)}%`, label: s.label }] });
+  return (
+    <div className="db-stack" style={{ height, width: `${Math.max(scale * 100, 2)}%` }}>
+      {visible.map(s => {
+        const show = labels && (s.value / total) * 100 >= 7;
+        return (
+          <div key={s.key} className="db-stack__seg" style={{ flexGrow: s.value, background: s.color }} tabIndex={0}
+            onPointerMove={e => setTip({ x: e.clientX, y: e.clientY, ...tipFor(s) })}
+            onPointerLeave={() => setTip(null)}
+            onFocus={e => { const r = e.currentTarget.getBoundingClientRect(); setTip({ x: r.left, y: r.bottom, ...tipFor(s) }); }}
+            onBlur={() => setTip(null)}>
+            {show && <span className={`db-stack__lab db-stack__lab--${s.ink || 'light'}`}>{fmt(s.value)}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Legend (swatch + label + value) ─────────────────────────────────────────
+function Legend({ items, fmt, total }) {
+  return (
+    <ul className="db-legend">
+      {items.map(it => (
+        <li key={it.key} className={it.value ? '' : 'db-legend__item--zero'}>
+          <span className="db-legend__sw" style={{ background: it.color }} />
+          <span className="db-legend__lab">{it.label}</span>
+          <strong className="db-legend__val">{fmt(it.value)}</strong>
+          {total > 0 && <span className="db-legend__pct">{pctOf(it.value, total)}%</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// ── Column chart (1–2 series, one y axis, hover band + tooltip) ────────────
+function niceMax(v) {
+  if (v <= 4) return 4;
+  const p = 10 ** Math.floor(Math.log10(v));
+  const n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+}
+function useWidth() {
+  const ref = useRef(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    if (!ref.current) return undefined;
+    const ro = new ResizeObserver(([e]) => setW(Math.floor(e.contentRect.width)));
+    ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w];
+}
+function Columns({ data, series, labelOf, titleOf, fmtAxis, fmtVal, height = 200 }) {
+  const setTip = React.useContext(TipContext);
+  const [ref, width] = useWidth();
+  const [hover, setHover] = useState(null);
+  const padL = 40, padB = 26, padT = 10;
+  const plotW = Math.max(0, width - padL - 4), plotH = height - padB - padT;
+  const max = niceMax(Math.max(0, ...data.flatMap(d => series.map(s => d[s.key] || 0))));
+  const band = data.length ? plotW / data.length : 0;
+  const gap = 2;
+  const barW = Math.max(2, Math.min(24, (band * 0.7 - gap * (series.length - 1)) / series.length));
+  const groupW = barW * series.length + gap * (series.length - 1);
+  const y = (v) => padT + plotH - (v / max) * plotH;
+  const ticks = [0, max / 4, max / 2, (3 * max) / 4, max];
+  const every = Math.max(1, Math.ceil(data.length / Math.max(1, Math.floor(plotW / 54))));
+  // column with a 4px rounded data-end, square at the baseline
+  const bar = (x, v, w) => {
+    const h = Math.max(0, (v / max) * plotH);
+    if (h <= 0) return '';
+    const r = Math.min(4, w / 2, h);
+    const b = padT + plotH, top = b - h;
+    return `M${x},${b} V${top + r} Q${x},${top} ${x + r},${top} H${x + w - r} Q${x + w},${top} ${x + w},${top + r} V${b} Z`;
+  };
+  const show = (i, clientX, clientY) => {
+    setHover(i);
+    const d = data[i];
+    setTip({ x: clientX, y: clientY, title: titleOf(d), rows: series.map(s => ({ color: s.color, value: fmtVal(d[s.key] || 0), label: s.label })) });
+  };
+  return (
+    <div ref={ref} className="db-cols" style={{ height }}>
+      {width > 0 && (
+        <svg width={width} height={height} role="img" aria-label={series.map(s => s.label).join(', ')}
+          onPointerLeave={() => { setHover(null); setTip(null); }}>
+          {ticks.map((tv, i) => (
+            <g key={i}>
+              <line x1={padL} x2={width - 4} y1={y(tv)} y2={y(tv)} className={i === 0 ? 'db-axis' : 'db-gridline'} />
+              <text x={padL - 8} y={y(tv)} className="db-tick" textAnchor="end" dominantBaseline="middle">{fmtAxis(tv)}</text>
+            </g>
+          ))}
+          {data.map((d, i) => {
+            const x0 = padL + i * band;
+            const gx = x0 + (band - groupW) / 2;
+            return (
+              <g key={d.key}>
+                {hover === i && <rect x={x0} y={padT} width={band} height={plotH} className="db-band" />}
+                {series.map((s, si) => (
+                  <path key={s.key} d={bar(gx + si * (barW + gap), d[s.key] || 0, barW)} fill={s.color} />
+                ))}
+                {i % every === 0 && (
+                  <text x={x0 + band / 2} y={height - 8} className="db-tick" textAnchor="middle">{labelOf(d)}</text>
+                )}
+                <rect x={x0} y={padT} width={band} height={plotH + padB} fill="transparent" tabIndex={0}
+                  onPointerMove={e => show(i, e.clientX, e.clientY)}
+                  onFocus={e => { const r = e.currentTarget.getBoundingClientRect(); show(i, r.left + r.width / 2, r.top + 20); }}
+                  onBlur={() => { setHover(null); setTip(null); }} />
+              </g>
+            );
+          })}
+        </svg>
       )}
     </div>
   );
 }
 
-// ── Section wrapper ───────────────────────────────────────────────────────────
-function Panel({ title, children, action, span2, style = {} }) {
+// ── Horizontal bars, one series (value at the tip) ──────────────────────────
+function HBars({ rows, fmt, color = 'var(--viz-1)' }) {
+  const max = Math.max(1, ...rows.map(r => r.value));
   return (
-    <div className="an-panel" style={{ gridColumn: span2 ? 'span 2' : undefined, ...style }}>
-      <div className="an-panel__head">
-        <div className="an-panel__title">{title}</div>
-        {action}
+    <ul className="db-hbars">
+      {rows.map(r => (
+        <li key={r.key} className="db-hbars__row">
+          <div className="db-hbars__lab" title={r.label}>
+            {r.code && <span className="db-code">{r.code}</span>}{r.label}
+          </div>
+          <div className="db-hbars__track">
+            <div className="db-hbars__bar" style={{ width: `${Math.max(1.5, (r.value / max) * 100)}%`, background: color }} />
+            <span className="db-hbars__val">{fmt(r.value)}</span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// ── Production in progress, with Tous / Aluminium / Vitrage / Laquage tabs ──
+function ProductionPanel({ t, f, P, etatLabel, etatSegs }) {
+  const [tab, setTab] = useState(() => { try { const v = localStorage.getItem('db_prod_tab'); return v === 'all' || TABS.includes(v) ? v : 'all'; } catch { return 'all'; } });
+  const pick = (v) => { setTab(v); try { localStorage.setItem('db_prod_tab', v); } catch { } };
+  const all = tab === 'all';
+  const counts = all ? P.activeEtats : (P.byTab?.[tab] || {});
+  const total = sum(counts, ETATS);
+  const projects = all ? P.projects.active : (P.projectsByTab?.[tab] || 0);
+  const remp = all ? P.remplissages : (P.remplissagesByTab?.[tab] || { total: 0, livre: 0 });
+  const piecesOf = (tb) => sum(P.byTab?.[tb], ETATS);
+  const maxTab = Math.max(1, ...TABS.map(piecesOf));
+  const name = all ? t('dbPipelineAll') : t(TAB_LABEL[tab]);
+
+  return (
+    <Panel t={t} title={t('dbPipeline')} sub={t('dbPipelineSub', { n: f.n(total), p: projects })}
+      table={<DataTable
+        cols={[{ key: 'tab', label: '' }, ...ETATS.map(e => ({ key: e, label: etatLabel(e), num: true })), { key: 'total', label: t('dbTotal'), num: true }]}
+        rows={[
+          ...TABS.map(tb => ({ tab: t(TAB_LABEL[tb]), ...Object.fromEntries(ETATS.map(e => [e, f.n(P.byTab[tb][e])])), total: f.n(piecesOf(tb)) })),
+          { tab: <strong>{t('dbTotal')}</strong>, ...Object.fromEntries(ETATS.map(e => [e, <strong key={e}>{f.n(P.activeEtats[e])}</strong>])), total: <strong>{f.n(P.activePieces)}</strong> },
+        ]} />}>
+      <div className="db-subtabs" role="tablist" aria-label={t('dbPipeline')}>
+        {['all', ...TABS].map(v => (
+          <button key={v} type="button" role="tab" aria-selected={tab === v} className={`db-subtabs__btn${tab === v ? ' is-active' : ''}`} onClick={() => pick(v)}>
+            {v === 'all' ? t('dbAllTabs') : t(TAB_LABEL[v])}<span>{f.n(v === 'all' ? P.activePieces : piecesOf(v))}</span>
+          </button>
+        ))}
       </div>
-      {children}
-    </div>
+      {total === 0 ? <p className="db-empty"><FolderKanban size={18} />{t('dbNoProduction')}</p> : (
+        <>
+          <div className="db-prod-head">
+            <strong>{pctOf(sum(counts, DONE), total)}%</strong>
+            <span>{t('dbProdDone', { done: f.n(sum(counts, DONE)), total: f.n(total) })}</span>
+          </div>
+          <StackBar segments={etatSegs(counts)} total={total} height={30} labels fmt={f.n} tipTitle={name} />
+          <Legend items={etatSegs(counts)} fmt={f.n} total={total} />
+          {all && (
+            <div className="db-rows">
+              {TABS.map(tb => {
+                const tot = piecesOf(tb);
+                return (
+                  <button key={tb} type="button" className="db-rows__row db-rows__row--link" onClick={() => pick(tb)} title={t(TAB_LABEL[tb])}>
+                    <span className="db-rows__lab">{t(TAB_LABEL[tb])}</span>
+                    <span className="db-rows__bar">
+                      <StackBar segments={etatSegs(P.byTab[tb])} total={tot} height={12} scale={tot / maxTab} fmt={f.n} tipTitle={t(TAB_LABEL[tb])} />
+                    </span>
+                    <span className="db-rows__val">{f.n(tot)}<span>{tot ? ` · ${pctOf(sum(P.byTab[tb], DONE), tot)}%` : ''}</span></span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+      {remp.total > 0 && (
+        <div className="db-foot">{t('dbRemplissages', { done: f.n(remp.livre), total: f.n(remp.total) })}</div>
+      )}
+    </Panel>
   );
 }
 
-// ── Gauge ring ────────────────────────────────────────────────────────────────
-function GaugeRing({ value, max, color, label, sub }) {
-  const r = 38, circ = 2 * Math.PI * r;
-  const filled = max > 0 ? (value / max) * circ : 0;
+// ── Most used items, by super-category and sub-category ────────────────────
+// Ranking only: quantities are never added up across articles (each keeps its own unit),
+// so the tabs / chips show how many articles were used, the bars show each article's quantity.
+function ConsumptionPanel({ t, lang, f, M }) {
+  const [sc, setSc] = useState('all');
+  const [cat, setCat] = useState('all');
+  const items = M.consumed || M.topConsumed || [];
+  const scs = M.consumedSuperCategories || [];
+  const cats = (M.consumedCategories || []).filter(c => sc !== 'all' && c.superCategory === sc);
+  const label = (l, fallback) => l?.[lang] || l?.fr || fallback;
+  const inSc = items.filter(c => sc === 'all' || c.superCategory === sc);
+  const noCat = inSc.filter(c => !c.categoryId || !cats.some(k => k.id === c.categoryId)).length;
+  const shown = inSc.filter(c => cat === 'all' || (cat === 'none' ? (!c.categoryId || !cats.some(k => k.id === c.categoryId)) : c.categoryId === cat));
+  const top = shown.slice(0, 10);
+  const countSc = (key) => items.filter(c => c.superCategory === key).length;
+  const countCat = (id) => inSc.filter(c => c.categoryId === id).length;
+  const pickSc = (key) => { setSc(key); setCat('all'); };
+  const selName = cat === 'all'
+    ? (sc === 'all' ? t('dbAllCategories') : label(scs.find(x => x.key === sc)?.label, sc))
+    : cat === 'none' ? t('dbNoSubCategory') : label(cats.find(c => c.id === cat)?.name, '—');
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-      <svg width={96} height={96} viewBox="0 0 96 96">
-        <circle cx={48} cy={48} r={r} fill="none" stroke="#26262b" strokeWidth={8} />
-        <circle cx={48} cy={48} r={r} fill="none" stroke={color} strokeWidth={8}
-          strokeDasharray={`${filled} ${circ}`} strokeLinecap="round"
-          transform="rotate(-90 48 48)" style={{ transition: 'stroke-dasharray .8s ease' }} />
-        <text x={48} y={45} textAnchor="middle" fontSize={18} fontWeight={800} fill="#f4f4f5">{value}</text>
-        <text x={48} y={62} textAnchor="middle" fontSize={10} fill="#8b8b94">{max > 0 ? pct(value, max) + '%' : '—'}</text>
-      </svg>
-      <div style={{ fontSize: 11, fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
-      {sub && <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{sub}</div>}
-    </div>
+    <Panel t={t} title={t('dbTopConsumed')} sub={t('dbTopConsumedSub')}
+      table={<DataTable cols={[{ key: 'a', label: t('dbColItem') }, { key: 's', label: t('dbColCategory') }, { key: 'q', label: t('dbColQty'), num: true }]}
+        rows={shown.map(c => {
+          const k = (M.consumedCategories || []).find(x => x.id === c.categoryId);
+          const scLab = label(scs.find(x => x.key === c.superCategory)?.label, c.superCategory);
+          return { a: `${c.code ? `${c.code} · ` : ''}${c.designation?.[lang] || c.name}`, s: k ? `${scLab} › ${label(k.name, '')}` : scLab, q: f.n(c.quantity) };
+        })} />}>
+      {items.length === 0 ? <p className="db-empty"><Inbox size={18} />{t('dbNoConsumption')}</p> : (
+        <>
+          {scs.length > 1 && (
+            <div className="db-subtabs" role="tablist" aria-label={t('dbSuperCategory')}>
+              <button type="button" role="tab" aria-selected={sc === 'all'} className={`db-subtabs__btn${sc === 'all' ? ' is-active' : ''}`} onClick={() => pickSc('all')}>
+                {t('dbAll')}<span>{items.length}</span>
+              </button>
+              {scs.map(x => (
+                <button key={x.key} type="button" role="tab" aria-selected={sc === x.key} className={`db-subtabs__btn${sc === x.key ? ' is-active' : ''}`} onClick={() => pickSc(x.key)}>
+                  {label(x.label, x.key)}<span>{countSc(x.key)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {sc !== 'all' && (cats.length > 0 || noCat > 0) && (
+            <div className="db-chips" aria-label={t('dbSubCategory')}>
+              <button type="button" className={`db-chipbtn${cat === 'all' ? ' is-active' : ''}`} onClick={() => setCat('all')}>
+                {t('dbAllSub')}<span>{inSc.length}</span>
+              </button>
+              {cats.map(c => (
+                <button key={c.id} type="button" className={`db-chipbtn${cat === c.id ? ' is-active' : ''}`} onClick={() => setCat(c.id)}>
+                  {c.color && <i style={{ background: c.color }} />}{label(c.name, '—')}<span>{countCat(c.id)}</span>
+                </button>
+              ))}
+              {noCat > 0 && cats.length > 0 && (
+                <button type="button" className={`db-chipbtn${cat === 'none' ? ' is-active' : ''}`} onClick={() => setCat('none')}>
+                  {t('dbNoSubCategory')}<span>{noCat}</span>
+                </button>
+              )}
+            </div>
+          )}
+          <div className="db-consum-head">
+            <span>{selName}</span>
+            <span>{shown.length > top.length ? t('dbTopOf', { n: top.length, total: shown.length }) : t('dbArticlesCount', { n: shown.length })}</span>
+          </div>
+          {top.length === 0 ? <p className="db-empty"><Inbox size={18} />{t('dbNoConsumption')}</p> : (
+            <HBars fmt={f.n} rows={top.map(c => ({ key: c.id, label: c.designation?.[lang] || c.name, code: c.code, value: c.quantity }))} />
+          )}
+        </>
+      )}
+    </Panel>
   );
 }
 
-// ── Sparkline bar ─────────────────────────────────────────────────────────────
-function MiniBar({ value, max, color }) {
-  const w = max > 0 ? pct(value, max) : 0;
+function DataTable({ cols, rows }) {
   return (
-    <div style={{ height: 6, background: 'var(--200)', borderRadius: 999, overflow: 'hidden', flex: 1 }}>
-      <div style={{ height: '100%', width: `${w}%`, background: color, borderRadius: 999, transition: 'width .6s ease' }} />
+    <div className="db-table-wrap">
+      <table className="db-table">
+        <thead><tr>{cols.map(c => <th key={c.key} className={c.num ? 'num' : ''}>{c.label}</th>)}</tr></thead>
+        <tbody>{rows.map((r, i) => <tr key={i}>{cols.map(c => <td key={c.key} className={c.num ? 'num' : ''}>{r[c.key]}</td>)}</tr>)}</tbody>
+      </table>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+function StatusChip({ status, t }) {
+  return (
+    <span className="db-chip">
+      <span className="db-chip__dot" style={{ background: status === 'cloture' ? 'var(--et-livre)' : `var(--et-${status})` }} />
+      {t(STATUS_LABEL[status] || status)}
+    </span>
+  );
+}
+
+// Go to another page through the URL (the App and the target page read it)
+const goTo = (path, query) => { setUrl(path, { query }); window.dispatchEvent(new PopStateEvent('popstate')); };
+
+// ═════════════════════════════════════════════════════════════════════════════
 export default function AnalyticsPage() {
   const { t, currentLanguage: lang } = useLanguage();
-  const [data, setData]             = useState(null);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState(null);
-  const [period, setPeriod]         = useState('monthly');
-  const [chartData, setChartData]   = useState(null);
-  const [chartLoading, setChartLoading] = useState(false);
-  const [activeFilter, setActiveFilter] = useState('all'); // aluminium | accessoires | all
+  const { selectedCompany, companies } = useCompany();
+  const f = useFormat(lang);
+  const [range, setRange] = useState(() => { try { const r = localStorage.getItem('db_range'); return RANGES.includes(r) ? r : '90d'; } catch { return '90d'; } });
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [tip, setTip] = useState(null);
+  const reqId = useRef(0);
 
   const load = useCallback(async () => {
-    setLoading(true); setError(null);
+    const id = ++reqId.current;
+    setLoading(true); setError('');
     try {
-      const res = await axios.get(`${API}/analytics/dashboard?period=monthly`);
-      setData(res.data);
-      setChartData(res.data.monthlyMovements);
-    } catch (e) { setError(e.message); }
-    finally { setLoading(false); }
-  }, []);
-
-  const changePeriod = useCallback(async (p) => {
-    if (p === period) return;
-    setPeriod(p);
-    setChartLoading(true);
-    try {
-      const res = await axios.get(`${API}/analytics/dashboard?period=${p}`);
-      setChartData(res.data.monthlyMovements);
-    } catch {}
-    finally { setChartLoading(false); }
-  }, [period]);
-
+      const res = await axios.get(`${API}/analytics/overview`, { params: { range, companyId: selectedCompany || undefined } });
+      if (id === reqId.current) setData(res.data);
+    } catch (e) {
+      if (id === reqId.current) setError(e.response?.data?.error || e.message);
+    } finally { if (id === reqId.current) setLoading(false); }
+  }, [range, selectedCompany]);
   useEffect(() => { load(); }, [load]);
+  const changeRange = (r) => { setRange(r); try { localStorage.setItem('db_range', r); } catch { } };
 
-  if (loading) return (
-    <div style={{ height: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 40, height: 40, border: '3px solid var(--200)', borderTopColor: 'var(--900)', borderRadius: '50%', animation: 'spin .7s linear infinite', margin: '0 auto 12px' }} />
-        <div style={{ color: 'var(--text-3)', fontSize: 13 }}>{t('loading')}</div>
+  const etatLabel = (e) => t(STATUS_LABEL[e]);
+  const etatSegs = (counts) => ETATS.map(e => ({ key: e, value: counts?.[e] || 0, color: `var(--et-${e})`, label: etatLabel(e), ink: e === 'non_entame' ? 'auto' : 'light' }));
+
+  if (!data) {
+    return (
+      <div className="db">
+        <div className="db-state">
+          {error
+            ? <><AlertTriangle size={18} /> {t('dbLoadError', { msg: error })} <button type="button" className="db-btn" onClick={load}>{t('retry')}</button></>
+            : <><RefreshCw size={16} className="db-spin" /> {t('loading')}</>}
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  if (error) return (
-    <div className="an-error">
-      <span>{error}</span> <button className="btn btn--secondary btn--sm" onClick={load}><RotateCw size={13} />{t('refresh')}</button>
-    </div>
-  );
+  const P = data.production, S = data.stock, M = data.movements, O = data.orders, D = data.devis;
+  const company = companies?.find(c => c.id === selectedCompany);
+  const bucketTitle = (d) => f.bucketLong(d.key, data.bucket, t);
+  const bucketLabel = (d) => f.bucket(d.key, data.bucket);
+  const donePieces = sum(P.activeEtats, DONE);
+  const lastDay = new Date(new Date(data.to).getTime() - 86400000);
 
-  if (!data) return null;
+  const STOCK_STATES = [
+    { key: 'ok', label: t('dbStockOk'), color: 'var(--st-good)', Icon: CheckCircle2 },
+    { key: 'couvert', label: t('dbStockCovered'), color: 'var(--st-warning)', Icon: CircleDot },
+    { key: 'alerte', label: t('dbStockAlert'), color: 'var(--st-serious)', Icon: AlertTriangle },
+    { key: 'rupture', label: t('dbStockOut'), color: 'var(--st-critical)', Icon: AlertOctagon },
+  ];
+  const stockTotals = Object.fromEntries(STOCK_STATES.map(s => [s.key, S.bySuperCategory.reduce((a, r) => a + (r[s.key] || 0), 0)]));
+  const scName = (r) => r.label?.[lang] || r.label?.fr || r.key;
 
-  const { kpis, chassisStatusCounts, projectConsumption, topItems, stockByCategory } = data;
-  const monthlyMovements = chartData || [];
-
-  // ── Derived stats ─────────────────────────────────────────────────────────
-  const totalChassis = Object.values(chassisStatusCounts).reduce((a, b) => a + b, 0);
-  const livreCount   = chassisStatusCounts.livre || 0;
-  const pretCount    = (chassisStatusCounts.pret_a_livrer || 0);
-  const fabricCount  = chassisStatusCounts.fabrique || 0;
-  const progressRate = totalChassis > 0 ? pct(livreCount + fabricCount + pretCount, totalChassis) : 0;
-
-  // Pie data
-  const pieData = ETAT_ORDER
-    .filter(k => (chassisStatusCounts[k] || 0) > 0)
-    .map(k => ({ name: t(`etat_${k}`) || k, value: chassisStatusCounts[k], color: ETAT_COLORS[k] }));
-
-  // Movement chart
-  const periodLabels = { daily: t('periodDaily'), monthly: t('periodMonthly'), annual: t('periodAnnual') };
-  const L = { e: t('mvEntrees'), s: t('mvSorties'), u: t('mvProjectUse'), r: t('mvProjectReturn') };
-  const movData = monthlyMovements.map(m => ({
-    p: period === 'monthly' ? m.period.slice(5) : m.period,
-    [L.e]: m.entrees, [L.s]: m.sorties, [L.u]: m.project_use, [L.r]: m.project_return,
-  }));
-
-  // Filtered topItems
-  const filteredTop = activeFilter === 'all'
-    ? topItems
-    : topItems.filter(i => (i.superCategory || '').includes(activeFilter));
-  const maxTop = filteredTop[0]?.total || 1;
-
-  // Stock health
-  const totalItems = stockByCategory.reduce((a, c) => a + c.total, 0);
-  const totalCrit  = stockByCategory.reduce((a, c) => a + c.critical, 0);
-  const totalOk    = stockByCategory.reduce((a, c) => a + c.ok, 0);
-
-  // Project consumption sorted
-  const projSorted = [...projectConsumption].sort((a, b) => b.totalBars - a.totalBars).slice(0, 8);
-  const maxBars    = projSorted[0]?.totalBars || 1;
+  const flowSeries = [
+    { key: 'in', label: t('dbFlowIn'), color: 'var(--viz-1)' },
+    { key: 'out', label: t('dbFlowOut'), color: 'var(--viz-2)' },
+  ];
 
   return (
-    <div className="an-page">
-      <style>{`
-        @keyframes fadeUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }
-        @keyframes spin { to { transform:rotate(360deg) } }
-      `}</style>
-
-      {/* ── Header ── */}
-      <div className="an-page-header">
-        <div>
-          <h1 className="an-page-header__title">{t('navAnalytics')}</h1>
-          <div className="an-page-header__sub">
-            {new Date().toLocaleDateString(lang === 'fr' ? 'fr-FR' : lang === 'it' ? 'it-IT' : 'en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </div>
-        </div>
-        <button className="btn btn--secondary" onClick={load}><RotateCw size={14} />{t('refresh')}</button>
-      </div>
-
-      {/* ── KPI Row ── */}
-      <div className="an-row an-row--kpi">
-        <KpiCard index={0} label={t('kpiProjects')} value={kpis.totalProjects} icon={<FolderOpen size={16} />} color="#60a5fa" />
-        <KpiCard index={1} label={t('kpiInProgress')} value={kpis.projectsInProgress} icon={<Cog size={16} />} color="#fbbf24" />
-        <KpiCard index={2} label={t('kpiItems')} value={kpis.totalItems} icon={<Package size={16} />} color="#a5b4fc" />
-        <KpiCard index={3} label={t('kpiCritical')} value={kpis.criticalItems} icon={<AlertTriangle size={16} />} color="#f87171"
-          sub={kpis.criticalItems > 0 ? `${pct(kpis.criticalItems, kpis.totalItems)}% ${t('kpiCriticalSub')}` : t('anKpiOk')} />
-        <KpiCard index={4} label={t('kpiDeliveries')} value={kpis.deliveriesThisMonth} icon={<Truck size={16} />} color="#4ade80" />
-        <KpiCard index={5} label={t('kpiMovements')} value={kpis.totalMovements} icon={<ArrowUpDown size={16} />} color="#c084fc" />
-      </div>
-
-      {/* ── Progress strip ── */}
-      <div className="an-panel an-strip">
-        <div className="an-panel__title">{t('anStatusTitle')}</div>
-        <div className="an-strip__bar">
-          {ETAT_ORDER.filter(k => (chassisStatusCounts[k] || 0) > 0).map(k => (
-            <div key={k} style={{
-              height: '100%',
-              width: `${pct(chassisStatusCounts[k] || 0, totalChassis)}%`,
-              background: ETAT_COLORS[k],
-              transition: 'width .6s ease',
-            }} title={`${t('etat_' + k)}: ${chassisStatusCounts[k]}`} />
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {ETAT_ORDER.filter(k => (chassisStatusCounts[k] || 0) > 0).map(k => (
-            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <div style={{ width: 7, height: 7, borderRadius: '50%', background: ETAT_COLORS[k] }} />
-              <span style={{ fontSize: 12, color: 'var(--text)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{chassisStatusCounts[k]}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{t(`etat_${k}`)}</span>
+    <TipContext.Provider value={setTip}>
+      <div className={`db${loading ? ' db--loading' : ''}`}>
+        {/* ── Header + the one filter row ── */}
+        <div className="db-head">
+          <div>
+            <h1 className="db-head__title">{t('dbTitle')}</h1>
+            <div className="db-head__sub">
+              {t('dbPeriod', { from: f.date(data.from), to: f.date(lastDay) })}
+              {company && <> · <strong>{company.name}</strong></>}
+              {' · '}{t('dbUpdatedAt', { time: f.time(data.generatedAt) })}
             </div>
-          ))}
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', flexShrink: 0 }}>
-          <span style={{ color: '#4ade80', fontWeight: 800 }}>{progressRate}%</span> {t('anProgressRate')}
-        </div>
-      </div>
-
-      {/* ── Main grid ── */}
-      <div className="an-row an-row--3">
-
-        {/* Chassis gauges */}
-        <Panel title={t('anChassisGauges')}>
-          <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 12 }}>
-            <GaugeRing value={chassisStatusCounts.livre || 0} max={totalChassis} color={ETAT_COLORS.livre} label={t('etat_livre')} />
-            <GaugeRing value={(chassisStatusCounts.pret_a_livrer || 0)} max={totalChassis} color={ETAT_COLORS.pret_a_livrer} label={t('etat_pret_a_livrer')} />
-            <GaugeRing value={chassisStatusCounts.fabrique || 0} max={totalChassis} color={ETAT_COLORS.fabrique} label={t('etat_fabrique')} />
           </div>
-          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {ETAT_ORDER.map(k => {
-              const v = chassisStatusCounts[k] || 0;
-              if (!v) return null;
-              return (
-                <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: ETAT_COLORS[k], flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, color: 'var(--text-2)', flex: 1 }}>{t(`etat_${k}`)}</span>
-                  <MiniBar value={v} max={totalChassis} color={ETAT_COLORS[k]} />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', width: 28, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{v}</span>
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
-
-        {/* Stock health */}
-        <Panel title={t('anCatTitle')}>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-            {[
-              { label: t('anStockOk'), value: totalOk, color: '#4ade80' },
-              { label: t('anStockCrit'), value: totalCrit, color: '#f87171' },
-            ].map(s => (
-              <div key={s.label} style={{ flex: 1, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', textAlign: 'center' }}>
-                <div style={{ fontSize: 24, fontWeight: 800, color: s.color, fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {stockByCategory.slice(0, 6).map((cat, i) => (
-              <div key={i}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 7, height: 7, borderRadius: '50%', background: CAT_PALETTE[i % CAT_PALETTE.length] }} />
-                    <span style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 600 }}>
-                      {typeof cat.catName === 'object' ? (cat.catName[lang] || cat.catName.fr) : cat.catName}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {cat.critical > 0 && <span style={{ fontSize: 11, color: '#f87171', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><AlertTriangle size={11} /> {cat.critical}</span>}
-                    <span style={{ fontSize: 11, color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>{cat.total}</span>
-                  </div>
-                </div>
-                <div style={{ height: 6, background: 'var(--200)', borderRadius: 999, overflow: 'hidden', display: 'flex' }}>
-                  <div style={{ height: '100%', width: `${pct(cat.ok, cat.total)}%`, background: '#4ade80' }} />
-                  <div style={{ height: '100%', width: `${pct(cat.low, cat.total)}%`, background: '#fbbf24' }} />
-                  <div style={{ height: '100%', width: `${pct(cat.critical, cat.total)}%`, background: '#f87171' }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </Panel>
-
-        {/* Pie donut */}
-        <Panel title={t('anDistTitle')}>
-          {pieData.length === 0
-            ? <p className="an-nodata">{t('noData')}</p>
-            : <>
-              <ResponsiveContainer width="100%" height={180}>
-                <PieChart>
-                  <Pie data={pieData} dataKey="value" nameKey="name"
-                    cx="50%" cy="50%" innerRadius={52} outerRadius={82} paddingAngle={3}>
-                    {pieData.map((e, i) => <Cell key={i} fill={e.color} stroke="transparent" />)}
-                  </Pie>
-                  <Tooltip content={<DarkTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-                {pieData.map((e, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: e.color }} />
-                    <span style={{ fontSize: 11, color: 'var(--text-2)' }}>{e.name}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: e.color }}>{e.value}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          }
-        </Panel>
-      </div>
-
-      {/* ── Movements chart (full width) ── */}
-      <div className="an-panel" style={{ marginBottom: 14 }}>
-        <div className="an-panel__head">
-          <div className="an-panel__title">{t('anMonthlyTitle')}</div>
-          <div className="an-seg">
-            {['daily', 'monthly', 'annual'].map(p => (
-              <button key={p}
-                className={`an-pill an-period-pill${period === p ? ' active' : ''}`}
-                onClick={() => changePeriod(p)}
-              >{periodLabels[p]}</button>
-            ))}
-          </div>
-        </div>
-        {chartLoading
-          ? <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ width: 28, height: 28, border: '2.5px solid var(--200)', borderTopColor: 'var(--900)', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
+          <div className="db-filters">
+            <div className="db-seg" role="radiogroup" aria-label={t('dbRange')}>
+              {RANGES.map(r => (
+                <button key={r} type="button" role="radio" aria-checked={range === r}
+                  className={`db-seg__btn${range === r ? ' is-active' : ''}`} onClick={() => changeRange(r)}>
+                  {t(`dbRange_${r}`)}
+                </button>
+              ))}
             </div>
-          : <ResponsiveContainer width="100%" height={240}>
-              <AreaChart data={movData} margin={{ top: 5, right: 12, left: 0, bottom: 5 }}>
-                <defs>
-                  {[
-                    ['e', '#4ade80'], ['s', '#f87171'], ['u', '#60a5fa'], ['r', '#fbbf24']
-                  ].map(([key, color]) => (
-                    <linearGradient key={key} id={`an-grad-${key}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="10%" stopColor={color} stopOpacity={0.25} />
-                      <stop offset="90%" stopColor={color} stopOpacity={0} />
-                    </linearGradient>
+            <button type="button" className="db-iconbtn db-iconbtn--lg" onClick={load} title={t('dbRefresh')} aria-label={t('dbRefresh')}>
+              <RefreshCw size={15} className={loading ? 'db-spin' : ''} />
+            </button>
+          </div>
+        </div>
+        {error && <div className="db-error"><AlertTriangle size={14} /> {t('dbLoadError', { msg: error })}</div>}
+
+        {/* ── KPI row ── */}
+        <div className={`db-kpis db-kpis--${O ? 6 : 4}`}>
+          <Tile hero icon={Truck} label={t('dbKpiDelivered')} value={f.n(P.delivered.now)}
+            delta={<Delta now={P.delivered.now} prev={P.delivered.prev} t={t} />}
+            spark={P.delivered.series.map(d => d.value)} sparkColor="var(--viz-1)"
+            sub={P.delivered.undated ? t('dbKpiDeliveredUndated', { n: P.delivered.undated }) : t('dbKpiDeliveredSub')} />
+          <Tile icon={FolderKanban} label={t('dbKpiActive')} value={f.n(P.projects.active)}
+            sub={t('dbKpiActiveSub', { a: P.projects.byStatus.en_cours || 0, b: P.projects.byStatus.pret_a_livrer || 0 })}
+            onClick={() => goTo(PAGE_PATHS.projects)} />
+          <Tile icon={Gauge} label={t('dbKpiProgress')} value={`${pctOf(donePieces, P.activePieces)}%`} meter={pctOf(donePieces, P.activePieces)}
+            sub={t('dbKpiProgressSub', { done: f.n(donePieces), total: f.n(P.activePieces) })} />
+          <Tile icon={PackageX} label={t('dbKpiAlerts')} value={f.n(S.alerte + S.rupture)} tone={S.rupture ? 'critical' : S.alerte ? 'serious' : 'good'}
+            sub={t('dbKpiAlertsSub', { out: S.rupture, covered: S.couvert })}
+            onClick={() => goTo(PAGE_PATHS.inventory)} />
+          {O && (
+            <Tile icon={Clock} label={t('dbKpiLate')} value={f.n(O.late)} tone={O.late ? 'serious' : 'good'}
+              sub={t('dbKpiLateSub', { n: O.open })} onClick={() => goTo(PAGE_PATHS.orders, { onglet: 'suivi' })} />
+          )}
+          {O && (
+            <Tile icon={ShoppingCart} label={t('dbKpiSpend')} value={f.money(O.spendNow)}
+              delta={<Delta now={O.spendNow} prev={O.spendPrev} t={t} upIsGood={false} />}
+              spark={O.spend.map(d => d.value)} sparkColor="var(--viz-1)"
+              sub={t('dbKpiSpendSub', { n: O.ordersNow })} />
+          )}
+        </div>
+
+        {/* ── Production ── */}
+        <div className="db-grid db-grid--2-1">
+          <ProductionPanel t={t} f={f} P={P} etatLabel={etatLabel} etatSegs={etatSegs} />
+
+          <Panel t={t} title={t('dbDeliveries')} sub={t(`dbBucket_${data.bucket}`)}
+            table={<DataTable cols={[{ key: 'p', label: t('dbPeriodCol') }, { key: 'v', label: t('dbPieces'), num: true }]}
+              rows={P.delivered.series.map(d => ({ p: bucketTitle(d), v: f.n(d.value) }))} />}>
+            {P.delivered.now === 0
+              ? <p className="db-empty"><Truck size={18} />{t('dbNoDeliveries')}</p>
+              : <Columns data={P.delivered.series} series={[{ key: 'value', label: t('dbPiecesDelivered'), color: 'var(--viz-1)' }]}
+                  labelOf={bucketLabel} titleOf={bucketTitle} fmtAxis={f.c} fmtVal={f.n} height={232} />}
+          </Panel>
+        </div>
+
+        {/* ── Active projects ── */}
+        <Panel t={t} title={t('dbProjects')} sub={t('dbProjectsSub')} className="db-panel--flush"
+          action={<button type="button" className="db-link" onClick={() => goTo(PAGE_PATHS.projects)}>{t('dbSeeAll')} <ChevronRight size={14} /></button>}>
+          {P.activeProjects.length === 0 ? <p className="db-empty"><FolderKanban size={18} />{t('dbNoProjects')}</p> : (
+            <div className="db-table-wrap">
+              <table className="db-table db-table--rows">
+                <thead><tr>
+                  <th>{t('dbColProject')}</th><th className="hide-sm">{t('dbColClient')}</th><th className="hide-sm">{t('dbColTab')}</th>
+                  <th className="hide-sm">{t('dbColStatus')}</th><th className="db-col-progress">{t('dbColProgress')}</th><th className="num">{t('dbPieces')}</th><th className="num hide-sm">{t('dbColSince')}</th>
+                </tr></thead>
+                <tbody>
+                  {P.activeProjects.map(p => {
+                    const done = sum(p.counts, DONE);
+                    const days = Math.max(0, Math.floor((Date.now() - new Date(p.date)) / 86400000));
+                    return (
+                      <tr key={p.id} className="is-link" tabIndex={0}
+                        onClick={() => goTo(`${PAGE_PATHS.projects}/${p.id}`, { client: p.tgalu ? 'tgalu' : null, onglet: p.tab === 'aluminium' ? null : p.tab })}
+                        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.click(); }}>
+                        <td><div className="db-proj"><strong>{p.name}</strong><span>{p.reference}</span></div></td>
+                        <td className="hide-sm">{p.client || '—'}{p.tgalu && <span className="db-tag">TGALU</span>}</td>
+                        <td className="hide-sm">{t(TAB_LABEL[p.tab])}</td>
+                        <td className="hide-sm"><StatusChip status={p.status} t={t} /></td>
+                        <td className="db-col-progress">
+                          <div className="db-progress">
+                            <div className="db-progress__bar"><StackBar segments={etatSegs(p.counts)} total={p.pieces} height={8} fmt={f.n} tipTitle={p.name} /></div>
+                            <span>{pctOf(done, p.pieces)}%</span>
+                          </div>
+                        </td>
+                        <td className="num">{f.n(p.pieces)}</td>
+                        <td className="num hide-sm" title={f.date(p.date)}>{t('dbDays', { n: days })}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+
+        {/* ── Stock ── */}
+        <div className="db-grid db-grid--1-1">
+          <Panel t={t} title={t('dbStock')} sub={t('dbStockSub', { n: f.n(S.items) })}
+            table={<DataTable cols={[{ key: 'c', label: '' }, ...STOCK_STATES.map(s => ({ key: s.key, label: s.label, num: true })), { key: 'total', label: t('dbTotal'), num: true }]}
+              rows={S.bySuperCategory.map(r => ({ c: scName(r), ...Object.fromEntries(STOCK_STATES.map(s => [s.key, f.n(r[s.key])])), total: f.n(r.total) }))} />}>
+            {S.items === 0 ? <p className="db-empty"><Inbox size={18} />{t('dbNoItems')}</p> : (
+              <>
+                <ul className="db-legend db-legend--status">
+                  {STOCK_STATES.map(s => (
+                    <li key={s.key} className={stockTotals[s.key] ? '' : 'db-legend__item--zero'}>
+                      <s.Icon size={13} style={{ color: s.color }} />
+                      <span className="db-legend__lab">{s.label}</span>
+                      <strong className="db-legend__val">{f.n(stockTotals[s.key])}</strong>
+                    </li>
                   ))}
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#26262b" vertical={false} />
-                <XAxis dataKey="p" tick={{ fontSize: 11, fill: '#8b8b94' }} axisLine={false} tickLine={false}
-                  interval={period === 'daily' ? 6 : 0} />
-                <YAxis tick={{ fontSize: 11, fill: '#8b8b94' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <Tooltip content={<DarkTooltip />} />
-                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: '#b4b4bd' }} />
-                <Area type="monotone" dataKey={L.e} stroke="#4ade80" fill="url(#an-grad-e)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey={L.s} stroke="#f87171" fill="url(#an-grad-s)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey={L.u} stroke="#60a5fa" fill="url(#an-grad-u)" strokeWidth={2} dot={false} strokeDasharray="5 3" />
-                <Area type="monotone" dataKey={L.r} stroke="#fbbf24" fill="url(#an-grad-r)" strokeWidth={2} dot={false} strokeDasharray="2 4" />
-              </AreaChart>
-            </ResponsiveContainer>
-        }
-      </div>
+                </ul>
+                <div className="db-rows">
+                  {S.bySuperCategory.map(r => (
+                    <div key={r.key} className="db-rows__row">
+                      <div className="db-rows__lab">{scName(r)}</div>
+                      <div className="db-rows__bar">
+                        <StackBar total={r.total} height={12} fmt={f.n} tipTitle={scName(r)}
+                          segments={STOCK_STATES.map(s => ({ key: s.key, value: r[s.key], color: s.color, label: s.label }))} />
+                      </div>
+                      <div className="db-rows__val">{f.n(r.total)}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </Panel>
 
-      {/* ── Bottom row: top items + project consumption ── */}
-      <div className="an-row an-row--1-2">
+          <Panel t={t} title={t('dbRestock')} sub={S.alertCount > S.alerts.length ? t('dbRestockMore', { n: S.alertCount }) : t('dbRestockSub')} className="db-panel--flush">
+            {S.alerts.length === 0 ? <p className="db-empty db-empty--good"><CheckCircle2 size={18} />{t('dbNoAlerts')}</p> : (
+              <div className="db-table-wrap">
+                <table className="db-table">
+                  <thead><tr><th>{t('dbColItem')}</th><th className="num">{t('dbColStock')}</th><th className="num hide-sm">{t('dbColOrdered')}</th><th className="num hide-sm">{t('dbColThreshold')}</th><th className="num">{t('dbColMissing')}</th></tr></thead>
+                  <tbody>
+                    {S.alerts.map(a => (
+                      <tr key={a.id}>
+                        <td>
+                          <div className="db-item">
+                            {a.quantity <= 0
+                              ? <AlertOctagon size={14} style={{ color: 'var(--st-critical)' }} aria-label={t('dbStockOut')} />
+                              : <AlertTriangle size={14} style={{ color: 'var(--st-serious)' }} aria-label={t('dbStockAlert')} />}
+                            <span title={a.designation?.[lang] || a.name}>{a.code && <span className="db-code">{a.code}</span>}{a.designation?.[lang] || a.name}</span>
+                          </div>
+                        </td>
+                        <td className="num">{f.n(a.quantity)}</td>
+                        <td className="num hide-sm">{f.n(a.ordered)}</td>
+                        <td className="num hide-sm">{f.n(a.threshold)}</td>
+                        <td className="num"><strong>{f.n(a.missing)}</strong></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
+        </div>
 
-        {/* Top consumed items */}
-        <Panel title={t('anTopTitle')} action={
-          <div className="an-seg">
-            {['all', 'aluminium', 'accessoires'].map(f => (
-              <button key={f}
-                className={`an-pill${activeFilter === f ? ' active' : ''}`}
-                onClick={() => setActiveFilter(f)}
-              >{f === 'all' ? t('anFilterAll') : t(`anFilter_${f}`)}</button>
-            ))}
+        {/* ── Movements ── */}
+        <div className="db-grid db-grid--1-1">
+          <Panel t={t} title={t('dbFlow')} sub={t('dbFlowSub', { n: f.n(M.opsNow) })}
+            action={<Delta now={M.opsNow} prev={M.opsPrev} t={t} />}
+            table={<DataTable cols={[{ key: 'p', label: t('dbPeriodCol') }, { key: 'in', label: t('dbFlowIn'), num: true }, { key: 'out', label: t('dbFlowOut'), num: true }]}
+              rows={M.flow.map(d => ({ p: bucketTitle(d), in: f.n(d.in), out: f.n(d.out) }))} />}>
+            {M.opsNow === 0 ? <p className="db-empty"><Inbox size={18} />{t('dbNoMovements')}</p> : (
+              <>
+                <ul className="db-legend">
+                  {flowSeries.map(s => (
+                    <li key={s.key}><span className="db-legend__sw" style={{ background: s.color }} /><span className="db-legend__lab">{s.label}</span>
+                      <strong className="db-legend__val">{f.n(s.key === 'in' ? M.inNow : M.outNow)}</strong></li>
+                  ))}
+                </ul>
+                <Columns data={M.flow} series={flowSeries} labelOf={bucketLabel} titleOf={bucketTitle} fmtAxis={f.c} fmtVal={f.n} height={200} />
+              </>
+            )}
+          </Panel>
+
+          <ConsumptionPanel t={t} lang={lang} f={f} M={M} />
+        </div>
+
+        {/* ── Purchasing & quotes ── */}
+        {(O || D) && (
+          <div className={`db-grid${O && D ? ' db-grid--2-1' : ''}`}>
+            {O && (
+              <Panel t={t} title={t('dbOrders')} className="db-panel--flush"
+                action={<button type="button" className="db-link" onClick={() => goTo(PAGE_PATHS.orders)}>{t('dbSeeAll')} <ChevronRight size={14} /></button>}>
+                <div className="db-minis">
+                  <div className="db-mini"><span>{t('dbOrdersOpen')}</span><strong>{f.n(O.open)}</strong></div>
+                  <div className="db-mini"><span>{t('dbOrdersLate')}</span><strong className={O.late ? 'is-bad' : ''}>{f.n(O.late)}</strong></div>
+                  <div className="db-mini"><span>{t('dbOrdersReceptions')}</span><strong>{f.n(O.receptionsNow)}</strong></div>
+                  <div className="db-mini"><span>{t('dbOrdersRequests')}</span><strong>{f.n(O.pendingRequests)}</strong></div>
+                </div>
+                {O.lateList.length === 0 ? <p className="db-empty db-empty--good"><CheckCircle2 size={18} />{t('dbNoLate')}</p> : (
+                  <div className="db-table-wrap">
+                    <table className="db-table db-table--rows">
+                      <thead><tr><th>{t('dbColOrder')}</th><th className="hide-sm">{t('dbColSupplier')}</th><th className="num">{t('dbColExpected')}</th><th className="num">{t('dbColLate')}</th><th className="num hide-sm">{t('dbColReceived')}</th></tr></thead>
+                      <tbody>
+                        {O.lateList.map(o => (
+                          <tr key={o.id} className="is-link" tabIndex={0} onClick={() => goTo(`${PAGE_PATHS.orders}/${o.id}`)}
+                            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.click(); }}>
+                            <td><strong>{o.number}</strong></td>
+                            <td className="hide-sm">{o.supplier || '—'}</td>
+                            <td className="num">{f.date(o.expectedDate)}</td>
+                            <td className="num"><span className="db-late"><Clock size={12} />{t('dbDays', { n: o.daysLate })}</span></td>
+                            <td className="num hide-sm">{o.receivedPct}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Panel>
+            )}
+            {D && (
+              <Panel t={t} title={t('dbDevis')} sub={t('dbDevisSub', { n: f.n(D.total) })}>
+                <div className="db-devis">
+                  <div className="db-devis__rate">
+                    <span className="db-devis__big">{D.acceptanceRate == null ? '—' : `${D.acceptanceRate}%`}</span>
+                    <span className="db-devis__lab">{t('dbDevisRate')}</span>
+                    {D.acceptanceRate != null && <div className="db-meter"><div className="db-meter__fill" style={{ width: `${D.acceptanceRate}%` }} /></div>}
+                  </div>
+                  <div className="db-minis db-minis--2">
+                    <div className="db-mini"><span>{t('dbDevisAccepted')}</span><strong>{f.n(D.counts.accepte)}</strong></div>
+                    <div className="db-mini"><span>{t('dbDevisRefused')}</span><strong>{f.n(D.counts.refuse)}</strong></div>
+                    <div className="db-mini"><span>{t('dbDevisSent')}</span><strong>{f.n(D.counts.envoye)}</strong></div>
+                    <div className="db-mini"><span>{t('dbDevisDraft')}</span><strong>{f.n(D.counts.brouillon)}</strong></div>
+                  </div>
+                  <div className="db-devis__amount">
+                    <FileCheck2 size={15} />
+                    <div><span>{t('dbDevisAmount')}</span><strong>{f.moneyFull(D.acceptedAmount)}</strong></div>
+                    <Delta now={D.acceptedAmount} prev={D.acceptedPrev} t={t} />
+                  </div>
+                </div>
+              </Panel>
+            )}
           </div>
-        }>
-          {filteredTop.length === 0
-            ? <p className="an-nodata">{t('noData')}</p>
-            : <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {filteredTop.slice(0, 6).map((item, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{
-                    width: 22, height: 22, borderRadius: 6, background: CAT_PALETTE[i % CAT_PALETTE.length] + '22',
-                    border: `1px solid ${CAT_PALETTE[i % CAT_PALETTE.length]}44`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 800, color: CAT_PALETTE[i % CAT_PALETTE.length], flexShrink: 0,
-                  }}>{i + 1}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 4 }}>
-                      {item.designation?.[lang] || item.designation?.fr || '—'}
-                    </div>
-                    <MiniBar value={item.total} max={maxTop} color={CAT_PALETTE[i % CAT_PALETTE.length]} />
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: CAT_PALETTE[i % CAT_PALETTE.length], flexShrink: 0, width: 36, textAlign: 'right' }}>
-                    {item.total}
-                  </div>
-                </div>
-              ))}
-            </div>
-          }
-        </Panel>
+        )}
 
-        {/* Project aluminium consumption */}
-        <Panel title={t('anConsTitle')}>
-          {projSorted.length === 0
-            ? <p className="an-nodata">{t('noData')}</p>
-            : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {projSorted.map((p, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ minWidth: 28, fontSize: 11, color: 'var(--text-3)', fontWeight: 600, fontFamily: 'var(--mono)', textAlign: 'right', flexShrink: 0 }}>
-                    {p.reference || `P${i + 1}`}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 5 }}>
-                      <span style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.projectName}</span>
-                      <span style={{ fontSize: 11, color: 'var(--text-3)', flexShrink: 0 }}>{p.barCount} {t('anBarsLabel')}</span>
-                    </div>
-                    <div style={{ height: 6, background: 'var(--200)', borderRadius: 999, overflow: 'hidden' }}>
-                      <div style={{
-                        height: '100%',
-                        width: `${pct(p.totalBars, maxBars)}%`,
-                        background: `linear-gradient(90deg, #60a5fa, #818cf8)`,
-                        borderRadius: 999,
-                        transition: 'width .6s ease',
-                      }} />
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', fontVariantNumeric: 'tabular-nums', width: 36, textAlign: 'right', flexShrink: 0 }}>
-                    {p.totalBars}
-                  </div>
-                </div>
-              ))}
-            </div>
-          }
-        </Panel>
+        <p className="db-note">{t('dbNote')}</p>
       </div>
-    </div>
+      <TipLayer tip={tip} />
+    </TipContext.Provider>
   );
 }

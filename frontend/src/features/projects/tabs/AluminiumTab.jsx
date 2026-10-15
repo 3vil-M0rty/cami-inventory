@@ -9,6 +9,7 @@ import { useAuth } from '../../../context/AuthContext';
 import ProjectCard from '../components/ProjectCard';
 import ProjectFormModal from '../components/ProjectFormModal';
 import ProjectDetail from '../components/ProjectDetail';
+import { useProjectUrl, setProjectUrl } from '../useProjectUrl';
 
 const PAGE_SIZE = 12;
 
@@ -66,17 +67,25 @@ export default function AluminiumTab({ categoryKey, statusFilter }) {
   // reset + reload whenever filters change
   useEffect(() => { fetchPage(1, false); }, [fetchPage]);
 
-  const handleOpen = async (projectId) => {
+  // fromUrl: opened from the address (/projets/<id>, refresh, back button) → the URL is already right
+  const handleOpen = async (projectId, { fromUrl = false } = {}) => {
     setOpenLoading(true);
     try {
       const full = await projectService.getProjectById(projectId);
       setOpenProject(full);
+      if (!fromUrl) setProjectUrl(projectId);
     } catch (err) {
-      dialog.alert(errorMessage(err, t('errLoad')));
+      if (fromUrl) setProjectUrl(null, { replace: true }); // unknown / deleted project → back to the list
+      else dialog.alert(errorMessage(err, t('errLoad')));
     } finally {
       setOpenLoading(false);
     }
   };
+  useProjectUrl({
+    openId: openProject?.id,
+    open: handleOpen,
+    close: () => { setOpenProject(null); fetchPage(1, false); },
+  });
 
   const handleDelete = async id => {
     if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('deleteProjectConfirm'), danger: true, confirmLabel: t('deleteAction') }))) return;
@@ -100,6 +109,7 @@ export default function AluminiumTab({ categoryKey, statusFilter }) {
         projectId={openProject.id}
         onBack={() => {
           setOpenProject(null);
+          setProjectUrl(null);
           fetchPage(1, false);
         }}
       />

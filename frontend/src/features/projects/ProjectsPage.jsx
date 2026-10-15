@@ -1,7 +1,8 @@
 // ProjectsPage.jsx — same as before but drop `limit`/`onLoadMore` entirely
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import CategoryPage from './categories/CategoryPage';
 import { useLanguage } from '../../context/LanguageContext';
+import { PAGE_PATHS, getQueryParam, updateQuery } from '../../routes';
 import './ProjectsPage.css';
 
 // label = translation key
@@ -19,10 +20,28 @@ const PROJECT_STATUS_FILTERS = [
   { key: 'non_vitre', label: 'etat_non_vitre' },
 ];
 
+// URL changed in code → let the tabs react like on back / forward (close an open project)
+const notifyUrl = () => window.dispatchEvent(new PopStateEvent('popstate'));
+
+// Client (?client=tgalu) and état (?etat=en_cours) are kept in the URL: a refresh stays on the same list
+const categoryFromUrl = () => { const c = getQueryParam('client'); return MAIN_CATEGORIES.some(x => x.key === c) ? c : 'particuliers'; };
+const statusFromUrl = () => { const s = getQueryParam('etat'); return PROJECT_STATUS_FILTERS.some(x => x.key === s) ? s : 'all'; };
+
 export default function ProjectsPage() {
   const { t } = useLanguage();
-  const [activeCategory, setActiveCategory] = useState('particuliers');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [activeCategory, setActiveCategory] = useState(categoryFromUrl);
+  const [statusFilter, setStatusFilter] = useState(statusFromUrl);
+
+  // A filter change goes back to the list (an open project is closed)
+  const changeCategory = (key) => { setActiveCategory(key); updateQuery({ client: key === 'particuliers' ? null : key, vue: null }, { path: PAGE_PATHS.projects }); notifyUrl(); };
+  const changeStatus = (key) => { setStatusFilter(key); updateQuery({ etat: key === 'all' ? null : key, vue: null }, { path: PAGE_PATHS.projects }); notifyUrl(); };
+
+  // Back / forward buttons, "Projets" in the menu
+  useEffect(() => {
+    const onPop = () => { setActiveCategory(categoryFromUrl()); setStatusFilter(statusFromUrl()); };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const currentStatusLabel = useMemo(() => {
     return t(PROJECT_STATUS_FILTERS.find(s => s.key === statusFilter)?.label || 'pjAll');
@@ -35,7 +54,7 @@ export default function ProjectsPage() {
           <button
             key={cat.key}
             className={`projects-category-tab ${activeCategory === cat.key ? 'active' : ''}`}
-            onClick={() => setActiveCategory(cat.key)}
+            onClick={() => changeCategory(cat.key)}
           >
             {t(cat.label)}
           </button>
@@ -47,7 +66,7 @@ export default function ProjectsPage() {
             <button
               key={status.key}
               className={`project-status-tab ${statusFilter === status.key ? 'active' : ''}`}
-              onClick={() => setStatusFilter(status.key)}
+              onClick={() => changeStatus(status.key)}
             >
               {t(status.label)}
             </button>

@@ -13,12 +13,16 @@ const path = require('path');
 const compression = require('compression');
 
 const app = express();
+// Request context: lets a stock movement know which account caused it, wherever it is created
+const { AsyncLocalStorage } = require('async_hooks');
+const reqContext = new AsyncLocalStorage();
 const PORT = process.env.PORT || 3001;
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
 app.use(express.json());
+app.use((req, res, next) => reqContext.run({ req }, next));
 app.use(compression()); // add this near your other app.use() calls, before routes
 
 app.use(express.urlencoded({ extended: true }));
@@ -222,14 +226,30 @@ const Item = mongoose.model('Item', itemSchema);
 
 const stockMovementSchema = new mongoose.Schema({
   itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
-  type: { type: String, enum: ['entree', 'sortie', 'project_use', 'project_return', 'order_reception'], required: true },
+  // initial = stock entered when the article is created · correction_plus / correction_moins = quantity changed in the article form
+  type: { type: String, enum: ['entree', 'sortie', 'project_use', 'project_return', 'order_reception', 'initial', 'correction_plus', 'correction_moins'], required: true },
   quantity: { type: Number, required: true },
   balanceAfter: { type: Number, required: true },
+  user: { type: String, default: '' },
   note: { type: String, default: '' },
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
   projectName: { type: String, default: '' },
   orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', default: null },
 }, { timestamps: true });
+stockMovementSchema.index({ createdAt: -1 });
+stockMovementSchema.index({ itemId: 1, createdAt: -1 });
+stockMovementSchema.index({ type: 1, createdAt: -1 });
+// Who: the logged-in account of the request that created the movement
+stockMovementSchema.pre('validate', function (next) {
+  if (!this.user) {
+    const u = reqContext.getStore()?.req?.user;
+    if (u) this.user = u.displayName || u.username || '';
+  }
+  next();
+});
+const MOVE_IN = new Set(['entree', 'order_reception', 'project_return', 'initial', 'correction_plus']);
+const MOVE_OUT = new Set(['sortie', 'project_use', 'correction_moins']);
+const moveSign = (type) => (MOVE_IN.has(type) ? 1 : MOVE_OUT.has(type) ? -1 : 0);
 const StockMovement = mongoose.model('StockMovement', stockMovementSchema);
 
 const orderLineSchema = new mongoose.Schema({
@@ -820,9 +840,12 @@ function getAllUnitEtats(chassis) {
 }
 
 function computeProjectStatus(chassis) {
-  if (!chassis || chassis.length === 0) return 'non_entame';
+  return projectStatusFromEtats(getAllUnitEtats(chassis), (chassis || []).length);
+}
 
-  const allEtats = getAllUnitEtats(chassis);
+// Project status from every unit / composite état (shared by the cards and the dashboard)
+function projectStatusFromEtats(allEtats, chassisCount = 1) {
+  if (!chassisCount) return 'non_entame';
 
   if (allEtats.length === 0) return 'en_cours';
 
@@ -1686,7 +1709,9 @@ app.post('/api/inventory', optionalAuth, async (req, res) => {
       codeInterne: req.body.codeInterne || '',
       supplierCodes: sanitizeSupplierCodes(req.body.supplierCodes),
     });
-    await item.save(); await item.populate('categoryId');
+    await item.save();
+    if (item.quantity > 0) await StockMovement.create({ itemId: item._id, type: 'initial', quantity: item.quantity, balanceAfter: item.quantity, note: 'Stock initial' });
+    await item.populate('categoryId');
     res.status(201).json(item);
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
@@ -1694,6 +1719,7 @@ app.put('/api/inventory/:id', optionalAuth, async (req, res) => {
   try {
     const sc = req.body.superCategory || 'aluminium';
     if (!canEditSC(req.permissions, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
+    const before = await Item.findById(req.params.id).select('quantity').lean();
     const item = await Item.findByIdAndUpdate(req.params.id, {
       image: req.body.image,
       designation: req.body.designation,
@@ -1707,6 +1733,10 @@ app.put('/api/inventory/:id', optionalAuth, async (req, res) => {
       searchText: buildItemSearchText({ designation: req.body.designation, codeInterne: req.body.codeInterne, supplierCodes: req.body.supplierCodes }),
     }, { new: true, runValidators: true }).populate('categoryId');
     if (!item) return res.status(404).json({ error: 'Not found' });
+    const diff = Math.round(((item.quantity || 0) - (before?.quantity || 0)) * 1000) / 1000;
+    if (before && diff !== 0) {
+      await StockMovement.create({ itemId: item._id, type: diff > 0 ? 'correction_plus' : 'correction_moins', quantity: Math.abs(diff), balanceAfter: item.quantity, note: 'Correction via la fiche article' });
+    }
     res.json(item);
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
@@ -1719,9 +1749,12 @@ app.patch('/api/inventory/:id/quantity', optionalAuth, async (req, res) => {
     const sc = item.superCategory || 'aluminium';
     if (!canAdjustQty(req, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
     if (!isItemAllowed(req, item._id)) return res.status(403).json({ error: 'Accès refusé à cet article' });
+    const previous = item.quantity;
     item.quantity = Math.max(0, item.quantity + amount);
     await item.save();
-    await StockMovement.create({ itemId: item._id, type: amount >= 0 ? 'entree' : 'sortie', quantity: Math.abs(amount), balanceAfter: item.quantity, note: note || '' });
+    // the quantity really applied (stock never goes below 0), so the history stays exact
+    const applied = Math.round((item.quantity - previous) * 1000) / 1000;
+    if (applied !== 0) await StockMovement.create({ itemId: item._id, type: applied > 0 ? 'entree' : 'sortie', quantity: Math.abs(applied), balanceAfter: item.quantity, note: note || '' });
     await item.populate('categoryId');
     res.json(item);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3452,35 +3485,236 @@ app.put('/api/chassis-type-accessories/:chassisTypeId', async (req, res) => {
 });
 
 // ==================== STOCK MOVEMENT ROUTES ====================
-app.get('/api/movements', async (req, res) => {
+// ==================== STOCK MOVEMENTS ====================
+// Every filter is applied by the server (article search, super-category, category, types, dates), so the
+// count is exact and "load more" only brings rows of the same search. Pages use a cursor (date + id).
+const MOVE_TYPES = ['entree', 'sortie', 'project_use', 'project_return', 'order_reception', 'initial', 'correction_plus', 'correction_moins'];
+// Day boundaries in the user's time zone (tz = minutes from Date#getTimezoneOffset, sent by the page)
+const mvTz = (req) => { const v = parseInt(req.query.tz, 10); return Number.isFinite(v) && Math.abs(v) <= 840 ? v : 0; };
+const mvDayStart = (d, tz = 0) => { const x = new Date(`${d}T00:00:00Z`); return isNaN(x) ? null : new Date(x.getTime() + tz * 60000); };
+const mvDayEnd = (d, tz = 0) => { const x = mvDayStart(d, tz); return x ? new Date(x.getTime() + 86400000 - 1) : null; };
+
+// Articles the request may see, narrowed by super-category / category / search text. null = no restriction.
+async function mvItemScope(req, { superCategory, categoryId, q } = {}) {
+  const allowed = await resolveAllowedSCs(req.permissions || []);
+  const f = {};
+  if (superCategory && superCategory !== 'all') {
+    if (allowed !== null && !allowed.includes(superCategory)) return [];
+    f.superCategory = superCategory;
+  } else if (allowed !== null) f.superCategory = { $in: allowed };
+  if (categoryId && categoryId !== 'all' && mongoose.Types.ObjectId.isValid(categoryId)) f.categoryId = categoryId;
+  const words = normalizeSearch(q).split(' ').filter(Boolean).slice(0, 8);
+  if (words.length) f.$and = words.map(w => ({ searchText: { $regex: escapeRegex(w) } }));
+  if (!Object.keys(f).length) return null;
+  return (await Item.find(f).select('_id').lean()).map(i => i._id);
+}
+
+async function mvFilter(req) {
+  const { type, from, to, q, superCategory, categoryId, itemId } = req.query;
+  const filter = {};
+  const types = String(type || '').split(',').filter(x => MOVE_TYPES.includes(x));
+  if (types.length) filter.type = { $in: types };
+  const tz = mvTz(req);
+  const a = from ? mvDayStart(from, tz) : null, b = to ? mvDayEnd(to, tz) : null;
+  if (a || b) { filter.createdAt = {}; if (a) filter.createdAt.$gte = a; if (b) filter.createdAt.$lte = b; }
+  if (itemId && mongoose.Types.ObjectId.isValid(itemId)) {
+    filter.itemId = new mongoose.Types.ObjectId(itemId);
+    return filter;
+  }
+  // Scope (permissions, super-category, category) — then the text search: article OR project OR note
+  const scope = await mvItemScope(req, { superCategory, categoryId });
+  if (scope) filter.itemId = { $in: scope };
+  const text = String(q || '').trim();
+  if (text) {
+    const hits = await mvItemScope(req, { superCategory, categoryId, q: text });
+    const rx = new RegExp(escapeRegex(text), 'i');
+    filter.$or = [{ itemId: { $in: hits || [] } }, { projectName: rx }, { note: rx }];
+  }
+  return filter;
+}
+
+const toMovement = (m) => ({
+  id: String(m._id), type: m.type, quantity: m.quantity, sign: moveSign(m.type), balanceAfter: m.balanceAfter,
+  note: m.note || '', user: m.user || '', projectId: m.projectId ? String(m.projectId) : null, projectName: m.projectName || '',
+  orderId: m.orderId ? String(m.orderId) : null, createdAt: m.createdAt,
+  item: m.itemId && typeof m.itemId === 'object' && m.itemId.designation
+    ? { id: String(m.itemId._id), designation: m.itemId.designation, code: m.itemId.codeInterne || '', superCategory: m.itemId.superCategory || '', categoryId: m.itemId.categoryId ? String(m.itemId.categoryId) : null }
+    : null,
+});
+
+// GET /api/movements?q=&type=a,b&from=YYYY-MM-DD&to=&superCategory=&categoryId=&itemId=&limit=50&cursor=<iso>|<id>
+//   First page (no cursor): + total (exact), byType (number of movements per type), activity (in / out per day, week or month)
+//   export=1: up to 10 000 rows, no cursor (Excel export)
+app.get('/api/movements', optionalAuth, async (req, res) => {
   try {
-    const { itemId, type, from, to, limit = 200, skip = 0 } = req.query;
-    const filter = {};
-    if (itemId) filter.itemId = itemId;
-    if (type && type !== 'all') filter.type = type;
-    if (from || to) {
-      filter.createdAt = {};
-      if (from) filter.createdAt.$gte = new Date(from);
-      if (to) filter.createdAt.$lte = new Date(new Date(to).setHours(23, 59, 59, 999));
+    const base = await mvFilter(req);
+    const exporting = req.query.export === '1';
+    const limit = exporting ? 10000 : Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const filter = { ...base };
+    const [cAt, cId] = String(req.query.cursor || '').split('|');
+    if (!exporting && cAt && cId && mongoose.Types.ObjectId.isValid(cId)) {
+      const d = new Date(cAt);
+      const after = { $or: [{ createdAt: { $lt: d } }, { createdAt: d, _id: { $lt: new mongoose.Types.ObjectId(cId) } }] };
+      filter.$and = [...(filter.$and || []), after];
     }
-    const lim = Math.min(Number(limit) || 200, 500); // cap per-request page size
-    const sk = Math.max(Number(skip) || 0, 0);
-
-    const [movements, total] = await Promise.all([
-      StockMovement.find(filter)
-        .populate('itemId', 'designation categoryId superCategory')
-        .sort({ createdAt: -1 })
-        .skip(sk)
-        .limit(lim),
-      StockMovement.countDocuments(filter),
-    ]);
-
-    res.json({ movements, total, hasMore: sk + movements.length < total });
+    const rows = await StockMovement.find(filter)
+      .populate('itemId', 'designation codeInterne superCategory categoryId')
+      .sort({ createdAt: -1, _id: -1 }).limit(limit + 1).lean();
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    const out = {
+      movements: page.map(toMovement),
+      hasMore: rows.length > limit,
+      nextCursor: rows.length > limit && last ? `${new Date(last.createdAt).toISOString()}|${last._id}` : null,
+    };
+    if (!cAt && !exporting) {
+      // Exact figures for the whole filter (first page only): counted by the database, per local day and type
+      const tz = mvTz(req);
+      let perDay; // [{ day: 'YYYY-MM-DD', type, n }]
+      try {
+        const agg = await StockMovement.aggregate([
+          { $match: base },
+          { $group: { _id: { t: '$type', d: { $dateToString: { format: '%Y-%m-%d', date: { $subtract: ['$createdAt', tz * 60000] } } } }, n: { $sum: 1 } } },
+        ]);
+        perDay = agg.map(r => ({ day: r._id.d, type: r._id.t, n: r.n }));
+      } catch {
+        const light = await StockMovement.find(base).select('type createdAt').lean();
+        const m = new Map();
+        for (const x of light) {
+          const day = new Date(new Date(x.createdAt).getTime() - tz * 60000).toISOString().slice(0, 10);
+          const k = `${day}|${x.type}`; m.set(k, (m.get(k) || 0) + 1);
+        }
+        perDay = [...m].map(([k, n]) => { const [day, type] = k.split('|'); return { day, type, n }; });
+      }
+      out.total = perDay.reduce((a, r) => a + r.n, 0);
+      out.byType = {};
+      for (const r of perDay) out.byType[r.type] = (out.byType[r.type] || 0) + r.n;
+      if (perDay.length) {
+        const days = perDay.map(r => r.day).sort();
+        const min = new Date(`${days[0]}T00:00:00Z`), max = new Date(`${days[days.length - 1]}T00:00:00Z`);
+        const span = (max - min) / 86400000;
+        const bucket = span <= 62 ? 'day' : span <= 400 ? 'week' : 'month';
+        const keys = dashBuckets(min, new Date(max.getTime() + 86400000), bucket);
+        const map = Object.fromEntries(keys.map(k => [k, { key: k, in: 0, out: 0 }]));
+        for (const r of perDay) { const k = dashBucketKey(new Date(`${r.day}T00:00:00Z`), bucket); if (map[k]) map[k][moveSign(r.type) >= 0 ? 'in' : 'out'] += r.n; }
+        out.activity = { bucket, series: keys.map(k => map[k]) };
+      }
+    }
+    res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/movements/item/:itemId', async (req, res) => {
-  try { res.json(await StockMovement.find({ itemId: req.params.itemId }).sort({ createdAt: -1 }).limit(100)); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+
+// ── Stock at a given date ────────────────────────────────────────────────────
+// For each article: the stock recorded by its last movement on or before the date. With no movement
+// before the date: the stock just before its first later movement, or today's stock when it never moved.
+async function stockAt(itemIds, date) {
+  const match = { createdAt: { $lte: date } };
+  const later = { createdAt: { $gt: date } };
+  if (itemIds) { match.itemId = { $in: itemIds }; later.itemId = { $in: itemIds }; }
+  const lastBefore = new Map(), firstAfter = new Map();
+  try {
+    const [a, b] = await Promise.all([
+      StockMovement.aggregate([{ $match: match }, { $sort: { itemId: 1, createdAt: -1, _id: -1 } }, { $group: { _id: '$itemId', bal: { $first: '$balanceAfter' } } }]),
+      StockMovement.aggregate([{ $match: later }, { $sort: { itemId: 1, createdAt: 1, _id: 1 } }, { $group: { _id: '$itemId', bal: { $first: '$balanceAfter' }, type: { $first: '$type' }, qty: { $first: '$quantity' } } }]),
+    ]);
+    a.forEach(r => lastBefore.set(String(r._id), r.bal));
+    b.forEach(r => firstAfter.set(String(r._id), r.bal - moveSign(r.type) * r.qty));
+  } catch {
+    // databases without $group/$first: same result in memory
+    const rows = await StockMovement.find(itemIds ? { itemId: { $in: itemIds } } : {}).select('itemId createdAt balanceAfter type quantity').sort({ createdAt: 1, _id: 1 }).lean();
+    for (const r of rows) {
+      const id = String(r.itemId);
+      if (new Date(r.createdAt) <= date) lastBefore.set(id, r.balanceAfter);
+      else if (!firstAfter.has(id)) firstAfter.set(id, r.balanceAfter - moveSign(r.type) * r.quantity);
+    }
+  }
+  return { lastBefore, firstAfter };
+}
+// Last recorded balance of each article (to spot stock changed without a movement, before this version)
+async function lastBalances(itemIds) {
+  const out = new Map();
+  try {
+    const r = await StockMovement.aggregate([{ $match: itemIds ? { itemId: { $in: itemIds } } : {} }, { $sort: { itemId: 1, createdAt: -1, _id: -1 } }, { $group: { _id: '$itemId', bal: { $first: '$balanceAfter' } } }]);
+    r.forEach(x => out.set(String(x._id), x.bal));
+  } catch {
+    const rows = await StockMovement.find(itemIds ? { itemId: { $in: itemIds } } : {}).select('itemId balanceAfter createdAt').sort({ createdAt: 1, _id: 1 }).lean();
+    rows.forEach(x => out.set(String(x.itemId), x.balanceAfter));
+  }
+  return out;
+}
+
+// GET /api/movements/snapshot?date=YYYY-MM-DD[&compare=YYYY-MM-DD][&q=&superCategory=&categoryId=]
+app.get('/api/movements/snapshot', optionalAuth, async (req, res) => {
+  try {
+    const tz = mvTz(req);
+    const date = mvDayEnd(req.query.date || new Date().toISOString().slice(0, 10), tz);
+    if (!date) return res.status(400).json({ error: 'Date invalide' });
+    const compare = req.query.compare ? mvDayEnd(req.query.compare, tz) : null;
+    const scope = await mvItemScope(req, { superCategory: req.query.superCategory, categoryId: req.query.categoryId, q: req.query.q });
+    const itemFilter = scope ? { _id: { $in: scope } } : {};
+    const items = await Item.find(itemFilter).select('designation codeInterne superCategory categoryId quantity threshold createdAt').populate('categoryId', 'name color').lean();
+    const ids = scope ? items.map(i => i._id) : null;
+    const [atDate, atCompare, lastBal] = await Promise.all([stockAt(ids, date), compare ? stockAt(ids, compare) : null, lastBalances(ids)]);
+    const value = (snap, it, d) => {
+      const id = String(it._id);
+      if (new Date(it.createdAt) > d) return null; // did not exist yet
+      if (d.getTime() >= Date.now()) return it.quantity || 0; // today: the real current stock
+      if (snap.lastBefore.has(id)) return snap.lastBefore.get(id);
+      if (snap.firstAfter.has(id)) return snap.firstAfter.get(id);
+      return it.quantity || 0;
+    };
+    const rows = items.map(it => {
+      const id = String(it._id);
+      const lb = lastBal.get(id);
+      return {
+        id, designation: it.designation, code: it.codeInterne || '', superCategory: it.superCategory || 'aluminium',
+        category: it.categoryId ? { id: String(it.categoryId._id), name: it.categoryId.name, color: it.categoryId.color } : null,
+        threshold: it.threshold || 0, current: it.quantity || 0,
+        atDate: value(atDate, it, date),
+        atCompare: compare ? value(atCompare, it, compare) : undefined,
+        // today's stock differs from the last movement → the stock was changed without a trace (before this version)
+        untracked: lb !== undefined && Math.abs((it.quantity || 0) - lb) > 1e-9,
+      };
+    });
+    res.json({ date, compare, rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/movements/item/:itemId?from=&to= — article ledger: stock before the period, movements, stock after
+app.get('/api/movements/item/:itemId', optionalAuth, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.itemId)) return res.status(400).json({ error: 'Article invalide' });
+    const item = await Item.findById(req.params.itemId).select('designation codeInterne superCategory categoryId quantity threshold orderedQuantity createdAt image').populate('categoryId', 'name color').lean();
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    const allowed = await resolveAllowedSCs(req.permissions || []);
+    if (allowed !== null && !allowed.includes(item.superCategory || 'aluminium')) return res.status(403).json({ error: 'Accès refusé' });
+    const tz = mvTz(req);
+    const from = req.query.from ? mvDayStart(req.query.from, tz) : null;
+    const to = req.query.to ? mvDayEnd(req.query.to, tz) : null;
+    const f = { itemId: item._id };
+    if (from || to) { f.createdAt = {}; if (from) f.createdAt.$gte = from; if (to) f.createdAt.$lte = to; }
+    const moves = await StockMovement.find(f).sort({ createdAt: 1, _id: 1 }).limit(5000).lean();
+    let opening;
+    if (from) {
+      const snap = await stockAt([item._id], new Date(from.getTime() - 1));
+      const id = String(item._id);
+      opening = new Date(item.createdAt) >= from ? 0 : snap.lastBefore.get(id) ?? snap.firstAfter.get(id) ?? item.quantity;
+    } else {
+      const first = moves[0];
+      opening = first ? first.balanceAfter - moveSign(first.type) * first.quantity : item.quantity;
+    }
+    let tin = 0, tout = 0;
+    for (const m of moves) { if (moveSign(m.type) > 0) tin += m.quantity; else tout += m.quantity; }
+    // period running until today → the real current stock; otherwise the last recorded balance
+    const closing = (!to || to.getTime() >= Date.now()) ? (item.quantity || 0) : (moves.length ? moves[moves.length - 1].balanceAfter : opening);
+    const lb = (await lastBalances([item._id])).get(String(item._id));
+    res.json({
+      item: { id: String(item._id), designation: item.designation, code: item.codeInterne || '', superCategory: item.superCategory, category: item.categoryId ? { name: item.categoryId.name, color: item.categoryId.color } : null, quantity: item.quantity, threshold: item.threshold || 0, ordered: item.orderedQuantity || 0, image: item.image || '', createdAt: item.createdAt },
+      opening: Math.round(opening * 1000) / 1000, closing, totalIn: Math.round(tin * 1000) / 1000, totalOut: Math.round(tout * 1000) / 1000,
+      untracked: lb !== undefined && Math.abs((item.quantity || 0) - lb) > 1e-9,
+      movements: moves.map(m => toMovement(m)), truncated: moves.length >= 5000,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ==================== ANALYTICS ====================
@@ -3513,6 +3747,287 @@ app.get('/api/analytics/dashboard', async (req, res) => {
     const catMap = {};
     for (const item of items) { const catId = item.categoryId?._id?.toString() || 'none'; const catName = item.categoryId?.name || { fr: 'Sans catégorie', it: 'Senza categoria', en: 'No category' }; const catColor = item.categoryId?.color || '#9ca3af'; if (!catMap[catId]) catMap[catId] = { catId, catName, catColor, total: 0, ok: 0, low: 0, critical: 0 }; catMap[catId].total++; const total = item.quantity + (item.orderedQuantity || 0); if (total < item.threshold) catMap[catId].critical++; else if (item.quantity < item.threshold) catMap[catId].low++; else catMap[catId].ok++; }
     res.json({ kpis: { totalProjects: projects.length, projectsInProgress, totalItems: items.length, criticalItems: criticalItems.length, deliveriesThisMonth, totalMovements: movements.length }, chassisStatusCounts, projectConsumption, topItems, monthlyMovements: Object.values(movMap), stockByCategory: Object.values(catMap) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==================== DASHBOARD (Statistiques) ====================
+// GET /api/analytics/overview?range=7d|30d|90d|12m|ytd[&companyId=]
+// One call for the whole dashboard. Pieces are counted exactly like the project cards: one per unit
+// (quantity), a composite chassis counts once with the état derived from its dormant / vantaux.
+// Sections the account may not see (stock categories, orders, quotes) are left out.
+const DASH_ETATS = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'pret_a_livrer', 'livre'];
+const DASH_RANGES = { '7d': 7, '30d': 30, '90d': 90 };
+
+function dashPieces(ch) {
+  const qty = Math.max(1, ch.quantity || 1);
+  const numComps = (ch.components || []).length;
+  const out = [];
+  for (let i = 0; i < qty; i++) {
+    const u = (ch.units || []).find(x => x.unitIndex === i) || (ch.units || [])[i] || null;
+    if (!u) { out.push({ etat: 'non_entame', deliveredAt: null }); continue; }
+    if (numComps) {
+      const etat = deriveCompositeUnitEtat(u, numComps);
+      // composite delivered → date of its last delivered part
+      const dates = (u.componentStates || []).map(c => c.deliveryDate).filter(Boolean).map(d => new Date(d).getTime());
+      out.push({ etat, deliveredAt: etat === 'livre' && dates.length ? new Date(Math.max(...dates)) : (etat === 'livre' && u.deliveryDate ? new Date(u.deliveryDate) : null) });
+    } else {
+      const etat = DASH_ETATS.includes(u.etat) ? u.etat : 'non_entame';
+      out.push({ etat, deliveredAt: etat === 'livre' && u.deliveryDate ? new Date(u.deliveryDate) : null });
+    }
+  }
+  return out;
+}
+
+function dashPeriod(range) {
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const to = new Date(today.getTime() + 86400000); // end of today (exclusive)
+  let from, bucket;
+  if (DASH_RANGES[range]) {
+    from = new Date(to.getTime() - DASH_RANGES[range] * 86400000);
+    bucket = range === '90d' ? 'week' : 'day';
+  } else if (range === 'ytd') {
+    from = new Date(Date.UTC(now.getUTCFullYear(), 0, 1)); bucket = 'month';
+  } else { // 12m
+    from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1)); bucket = 'month';
+  }
+  const prevFrom = new Date(from.getTime() - (to.getTime() - from.getTime()));
+  return { from, to, prevFrom, bucket };
+}
+
+const dashBucketKey = (d, bucket) => {
+  const x = new Date(d);
+  if (bucket === 'month') return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}`;
+  if (bucket === 'week') { // Monday of the week
+    const day = (x.getUTCDay() + 6) % 7;
+    x.setUTCDate(x.getUTCDate() - day);
+  }
+  return x.toISOString().slice(0, 10);
+};
+function dashBuckets(from, to, bucket) {
+  const keys = []; const seen = new Set();
+  const d = new Date(from);
+  while (d < to) {
+    const k = dashBucketKey(d, bucket);
+    if (!seen.has(k)) { seen.add(k); keys.push(k); }
+    if (bucket === 'month') d.setUTCMonth(d.getUTCMonth() + 1, 1); else d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return keys;
+}
+const inRange = (d, a, b) => d && d >= a && d < b;
+const dashName = (des) => des?.fr || des?.it || des?.en || '—';
+
+app.get('/api/analytics/overview', requireAuth, requirePermission('analytics.view'), async (req, res) => {
+  try {
+    const range = ['7d', '30d', '90d', '12m', 'ytd'].includes(req.query.range) ? req.query.range : '90d';
+    const { from, to, prevFrom, bucket } = dashPeriod(range);
+    const keys = dashBuckets(from, to, bucket);
+    const perms = req.permissions || [];
+    const admin = isAdmin(req);
+    const companyId = mongoose.Types.ObjectId.isValid(req.query.companyId) ? new mongoose.Types.ObjectId(req.query.companyId) : null;
+    const byCompany = companyId ? { companyId } : {};
+    const allowedSCs = await resolveAllowedSCs(perms); // null = every super-category
+    const seesOrders = admin || perms.includes('orders.view');
+    const seesDevis = admin || perms.includes('devis.view');
+
+    const itemFilter = {};
+    if (allowedSCs !== null) itemFilter.superCategory = { $in: allowedSCs };
+
+    const [projects, items, superCats, categories, movements, orders, devis, pendingRequests] = await Promise.all([
+      Project.find(byCompany)
+        .select('name reference date tab clientId chassis.quantity chassis.components._id chassis.units chassis.remplissages.etat createdAt')
+        .populate('clientId', 'name').lean(),
+      Item.find(itemFilter).select('designation codeInterne quantity orderedQuantity threshold superCategory categoryId image').lean(),
+      SuperCategory.find().sort({ order: 1 }).lean(),
+      Category.find().select('name superCategory order color').sort({ order: 1 }).lean(),
+      StockMovement.find({ createdAt: { $gte: prevFrom, $lt: to } }).select('type quantity createdAt itemId').lean(),
+      seesOrders ? Order.find({ ...byCompany, status: { $ne: 'brouillon' } })
+        .select('number reference supplier status orderDate expectedDate sentAt lines.quantityOrdered lines.quantityReceived lines.unitPrice lines.closed receptions.receivedAt receptions.cancelled')
+        .lean() : [],
+      seesDevis ? Devis.find({ ...byCompany, date: { $gte: prevFrom, $lt: to } }).select('status date lines.quantity lines.unitPrice lines.discount').lean() : [],
+      seesOrders ? PurchaseRequest.countDocuments({ status: 'pending' }) : 0,
+    ]);
+
+    // ── PRODUCTION ─────────────────────────────────────────────────────────
+    const TGALU_RE = /infinite|tgalu/i;
+    const zero = () => Object.fromEntries(DASH_ETATS.map(e => [e, 0]));
+    const activeEtats = zero();
+    const byTab = { aluminium: zero(), laquage: zero(), vitrage: zero() };
+    const delivered = Object.fromEntries(keys.map(k => [k, 0]));
+    let deliveredNow = 0, deliveredPrev = 0, deliveredUndated = 0;
+    const statusCount = { non_entame: 0, en_cours: 0, non_vitre: 0, fabrique: 0, pret_a_livrer: 0, cloture: 0 };
+    const activeList = [];
+    let rempTotal = 0, rempLivre = 0;
+    const projectsByTab = { aluminium: 0, laquage: 0, vitrage: 0 };
+    const rempByTab = { aluminium: { total: 0, livre: 0 }, laquage: { total: 0, livre: 0 }, vitrage: { total: 0, livre: 0 } };
+    for (const p of projects) {
+      const pieces = (p.chassis || []).flatMap(dashPieces);
+      const etats = pieces.map(x => x.etat);
+      const status = projectStatusFromEtats(etats, (p.chassis || []).length);
+      statusCount[status] = (statusCount[status] || 0) + 1;
+      for (const pc of pieces) {
+        if (pc.etat === 'livre') {
+          if (!pc.deliveredAt) deliveredUndated++;
+          else if (inRange(pc.deliveredAt, from, to)) { deliveredNow++; const k = dashBucketKey(pc.deliveredAt, bucket); if (k in delivered) delivered[k]++; }
+          else if (inRange(pc.deliveredAt, prevFrom, from)) deliveredPrev++;
+        }
+      }
+      if (status === 'cloture') continue;
+      const counts = zero();
+      for (const e of etats) counts[e]++;
+      DASH_ETATS.forEach(e => { activeEtats[e] += counts[e]; byTab[byTab[p.tab] ? p.tab : 'aluminium'][e] += counts[e]; });
+      const tabKey = projectsByTab[p.tab] !== undefined ? p.tab : 'aluminium';
+      projectsByTab[tabKey]++;
+      for (const ch of p.chassis || []) for (const r of ch.remplissages || []) {
+        rempTotal++; rempByTab[tabKey].total++;
+        if (r.etat === 'livre') { rempLivre++; rempByTab[tabKey].livre++; }
+      }
+      activeList.push({
+        id: String(p._id), name: p.name, reference: p.reference, tab: p.tab || 'aluminium', status,
+        client: p.clientId?.name || '', tgalu: TGALU_RE.test(p.clientId?.name || ''),
+        date: p.date, pieces: etats.length, counts,
+      });
+    }
+    // Oldest open projects first: they are the ones to watch
+    activeList.sort((a, b) => new Date(a.date) - new Date(b.date));
+    const activePieces = DASH_ETATS.reduce((s, e) => s + activeEtats[e], 0);
+
+    // ── STOCK ──────────────────────────────────────────────────────────────
+    const scLabel = Object.fromEntries(superCats.map(sc => [sc.key, sc.label]));
+    const scOrder = superCats.map(sc => sc.key);
+    const stockBySc = {};
+    const alerts = [];
+    let rupture = 0, alerte = 0, couvert = 0;
+    for (const it of items) {
+      const sc = it.superCategory || 'aluminium';
+      const row = stockBySc[sc] ||= { key: sc, label: scLabel[sc] || { fr: sc, it: sc, en: sc }, total: 0, ok: 0, couvert: 0, alerte: 0, rupture: 0 };
+      row.total++;
+      const q = it.quantity || 0, o = it.orderedQuantity || 0, th = it.threshold || 0;
+      let state = 'ok';
+      if (th > 0 && q + o < th) state = q <= 0 ? 'rupture' : 'alerte';
+      else if (th > 0 && q < th) state = 'couvert'; // below threshold but enough on order
+      row[state]++;
+      if (state === 'rupture') rupture++; else if (state === 'alerte') alerte++; else if (state === 'couvert') couvert++;
+      if (state === 'rupture' || state === 'alerte') alerts.push({
+        id: String(it._id), name: dashName(it.designation), designation: it.designation, code: it.codeInterne || '', superCategory: sc,
+        quantity: q, ordered: o, threshold: th, missing: Math.max(0, th - q - o), coverage: th ? (q + o) / th : 1,
+      });
+    }
+    alerts.sort((a, b) => a.coverage - b.coverage || b.missing - a.missing);
+    const stockRows = Object.values(stockBySc).sort((a, b) => {
+      const ia = scOrder.indexOf(a.key), ib = scOrder.indexOf(b.key);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+
+    // ── MOVEMENTS (only articles the account can see) ──────────────────────
+    const itemById = new Map(items.map(it => [String(it._id), it]));
+    const IN = new Set(['entree', 'order_reception', 'project_return']);
+    const OUT = new Set(['sortie', 'project_use']);
+    const flow = Object.fromEntries(keys.map(k => [k, { in: 0, out: 0 }]));
+    let opsNow = 0, opsPrev = 0, inNow = 0, outNow = 0;
+    const consumed = new Map();
+    for (const m of movements) {
+      const it = itemById.get(String(m.itemId));
+      if (!it) continue;
+      const d = new Date(m.createdAt);
+      if (d < from) { opsPrev++; continue; }
+      opsNow++;
+      const k = dashBucketKey(d, bucket);
+      if (IN.has(m.type)) { inNow++; if (flow[k]) flow[k].in++; }
+      if (OUT.has(m.type)) { outNow++; if (flow[k]) flow[k].out++; }
+      // Net consumption: taken out for projects / manual exits, minus what came back from projects
+      if (m.type === 'project_use' || m.type === 'sortie' || m.type === 'project_return') {
+        const sign = m.type === 'project_return' ? -1 : 1;
+        const c = consumed.get(String(it._id)) || { id: String(it._id), name: dashName(it.designation), designation: it.designation, code: it.codeInterne || '', superCategory: it.superCategory || 'aluminium', categoryId: it.categoryId ? String(it.categoryId) : null, quantity: 0 };
+        c.quantity += sign * (m.quantity || 0);
+        consumed.set(c.id, c);
+      }
+    }
+    // Every article consumed in the period: the page ranks them per super-category / sub-category
+    const consumedAll = [...consumed.values()].filter(c => c.quantity > 0).sort((a, b) => b.quantity - a.quantity)
+      .map(c => ({ ...c, quantity: Math.round(c.quantity * 100) / 100 }));
+    const topConsumed = consumedAll.slice(0, 8);
+    const usedCats = new Set(consumedAll.map(c => c.categoryId).filter(Boolean));
+    const consumedCategories = categories.filter(c => usedCats.has(String(c._id)))
+      .map(c => ({ id: String(c._id), name: c.name, superCategory: c.superCategory || 'aluminium', color: c.color }));
+    const consumedSuperCategories = superCats.filter(sc => consumedAll.some(c => c.superCategory === sc.key)).map(sc => ({ key: sc.key, label: sc.label }));
+    // super-categories present on articles but missing from the list (old keys) — still shown
+    for (const c of consumedAll) if (!consumedSuperCategories.some(sc => sc.key === c.superCategory)) consumedSuperCategories.push({ key: c.superCategory, label: { fr: c.superCategory, it: c.superCategory, en: c.superCategory } });
+
+    // ── SUPPLIER ORDERS ────────────────────────────────────────────────────
+    let ordersSection = null;
+    if (seesOrders) {
+      const today = new Date(); today.setUTCHours(0, 0, 0, 0);
+      const amount = (o) => (o.lines || []).reduce((s, l) => s + (l.quantityOrdered || 0) * (l.unitPrice || 0), 0);
+      const spend = Object.fromEntries(keys.map(k => [k, 0]));
+      let spendNow = 0, spendPrev = 0, ordersNow = 0, receptionsNow = 0;
+      const late = [];
+      let open = 0;
+      for (const o of orders) {
+        const sent = o.sentAt || o.orderDate;
+        if (o.status !== 'annulee' && sent) {
+          const d = new Date(sent);
+          if (inRange(d, from, to)) { const a = amount(o); spendNow += a; ordersNow++; const k = dashBucketKey(d, bucket); if (k in spend) spend[k] += a; }
+          else if (inRange(d, prevFrom, from)) spendPrev += amount(o);
+        }
+        for (const r of o.receptions || []) if (!r.cancelled && inRange(new Date(r.receivedAt), from, to)) receptionsNow++;
+        if (o.status === 'envoye' || o.status === 'partielle') {
+          open++;
+          if (o.expectedDate && new Date(o.expectedDate) < today) {
+            const ordered = (o.lines || []).reduce((s, l) => s + (l.quantityOrdered || 0), 0);
+            const received = (o.lines || []).reduce((s, l) => s + Math.min(l.quantityReceived || 0, l.quantityOrdered || 0), 0);
+            late.push({
+              id: String(o._id), number: o.number || o.reference || '—', supplier: o.supplier || '',
+              expectedDate: o.expectedDate, daysLate: Math.floor((today - new Date(o.expectedDate)) / 86400000),
+              receivedPct: ordered ? Math.round(received / ordered * 100) : 0, status: o.status,
+            });
+          }
+        }
+      }
+      late.sort((a, b) => b.daysLate - a.daysLate);
+      ordersSection = {
+        open, late: late.length, lateList: late.slice(0, 6), ordersNow, receptionsNow, pendingRequests,
+        spendNow: Math.round(spendNow * 100) / 100, spendPrev: Math.round(spendPrev * 100) / 100,
+        spend: keys.map(k => ({ key: k, value: Math.round(spend[k] * 100) / 100 })),
+      };
+    }
+
+    // ── QUOTES ─────────────────────────────────────────────────────────────
+    let devisSection = null;
+    if (seesDevis) {
+      const amount = (d) => (d.lines || []).reduce((s, l) => s + (l.quantity || 0) * (l.unitPrice || 0) * (1 - (l.discount || 0) / 100), 0);
+      const now = { brouillon: 0, envoye: 0, accepte: 0, refuse: 0 };
+      let acceptedAmount = 0, acceptedPrev = 0, sentTotal = 0;
+      for (const d of devis) {
+        const dd = new Date(d.date);
+        if (inRange(dd, from, to)) {
+          now[d.status] = (now[d.status] || 0) + 1;
+          if (d.status === 'accepte') acceptedAmount += amount(d);
+        } else if (d.status === 'accepte') acceptedPrev += amount(d);
+      }
+      sentTotal = now.envoye + now.accepte + now.refuse; // quotes that left the office
+      devisSection = {
+        counts: now, total: Object.values(now).reduce((a, b) => a + b, 0),
+        acceptanceRate: (now.accepte + now.refuse) ? Math.round(now.accepte / (now.accepte + now.refuse) * 100) : null,
+        sent: sentTotal,
+        acceptedAmount: Math.round(acceptedAmount * 100) / 100, acceptedPrev: Math.round(acceptedPrev * 100) / 100,
+      };
+    }
+
+    res.json({
+      range, bucket, from, to, prevFrom, generatedAt: new Date(), keys,
+      production: {
+        projects: { total: projects.length, active: activeList.length, byStatus: statusCount },
+        activePieces, activeEtats, byTab, projectsByTab, remplissagesByTab: rempByTab,
+        delivered: { now: deliveredNow, prev: deliveredPrev, undated: deliveredUndated, series: keys.map(k => ({ key: k, value: delivered[k] })) },
+        remplissages: { total: rempTotal, livre: rempLivre },
+        activeProjects: activeList.slice(0, 12),
+      },
+      stock: { items: items.length, rupture, alerte, couvert, bySuperCategory: stockRows, alerts: alerts.slice(0, 10), alertCount: alerts.length },
+      movements: { opsNow, opsPrev, inNow, outNow, flow: keys.map(k => ({ key: k, ...flow[k] })), topConsumed, consumed: consumedAll, consumedCategories, consumedSuperCategories },
+      orders: ordersSection,
+      devis: devisSection,
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

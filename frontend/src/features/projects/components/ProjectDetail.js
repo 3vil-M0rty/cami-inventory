@@ -14,6 +14,7 @@ import { BarresLaquerPanel, AccessoiresLaquerPanel } from './LaquagePanel';
 import { StepBack, CircleDashed, PlusCircle, ShipWheel, Package, Save, Wrench, Loader2, Download, Upload, FileSpreadsheet, Printer, CalendarDays, Search, X, AlertTriangle, Undo2, Plus, Pencil, Tag, Tags, Trash2, CircleCheck, PaintBucket, AppWindow, FileText, Banknote, Layers, Clock, CornerDownRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import './ProjectDetail.css';
+import { getQueryParam, updateQuery } from '../../../routes';
 
 const ETAT_OPTIONS = ['non_entame', 'en_cours', 'non_vitre', 'fabrique', 'livre', 'pret_a_livrer'];
 const ETAT_COLORS = {
@@ -2114,7 +2115,9 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
 
 
   const { t, currentLanguage } = useLanguage();
-  const [activeTab, setActiveTab] = useState('chassis');
+  // Detail tab kept in the URL (?vue=bl): a refresh reopens the same tab
+  const [activeTab, setActiveTabState] = useState(() => getQueryParam('vue') || 'chassis');
+  const setActiveTab = (key) => { setActiveTabState(key); updateQuery({ vue: key === 'chassis' ? null : key }); };
   const [showChassisForm, setShowChassisForm] = useState(false);
   const [showTypeManager, setShowTypeManager] = useState(false);
   const [showAccExport, setShowAccExport] = useState(false);
@@ -2418,6 +2421,8 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
     'Coordinateur-vitrage': ['chassis', 'bl'],
   };
   const visibleTabs = adminThing ? detailTabs : detailTabs.filter(sc => (ROLE_TAB_ACCESS[userRole] || []).includes(sc.key));
+  // Tab from the URL not allowed for this role (or unknown) → first tab the role can see
+  const shownTab = visibleTabs.some(tb => tb.key === activeTab) ? activeTab : (visibleTabs[0]?.key || activeTab);
 
   const vitrgAdmin = user?.role === 'admin' || user?.role === 'Coordinateur-vitrage';
 
@@ -2508,13 +2513,13 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
 
       <div className="project-detail__tabs">
         {visibleTabs.map(tab => (
-          <button key={tab.key} className={`project-detail__tab ${activeTab === tab.key ? 'project-detail__tab--active' : ''}`} onClick={() => setActiveTab(tab.key)}>
+          <button key={tab.key} className={`project-detail__tab ${shownTab === tab.key ? 'project-detail__tab--active' : ''}`} onClick={() => setActiveTab(tab.key)}>
             {tab.label}{tab.count !== null && <span className="tab-count">{tab.count}</span>}
           </button>
         ))}
       </div>
 
-      {activeTab === 'chassis' && (
+      {shownTab === 'chassis' && (
         <div className="project-detail__panel">
           <div className="panel-toolbar">
             {adminThing && <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>+ {t('addChassis')}</button>}
@@ -2859,10 +2864,10 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
         </div>
       )}
 
-      {activeTab === 'bars' && <UsedBarsPanel project={project} />}
-      {activeTab === 'bl' && <div className="project-detail__panel"><BLPanel project={project} t={t} language={language} /></div>}
-      {activeTab === 'barres_laquer' && <div className="project-detail__panel"><BarresLaquerPanel project={project} currentUser={currentUser} /></div>}
-      {activeTab === 'accessoires_laquer' && <div className="project-detail__panel"><AccessoiresLaquerPanel project={project} currentUser={currentUser} /></div>}
+      {shownTab === 'bars' && <UsedBarsPanel project={project} />}
+      {shownTab === 'bl' && <div className="project-detail__panel"><BLPanel project={project} t={t} language={language} /></div>}
+      {shownTab === 'barres_laquer' && <div className="project-detail__panel"><BarresLaquerPanel project={project} currentUser={currentUser} /></div>}
+      {shownTab === 'accessoires_laquer' && <div className="project-detail__panel"><AccessoiresLaquerPanel project={project} currentUser={currentUser} /></div>}
 
       {showChassisForm && <ChassisForm chassis={editingChassis} projectId={project.id} projectTab={projectTab} onClose={() => { setShowChassisForm(false); setEditingChassis(null); }} onSave={() => { setShowChassisForm(false); setEditingChassis(null); }} />}
       {showTypeManager && <ChassisTypeManager onClose={() => setShowTypeManager(false)} />}
