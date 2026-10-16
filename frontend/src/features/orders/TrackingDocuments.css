@@ -29,7 +29,7 @@
   display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px !important; border-radius: 8px !important;
   border: 1px solid var(--border-2) !important; background: var(--surface) !important; color: var(--text) !important; font: 600 12.5px/1 var(--font); cursor: pointer;
 }
-.td-btn:disabled { opacity: .5; cursor: default; }
+.td-btn:disabled { opacity: .4 !important; cursor: not-allowed !important; }
 .td-drop { padding: 16px; border-radius: 9px; border: 1px dashed var(--border-2); text-align: center; font-size: 12.5px; color: var(--text-3); }
 .td-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .td-list li { display: flex; align-items: center; gap: 2px; padding: 4px 4px 4px 0; border-radius: 9px; background: var(--surface); border: 1px solid var(--border); }
@@ -46,3 +46,41 @@
 .td-spin { animation: td-spin .9s linear infinite; }
 @keyframes td-spin { to { transform: rotate(360deg); } }
 .td-note { margin: 6px 2px 0; font-size: 11.5px; color: var(--text-4); line-height: 1.5; }
+
+/* ── Storage gauge (free-tier cap) ── */
+.td-gauge { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); font-size: 12px; color: var(--text-2); }
+.td-gauge svg { flex-shrink: 0; color: var(--text-3); }
+.td-gauge__txt { white-space: nowrap; }
+.td-gauge__bar { flex: 1; min-width: 60px; height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.td-gauge__bar i { display: block; height: 100%; border-radius: 999px; background: var(--ink-green); transition: width .3s; }
+.td-gauge strong { font-variant-numeric: tabular-nums; color: var(--text); min-width: 38px; text-align: right; }
+.td-gauge--warn .td-gauge__bar i { background: var(--ink-amber); }
+.td-gauge--warn strong { color: var(--ink-amber); }
+.td-gauge--full .td-gauge__bar i { background: var(--ink-red); }
+.td-gauge--full strong { color: var(--ink-red); }
+.td-gauge--compact { margin: 0; padding: 0 10px; height: 30px; min-width: 230px; }
+.td-warn { display: flex; align-items: center; gap: 8px; padding: 9px 12px; margin-bottom: 12px; border-radius: 9px; background: var(--warning-bg); border: 1px solid var(--warning-bd); color: var(--ink-amber); font-size: 12.5px; }
+
+/* ── Purchase order page: BL buttons on reception cards, invoices block ── */
+.td-bl-docs { display: flex; flex-wrap: wrap; gap: 6px; }
+.td-bl-view, .td-bl-manage {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px !important; border-radius: 8px !important;
+  font: 600 12px/1 var(--font); cursor: pointer; white-space: nowrap;
+}
+.td-bl-view { border: 1px solid rgba(74,222,128,.4) !important; background: rgba(74,222,128,.10) !important; color: var(--ink-green) !important; }
+.td-bl-view:hover { border-color: rgba(74,222,128,.75) !important; }
+.td-bl-manage { border: 1px dashed var(--border-2) !important; background: transparent !important; color: var(--text-3) !important; }
+.td-bl-manage:hover { color: var(--text) !important; border-color: var(--text-3) !important; }
+.td-order-docs { margin-top: 18px; padding: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+.td-order-docs__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.td-order-docs__head h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--text); display: inline-flex; align-items: center; gap: 8px; }
+.td-order-docs__head h3 span { font-size: 11px; font-weight: 700; color: var(--text-3); padding: 1px 7px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); }
+
+/* BL number typed before filing a delivery note (no reception yet) */
+.td-section__head .td-blno { flex: 1; max-width: 200px; height: 32px; margin-left: auto; font-size: 12.5px; }
+.td-bltag { font-style: normal; font-size: 11px; font-weight: 700; margin-right: 6px; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+.td-modal .td-section__head .td-blno {
+  padding: 0 10px; border: 1px solid var(--border-2); border-radius: 8px; font-family: inherit; font-weight: 500;
+  background: var(--surface); color: var(--text); outline: none;
+}
+.td-modal .td-section__head .td-blno:focus { border-color: var(--900); box-shadow: 0 0 0 3px var(--focus); }

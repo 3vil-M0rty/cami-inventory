@@ -1,0 +1,154 @@
+/* ── Reception of a whole BL (several lines at once) ── */
+.rb-modal { width: min(680px, 100%); max-height: 92vh; overflow-y: auto; }
+.rb-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.rb-head h2 { margin: 0 0 4px; }
+.rb-sub { font-size: 12.5px; color: var(--text-3); }
+.rb-sub strong { color: var(--text-2); }
+.rb-x {
+  width: 32px; height: 32px; padding: 0 !important; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  border-radius: 8px !important; border: 1px solid transparent !important; background: transparent !important; color: var(--text-3) !important; cursor: pointer;
+}
+.rb-x:hover { color: var(--text) !important; background: var(--surface-2) !important; border-color: var(--border) !important; }
+
+.rb-step { padding: 12px; margin-bottom: 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); }
+.rb-step h3 { margin: 0 0 10px; font-size: 13.5px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.rb-step h3 span {
+  width: 20px; height: 20px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; background: var(--text); color: var(--surface);
+}
+.rb-step__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.rb-step__head h3 { margin-bottom: 10px; }
+.rb-step__tools { display: flex; gap: 6px; margin-bottom: 10px; }
+.rb-link {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px !important; border-radius: 8px !important;
+  border: 1px solid var(--border-2) !important; background: var(--surface) !important; color: var(--text) !important; font: 600 12px/1 var(--font); cursor: pointer;
+}
+.rb-link:hover { border-color: var(--text-3) !important; }
+
+.rb-bls { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; margin-bottom: 10px; }
+.rb-bl {
+  display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 10px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); transition: border-color var(--t), background var(--t);
+}
+.rb-bl:hover { border-color: var(--text-3); }
+.rb-bl.is-on { border-color: var(--ink-green); background: rgba(74,222,128,.08); }
+.rb-bl__radio {
+  width: 16px; height: 16px; border-radius: 999px; flex-shrink: 0; border: 1.5px solid var(--border-2);
+  display: inline-flex; align-items: center; justify-content: center; color: var(--surface);
+}
+.rb-bl.is-on .rb-bl__radio { background: var(--ink-green); border-color: var(--ink-green); }
+.rb-bl__txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.rb-bl__txt strong { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-bl__txt span { font-size: 11px; color: var(--text-3); }
+.rb-doc {
+  display: inline-flex; align-items: center; gap: 3px; height: 26px; padding: 0 7px !important; border-radius: 7px !important; flex-shrink: 0;
+  border: 1px solid var(--border) !important; background: var(--surface-2) !important; color: var(--text-2) !important; cursor: pointer;
+}
+.rb-doc:hover { color: var(--text) !important; border-color: var(--text-3) !important; }
+
+.rb-other { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: var(--text-3); }
+.rb-other input { max-width: 280px; }
+.rb-hint { margin: 8px 0 0; font-size: 11.5px; color: var(--text-3); line-height: 1.5; }
+
+.rb-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rb-lines li {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  padding: 6px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+}
+.rb-lines li.is-set { border-color: rgba(74,222,128,.45); }
+.rb-lines__img { width: 34px; height: 34px; border-radius: 8px; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--text-3); }
+.rb-lines__img img { width: 100%; height: 100%; object-fit: cover; }
+.rb-lines__name { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rb-lines__name strong { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-lines__name span { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.rb-lines__qty { display: inline-flex; align-items: center; gap: 6px; }
+.modal .rb-lines__qty input { width: 84px; height: 34px; padding: 0 8px; text-align: right; font-variant-numeric: tabular-nums; }
+.modal .rb-lines__qty input.is-over { border-color: var(--ink-amber); }
+.rb-rest {
+  min-width: 52px; height: 30px; padding: 0 8px !important; border-radius: 7px !important; cursor: pointer;
+  border: 1px dashed var(--border-2) !important; background: transparent !important; color: var(--text-3) !important;
+  font: 600 12px/1 var(--font); font-variant-numeric: tabular-nums;
+}
+.rb-rest:hover { color: var(--text) !important; border-style: solid !important; }
+.rb-over { grid-column: 2 / -1; display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink-amber); }
+.rb-empty { padding: 14px; border-radius: 9px; border: 1px dashed var(--border-2); text-align: center; font-size: 12.5px; color: var(--text-3); }
+.rb-error { display: flex; align-items: center; gap: 8px; padding: 9px 12px; margin-bottom: 4px; border-radius: 9px; background: var(--danger-bg); border: 1px solid var(--danger-bd); color: var(--danger); font-size: 12.5px; }
+
+/* ── BLs filed in the Suivi, waiting for reception (order page) ── */
+.rb-pending { margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--warning-bd); background: var(--warning-bg); }
+.rb-pending__head { display: flex; align-items: center; gap: 8px; color: var(--ink-amber); margin-bottom: 8px; }
+.rb-pending__head h3 { margin: 0; font-size: 13px; font-weight: 700; color: var(--text); display: inline-flex; align-items: center; gap: 8px; }
+.rb-pending__head h3 span { font-size: 11px; color: var(--text-3); padding: 1px 7px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); }
+.rb-pending ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rb-pending li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 8px 6px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
+.rb-pending__no { font-size: 13px; color: var(--text-2); }
+.rb-pending__no strong { color: var(--text); }
+.rb-pending__meta { flex: 1; font-size: 11.5px; color: var(--text-3); }
+.orders-page .rb-pending__go { gap: 6px; }
+
+/* Header button of the ordered items */
+.orders-page .rb-receive-all { margin-left: auto; gap: 6px; text-transform: none; letter-spacing: 0; font-size: 12.5px; }
+
+@media (max-width: 560px) {
+  .rb-lines li { grid-template-columns: 30px minmax(0, 1fr); }
+  .rb-lines__qty { grid-column: 1 / -1; justify-content: flex-end; }
+}
+
+/* Text inputs of this window (outside .form-group) */
+.modal .rb-other input, .modal .rb-lines__qty input {
+  border: 1px solid var(--border-2); border-radius: var(--r-md); font-size: 14px; font-family: inherit; font-weight: 500;
+  background: var(--surface); color: var(--text); outline: none; transition: border-color var(--t), box-shadow var(--t);
+}
+.modal .rb-other input { width: 100%; height: 38px; padding: 0 12px; }
+.modal .rb-other input:focus, .modal .rb-lines__qty input:focus { border-color: var(--900); box-shadow: 0 0 0 3px var(--focus); }
+.modal .rb-other input::placeholder { color: var(--text-4); }
+
+/* ── Banner under the header: delivery notes to receive ── */
+.blq-banner {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 14px 48px 0; padding: 10px 12px 10px 14px; border-radius: 12px;
+  border: 1px solid var(--warning-bd); background: var(--warning-bg); color: var(--text);
+}
+.blq-banner__icon { width: 32px; height: 32px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; background: var(--surface); color: var(--ink-amber); flex-shrink: 0; }
+.blq-banner__txt { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 2px; }
+.blq-banner__txt strong { font-size: 13.5px; }
+.blq-banner__txt span { font-size: 12px; color: var(--text-3); }
+.blq-banner__btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--900); background: var(--900); color: var(--text-inv); font: 600 12.5px/1 var(--font);
+}
+.blq-banner__btn:hover { background: var(--black); }
+.blq-banner__btn--ghost { background: var(--surface); color: var(--text); border-color: var(--border-2); }
+.blq-banner__btn--ghost:hover { background: var(--surface-2); }
+.blq-banner__x { width: 30px; height: 30px; border-radius: 8px; border: 0; background: transparent; color: var(--text-3); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.blq-banner__x:hover { color: var(--text); background: var(--surface); }
+@media (max-width: 700px) { .blq-banner { margin: 10px 16px 0; } }
+
+/* ── « À réceptionner » tab ── */
+.blq-panel__intro { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.blq-panel__intro p { flex: 1; min-width: 240px; margin: 0; font-size: 13px; color: var(--text-3); line-height: 1.5; }
+.blq-panel__ok { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--ink-green); }
+.blq-panel__off { font-size: 12px; color: var(--text-3); }
+.blq-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.blq-list li {
+  display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto auto; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface);
+}
+.blq-list li:hover { border-color: var(--border-2); }
+.blq-list__icon { width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--warning-bg); color: var(--ink-amber); }
+.blq-list__main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.blq-list__main strong { font-size: 14px; color: var(--text); }
+.blq-list__main span { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blq-list__main b { color: var(--text-2); font-weight: 600; }
+.blq-list__meta { font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+.blq-list__docs { display: inline-flex; gap: 4px; }
+.orders-page .blq-list__go { gap: 6px; }
+.blq-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 48px 16px; border-radius: 12px; border: 1px dashed var(--border-2); color: var(--text-3); text-align: center; }
+.blq-empty strong { color: var(--text-2); font-size: 14px; }
+.blq-empty span { font-size: 12.5px; }
+@media (max-width: 760px) {
+  .blq-list li { grid-template-columns: 36px minmax(0, 1fr) auto; }
+  .blq-list__meta { grid-column: 2 / -1; grid-row: 2; white-space: normal; }
+  .blq-list__docs { grid-column: 2; grid-row: 3; }
+  .orders-page .blq-list__go { grid-column: 3; grid-row: 1 / span 3; }
+}

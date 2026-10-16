@@ -51,7 +51,8 @@ function supplierCodeFor(item, supplierId) {
   return hit?.code || '';
 }
 
-export async function exportOrderPDF(order, lang = 'fr', company = null) {
+// hidePrices: users who may not see purchase prices (only Admin, ACHAT, accountant) get no P.U. / totals
+export async function exportOrderPDF(order, lang = 'fr', company = null, { hidePrices = false } = {}) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
   const accent = company?.color || '#1a1a1a';
@@ -105,8 +106,7 @@ export async function exportOrderPDF(order, lang = 'fr', company = null) {
       supplierCodeFor(it, supplier),
       (it.designation?.[lang] || it.designation?.fr || tr('article', lang)) + (l.note ? `\n${l.note}` : ''),
       String(l.quantityOrdered || 0),
-      money(l.unitPrice),
-      money(lineTotal),
+      ...(hidePrices ? [] : [money(l.unitPrice), money(lineTotal)]),
     ];
   });
   const totalHT = lines.reduce((s, l) => s + (l.quantityOrdered || 0) * (l.unitPrice || 0), 0);
@@ -116,7 +116,7 @@ export async function exportOrderPDF(order, lang = 'fr', company = null) {
 
   autoTable(doc, {
     startY: y + 4,
-    head: [[tr('codeInt', lang), tr('codeFour', lang), tr('desig', lang), tr('qty', lang), tr('pu', lang), tr('total', lang)]],
+    head: [[tr('codeInt', lang), tr('codeFour', lang), tr('desig', lang), tr('qty', lang), ...(hidePrices ? [] : [tr('pu', lang), tr('total', lang)])]],
     body,
     theme: 'striped',
     styles: { fontSize: 8, cellPadding: 2 },
@@ -138,11 +138,13 @@ export async function exportOrderPDF(order, lang = 'fr', company = null) {
     doc.text(`${money(val)} MAD`, valX, ty, { align: 'right' });
     ty += 5.5;
   };
-  row(tr('totalHT', lang), totalHT);
-  row(`${tr('tva', lang)} (${tvaRate}%)`, tvaAmt);
-  doc.setDrawColor(200).line(labelX, ty - 2, valX, ty - 2);
-  doc.setTextColor(accent);
-  row(tr('totalTTC', lang), ttc, true);
+  if (!hidePrices) {
+    row(tr('totalHT', lang), totalHT);
+    row(`${tr('tva', lang)} (${tvaRate}%)`, tvaAmt);
+    doc.setDrawColor(200).line(labelX, ty - 2, valX, ty - 2);
+    doc.setTextColor(accent);
+    row(tr('totalTTC', lang), ttc, true);
+  }
 
   if (order.notes) {
     ty += 4;
@@ -154,7 +156,7 @@ export async function exportOrderPDF(order, lang = 'fr', company = null) {
   doc.save(`${tr('bc', lang)}_${order.number || order.reference || tr('draftFile', lang)}.pdf`);
 }
 
-export function exportOrdersExcel(orders, lang = 'fr') {
+export function exportOrdersExcel(orders, lang = 'fr', { hidePrices = false } = {}) {
   const rows = [];
   (orders || []).forEach(o => {
     (o.lines || []).forEach(l => {
@@ -170,8 +172,10 @@ export function exportOrdersExcel(orders, lang = 'fr') {
         [tr('desig', lang)]: it.designation?.[lang] || it.designation?.fr || '',
         [tr('xQtyOrd', lang)]: l.quantityOrdered,
         [tr('xQtyRec', lang)]: l.quantityReceived || 0,
-        [tr('pu', lang)]: l.unitPrice || 0,
-        [tr('total', lang)]: (l.quantityOrdered || 0) * (l.unitPrice || 0),
+        ...(hidePrices ? {} : {
+          [tr('pu', lang)]: l.unitPrice || 0,
+          [tr('total', lang)]: (l.quantityOrdered || 0) * (l.unitPrice || 0),
+        }),
       });
     });
   });

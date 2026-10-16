@@ -1800,6 +1800,24 @@ app.delete('/api/inventory/:id', optionalAuth, async (req, res) => {
 });
 // ==================== ORDER ROUTES ====================
 
+// Purchase prices are only for Admin, ACHAT (orders.edit) and the accountant (orders.accounting):
+// for everyone else, every `unitPrice` is removed from the order responses (list, detail,
+// receptions, article → orders). Checked when the response is sent, i.e. after requireAuth.
+const stripUnitPrices = (v) => {
+  if (Array.isArray(v)) { v.forEach(stripUnitPrices); return v; }
+  if (v && typeof v === 'object') { delete v.unitPrice; Object.values(v).forEach(stripUnitPrices); }
+  return v;
+};
+app.use(['/api/orders', '/api/inventory/:id/orders'], (req, res, next) => {
+  const json = res.json.bind(res);
+  res.json = (body) => {
+    if (!req.user || canAccounting(req) || body == null || typeof body !== 'object') return json(body);
+    // Copy first: the list may come from ordersListCache, shared with other users
+    return json(stripUnitPrices(JSON.parse(JSON.stringify(body))));
+  };
+  next();
+});
+
 const populateOrder = (q) => q
   .populate({ path: 'lines.itemId', populate: { path: 'categoryId' } })
   .populate('companyId').populate('supplierId');
@@ -1979,6 +1997,46 @@ app.get('/api/inventory/:id/orders', requireAuth, requireOrdersView, async (req,
       }
     }
     res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/orders/bls-to-receive → delivery notes filed in the Suivi (scan + BL number) that are not
+// received in stock yet, limited to the orders where this user has something to receive
+// (Magasinier: accessoires, Laquage: poudre, Coordinateur-vitrage: verre, Admin: everything).
+// Polled by the badge / banner of the receiving accounts.
+app.get('/api/orders/bls-to-receive', requireAuth, async (req, res) => {
+  try {
+    const admin = isAdmin(req);
+    const allowed = admin ? null : receivingCategoriesForRole(req.user?.roleId?.name || '');
+    if (!admin && !allowed.length) return res.json({ count: 0, items: [] });
+    const filter = { status: { $in: ['envoye', 'partielle'] } };
+    if (!admin) filter.categories = { $in: allowed };
+    const orders = await Order.find(filter)
+      .select('number reference supplier supplierId lines.itemId lines.closed lines.quantityOrdered lines.quantityReceived receptions.blNumber receptions.cancelled')
+      .populate('supplierId', 'name').populate('lines.itemId', 'superCategory').lean();
+    // only orders with an open line this user may receive
+    const mine = orders.filter(o => (o.lines || []).some(l => !l.closed && (l.quantityReceived || 0) < l.quantityOrdered
+      && (admin || allowed.includes(l.itemId?.superCategory || 'aluminium'))));
+    if (!mine.length) return res.json({ count: 0, items: [] });
+    const byId = new Map(mine.map(o => [String(o._id), o]));
+    const rows = await OrderTracking.find({ orderId: { $in: mine.map(o => o._id) }, blNumber: { $ne: '' }, 'documents.kind': 'bl' })
+      .select('orderId blNumber documents').lean();
+    const items = [];
+    for (const r of rows) {
+      const o = byId.get(String(r.orderId));
+      if (!o || (o.receptions || []).some(x => !x.cancelled && x.blNumber === r.blNumber)) continue;
+      const docs = (r.documents || []).filter(d => d.kind === 'bl')
+        .map(d => ({ id: String(d._id), kind: 'bl', blNumber: r.blNumber, name: d.name, contentType: d.contentType, size: d.size, uploadedAt: d.uploadedAt, uploadedBy: d.uploadedBy }));
+      if (!docs.length) continue;
+      const first = docs.reduce((m, d) => (new Date(d.uploadedAt) < new Date(m.uploadedAt) ? d : m), docs[0]);
+      items.push({
+        key: `${o._id}::${r.blNumber}`, orderId: String(o._id), orderNumber: o.number || o.reference || '',
+        supplier: o.supplierId?.name || o.supplier || '', blNumber: r.blNumber,
+        filedAt: first.uploadedAt, filedBy: first.uploadedBy || '', docs,
+      });
+    }
+    items.sort((a, b) => new Date(b.filedAt) - new Date(a.filedAt));
+    res.json({ count: items.length, items });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2259,6 +2317,62 @@ app.post('/api/orders/:id/send', requireAuth, requirePermission('orders.edit'), 
 
 // Receive — achat allowed even on sent orders (normal workflow).
 // Receive — réservé au rôle concerné par la catégorie du BC (ou Admin). BL obligatoire.
+// POST /api/orders/:id/receive-batch  { blNumber, lines: [{ lineId, quantity }] }
+// One delivery (one BL) received in one go: `quantity` is what arrives NOW for each line (not the
+// running total). Everything is checked first (BL, permissions, closed lines, quantities); nothing
+// is written if one line is refused.
+app.post('/api/orders/:id/receive-batch', requireAuth, async (req, res) => {
+  try {
+    const blNumber = String(req.body?.blNumber || '').trim().slice(0, 80);
+    if (!blNumber) return res.status(400).json({ error: 'Le numéro de BL de réception est requis.' });
+    const wanted = (Array.isArray(req.body?.lines) ? req.body.lines : [])
+      .map(l => ({ lineId: String(l?.lineId || ''), quantity: Number(l?.quantity) }))
+      .filter(l => l.quantity !== 0);
+    if (!wanted.length) return res.status(400).json({ error: 'Indiquez au moins une quantité reçue.' });
+    if (wanted.some(l => !Number.isFinite(l.quantity) || l.quantity < 0)) return res.status(400).json({ error: 'Quantité invalide.' });
+    if (new Set(wanted.map(l => l.lineId)).size !== wanted.length) return res.status(400).json({ error: 'Une ligne apparaît deux fois.' });
+
+    const o = await Order.findById(req.params.id);
+    if (!o) return res.status(404).json({ error: 'Order not found' });
+    if (o.status === 'brouillon') return res.status(400).json({ error: 'Envoyez le bon de commande avant de réceptionner.' });
+    if (o.status === 'annulee') return res.status(400).json({ error: 'Bon de commande annulé.' });
+
+    const plan = [];
+    for (const w of wanted) {
+      const line = mongoose.Types.ObjectId.isValid(w.lineId) ? o.lines.id(w.lineId) : null;
+      if (!line) return res.status(404).json({ error: 'Ligne introuvable dans ce bon de commande.' });
+      const item = await Item.findById(line.itemId);
+      const label = item?.designation?.fr || item?.codeInterne || 'article';
+      if (line.closed) return res.status(400).json({ error: `La ligne « ${label} » est clôturée.` });
+      if (!(await canReceiveOrderLine(req, o, line.itemId))) {
+        const sc = item?.superCategory || 'aluminium';
+        return res.status(403).json({ error: `Vous ne pouvez pas réceptionner les articles "${sc}" (« ${label} »). Cette action est réservée au rôle "${CATEGORY_RECEIVE_ROLE[sc] || 'Admin'}" (ou Admin).` });
+      }
+      plan.push({ line, item, quantity: w.quantity });
+    }
+
+    const by = req.user?.displayName || req.user?.username || '';
+    const now = new Date();
+    for (const { line, item, quantity } of plan) {
+      line.quantityReceived = (line.quantityReceived || 0) + quantity;
+      if (item) {
+        item.quantity += quantity;
+        await item.save();
+        await StockMovement.create({
+          itemId: item._id, type: 'order_reception', quantity,
+          balanceAfter: item.quantity, orderId: o._id,
+          note: `Réception ${o.number || o.reference} — BL ${blNumber}`,
+        });
+      }
+      o.receptions.push({ lineId: line._id, quantityReceived: quantity, blNumber, receivedBy: by, receivedAt: now });
+    }
+    refreshOrderStatus(o);
+    await o.save();
+    await recomputeOrderedQuantity(plan.map(p => p.line.itemId));
+    res.json(await populateOrder(Order.findById(o._id)));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.patch('/api/orders/:id/receive', requireAuth, async (req, res) => {
   try {
     const { lineId, quantityReceived, blNumber } = req.body;
@@ -2555,7 +2669,13 @@ async function buildTrackingRows(orderFilter) {
       .select('orderId blNumber factureStatus modePaiement typeFacture remarque documents factureNumber factureDate paiementStatus paiementDate montantPaye').lean()
     : [];
   const trackingMap = {};
-  trackingDocs.forEach(t => { trackingMap[`${t.orderId}::${t.blNumber || ''}`] = t; });
+  const trackingByOrder = new Map();
+  trackingDocs.forEach(t => {
+    trackingMap[`${t.orderId}::${t.blNumber || ''}`] = t;
+    const k = String(t.orderId);
+    if (!trackingByOrder.has(k)) trackingByOrder.set(k, []);
+    trackingByOrder.get(k).push(t);
+  });
   const today = new Date();
 
   const rows = [];
@@ -2606,6 +2726,13 @@ async function buildTrackingRows(orderFilter) {
       };
     };
 
+    // BL filed in the Suivi but not received in stock yet: own row, amount known at reception
+    const pending = (trackingByOrder.get(String(o._id)) || []).filter(t => t.blNumber && !blGroups[t.blNumber]
+      && (t.documents || []).some(d => d.kind === 'bl'));
+    for (const t of pending) {
+      const first = t.documents.filter(d => d.kind === 'bl').reduce((m, d) => (!m || new Date(d.uploadedAt) < new Date(m) ? d.uploadedAt : m), null);
+      rows.push({ ...buildRow(t.blNumber, first, 0), blPending: true });
+    }
     if (blKeys.length === 0) {
       rows.push(buildRow('', o.orderDate, 0));
     } else {
@@ -2724,6 +2851,24 @@ app.patch('/api/order-tracking', requireAuth, requireAccounting, async (req, res
 // .env: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET   (npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner)
 // R2_ENDPOINT is optional (another S3-compatible service, or a local test server).
 const DOC_MAX_BYTES = 15 * 1024 * 1024;
+// Storage cap — stays under Cloudflare's free 10 GB. Uploads are refused beyond it; warning from 80 %.
+const GB = 1024 * 1024 * 1024;
+const DOC_QUOTA_BYTES = Math.min(Number(process.env.R2_QUOTA_GB) || 9, 9.5) * GB;
+const DOC_WARN_RATIO = 0.8;
+// Space used = sum of the sizes recorded for every document (every file goes through this server)
+let docUsageCache = null; // { bytes, count, at }
+async function docUsage(force = false) {
+  if (!force && docUsageCache && Date.now() - docUsageCache.at < 60000) return docUsageCache;
+  const rows = await OrderTracking.find({ 'documents.0': { $exists: true } }).select('documents.size').lean();
+  let bytes = 0, count = 0;
+  for (const r of rows) for (const d of r.documents || []) { bytes += d.size || 0; count++; }
+  docUsageCache = { bytes, count, at: Date.now() };
+  return docUsageCache;
+}
+const usageView = (u) => ({
+  used: u.bytes, count: u.count, limit: DOC_QUOTA_BYTES, warnAt: Math.round(DOC_QUOTA_BYTES * DOC_WARN_RATIO),
+  pct: Math.round((u.bytes / DOC_QUOTA_BYTES) * 1000) / 10, full: u.bytes >= DOC_QUOTA_BYTES,
+});
 let r2Client = null;
 function r2() {
   const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT } = process.env;
@@ -2764,15 +2909,23 @@ const readDocBody = (req, res, next) => docBody(req, res, (err) => {
 app.post('/api/order-tracking/documents', requireAuth, requireAccounting, readDocBody, async (req, res) => {
     try {
       const { orderId, kind } = req.query;
-      const blNumber = String(req.query.blNumber || '');
+      const blNumber = String(req.query.blNumber || '').trim().slice(0, 80);
       if (!mongoose.Types.ObjectId.isValid(orderId)) return res.status(400).json({ error: 'Commande invalide' });
       if (!['facture', 'bl'].includes(kind)) return res.status(400).json({ error: 'Type de document invalide' });
+      // A delivery note is filed under its own number: the warehouse then picks it at reception
+      if (kind === 'bl' && !blNumber.trim()) return res.status(400).json({ error: 'Indiquez le numéro du BL.' });
       const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
       if (!buf.length) return res.status(400).json({ error: 'Fichier vide' });
       const sniff = sniffDoc(buf);
       if (!sniff) return res.status(415).json({ error: 'Format non accepté : PDF, JPG, PNG ou WebP uniquement.' });
       const order = await Order.findById(orderId).select('number reference orderDate').lean();
       if (!order) return res.status(404).json({ error: 'Commande introuvable' });
+      // Free-tier guard: never go past the cap
+      const usage = await docUsage(true);
+      if (usage.bytes + buf.length > DOC_QUOTA_BYTES) {
+        const go = (b) => (b / GB).toFixed(2).replace('.', ',');
+        return res.status(507).json({ error: `Plus assez d'espace de stockage : ${go(usage.bytes)} Go utilisés sur ${go(DOC_QUOTA_BYTES)} Go (limite fixée pour rester gratuit). Supprimez d'anciens documents pour en ajouter.`, storage: usageView(usage) });
+      }
       const { client, sdk, bucket } = r2();
       const year = new Date(order.orderDate || Date.now()).getFullYear();
       const base = String(req.query.name || `${kind}.${sniff.ext}`).replace(/\.[^.]+$/, '');
@@ -2783,17 +2936,57 @@ app.post('/api/order-tracking/documents', requireAuth, requireAccounting, readDo
       if (kind === 'facture') update.$set = { factureStatus: 'recue' }; // an invoice is attached → it was received
       const t = await OrderTracking.findOneAndUpdate({ orderId, blNumber }, update, { upsert: true, new: true });
       const saved = t.documents[t.documents.length - 1];
-      res.status(201).json({ id: String(saved._id), kind: saved.kind, name: saved.name, contentType: saved.contentType, size: saved.size, uploadedAt: saved.uploadedAt, uploadedBy: saved.uploadedBy, factureStatus: t.factureStatus });
+      const after = await docUsage(true);
+      res.status(201).json({ id: String(saved._id), kind: saved.kind, blNumber, name: saved.name, contentType: saved.contentType, size: saved.size, uploadedAt: saved.uploadedAt, uploadedBy: saved.uploadedBy, factureStatus: t.factureStatus, storage: usageView(after) });
     } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
+// Same rule as the purchase order page: orders.view / admin see every order; receiving roles only
+// the sent orders of their categories.
+function canSeeOrder(req, order) {
+  if (isAdmin(req) || (req.permissions || []).includes('orders.view')) return true;
+  const allowed = receivingCategoriesForRole(req.user?.roleId?.name || '');
+  return order.status !== 'brouillon' && (order.categories || []).some(c => allowed.includes(c));
+}
+
+// GET /api/orders/:id/documents → documents attached to the order in the Suivi:
+//   delivery notes (everyone who can see the order) + invoices (ACHAT / accountant / admin only)
+app.get('/api/orders/:id/documents', requireAuth, requireOrdersView, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Commande invalide' });
+    const order = await Order.findById(req.params.id).select('status categories').lean();
+    if (!order) return res.status(404).json({ error: 'Not found' });
+    if (!canSeeOrder(req, order)) return res.status(403).json({ error: 'Accès refusé à cette commande.' });
+    const withInvoices = canAccounting(req);
+    const rows = await OrderTracking.find({ orderId: order._id, 'documents.0': { $exists: true } }).select('blNumber documents').lean();
+    const docs = [];
+    for (const r of rows) for (const d of r.documents || []) {
+      if (d.kind === 'facture' && !withInvoices) continue;
+      docs.push({ id: String(d._id), kind: d.kind, blNumber: r.blNumber || '', name: d.name, contentType: d.contentType, size: d.size, uploadedAt: d.uploadedAt, uploadedBy: d.uploadedBy });
+    }
+    docs.sort((a, b) => new Date(a.uploadedAt) - new Date(b.uploadedAt));
+    res.json({ documents: docs, canManage: withInvoices });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/order-tracking/storage → space used by the documents vs the free-tier cap
+app.get('/api/order-tracking/storage', requireAuth, requireAccounting, async (req, res) => {
+  try { res.json(usageView(await docUsage())); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/order-tracking/documents/:docId/url → { url } valid 5 minutes (opens in the browser)
-app.get('/api/order-tracking/documents/:docId/url', requireAuth, requireAccounting, async (req, res) => {
+app.get('/api/order-tracking/documents/:docId/url', requireAuth, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.docId)) return res.status(400).json({ error: 'Document invalide' });
-    const t = await OrderTracking.findOne({ 'documents._id': req.params.docId }).select('documents').lean();
+    const t = await OrderTracking.findOne({ 'documents._id': req.params.docId }).select('orderId documents').lean();
     const d = t?.documents.find(x => String(x._id) === req.params.docId);
     if (!d) return res.status(404).json({ error: 'Document introuvable' });
+    if (!canAccounting(req)) {
+      // Delivery notes are visible to whoever can see the order (warehouse…); invoices are not
+      const order = d.kind === 'bl' && canViewOrders(req) ? await Order.findById(t.orderId).select('status categories').lean() : null;
+      if (!order || !canSeeOrder(req, order)) return res.status(403).json({ error: 'Accès refusé à ce document.' });
+    }
     const { client, sdk, presigner, bucket } = r2();
     const disposition = `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${safeKeyPart(d.name)}"; filename*=UTF-8''${encodeURIComponent(d.name)}`;
     const url = await presigner.getSignedUrl(client, new sdk.GetObjectCommand({
@@ -2814,7 +3007,7 @@ app.delete('/api/order-tracking/documents/:docId', requireAuth, requireAccountin
     await client.send(new sdk.DeleteObjectCommand({ Bucket: bucket, Key: d.key }));
     // the list is rewritten without this document (no $pull: works on every MongoDB-compatible database)
     await OrderTracking.updateOne({ _id: t._id }, { $set: { documents: t.documents.filter(x => String(x._id) !== req.params.docId) } });
-    res.json({ success: true });
+    res.json({ success: true, storage: usageView(await docUsage(true)) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
@@ -4301,10 +4494,13 @@ app.get('/api/analytics/overview', requireAuth, requirePermission('analytics.vie
         }
       }
       late.sort((a, b) => b.daysLate - a.daysLate);
+      // Amounts only for those who may see purchase prices (Admin, ACHAT, accountant)
+      const seesPrices = canAccounting(req);
       ordersSection = {
         open, late: late.length, lateList: late.slice(0, 6), ordersNow, receptionsNow, pendingRequests,
-        spendNow: Math.round(spendNow * 100) / 100, spendPrev: Math.round(spendPrev * 100) / 100,
-        spend: keys.map(k => ({ key: k, value: Math.round(spend[k] * 100) / 100 })),
+        spendNow: seesPrices ? Math.round(spendNow * 100) / 100 : null,
+        spendPrev: seesPrices ? Math.round(spendPrev * 100) / 100 : null,
+        spend: seesPrices ? keys.map(k => ({ key: k, value: Math.round(spend[k] * 100) / 100 })) : null,
       };
     }
 

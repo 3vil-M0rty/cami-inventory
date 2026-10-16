@@ -335,3 +335,13 @@
   border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text);
   font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
 }
+
+/* Count of delivery notes waiting for reception (ACHATS link) */
+.hdr__nav-badge {
+  min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--ink-amber); color: #1a1205; font: 700 10px/1 var(--font); letter-spacing: 0;
+  animation: hdr-badge-pulse 2.4s ease-in-out infinite;
+}
+@keyframes hdr-badge-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,.45); } 50% { box-shadow: 0 0 0 5px rgba(245,158,11,0); } }
+@media (prefers-reduced-motion: reduce) { .hdr__nav-badge { animation: none; } }

@@ -22,6 +22,7 @@ import { PAGE_PATHS, pageFromLocation, setUrl } from './routes';
 import { DialogHost } from './components/common/dialog';
 
 import { Lock } from 'lucide-react';
+import { BlsToReceiveBanner } from './features/orders/BlsToReceive';
 const PROJECTS_DEFAULT_ROLES = new Set(['LOGISTIQUE', 'Coordinateur', 'BARREMAN']);
 const CHANTIER_DEFAULT_ROLES = new Set(['chefChantier', 'BARREMAN']);
 // Rôles qui reçoivent des commandes par catégorie (accessoires / poudre / verre)
@@ -137,6 +138,12 @@ function AppInner() {
         <ProjectProvider>
           <div className="app">
             <Header activePage={activePage} onNavigate={navigate} />
+            {canAccessOrders && (
+              <BlsToReceiveBanner onOpenList={() => {
+                setUrl(PAGE_PATHS.orders, { query: { onglet: 'reception' } });
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }} />
+            )}
             <main className="app__main">
               {!currentAllowed ? (
                 <div style={{ textAlign: 'center', padding: 80 }}>

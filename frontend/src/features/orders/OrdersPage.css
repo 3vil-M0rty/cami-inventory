@@ -852,3 +852,9 @@
 .orders-page .pr-totals-pay { text-align: left; font-size: 12.5px; color: var(--text-2); }
 .orders-page .pr-totals-pay strong { color: var(--text); font-variant-numeric: tabular-nums; }
 .orders-page .pr-late, .orders-page .pr-late strong { color: var(--ink-red); }
+
+/* Suivi: BL filed but not received in stock yet */
+.orders-page .pr-bl-pending {
+  display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;vertical-align:middle;
+  font-size:10.5px;font-weight:700;color:var(--ink-amber);background:var(--warning-bg);border:1px solid var(--warning-bd);white-space:nowrap;
+}

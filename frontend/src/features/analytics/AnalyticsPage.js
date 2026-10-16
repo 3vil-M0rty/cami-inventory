@@ -573,7 +573,7 @@ export default function AnalyticsPage() {
             <Tile icon={Clock} label={t('dbKpiLate')} value={f.n(O.late)} tone={O.late ? 'serious' : 'good'}
               sub={t('dbKpiLateSub', { n: O.open })} onClick={() => goTo(PAGE_PATHS.orders, { onglet: 'suivi' })} />
           )}
-          {O && (
+          {O && O.spendNow != null && (
             <Tile icon={ShoppingCart} label={t('dbKpiSpend')} value={f.money(O.spendNow)}
               delta={<Delta now={O.spendNow} prev={O.spendPrev} t={t} upIsGood={false} />}
               spark={O.spend.map(d => d.value)} sparkColor="var(--viz-1)"

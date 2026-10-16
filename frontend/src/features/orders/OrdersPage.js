@@ -4,12 +4,15 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import './OrdersPage.css';
 import { exportOrdersExcel, exportOrderPDF } from '../../utils/orderExport';
-import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus, ClipboardList, RefreshCw, X, Check, AlertTriangle, ArrowRight, StickyNote, ChevronLeft, ChevronRight, Truck } from 'lucide-react';
+import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus, ClipboardList, RefreshCw, X, Check, AlertTriangle, ArrowRight, StickyNote, ChevronLeft, ChevronRight, Truck, PackageCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dialog, errorMessage } from '../../components/common/dialog';
 import { PAGE_PATHS, subPathFromLocation, getQueryParam, setUrl } from '../../routes';
 import SuppliersPanel, { SupplierFormModal } from './SuppliersPanel';
-import { DocumentsCell, DocumentsModal } from './TrackingDocuments';
+import { DocumentsCell, DocumentsModal, StorageGauge, BlDocButtons, OrderDocumentsBlock } from './TrackingDocuments';
+import { ReceiveBatchModal, PendingBlsBlock } from './ReceiveBatch';
+import { BlsToReceivePanel } from './BlsToReceive';
+import { useBlsToReceive, canReceiveBls, refreshBls } from './receptionQueue';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -99,9 +102,7 @@ export default function OrdersPage() {
   const [showForm, setShowForm] = useState(false);
   const [editOrder, setEditOrder] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null); // detail view
-  const [receiveModal, setReceiveModal] = useState(null);
-  const [receiveQty, setReceiveQty] = useState(0);
-  const [receiveBlNumber, setReceiveBlNumber] = useState('');
+  const [batchReceive, setBatchReceive] = useState(null); // { initialBl } → reception of a whole BL
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [exportingPdf, setExportingPdf] = useState(null);
@@ -118,14 +119,23 @@ export default function OrdersPage() {
       return requiredRole && user?.role === requiredRole;
     });
   };
+  // A line is received by the role of its article's family (same rule as the server)
+  const canReceiveLine = (line) => isAdmin || CATEGORY_RECEIVE_ROLE[line.itemId?.superCategory || 'aluminium'] === user?.role;
   const [pendingRequests, setPendingRequests] = useState(0); // badge on the "Demandes admin" tab
-  const ORDER_TABS = ['orders', 'requests', 'suivi', 'fournisseurs'];
+  const ORDER_TABS = ['orders', 'reception', 'requests', 'suivi', 'fournisseurs'];
   const [newOrderSupplier, setNewOrderSupplier] = useState(''); // supplier preselected in a new order
   // 'orders' | 'requests' | 'suivi' — kept in the URL (?onglet=suivi) so a refresh stays on the same tab
   // Suivi + Fournisseurs: ACHAT (orders.edit) and the accountant (orders.accounting)
   const canAccounting = can('orders.edit') || can('orders.accounting');
-  const tabAllowed = (k) => k === 'orders' || (k === 'requests' ? can('orders.edit') : canAccounting);
-  const defaultTab = !can('orders.edit') && canAccounting ? 'suivi' : 'orders'; // the accountant lands on Suivi
+  // Purchase prices: Admin, ACHAT and the accountant only (the server also removes them for the others)
+  const canSeePrices = can('admin.view') || canAccounting;
+  // « À réceptionner »: BLs filed in the Suivi, for the accounts that receive goods
+  const isReceiver = canReceiveBls(user, can);
+  const { count: blsToReceive } = useBlsToReceive(isReceiver, user?.id || user?.username || '');
+  const tabAllowed = (k) => k === 'orders' || (k === 'reception' ? isReceiver : k === 'requests' ? can('orders.edit') : canAccounting);
+  // the accountant lands on Suivi; warehouse-type roles (no full orders access) on « À réceptionner »
+  const defaultTab = !can('orders.edit') && canAccounting ? 'suivi'
+    : isReceiver && !isAdmin && !can('orders.view') ? 'reception' : 'orders';
   const [activeTab, setActiveTab] = useState(() => {
     const tab = getQueryParam('onglet');
     return ORDER_TABS.includes(tab) ? tab : defaultTab;
@@ -186,6 +196,23 @@ export default function OrdersPage() {
     }
   }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Documents attached to the open order (BL for everyone who sees it, invoices for ACHAT / accountant)
+  const [orderDocs, setOrderDocs] = useState({ documents: [], canManage: false });
+  const [docsManage, setDocsManage] = useState(null); // { blNumber } being managed in the documents window
+  const [docStorage, setDocStorage] = useState(null);
+  const selectedOrderId = selectedOrder?.id;
+  const loadOrderDocs = useCallback(() => {
+    if (!selectedOrderId) return;
+    axios.get(`${API_URL}/orders/${selectedOrderId}/documents`)
+      .then(r => setOrderDocs({ documents: r.data.documents || [], canManage: !!r.data.canManage }))
+      .catch(() => setOrderDocs({ documents: [], canManage: false }));
+  }, [selectedOrderId]);
+  useEffect(() => { setOrderDocs({ documents: [], canManage: false }); loadOrderDocs(); }, [loadOrderDocs]);
+  const manageDocs = (blNumber) => {
+    setDocsManage({ blNumber });
+    axios.get(`${API_URL}/order-tracking/storage`).then(r => setDocStorage(r.data)).catch(() => {});
+  };
+
   // ── Order detail in the URL: /commandes/<id> (refresh / back button / shared link) ──
   const openOrder = (order) => {
     setSelectedOrder(order);
@@ -194,6 +221,14 @@ export default function OrdersPage() {
   const closeOrder = ({ replace = false } = {}) => {
     setSelectedOrder(null);
     setUrl(PAGE_PATHS.orders, { replace, query: { onglet: activeTab === 'orders' ? null : activeTab } });
+  };
+  // /commandes/<id>?receptionner=<BL> (banner, notification, « À réceptionner »): open the reception of that BL
+  const applyReceiveParam = () => {
+    const bl = getQueryParam('receptionner');
+    const [id] = subPathFromLocation();
+    if (!bl || !id) return;
+    setBatchReceive({ initialBl: bl });
+    setUrl(`${PAGE_PATHS.orders}/${id}`, { replace: true });
   };
   const ordersRef = useRef(orders);
   ordersRef.current = orders;
@@ -204,7 +239,7 @@ export default function OrdersPage() {
     const [id] = subPathFromLocation();
     if (id) {
       const found = orders.find(o => o.id === id);
-      if (found) setSelectedOrder(found);
+      if (found) { setSelectedOrder(found); applyReceiveParam(); }
       else setUrl(PAGE_PATHS.orders, { replace: true }); // unknown / deleted order
     }
     urlOrderApplied.current = true;
@@ -212,9 +247,12 @@ export default function OrdersPage() {
   useEffect(() => {
     const onPop = () => {
       const [id] = subPathFromLocation();
-      setSelectedOrder(id ? (ordersRef.current.find(o => o.id === id) || null) : null);
+      const found = id ? (ordersRef.current.find(o => o.id === id) || null) : null;
+      setSelectedOrder(found);
+      if (!found) setBatchReceive(null);
       const tab = getQueryParam('onglet');
-      setActiveTab(ORDER_TABS.includes(tab) ? tab : 'orders');
+      setActiveTab(ORDER_TABS.includes(tab) ? tab : defaultTab);
+      if (found) applyReceiveParam();
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -244,21 +282,6 @@ export default function OrdersPage() {
     try {
       await axios.post(`${API_URL}/orders/${order.id}/cancel`);
       await fetchOrders();
-    } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
-  };
-
-  const handleReceive = async () => {
-    if (!receiveModal) return;
-    if (!receiveBlNumber.trim()) { await dialog.alert(t('orBlRequired')); return; }
-    try {
-      await axios.patch(`${API_URL}/orders/${receiveModal.order.id}/receive`, {
-        lineId: receiveModal.line._id || receiveModal.line.id,
-        quantityReceived: Number(receiveQty),
-        blNumber: receiveBlNumber,          // ← AJOUT
-      });
-      fetchOrders();
-      setReceiveModal(null);
-      setReceiveBlNumber('');
     } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
   };
 
@@ -349,12 +372,6 @@ export default function OrdersPage() {
     } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
   };
 
-  const openReceive = (order, line) => {
-    setReceiveModal({ order, line });
-    setReceiveQty(line.quantityReceived || 0);
-    setReceiveBlNumber('');            // ← AJOUT
-  };
-
   // Flexible search: split into tokens, check each against multiple fields
   const matchesSearch = (order) => {
     if (!searchTerm.trim()) return true;
@@ -395,7 +412,7 @@ export default function OrdersPage() {
     setExportingPdf(order.id);
     try {
       const company = companies.find(c => c.id === (order.companyId?.id || order.companyId?._id)) || null;
-      await exportOrderPDF(order, lang, company);
+      await exportOrderPDF(order, lang, company, { hidePrices: !canSeePrices });
     } catch (e) { console.error(e); await dialog.alert(t('orExportPdfError')); }
     finally { setExportingPdf(null); }
   };
@@ -413,6 +430,9 @@ export default function OrdersPage() {
     const totalHT = (order.lines || []).reduce((s, l) => s + (l.quantityOrdered || 0) * (l.unitPrice || 0), 0);
     const tvaRate = order.tva != null ? Number(order.tva) : 20;
     const ttc = totalHT * (1 + tvaRate / 100);
+    // Something left that this user may receive (open line of one of their families)
+    const receivable = order.status !== 'annulee' && order.status !== 'brouillon'
+      && (order.lines || []).some(l => !l.closed && (l.quantityReceived || 0) < l.quantityOrdered && canReceiveLine(l));
 
     return (
       <div className="orders-page">
@@ -516,8 +536,18 @@ export default function OrdersPage() {
           </div>
         )}
 
+        <PendingBlsBlock order={order} docs={orderDocs.documents} canReceive={receivable}
+          onReceive={(bl) => setBatchReceive({ initialBl: bl })} />
+
         <div className="order-detail-lines">
-          <h2 className="order-detail-lines-title">{t('orOrderedItems')}</h2>
+          <h2 className="order-detail-lines-title">
+            {t('orOrderedItems')}
+            {receivable && (
+              <button type="button" className="btn-receive rb-receive-all" onClick={() => setBatchReceive({ initialBl: '' })}>
+                <PackageCheck size={14} /> {t('rbOpen')}
+              </button>
+            )}
+          </h2>
           {(order.lines || []).map((line, idx) => {
             const item = line.itemId;
             const received = line.quantityReceived || 0;
@@ -550,7 +580,7 @@ export default function OrdersPage() {
                         {item.categoryId.name?.[lang] || item.categoryId.name?.fr}
                       </span>
                     )}
-                    {line.unitPrice > 0 && (
+                    {canSeePrices && line.unitPrice > 0 && (
                       <span className="detail-line-price">{line.unitPrice.toFixed(2)} /u</span>
                     )}
                   </div>
@@ -581,9 +611,6 @@ export default function OrdersPage() {
                 {!isComplete && order.status !== 'annulee' && order.status !== 'brouillon' && (
                   canReceiveOrder(order) ? (
                     <div className="detail-line-actions">
-                      <button className="btn-receive" onClick={() => openReceive(order, line)}>
-                        {t('orReceive')}
-                      </button>
                       <button type="button" className="btn-receive btn-receive--ghost"
                         title={t('orCloseLineHint')}
                         onClick={() => handleCloseLine(order, line)}>
@@ -647,6 +674,11 @@ export default function OrdersPage() {
                         <span className="reception-bl__chip">
                           {t(activeRecs.length > 1 ? 'orArticleMany' : 'orArticleOne', { n: activeRecs.length })} · {totalQty} {t('orPcs')}
                         </span>
+                        <BlDocButtons
+                          docs={orderDocs.documents.filter(d => d.kind === 'bl' && d.blNumber === g.blNumber)}
+                          canManage={orderDocs.canManage && g.blNumber !== '—'}
+                          onManage={() => manageDocs(g.blNumber)}
+                        />
                       </div>
                     </div>
                     <div className={`reception-bl__rows ${order.status !== 'annulee' && canReceiveOrder(order) ? 'reception-bl__rows--actions' : ''}`}>
@@ -715,23 +747,43 @@ export default function OrdersPage() {
           );
         })()}
 
+        {orderDocs.canManage && order.status !== 'brouillon' && (
+          <OrderDocumentsBlock docs={orderDocs.documents} onManage={() => {
+            // Invoices live on the BL rows of the Suivi: with a single BL, manage that one
+            const bls = [...new Set((order.receptions || []).filter(r => !r.cancelled && r.blNumber).map(r => r.blNumber))];
+            manageDocs(bls.length === 1 ? bls[0] : '');
+          }} />
+        )}
+        {docsManage && (
+          <DocumentsModal
+            row={{
+              orderId: order.id, blNumber: docsManage.blNumber,
+              supplierName: order.supplierId?.name || order.supplier || '', orderNumber: order.number || order.reference || '',
+              documents: orderDocs.documents.filter(d => d.blNumber === docsManage.blNumber),
+            }}
+            storage={docStorage}
+            onStorage={setDocStorage}
+            onChange={loadOrderDocs}
+            onClose={() => { setDocsManage(null); loadOrderDocs(); }}
+          />
+        )}
+
         {/* Totals */}
-        <div className="order-detail-totals">
+        {canSeePrices && <div className="order-detail-totals">
           <div className="order-detail-totals__row"><span>{t('orTotalHT')}</span><strong>{totalHT.toFixed(2)}</strong></div>
           <div className="order-detail-totals__row"><span>{t('orVatRate', { rate: tvaRate })}</span><strong>{(totalHT * tvaRate / 100).toFixed(2)}</strong></div>
           <div className="order-detail-totals__row order-detail-totals__ttc"><span>{t('orTotalTTC')}</span><strong>{ttc.toFixed(2)}</strong></div>
-        </div>
+        </div>}
 
-        {receiveModal && (
-          <ReceiveModal
-            receiveModal={receiveModal}
-            receiveQty={receiveQty}
+        {batchReceive && (
+          <ReceiveBatchModal
+            order={order}
+            docs={orderDocs.documents}
             lang={lang}
-            setReceiveQty={setReceiveQty}
-            blNumber={receiveBlNumber}
-            setBlNumber={setReceiveBlNumber}
-            onConfirm={handleReceive}
-            onClose={() => { setReceiveModal(null); setReceiveBlNumber(''); }}
+            canReceiveLine={canReceiveLine}
+            initialBl={batchReceive.initialBl}
+            onClose={() => setBatchReceive(null)}
+            onDone={() => { setBatchReceive(null); fetchOrders(); refreshBls(); }}
           />
         )}
         {showForm && (
@@ -763,6 +815,19 @@ export default function OrdersPage() {
             <ShoppingCart size={15} /> {t('navOrders')}
 
           </button>
+
+          {isReceiver && (
+            <button
+              className={`orders-tab-btn ${shownTab === 'reception' ? 'active' : ''}`}
+              onClick={() => changeTab('reception')}
+            >
+              <PackageCheck size={13} />
+              {t('blqTab')}
+              {blsToReceive > 0 && (
+                <span className="orders-tab-badge orders-tab-badge--orange">{blsToReceive}</span>
+              )}
+            </button>
+          )}
 
           {can('orders.edit') && (
             <button
@@ -801,7 +866,7 @@ export default function OrdersPage() {
 
         </div>
         <div className="orders-header__actions">
-          <button className="orders-icon-btn orders-icon-btn--excel" title='Excel' onClick={() => exportOrdersExcel(filteredOrders, lang)}>
+          <button className="orders-icon-btn orders-icon-btn--excel" title='Excel' onClick={() => exportOrdersExcel(filteredOrders, lang, { hidePrices: !canSeePrices })}>
             <Sheet size={16} />
           </button>
           {can('orders.edit') && (
@@ -813,7 +878,13 @@ export default function OrdersPage() {
       </header>
 
       {/* ── Tab content ──────────────────────────────────────────── */}
-      {shownTab === 'requests' ? (
+      {shownTab === 'reception' ? (
+        <BlsToReceivePanel onReceive={(it) => {
+          const o = orders.find(x => x.id === it.orderId);
+          if (o) { openOrder(o); setBatchReceive({ initialBl: it.blNumber }); }
+          else { setUrl(`${PAGE_PATHS.orders}/${it.orderId}`, { query: { receptionner: it.blNumber } }); window.dispatchEvent(new PopStateEvent('popstate')); }
+        }} />
+      ) : shownTab === 'requests' ? (
         <PurchaseRequestsPanel
           onChanged={fetchPendingCount}
           isAdmin={isAdmin}
@@ -983,69 +1054,6 @@ export default function OrdersPage() {
         />
       )}
 
-      {receiveModal && (
-        <ReceiveModal
-          receiveModal={receiveModal}
-          receiveQty={receiveQty}
-          lang={lang}
-          setReceiveQty={setReceiveQty}
-          blNumber={receiveBlNumber}
-          setBlNumber={setReceiveBlNumber}
-          onConfirm={handleReceive}
-          onClose={() => { setReceiveModal(null); setReceiveBlNumber(''); }}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ── Receive Modal (shared between list & detail view) ──────────── */
-function ReceiveModal({ receiveModal, receiveQty, lang, setReceiveQty, blNumber, setBlNumber, onConfirm, onClose }) {
-  const { t } = useLanguage();
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal--receive" onClick={e => e.stopPropagation()}>
-        <h2>{t('orReceiveTitle')}</h2>
-        <div className="or-modal-sub">
-          <strong>{receiveModal.line.itemId?.designation?.[lang] || receiveModal.line.itemId?.designation?.fr}</strong>
-          {t('orAlreadyReceived', { received: receiveModal.line.quantityReceived || 0, ordered: receiveModal.line.quantityOrdered })}
-        </div>
-        <div className="form-group">
-          <label>{t('orTotalQtyReceived')}</label>
-          <div className="or-qty-row">
-          <input
-            type="number"
-            min={receiveModal.line.quantityReceived || 0}
-            max={receiveModal.line.quantityOrdered}
-            value={receiveQty}
-            onChange={e => setReceiveQty(e.target.value)}
-            autoFocus
-          />
-          <span>
-            / {receiveModal.line.quantityOrdered}
-          </span>
-          </div>
-        </div>
-        <div className="form-group">
-          <label>{t('orBlNumberLabel')}</label>
-          <input
-            type="text"
-            placeholder={t('orBlPlaceholder')}
-            value={blNumber}
-            onChange={e => setBlNumber(e.target.value)}
-          />
-        </div>
-        <div className="modal-actions">
-          <button onClick={onClose}>{t('cancel')}</button>
-          <button
-            className="primary or-confirm-receive"
-            onClick={onConfirm}
-            disabled={Number(receiveQty) <= (receiveModal.line.quantityReceived || 0) || !blNumber.trim()}
-          >
-            <Check size={15} /> {t('orConfirmReception')}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1737,6 +1745,11 @@ function SuiviCommandesPanel() {
   const [searchTerm, setSearchTerm] = useState('');
   const [factureFilter, setFactureFilter] = useState('all'); // 'all' | 'recue' | 'non_recue' | 'sans_pdf'
   const [docsRow, setDocsRow] = useState(null); // row whose invoices / BL are open
+  const newBlRef = useRef(false); // a BL was filed under a new number → reload the rows on close
+  const [storage, setStorage] = useState(null);  // space used by the documents vs the free cap
+  useEffect(() => {
+    axios.get(`${API_URL}/order-tracking/storage`).then(r => setStorage(r.data)).catch(() => {});
+  }, []);
   const [page, setPage] = useState(1);
   // Search runs on the server (debounced while typing); filters + totals + pagination too
   const { data, loading, reload, patch, dropOthers } = usePagedList(
@@ -1832,6 +1845,7 @@ function SuiviCommandesPanel() {
               {t('acFilterLate')}
             </button>
           </div>
+          <StorageGauge storage={storage} compact />
           <button className="pr-refresh-btn orders-icon-btn orders-icon-btn--sm" onClick={fetchRows} title={t('orRefresh')}>
             <RefreshCw size={14} className={loading ? 'spin' : undefined} />
           </button>
@@ -1894,6 +1908,7 @@ function SuiviCommandesPanel() {
                       {row.blNumber
                         ? <strong>{row.blNumber}</strong>
                         : <span className="pr-faint">{t('orPending')}</span>}
+                      {row.blPending && <span className="pr-bl-pending" title={t('rbPendingHint')}>{t('rbPendingChip')}</span>}
                     </td>
                     <td><DocumentsCell row={row} onOpen={setDocsRow} /></td>
                     <td className="pr-num pr-strong">{row.montantBC.toFixed(2)}</td>
@@ -2022,7 +2037,10 @@ function SuiviCommandesPanel() {
       {docsRow && (
         <DocumentsModal
           row={docsRow}
-          onClose={() => { setDocsRow(null); if (factureFilter !== 'all') fetchRows(); }}
+          storage={storage}
+          onStorage={setStorage}
+          onNewBl={() => { newBlRef.current = true; }}
+          onClose={() => { setDocsRow(null); if (factureFilter !== 'all' || newBlRef.current) fetchRows(); newBlRef.current = false; }}
           onChange={(changes) => {
             const key = rowKey(docsRow);
             patch(d => ({ ...d, rows: d.rows.map(r => rowKey(r) === key ? { ...r, ...changes } : r) }));

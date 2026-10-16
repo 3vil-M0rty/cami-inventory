@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import NotifBell from '../../features/laquage/LaquageNotifBell';
 import FourStatus from '../../features/laquage/FourStatus';
 import ChangePasswordModal from '../../features/admin/ChangePasswordModal';
+import { useBlsToReceive, canReceiveBls } from '../../features/orders/receptionQueue';
 
 import './Header.css';
 
@@ -46,6 +47,10 @@ const Header = ({ activePage, onNavigate }) => {
   };
 
   const userMenuRef = useRef(null);
+  // Delivery notes waiting for reception → count on the ACHATS link
+  const { count: blsToReceive } = useBlsToReceive(canReceiveBls(user, can), user?.id || user?.username || '');
+  const navBadge = (key) => (key === 'orders' && blsToReceive > 0
+    ? <span className="hdr__nav-badge" title={t('blqBadgeTitle', { n: blsToReceive })}>{blsToReceive}</span> : null);
 
   const RECEIVING_ROLES = ['Magasinier', 'Laquage', 'Coordinateur-vitrage'];
 
@@ -207,6 +212,7 @@ const Header = ({ activePage, onNavigate }) => {
               onClick={() => navigate(item.key)}>
               <span className="hdr__nav-icon">{NAV_ICONS[item.key]}</span>
               {item.label}
+              {navBadge(item.key)}
             </button>
           ))}
         </nav>
@@ -239,6 +245,7 @@ const Header = ({ activePage, onNavigate }) => {
                   onClick={() => navigate(item.key)}>
                   <span className="hdr__nav-icon">{NAV_ICONS[item.key]}</span>
                   {item.label}
+                  {navBadge(item.key)}
                 </button>
               ))}
             </nav>
