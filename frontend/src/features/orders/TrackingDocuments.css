@@ -1,0 +1,48 @@
+/* ── Suivi des commandes › Documents (factures / BL stored in R2) ── */
+.td-cell { display: inline-flex; gap: 4px; padding: 0 !important; border: 0 !important; background: transparent !important; cursor: pointer; }
+.td-chip {
+  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 999px;
+  border: 1px dashed var(--border-2); color: var(--text-3); font-size: 11.5px; font-weight: 600; white-space: nowrap;
+}
+.td-chip.is-on { border-style: solid; border-color: rgba(74,222,128,.4); background: rgba(74,222,128,.10); color: var(--ink-green); }
+.td-cell:hover .td-chip { border-color: var(--text-3); color: var(--text); }
+.td-cell:hover .td-chip.is-on { border-color: rgba(74,222,128,.7); color: var(--ink-green); }
+
+.td-modal { width: min(620px, 100%); max-height: 90vh; overflow-y: auto; }
+.td-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.td-head h2 { margin: 0 0 4px; }
+.td-sub { font-size: 12.5px; color: var(--text-3); }
+.td-sub strong { color: var(--text-2); }
+.td-x, .td-icon {
+  width: 32px; height: 32px; padding: 0 !important; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  border-radius: 8px !important; border: 1px solid transparent !important; background: transparent !important; color: var(--text-3) !important; cursor: pointer;
+}
+.td-x:hover, .td-icon:hover { color: var(--text) !important; background: var(--surface-2) !important; border-color: var(--border) !important; }
+.td-icon--danger:hover { color: var(--danger) !important; }
+.td-error { display: flex; align-items: center; gap: 8px; padding: 9px 12px; margin-bottom: 12px; border-radius: 9px; background: var(--danger-bg); border: 1px solid var(--danger-bd); color: var(--danger); font-size: 12.5px; }
+.td-section { padding: 12px; margin-bottom: 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); transition: border-color var(--t), background var(--t); }
+.td-section.is-drag { border-color: var(--text-3); border-style: dashed; background: var(--surface-3); }
+.td-section__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.td-section__head h3 { margin: 0; font-size: 13.5px; font-weight: 700; color: var(--text); display: inline-flex; align-items: center; gap: 8px; }
+.td-section__head h3 span { font-size: 11px; font-weight: 700; color: var(--text-3); padding: 1px 7px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); }
+.td-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px !important; border-radius: 8px !important;
+  border: 1px solid var(--border-2) !important; background: var(--surface) !important; color: var(--text) !important; font: 600 12.5px/1 var(--font); cursor: pointer;
+}
+.td-btn:disabled { opacity: .5; cursor: default; }
+.td-drop { padding: 16px; border-radius: 9px; border: 1px dashed var(--border-2); text-align: center; font-size: 12.5px; color: var(--text-3); }
+.td-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.td-list li { display: flex; align-items: center; gap: 2px; padding: 4px 4px 4px 0; border-radius: 9px; background: var(--surface); border: 1px solid var(--border); }
+.td-file { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 6px 10px !important; border: 0 !important; background: transparent !important; color: var(--text-2) !important; cursor: pointer; text-align: left; font-family: var(--font); }
+.td-file > svg { flex-shrink: 0; color: var(--text-3); }
+.td-file__txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.td-file__txt strong { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-file__txt span { font-size: 11.5px; color: var(--text-3); }
+.td-file:hover strong { text-decoration: underline; }
+.td-progress { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; color: var(--text-2); }
+.td-progress > span { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.td-progress__bar { flex: 1; height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.td-progress__bar i { display: block; height: 100%; background: var(--text-2); border-radius: 999px; transition: width .2s; }
+.td-spin { animation: td-spin .9s linear infinite; }
+@keyframes td-spin { to { transform: rotate(360deg); } }
+.td-note { margin: 6px 2px 0; font-size: 11.5px; color: var(--text-4); line-height: 1.5; }

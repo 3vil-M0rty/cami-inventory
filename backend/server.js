@@ -132,7 +132,7 @@ const ALL_PERMISSIONS = [
   'inventory.poudre.view', 'inventory.poudre.edit', 'inventory.poudre.delete',
   'inventory.fer.view', 'inventory.fer.edit', 'inventory.fer.delete',
   'inventory.toles.view', 'inventory.toles.edit', 'inventory.toles.delete',
-  'orders.view', 'orders.edit', 'orders.delete', 'orders.receive',
+  'orders.view', 'orders.edit', 'orders.delete', 'orders.receive', 'orders.accounting',
   'projects.view', 'projects.edit', 'projects.delete',
   'clients.view', 'clients.edit', 'clients.delete',
   'devis.view', 'devis.edit', 'devis.delete', 'devis.prices',
@@ -599,6 +599,10 @@ const fournisseurSchema = new mongoose.Schema({
   ice: { type: String, default: '' },
   rc: { type: String, default: '' },
   notes: { type: String, default: '' },
+  // Payment term: due date = invoice date + delaiPaiement days (null = not set; 0 = cash / on receipt),
+  // finDeMois = pushed to the end of that month ("60 jours fin de mois")
+  delaiPaiement: { type: Number, default: null, min: 0, max: 365 },
+  finDeMois: { type: Boolean, default: false },
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const Fournisseur = mongoose.model('Fournisseur', fournisseurSchema);
 
@@ -613,11 +617,28 @@ const orderTrackingSchema = new mongoose.Schema({
   modePaiement: { type: String, enum: ['', 'espece', 'virement', 'cheque', 'effet'], default: '' },
   typeFacture: { type: String, enum: ['', 'bl', 'facture', 'situation'], default: '' },
   remarque: { type: String, default: '' },
+  // Accounting (accountant / ACHAT)
+  factureNumber: { type: String, default: '', trim: true },
+  factureDate: { type: Date, default: null },
+  paiementStatus: { type: String, enum: ['non_paye', 'partiel', 'paye'], default: 'non_paye' },
+  paiementDate: { type: Date, default: null },
+  montantPaye: { type: Number, default: 0, min: 0 },
+  // Invoices / delivery notes stored in Cloudflare R2 (only the key and the metadata live here)
+  documents: [{
+    kind: { type: String, enum: ['facture', 'bl'], required: true },
+    key: { type: String, required: true },
+    name: { type: String, default: '' },
+    contentType: { type: String, default: 'application/pdf' },
+    size: { type: Number, default: 0 },
+    uploadedAt: { type: Date, default: Date.now },
+    uploadedBy: { type: String, default: '' },
+  }],
 }, {
   timestamps: true,
   toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } }
 });
 orderTrackingSchema.index({ orderId: 1, blNumber: 1 }, { unique: true });
+orderTrackingSchema.index({ 'documents._id': 1 });
 orderTrackingSchema.index({ remarque: 1 });
 const OrderTracking = mongoose.model('OrderTracking', orderTrackingSchema);
 
@@ -740,6 +761,13 @@ function canViewOrders(req) {
   if ((req.permissions || []).includes('orders.view')) return true;
   const userRole = req.user?.roleId?.name || '';
   return receivingCategoriesForRole(userRole).length > 0;
+}
+
+// ACHAT (orders.edit) or the accountant (orders.accounting): Suivi des commandes + Fournisseurs
+const canAccounting = (req) => isAdmin(req) || (req.permissions || []).some(p => p === 'orders.edit' || p === 'orders.accounting');
+function requireAccounting(req, res, next) {
+  if (!canAccounting(req)) return res.status(403).json({ error: 'Accès refusé — permission requise: orders.edit ou orders.accounting' });
+  next();
 }
 
 function requireOrdersView(req, res, next) {
@@ -1476,6 +1504,7 @@ app.get('/api/permissions', requireAuth, requirePermission('admin.view'), async 
     { key: 'orders.edit', label: 'Commandes — Créer/Modifier', group: 'Commandes' },
     { key: 'orders.receive', label: 'Commandes — Réceptionner', group: 'Commandes' },
     { key: 'orders.delete', label: 'Commandes — Supprimer', group: 'Commandes' },
+    { key: 'orders.accounting', label: 'Commandes — Comptabilité (factures, paiements, délais fournisseurs)', group: 'Commandes' },
     { key: 'projects.view', label: 'Projets — Voir', group: 'Projets' },
     { key: 'projects.edit', label: 'Projets — Créer/Modifier', group: 'Projets' },
     { key: 'projects.delete', label: 'Projets — Supprimer', group: 'Projets' },
@@ -2501,25 +2530,119 @@ app.delete('/api/orders/:id', requireAuth, async (req, res) => {
 // ==================== ORDER TRACKING ROUTES ====================
 // Access: only users with 'orders.edit' — i.e. Achat role + Admin (Admin has ALL_PERMISSIONS).
 
-// GET /api/order-tracking?page=1&limit=25&q=&facture=all|recue|non_recue
+// Due date of an invoice: base date + supplier term (days), optionally pushed to the end of that month
+function dueDate(base, delai, finDeMois) {
+  if (!base || delai == null) return null;
+  const d = new Date(base);
+  d.setDate(d.getDate() + Number(delai));
+  if (finDeMois) { d.setMonth(d.getMonth() + 1, 0); }
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+// One row per (order, BL), with invoice + payment follow-up. Shared by the Suivi table and the supplier figures.
+async function buildTrackingRows(orderFilter) {
+  const orders = await Order.find(orderFilter)
+    .select('number reference orderDate tva status supplier supplierId lines._id lines.quantityOrdered lines.unitPrice receptions.blNumber receptions.cancelled receptions.lineId receptions.quantityReceived receptions.receivedAt')
+    .populate('supplierId', 'name delaiPaiement finDeMois')
+    .sort({ orderDate: -1 })
+    .lean();
+  // Older orders only carry the supplier name: find their supplier (and its payment term) by name
+  const byName = new Map((await Fournisseur.find().select('name delaiPaiement finDeMois').lean()).map(f => [String(f.name || '').trim().toLowerCase(), f]));
+
+  const trackingDocs = orders.length
+    ? await OrderTracking.find({ orderId: { $in: orders.map(o => o._id) } })
+      .select('orderId blNumber factureStatus modePaiement typeFacture remarque documents factureNumber factureDate paiementStatus paiementDate montantPaye').lean()
+    : [];
+  const trackingMap = {};
+  trackingDocs.forEach(t => { trackingMap[`${t.orderId}::${t.blNumber || ''}`] = t; });
+  const today = new Date();
+
+  const rows = [];
+  for (const o of orders) {
+    const priceByLine = new Map((o.lines || []).map(l => [String(l._id), l.unitPrice || 0]));
+    const totalHT = (o.lines || []).reduce((s, l) => s + (l.quantityOrdered || 0) * (l.unitPrice || 0), 0);
+    const tvaRate = o.tva != null ? Number(o.tva) : 20;
+    const montantBC = parseFloat((totalHT * (1 + tvaRate / 100)).toFixed(2));
+    const sup = o.supplierId || byName.get(String(o.supplier || '').trim().toLowerCase()) || null;
+    const supplierName = o.supplierId?.name || o.supplier || '';
+    const orderNumber = o.number || o.reference || '';
+
+    const blGroups = {};
+    for (const rec of o.receptions || []) {
+      if (rec.cancelled) continue;
+      const key = rec.blNumber || '';
+      (blGroups[key] = blGroups[key] || []).push(rec);
+    }
+    const blKeys = Object.keys(blGroups);
+
+    const buildRow = (blNumber, date, montantBL) => {
+      const t = trackingMap[`${o._id}::${blNumber}`];
+      const paiementStatus = t?.paiementStatus || 'non_paye';
+      const montantDu = blNumber ? montantBL : montantBC;          // what this row should cost
+      const montantPaye = paiementStatus === 'paye' ? montantDu : paiementStatus === 'partiel' ? (t?.montantPaye || 0) : 0;
+      // Due date from the invoice date; without it, from the BL date (estimate)
+      const base = t?.factureDate || (blNumber ? date : null);
+      const echeance = sup ? dueDate(base, sup.delaiPaiement, sup.finDeMois) : null;
+      const reste = Math.max(0, parseFloat((montantDu - montantPaye).toFixed(2)));
+      const retardJours = echeance && paiementStatus !== 'paye' && reste > 0 && echeance < today
+        ? Math.floor((today - echeance) / 86400000) + 1 : 0;
+      return {
+        orderId: String(o._id), blNumber, date, supplierName, supplierId: sup?._id ? String(sup._id) : null, orderNumber,
+        montantBC, montantBL, status: o.status,
+        factureStatus: t?.factureStatus || 'non_recue',
+        modePaiement: t?.modePaiement || '',
+        typeFacture: t?.typeFacture || '',
+        remarque: t?.remarque || '',
+        documents: (t?.documents || []).map(d => ({
+          id: String(d._id), kind: d.kind, name: d.name, contentType: d.contentType, size: d.size, uploadedAt: d.uploadedAt, uploadedBy: d.uploadedBy,
+        })),
+        factureNumber: t?.factureNumber || '',
+        factureDate: t?.factureDate || null,
+        paiementStatus, paiementDate: t?.paiementDate || null,
+        montantPaye: parseFloat(montantPaye.toFixed(2)), montantDu, reste,
+        delaiPaiement: sup?.delaiPaiement ?? null, finDeMois: !!sup?.finDeMois,
+        echeance, echeanceEstimee: !!echeance && !t?.factureDate, retardJours,
+      };
+    };
+
+    if (blKeys.length === 0) {
+      rows.push(buildRow('', o.orderDate, 0));
+    } else {
+      for (const bl of blKeys) {
+        const recs = blGroups[bl];
+        let montantBLHT = 0;
+        for (const rec of recs) montantBLHT += (rec.quantityReceived || 0) * (priceByLine.get(String(rec.lineId)) || 0);
+        const montantBL = parseFloat((montantBLHT * (1 + tvaRate / 100)).toFixed(2));
+        const lastDate = recs.reduce((max, r) => new Date(r.receivedAt) > new Date(max) ? r.receivedAt : max, recs[0].receivedAt);
+        rows.push(buildRow(bl, lastDate, montantBL));
+      }
+    }
+  }
+  return rows;
+}
+// A row is "to pay" once the goods or the invoice came in (BL received or invoice received) and it is not paid
+const isToPay = (r) => r.paiementStatus !== 'paye' && r.reste > 0 && r.status !== 'annulee' && (r.blNumber || r.factureStatus === 'recue');
+
+// GET /api/order-tracking?page=1&limit=25&q=&facture=all|recue|non_recue|sans_pdf|a_payer|retard
 // One row per (order, BL). Only the fields the table needs are read (lean + projection), tracking
 // docs are fetched for the matching orders only, then rows are filtered, totalled and paginated.
 // Without ?page the full array is returned (backward compatible).
-app.get('/api/order-tracking', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+app.get('/api/order-tracking', requireAuth, requireAccounting, async (req, res) => {
   try {
     const words = normalizeSearch(req.query.q).split(' ').filter(Boolean).slice(0, 6);
-    const facture = ['recue', 'non_recue'].includes(req.query.facture) ? req.query.facture : 'all';
+    const facture = ['recue', 'non_recue', 'sans_pdf', 'a_payer', 'retard'].includes(req.query.facture) ? req.query.facture : 'all';
 
     const orderFilter = { status: { $ne: 'brouillon' } };
     // Narrow the orders in MongoDB when searching: each word must hit the order number/reference,
-    // the supplier (free text or linked supplier), a BL number or a tracking remark.
+    // the supplier (free text or linked supplier), a BL number, a tracking remark or an invoice number.
     if (words.length) {
       const and = [];
       for (const w of words) {
         const rx = accentRegex(w);
         const [sups, trk] = await Promise.all([
           Fournisseur.find({ name: rx }).select('_id').lean(),
-          OrderTracking.find({ remarque: rx }).select('orderId').lean(),
+          OrderTracking.find({ $or: [{ remarque: rx }, { factureNumber: rx }] }).select('orderId').lean(),
         ]);
         and.push({ $or: [
           { number: rx }, { reference: rx }, { supplier: rx }, { 'receptions.blNumber': rx },
@@ -2530,81 +2653,27 @@ app.get('/api/order-tracking', requireAuth, requirePermission('orders.edit'), as
       orderFilter.$and = and;
     }
 
-    const orders = await Order.find(orderFilter)
-      .select('number reference orderDate tva status supplier supplierId lines._id lines.quantityOrdered lines.unitPrice receptions.blNumber receptions.cancelled receptions.lineId receptions.quantityReceived receptions.receivedAt')
-      .populate('supplierId', 'name')
-      .sort({ orderDate: -1 })
-      .lean();
+    let rows = await buildTrackingRows(orderFilter);
 
-    const trackingDocs = orders.length
-      ? await OrderTracking.find({ orderId: { $in: orders.map(o => o._id) } })
-        .select('orderId blNumber factureStatus modePaiement typeFacture remarque').lean()
-      : [];
-    const trackingMap = {};
-    trackingDocs.forEach(t => { trackingMap[`${t.orderId}::${t.blNumber || ''}`] = t; });
-
-    let rows = [];
-    for (const o of orders) {
-      const priceByLine = new Map((o.lines || []).map(l => [String(l._id), l.unitPrice || 0]));
-      const totalHT = (o.lines || []).reduce((s, l) => s + (l.quantityOrdered || 0) * (l.unitPrice || 0), 0);
-      const tvaRate = o.tva != null ? Number(o.tva) : 20;
-      const montantBC = parseFloat((totalHT * (1 + tvaRate / 100)).toFixed(2));
-      const supplierName = o.supplierId?.name || o.supplier || '';
-      const orderNumber = o.number || o.reference || '';
-
-      // group receptions by BL number
-      const blGroups = {};
-      for (const rec of o.receptions || []) {
-        if (rec.cancelled) continue;
-        const key = rec.blNumber || '';
-        (blGroups[key] = blGroups[key] || []).push(rec);
-      }
-      const blKeys = Object.keys(blGroups);
-
-      const buildRow = (blNumber, date, montantBL) => {
-        const t = trackingMap[`${o._id}::${blNumber}`];
-        return {
-          orderId: String(o._id),
-          blNumber,
-          date,
-          supplierName,
-          orderNumber,
-          montantBC,
-          montantBL,
-          status: o.status,
-          factureStatus: t?.factureStatus || 'non_recue',
-          modePaiement: t?.modePaiement || '',
-          typeFacture: t?.typeFacture || '',
-          remarque: t?.remarque || '',
-        };
-      };
-
-      if (blKeys.length === 0) {
-        rows.push(buildRow('', o.orderDate, 0));
-      } else {
-        for (const bl of blKeys) {
-          const recs = blGroups[bl];
-          let montantBLHT = 0;
-          for (const rec of recs) montantBLHT += (rec.quantityReceived || 0) * (priceByLine.get(String(rec.lineId)) || 0);
-          const montantBL = parseFloat((montantBLHT * (1 + tvaRate / 100)).toFixed(2));
-          const lastDate = recs.reduce((max, r) => new Date(r.receivedAt) > new Date(max) ? r.receivedAt : max, recs[0].receivedAt);
-          rows.push(buildRow(bl, lastDate, montantBL));
-        }
-      }
-    }
-
-    // Row-level filters (same rules as the screen): invoice status + every word in the row text
-    if (facture !== 'all') rows = rows.filter(r => r.factureStatus === facture);
+    // Row-level filters (same rules as the screen)
+    if (facture === 'sans_pdf') rows = rows.filter(r => !r.documents.some(d => d.kind === 'facture'));
+    else if (facture === 'a_payer') rows = rows.filter(isToPay);
+    else if (facture === 'retard') rows = rows.filter(r => isToPay(r) && r.retardJours > 0);
+    else if (facture !== 'all') rows = rows.filter(r => r.factureStatus === facture);
     if (words.length) rows = rows.filter(r => {
-      const hay = normalizeSearch([r.supplierName, r.orderNumber, r.blNumber, r.remarque].join(' '));
+      const hay = normalizeSearch([r.supplierName, r.orderNumber, r.blNumber, r.remarque, r.factureNumber].join(' '));
       return words.every(w => hay.includes(w));
     });
 
-    // Most recent first
-    rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+    // Most recent first; "à payer" / "en retard": the oldest due date first
+    if (facture === 'a_payer' || facture === 'retard') rows.sort((a, b) => (a.echeance ? new Date(a.echeance) : Infinity) - (b.echeance ? new Date(b.echeance) : Infinity));
+    else rows.sort((a, b) => new Date(b.date) - new Date(a.date));
     if (req.query.page === undefined) return res.json(rows);
 
-    const totals = rows.reduce((acc, r) => ({ bc: acc.bc + (r.montantBC || 0), bl: acc.bl + (r.montantBL || 0) }), { bc: 0, bl: 0 });
+    const totals = rows.reduce((acc, r) => ({
+      bc: acc.bc + (r.montantBC || 0), bl: acc.bl + (r.montantBL || 0),
+      reste: acc.reste + (isToPay(r) ? r.reste : 0), retard: acc.retard + (isToPay(r) && r.retardJours > 0 ? r.reste : 0),
+    }), { bc: 0, bl: 0, reste: 0, retard: 0 });
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
     const total = rows.length;
     const pages = Math.max(1, Math.ceil(total / limit));
@@ -2612,29 +2681,141 @@ app.get('/api/order-tracking', requireAuth, requirePermission('orders.edit'), as
     res.json({
       rows: rows.slice((page - 1) * limit, page * limit),
       total, page, pages, limit,
-      totals: { bc: parseFloat(totals.bc.toFixed(2)), bl: parseFloat(totals.bl.toFixed(2)) },
+      totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, parseFloat(v.toFixed(2))])),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.patch('/api/order-tracking', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+app.patch('/api/order-tracking', requireAuth, requireAccounting, async (req, res) => {
   try {
-    const { orderId, blNumber, factureStatus, modePaiement, typeFacture, remarque } = req.body;
-    if (!orderId) return res.status(400).json({ error: 'orderId requis' });
-    const t = await OrderTracking.findOneAndUpdate(
-      { orderId, blNumber: blNumber || '' },
-      {
-        $set: {
-          ...(factureStatus !== undefined ? { factureStatus } : {}),
-          ...(modePaiement !== undefined ? { modePaiement } : {}),
-          ...(typeFacture !== undefined ? { typeFacture } : {}),
-          ...(remarque !== undefined ? { remarque } : {}),
-        }
-      },
-      { upsert: true, new: true, runValidators: true }
-    );
+    const { orderId, blNumber } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(orderId)) return res.status(400).json({ error: 'orderId requis' });
+    const set = {};
+    const b = req.body;
+    const oneOf = (v, list) => list.includes(v);
+    if (b.factureStatus !== undefined) { if (!oneOf(b.factureStatus, ['non_recue', 'recue'])) return res.status(400).json({ error: 'Statut facture invalide' }); set.factureStatus = b.factureStatus; }
+    if (b.modePaiement !== undefined) { if (!oneOf(b.modePaiement, ['', 'espece', 'virement', 'cheque', 'effet'])) return res.status(400).json({ error: 'Mode de paiement invalide' }); set.modePaiement = b.modePaiement; }
+    if (b.typeFacture !== undefined) { if (!oneOf(b.typeFacture, ['', 'bl', 'facture', 'situation'])) return res.status(400).json({ error: 'Type de facture invalide' }); set.typeFacture = b.typeFacture; }
+    if (b.remarque !== undefined) set.remarque = String(b.remarque).slice(0, 500);
+    if (b.factureNumber !== undefined) set.factureNumber = String(b.factureNumber).trim().slice(0, 80);
+    const date = (v) => { if (v === null || v === '') return null; const d = new Date(v); return isNaN(d) ? undefined : d; };
+    if (b.factureDate !== undefined) { const d = date(b.factureDate); if (d === undefined) return res.status(400).json({ error: 'Date de facture invalide' }); set.factureDate = d; }
+    if (b.paiementDate !== undefined) { const d = date(b.paiementDate); if (d === undefined) return res.status(400).json({ error: 'Date de paiement invalide' }); set.paiementDate = d; }
+    if (b.montantPaye !== undefined) { const n = Number(b.montantPaye); if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: 'Montant payé invalide' }); set.montantPaye = Math.round(n * 100) / 100; }
+    if (b.paiementStatus !== undefined) {
+      if (!oneOf(b.paiementStatus, ['non_paye', 'partiel', 'paye'])) return res.status(400).json({ error: 'Statut de paiement invalide' });
+      set.paiementStatus = b.paiementStatus;
+      if (b.paiementStatus === 'non_paye') { set.paiementDate = null; set.montantPaye = 0; }
+    }
+    const filter = { orderId, blNumber: blNumber || '' };
+    // Marked paid without a date → today
+    if (set.paiementStatus === 'paye' && b.paiementDate === undefined) {
+      const cur = await OrderTracking.findOne(filter).select('paiementDate').lean();
+      if (!cur?.paiementDate) set.paiementDate = new Date();
+    }
+    const t = await OrderTracking.findOneAndUpdate(filter, { $set: set }, { upsert: true, new: true, runValidators: true });
     res.json(t.toJSON());
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==================== DOCUMENTS (Cloudflare R2) ====================
+// Invoices and delivery notes of the "Suivi des commandes". Files go through this server to a private
+// R2 bucket (S3-compatible); opening one returns a link valid for a few minutes.
+// .env: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET   (npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner)
+// R2_ENDPOINT is optional (another S3-compatible service, or a local test server).
+const DOC_MAX_BYTES = 15 * 1024 * 1024;
+let r2Client = null;
+function r2() {
+  const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT } = process.env;
+  if (!R2_BUCKET || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || (!R2_ACCOUNT_ID && !R2_ENDPOINT)) {
+    const e = new Error('Stockage des documents non configuré (variables R2_… manquantes dans .env).'); e.status = 503; throw e;
+  }
+  let sdk, presigner;
+  try { sdk = require('@aws-sdk/client-s3'); presigner = require('@aws-sdk/s3-request-presigner'); }
+  catch { const e = new Error('Module manquant : lancez « npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner » dans backend.'); e.status = 503; throw e; }
+  if (!r2Client) {
+    r2Client = new sdk.S3Client({
+      region: 'auto',
+      endpoint: R2_ENDPOINT || `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      forcePathStyle: !!R2_ENDPOINT,
+      credentials: { accessKeyId: R2_ACCESS_KEY_ID, secretAccessKey: R2_SECRET_ACCESS_KEY },
+    });
+  }
+  return { client: r2Client, sdk, presigner, bucket: R2_BUCKET };
+}
+// Real file type from the first bytes (the browser's content-type is not trusted)
+function sniffDoc(buf) {
+  if (buf.length >= 5 && buf.slice(0, 5).toString('latin1') === '%PDF-') return { type: 'application/pdf', ext: 'pdf' };
+  if (buf.length >= 3 && buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return { type: 'image/jpeg', ext: 'jpg' };
+  if (buf.length >= 8 && buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))) return { type: 'image/png', ext: 'png' };
+  if (buf.length >= 12 && buf.slice(0, 4).toString('latin1') === 'RIFF' && buf.slice(8, 12).toString('latin1') === 'WEBP') return { type: 'image/webp', ext: 'webp' };
+  return null;
+}
+const safeKeyPart = (v) => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'x';
+
+// POST /api/order-tracking/documents?orderId=&blNumber=&kind=facture|bl&name=  — body: the file itself (max 15 MB)
+const docBody = express.raw({ type: () => true, limit: DOC_MAX_BYTES });
+// Body reader with a readable answer when the file is too large
+const readDocBody = (req, res, next) => docBody(req, res, (err) => {
+  if (!err) return next();
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Fichier trop lourd (15 Mo maximum).' });
+  res.status(400).json({ error: 'Envoi du fichier interrompu.' });
+});
+app.post('/api/order-tracking/documents', requireAuth, requireAccounting, readDocBody, async (req, res) => {
+    try {
+      const { orderId, kind } = req.query;
+      const blNumber = String(req.query.blNumber || '');
+      if (!mongoose.Types.ObjectId.isValid(orderId)) return res.status(400).json({ error: 'Commande invalide' });
+      if (!['facture', 'bl'].includes(kind)) return res.status(400).json({ error: 'Type de document invalide' });
+      const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+      if (!buf.length) return res.status(400).json({ error: 'Fichier vide' });
+      const sniff = sniffDoc(buf);
+      if (!sniff) return res.status(415).json({ error: 'Format non accepté : PDF, JPG, PNG ou WebP uniquement.' });
+      const order = await Order.findById(orderId).select('number reference orderDate').lean();
+      if (!order) return res.status(404).json({ error: 'Commande introuvable' });
+      const { client, sdk, bucket } = r2();
+      const year = new Date(order.orderDate || Date.now()).getFullYear();
+      const base = String(req.query.name || `${kind}.${sniff.ext}`).replace(/\.[^.]+$/, '');
+      const key = `achats/${year}/${safeKeyPart(order.number || order.reference || orderId)}/${kind}${blNumber ? `-${safeKeyPart(blNumber)}` : ''}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.${sniff.ext}`;
+      await client.send(new sdk.PutObjectCommand({ Bucket: bucket, Key: key, Body: buf, ContentType: sniff.type }));
+      const doc = { kind, key, name: `${base.slice(0, 120)}.${sniff.ext}`, contentType: sniff.type, size: buf.length, uploadedAt: new Date(), uploadedBy: req.user?.displayName || req.user?.username || '' };
+      const update = { $push: { documents: doc } };
+      if (kind === 'facture') update.$set = { factureStatus: 'recue' }; // an invoice is attached → it was received
+      const t = await OrderTracking.findOneAndUpdate({ orderId, blNumber }, update, { upsert: true, new: true });
+      const saved = t.documents[t.documents.length - 1];
+      res.status(201).json({ id: String(saved._id), kind: saved.kind, name: saved.name, contentType: saved.contentType, size: saved.size, uploadedAt: saved.uploadedAt, uploadedBy: saved.uploadedBy, factureStatus: t.factureStatus });
+    } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// GET /api/order-tracking/documents/:docId/url → { url } valid 5 minutes (opens in the browser)
+app.get('/api/order-tracking/documents/:docId/url', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.docId)) return res.status(400).json({ error: 'Document invalide' });
+    const t = await OrderTracking.findOne({ 'documents._id': req.params.docId }).select('documents').lean();
+    const d = t?.documents.find(x => String(x._id) === req.params.docId);
+    if (!d) return res.status(404).json({ error: 'Document introuvable' });
+    const { client, sdk, presigner, bucket } = r2();
+    const disposition = `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${safeKeyPart(d.name)}"; filename*=UTF-8''${encodeURIComponent(d.name)}`;
+    const url = await presigner.getSignedUrl(client, new sdk.GetObjectCommand({
+      Bucket: bucket, Key: d.key, ResponseContentDisposition: disposition, ResponseContentType: d.contentType,
+    }), { expiresIn: 300 });
+    res.json({ url });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// DELETE /api/order-tracking/documents/:docId — removes the file from R2 and from the row
+app.delete('/api/order-tracking/documents/:docId', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.docId)) return res.status(400).json({ error: 'Document invalide' });
+    const t = await OrderTracking.findOne({ 'documents._id': req.params.docId }).select('documents').lean();
+    const d = t?.documents.find(x => String(x._id) === req.params.docId);
+    if (!d) return res.status(404).json({ error: 'Document introuvable' });
+    const { client, sdk, bucket } = r2();
+    await client.send(new sdk.DeleteObjectCommand({ Bucket: bucket, Key: d.key }));
+    // the list is rewritten without this document (no $pull: works on every MongoDB-compatible database)
+    await OrderTracking.updateOne({ _id: t._id }, { $set: { documents: t.documents.filter(x => String(x._id) !== req.params.docId) } });
+    res.json({ success: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 // ==================== CLIENT ROUTES ====================
@@ -3061,7 +3242,25 @@ app.get('/api/fournisseurs', requireAuth, requireOrdersView, async (req, res) =>
 });
 // Only the supplier fields — nothing else from the request body is stored
 const SUPPLIER_FIELDS = ['name', 'code', 'contact', 'phone', 'email', 'address', 'city', 'ice', 'rc', 'notes'];
-const cleanSupplier = (body = {}) => Object.fromEntries(SUPPLIER_FIELDS.filter(k => body[k] !== undefined).map(k => [k, String(body[k] ?? '').trim()]));
+const cleanSupplier = (body = {}) => {
+  const out = Object.fromEntries(SUPPLIER_FIELDS.filter(k => body[k] !== undefined).map(k => [k, String(body[k] ?? '').trim()]));
+  Object.assign(out, cleanPaymentTerms(body));
+  return out;
+};
+// Payment term only (what the accountant may change): days (empty = not set) + "fin de mois"
+function cleanPaymentTerms(body = {}) {
+  const out = {};
+  if (body.delaiPaiement !== undefined) {
+    if (body.delaiPaiement === null || body.delaiPaiement === '') out.delaiPaiement = null;
+    else {
+      const n = Math.round(Number(body.delaiPaiement));
+      if (!Number.isFinite(n) || n < 0 || n > 365) { const e = new Error('Délai de paiement invalide (0 à 365 jours).'); e.status = 400; throw e; }
+      out.delaiPaiement = n;
+    }
+  }
+  if (body.finDeMois !== undefined) out.finDeMois = !!body.finDeMois;
+  return out;
+}
 const sameName = (name, exceptId) => Fournisseur.findOne({
   name: new RegExp(`^${escapeRegex(String(name).trim())}$`, 'i'), ...(exceptId ? { _id: { $ne: exceptId } } : {}),
 }).lean();
@@ -3073,11 +3272,15 @@ app.post('/api/fournisseurs', requireAuth, requirePermission('orders.edit'), asy
     if (await sameName(data.name)) return res.status(409).json({ error: `Un fournisseur « ${data.name} » existe déjà.` });
     const f = await Fournisseur.create(data);
     res.status(201).json(f);
-  } catch (e) { res.status(400).json({ error: e.message }); }
+  } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 });
-app.put('/api/fournisseurs/:id', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+// ACHAT edits everything; the accountant (orders.accounting) only the payment term
+app.put('/api/fournisseurs/:id', requireAuth, requireAccounting, async (req, res) => {
   try {
-    const data = cleanSupplier(req.body);
+    const full = isAdmin(req) || (req.permissions || []).includes('orders.edit');
+    if (!full && SUPPLIER_FIELDS.some(k => req.body[k] !== undefined))
+      return res.status(403).json({ error: 'Vous pouvez seulement modifier le délai de paiement.' });
+    const data = full ? cleanSupplier(req.body) : cleanPaymentTerms(req.body);
     if (data.name !== undefined && !data.name) return res.status(400).json({ error: 'Nom requis' });
     if (data.name && await sameName(data.name, req.params.id)) return res.status(409).json({ error: `Un fournisseur « ${data.name} » existe déjà.` });
     const f = await Fournisseur.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
@@ -3085,7 +3288,7 @@ app.put('/api/fournisseurs/:id', requireAuth, requirePermission('orders.edit'), 
     // Orders keep the supplier name as text too: follow a rename
     if (data.name) await Order.updateMany({ supplierId: f._id }, { $set: { supplier: f.name } });
     res.json(f);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 // Delete: refused while orders use the supplier. Articles holding a code at this supplier:
 // the first call answers 409 with their number, ?force=1 removes those codes then deletes.
@@ -3118,7 +3321,7 @@ function orderStatusLate(o, today) {
 }
 
 // GET /api/fournisseurs/stats → { [supplierId]: { orders, open, late, amount, lastOrder, items } }
-app.get('/api/fournisseurs/stats', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+app.get('/api/fournisseurs/stats', requireAuth, requireAccounting, async (req, res) => {
   try {
     const [suppliers, orders, items] = await Promise.all([
       Fournisseur.find().select('name').lean(),
@@ -3143,13 +3346,23 @@ app.get('/api/fournisseurs/stats', requireAuth, requirePermission('orders.edit')
       const seen = new Set();
       for (const sc of it.supplierCodes || []) { const id = String(sc.supplierId); if (!seen.has(id) && out[id]) { seen.add(id); out[id].items++; } }
     }
-    for (const r of Object.values(out)) r.amount = Math.round(r.amount * 100) / 100;
+    // Payments (same rows and rules as the Suivi table)
+    for (const r of Object.values(out)) { r.toPay = 0; r.payLate = 0; r.payLateAmount = 0; }
+    for (const row of await buildTrackingRows({ status: { $ne: 'brouillon' } })) {
+      const r = row.supplierId && out[row.supplierId];
+      if (!r || !isToPay(row)) continue;
+      r.toPay += row.reste;
+      if (row.retardJours > 0) { r.payLate++; r.payLateAmount += row.reste; }
+    }
+    for (const r of Object.values(out)) {
+      r.amount = Math.round(r.amount * 100) / 100; r.toPay = Math.round(r.toPay * 100) / 100; r.payLateAmount = Math.round(r.payLateAmount * 100) / 100;
+    }
     res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // GET /api/fournisseurs/:id/details → supplier + its orders (most recent first) + the articles it supplies
-app.get('/api/fournisseurs/:id/details', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+app.get('/api/fournisseurs/:id/details', requireAuth, requireAccounting, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Fournisseur invalide' });
     const f = await Fournisseur.findById(req.params.id);

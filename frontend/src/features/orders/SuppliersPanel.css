@@ -76,7 +76,7 @@
 .sp-contact a:hover { text-decoration: underline; }
 .sp-pre { white-space: pre-wrap; color: var(--text-2); }
 .sp-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
-.sp-kpis > div:last-child { grid-column: 1 / -1; flex-direction: row; align-items: baseline; justify-content: space-between; }
+.sp-kpis > div:nth-child(n+4) { grid-column: 1 / -1; flex-direction: row; align-items: baseline; justify-content: space-between; }
 .sp-kpis > div { padding: 10px 12px; }
 .sp-kpis strong { font-size: 17px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sp-tabs { display: flex; gap: 2px; padding: 3px; margin-bottom: 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; }
@@ -106,3 +106,14 @@
   .sp-table td, .sp-table th { padding: 9px 8px; }
   .sp-name strong { max-width: 140px; }
 }
+
+/* ── Accounting: payment term, amounts to pay ── */
+.sp-term { display: flex; align-items: center; gap: 8px; padding: 10px 14px; margin-bottom: 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; color: var(--text-2); }
+.sp-term svg { color: var(--text-3); }
+.sp-term strong { color: var(--text); }
+.sp-kpi--pay { grid-column: 1 / -1; flex-direction: row !important; align-items: baseline; justify-content: space-between; }
+.sp-kpi--pay em { font-style: normal; font-size: 12px; }
+.sp-check { display: inline-flex !important; align-items: center; gap: 8px; font-weight: 500 !important; text-transform: none !important; letter-spacing: 0 !important; cursor: pointer; }
+.sp-check { white-space: nowrap; height: 40px; }
+.modal .sp-check input[type="checkbox"] { flex: 0 0 auto; width: 16px !important; height: 16px !important; min-width: 0 !important; padding: 0 !important; margin: 0; appearance: auto; -webkit-appearance: checkbox; box-shadow: none !important; accent-color: var(--text); }
+.sp-hint { display: block; margin-top: 4px; font-size: 11.5px; color: var(--text-3); }

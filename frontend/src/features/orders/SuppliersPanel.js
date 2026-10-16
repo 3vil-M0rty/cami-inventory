@@ -12,6 +12,44 @@ import './SuppliersPanel.css';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 const LOCALES = { fr: 'fr-FR', it: 'it-IT', en: 'en-GB' };
 const EMPTY = { name: '', code: '', contact: '', phone: '', email: '', address: '', city: '', ice: '', rc: '', notes: '' };
+const TERM_PRESETS = [0, 30, 45, 60, 90, 120];
+
+/** "60 j fin de mois" / "Comptant" / "—" */
+export function termLabel(delai, finDeMois, t) {
+  if (delai == null) return '—';
+  if (delai === 0 && !finDeMois) return t('acTermCash');
+  return t(finDeMois ? 'acTermDaysEom' : 'acTermDays', { n: delai });
+}
+
+function TermFields({ value, onChange, t }) {
+  const preset = value.delaiPaiement === '' || value.delaiPaiement == null ? '' : TERM_PRESETS.includes(Number(value.delaiPaiement)) ? String(value.delaiPaiement) : 'custom';
+  const [custom, setCustom] = useState(preset === 'custom');
+  return (
+    <div className="form-grid-2">
+      <div className="form-group">
+        <label>{t('acTerm')}</label>
+        <select value={custom ? 'custom' : preset} onChange={e => {
+          const v = e.target.value;
+          if (v === 'custom') { setCustom(true); return; }
+          setCustom(false); onChange({ delaiPaiement: v === '' ? '' : Number(v) });
+        }}>
+          <option value="">{t('acTermUnset')}</option>
+          {TERM_PRESETS.map(n => <option key={n} value={n}>{n === 0 ? t('acTermCash') : t('acTermDays', { n })}</option>)}
+          <option value="custom">{t('acTermOther')}</option>
+        </select>
+        {custom && (
+          <input type="number" min="0" max="365" style={{ marginTop: 6 }} value={value.delaiPaiement ?? ''} placeholder={t('acTermDaysPh')}
+            onChange={e => onChange({ delaiPaiement: e.target.value === '' ? '' : Number(e.target.value) })} />
+        )}
+      </div>
+      <div className="form-group">
+        <label>&nbsp;</label>
+        <label className="sp-check"><input type="checkbox" checked={!!value.finDeMois} onChange={e => onChange({ finDeMois: e.target.checked })} />{t('acEom')}</label>
+        <span className="sp-hint">{t('acEomHint')}</span>
+      </div>
+    </div>
+  );
+}
 
 function useFmt(lang) {
   return useMemo(() => {
@@ -25,19 +63,21 @@ function useFmt(lang) {
 }
 
 /* ── Create / edit form ────────────────────────────────────────────────── */
-export function SupplierFormModal({ supplier, onClose, onSaved }) {
+export function SupplierFormModal({ supplier, onClose, onSaved, paymentOnly = false }) {
   const { t } = useLanguage();
-  const [form, setForm] = useState(() => ({ ...EMPTY, ...(supplier || {}) }));
+  const [form, setForm] = useState(() => ({ ...EMPTY, delaiPaiement: '', finDeMois: false, ...(supplier || {}), ...(supplier?.delaiPaiement == null ? { delaiPaiement: '' } : {}) }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim()) { setError(t('orNameRequired')); return; }
-    if (form.email && !/^\S+@\S+\.\S+$/.test(form.email.trim())) { setError(t('spEmailInvalid')); return; }
+    if (!paymentOnly && !form.name.trim()) { setError(t('orNameRequired')); return; }
+    if (!paymentOnly && form.email && !/^\S+@\S+\.\S+$/.test(form.email.trim())) { setError(t('spEmailInvalid')); return; }
+    if (form.delaiPaiement !== '' && (!Number.isFinite(Number(form.delaiPaiement)) || form.delaiPaiement < 0 || form.delaiPaiement > 365)) { setError(t('acTermInvalid')); return; }
     setSaving(true); setError('');
-    const body = Object.fromEntries(Object.keys(EMPTY).map(k => [k, (form[k] || '').trim()]));
+    const terms = { delaiPaiement: form.delaiPaiement === '' ? null : Number(form.delaiPaiement), finDeMois: !!form.finDeMois };
+    const body = paymentOnly ? terms : { ...Object.fromEntries(Object.keys(EMPTY).map(k => [k, (form[k] || '').trim()])), ...terms };
     try {
       const r = supplier?.id
         ? await axios.put(`${API_URL}/fournisseurs/${supplier.id}`, body)
@@ -50,8 +90,9 @@ export function SupplierFormModal({ supplier, onClose, onSaved }) {
   return (
     <div className="modal-overlay modal-overlay--top" onClick={onClose}>
       <div className="modal modal--supplier" onClick={e => e.stopPropagation()}>
-        <h2>{supplier?.id ? t('spEditTitle', { name: supplier.name }) : t('orNewSupplier')}</h2>
+        <h2>{paymentOnly ? t('acTermTitle', { name: supplier?.name }) : supplier?.id ? t('spEditTitle', { name: supplier.name }) : t('orNewSupplier')}</h2>
         <form onSubmit={submit}>
+          {paymentOnly ? null : <>
           <div className="form-grid-2">
             <div className="form-group"><label>{t('orNameReq')}</label><input value={form.name} onChange={set('name')} autoFocus /></div>
             <div className="form-group"><label>{t('orSupplierCode')}</label><input value={form.code} onChange={set('code')} /></div>
@@ -64,6 +105,8 @@ export function SupplierFormModal({ supplier, onClose, onSaved }) {
           </div>
           <div className="form-group"><label>{t('orAddress')}</label><input value={form.address} onChange={set('address')} /></div>
           <div className="form-group"><label>{t('orNotes')}</label><textarea rows={2} value={form.notes} onChange={set('notes')} /></div>
+          </>}
+          <TermFields value={form} onChange={(patch) => setForm(f => ({ ...f, ...patch }))} t={t} />
           {error && <div className="form-error">{error}</div>}
           <div className="modal-actions">
             <button type="button" onClick={onClose}>{t('cancel')}</button>
@@ -76,7 +119,7 @@ export function SupplierFormModal({ supplier, onClose, onSaved }) {
 }
 
 /* ── Supplier detail (drawer) ──────────────────────────────────────────── */
-function SupplierDrawer({ supplierId, stats, statusColors, lang, isAdmin, onClose, onEdit, onDelete, onNewOrder, onOpenOrder }) {
+function SupplierDrawer({ supplierId, stats, statusColors, lang, isAdmin, fullEdit, onClose, onEdit, onDelete, onNewOrder, onOpenOrder }) {
   const { t } = useLanguage();
   const f = useFmt(lang);
   const [data, setData] = useState(null);
@@ -118,9 +161,12 @@ function SupplierDrawer({ supplierId, stats, statusColors, lang, isAdmin, onClos
         {s && (
           <>
             <div className="sp-actions">
-              <button type="button" className="sp-btn sp-btn--primary" onClick={() => onNewOrder(s)}><FilePlus size={14} />{t('spNewOrder')}</button>
-              <button type="button" className="sp-btn" onClick={() => onEdit(s)}><Pencil size={14} />{t('edit')}</button>
+              {fullEdit && <button type="button" className="sp-btn sp-btn--primary" onClick={() => onNewOrder(s)}><FilePlus size={14} />{t('spNewOrder')}</button>}
+              <button type="button" className="sp-btn" onClick={() => onEdit(s)}><Pencil size={14} />{fullEdit ? t('edit') : t('acEditTerm')}</button>
               {isAdmin && <button type="button" className="sp-btn sp-btn--danger" onClick={() => onDelete(s)}><Trash2 size={14} />{t('deleteAction')}</button>}
+            </div>
+            <div className="sp-term">
+              <Clock size={14} /><span>{t('acTerm')} : <strong>{termLabel(s.delaiPaiement, s.finDeMois, t)}</strong></span>
             </div>
 
             <div className="sp-contact">
@@ -138,6 +184,7 @@ function SupplierDrawer({ supplierId, stats, statusColors, lang, isAdmin, onClos
               <div><span>{t('spOpen')}</span><strong>{f.n(st.open)}</strong></div>
               <div><span>{t('spLate')}</span><strong className={st.late ? 'is-bad' : ''}>{f.n(st.late)}</strong></div>
               <div><span>{t('spAmount')}</span><strong>{f.money(st.amount)}</strong></div>
+              <div className="sp-kpi--pay"><span>{t('acToPay')}</span><strong>{f.money(st.toPay)}{st.payLate > 0 && <em className="is-bad"> · {t('acLateCount', { n: st.payLate, amount: f.money(st.payLateAmount) })}</em>}</strong></div>
             </div>
 
             <div className="sp-tabs" role="tablist">
@@ -199,7 +246,7 @@ function SupplierDrawer({ supplierId, stats, statusColors, lang, isAdmin, onClos
 }
 
 /* ── Tab: list of suppliers ────────────────────────────────────────────── */
-export default function SuppliersPanel({ suppliers, onChanged, onNewOrder, onOpenOrder, statusColors, isAdmin }) {
+export default function SuppliersPanel({ suppliers, onChanged, onNewOrder, onOpenOrder, statusColors, isAdmin, fullEdit = true }) {
   const { t, currentLanguage: lang } = useLanguage();
   const f = useFmt(lang);
   const [stats, setStats] = useState({});
@@ -226,7 +273,9 @@ export default function SuppliersPanel({ suppliers, onChanged, onNewOrder, onOpe
     return [...list].sort((a, b) => { const va = val(a), vb = val(b); return (va < vb ? -1 : va > vb ? 1 : 0) * sort.dir; });
   }, [suppliers, q, sort, stats]);
 
-  const totals = useMemo(() => Object.values(stats).reduce((a, s) => ({ open: a.open + s.open, late: a.late + s.late }), { open: 0, late: 0 }), [stats]);
+  const totals = useMemo(() => Object.values(stats).reduce((a, s) => ({
+    open: a.open + s.open, late: a.late + s.late, toPay: a.toPay + (s.toPay || 0), payLateAmount: a.payLateAmount + (s.payLateAmount || 0),
+  }), { open: 0, late: 0, toPay: 0, payLateAmount: 0 }), [stats]);
   const withOrders = Object.values(stats).filter(s => s.orders > 0).length;
 
   const th = (key, label, num) => (
@@ -259,7 +308,8 @@ export default function SuppliersPanel({ suppliers, onChanged, onNewOrder, onOpe
       [t('orCity')]: s.city, [t('orAddress')]: s.address, ICE: s.ice, RC: s.rc,
       [t('spOrders')]: stats[s.id]?.orders || 0, [t('spOpen')]: stats[s.id]?.open || 0, [t('spLate')]: stats[s.id]?.late || 0,
       [t('spAmount')]: stats[s.id]?.amount || 0, [t('spLastOrder')]: stats[s.id]?.lastOrder ? f.d(stats[s.id].lastOrder) : '',
-      [t('spTabItems')]: stats[s.id]?.items || 0, [t('orNotes')]: s.notes,
+      [t('spTabItems')]: stats[s.id]?.items || 0, [t('acTerm')]: termLabel(s.delaiPaiement, s.finDeMois, t),
+      [t('acToPay')]: stats[s.id]?.toPay || 0, [t('orNotes')]: s.notes,
     }));
     if (!data.length) return;
     const ws = XLSX.utils.json_to_sheet(data);
@@ -275,6 +325,8 @@ export default function SuppliersPanel({ suppliers, onChanged, onNewOrder, onOpe
         <div><span>{t('spActive')}</span><strong>{f.n(withOrders)}</strong></div>
         <div><span>{t('spOpenAll')}</span><strong>{f.n(totals.open)}</strong></div>
         <div><span>{t('spLateAll')}</span><strong className={totals.late ? 'is-bad' : ''}>{f.n(totals.late)}</strong></div>
+        <div><span>{t('acToPayAll')}</span><strong>{f.money(totals.toPay)}</strong></div>
+        <div><span>{t('acPayLateAll')}</span><strong className={totals.payLateAmount ? 'is-bad' : ''}>{f.money(totals.payLateAmount)}</strong></div>
       </div>
 
       <div className="sp-toolbar">
@@ -285,7 +337,7 @@ export default function SuppliersPanel({ suppliers, onChanged, onNewOrder, onOpe
         </div>
         <div className="sp-toolbar__end">
           <button type="button" className="sp-btn" onClick={exportXlsx} disabled={!rows.length}><FileSpreadsheet size={14} />Excel</button>
-          <button type="button" className="sp-btn sp-btn--primary" onClick={() => setEditing({})}><Plus size={14} />{t('orNewSupplier')}</button>
+          {fullEdit && <button type="button" className="sp-btn sp-btn--primary" onClick={() => setEditing({})}><Plus size={14} />{t('orNewSupplier')}</button>}
         </div>
       </div>
 
@@ -303,6 +355,8 @@ export default function SuppliersPanel({ suppliers, onChanged, onNewOrder, onOpe
                 {th('amount', t('spAmount'), true)}
                 {th('lastOrder', t('spLastOrder'), true)}
                 {th('items', t('spTabItems'), true)}
+                <th className="num">{t('acTermShort')}</th>
+                {th('toPay', t('acToPay'), true)}
                 <th />
               </tr></thead>
               <tbody>
@@ -335,8 +389,13 @@ export default function SuppliersPanel({ suppliers, onChanged, onNewOrder, onOpe
                       <td className="num">{st.amount ? f.money(st.amount) : <span className="sp-muted">—</span>}</td>
                       <td className="num sp-muted">{f.d(st.lastOrder)}</td>
                       <td className="num">{f.n(st.items)}</td>
+                      <td className="num">{s.delaiPaiement == null ? <span className="sp-muted">—</span> : termLabel(s.delaiPaiement, s.finDeMois, t)}</td>
+                      <td className="num">
+                        {st.toPay ? f.money(st.toPay) : <span className="sp-muted">—</span>}
+                        {st.payLate > 0 && <span className="sp-late sp-late--inline" title={t('acFilterLate')}><Clock size={11} />{st.payLate}</span>}
+                      </td>
                       <td className="sp-rowact">
-                        <button type="button" className="sp-icon" title={t('spNewOrder')} aria-label={t('spNewOrder')} onClick={e => { e.stopPropagation(); onNewOrder(s); }}><FilePlus size={14} /></button>
+                        {fullEdit && <button type="button" className="sp-icon" title={t('spNewOrder')} aria-label={t('spNewOrder')} onClick={e => { e.stopPropagation(); onNewOrder(s); }}><FilePlus size={14} /></button>}
                         <button type="button" className="sp-icon" title={t('edit')} aria-label={t('edit')} onClick={e => { e.stopPropagation(); setEditing(s); }}><Pencil size={14} /></button>
                       </td>
                     </tr>
@@ -351,6 +410,7 @@ export default function SuppliersPanel({ suppliers, onChanged, onNewOrder, onOpe
       {editing && (
         <SupplierFormModal
           supplier={editing.id ? editing : null}
+          paymentOnly={!fullEdit}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); setDetailKey(k => k + 1); onChanged(); }}
         />
@@ -358,7 +418,7 @@ export default function SuppliersPanel({ suppliers, onChanged, onNewOrder, onOpe
       {openId && (
         <SupplierDrawer
           key={`${openId}-${detailKey}`}
-          supplierId={openId} stats={stats[openId]} statusColors={statusColors} lang={lang} isAdmin={isAdmin}
+          supplierId={openId} stats={stats[openId]} statusColors={statusColors} lang={lang} isAdmin={isAdmin} fullEdit={fullEdit}
           onClose={() => setOpenId(null)}
           onEdit={(s) => setEditing({ ...s, id: s.id || s._id })}
           onDelete={(s) => remove({ ...s, id: s.id || s._id })}

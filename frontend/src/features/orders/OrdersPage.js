@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { dialog, errorMessage } from '../../components/common/dialog';
 import { PAGE_PATHS, subPathFromLocation, getQueryParam, setUrl } from '../../routes';
 import SuppliersPanel, { SupplierFormModal } from './SuppliersPanel';
+import { DocumentsCell, DocumentsModal } from './TrackingDocuments';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -73,6 +74,14 @@ const PAIEMENT_OPTIONS = [
   { value: 'cheque', label: 'orPayCheque' },
   { value: 'effet', label: 'orPayBill' },
 ];
+const PAIEMENT_STATUS_OPTIONS = [
+  { value: 'non_paye', label: 'acPayNone' },
+  { value: 'partiel', label: 'acPayPartial' },
+  { value: 'paye', label: 'acPayDone' },
+];
+const ymdInput = (d) => { if (!d) return ''; const x = new Date(d); return isNaN(x) ? '' : `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+const money2 = (v) => Number(v || 0).toFixed(2);
+
 const TYPE_FACTURE_OPTIONS = [
   { value: '', label: '—' },
   { value: 'bl', label: 'BL' },
@@ -113,10 +122,15 @@ export default function OrdersPage() {
   const ORDER_TABS = ['orders', 'requests', 'suivi', 'fournisseurs'];
   const [newOrderSupplier, setNewOrderSupplier] = useState(''); // supplier preselected in a new order
   // 'orders' | 'requests' | 'suivi' — kept in the URL (?onglet=suivi) so a refresh stays on the same tab
+  // Suivi + Fournisseurs: ACHAT (orders.edit) and the accountant (orders.accounting)
+  const canAccounting = can('orders.edit') || can('orders.accounting');
+  const tabAllowed = (k) => k === 'orders' || (k === 'requests' ? can('orders.edit') : canAccounting);
+  const defaultTab = !can('orders.edit') && canAccounting ? 'suivi' : 'orders'; // the accountant lands on Suivi
   const [activeTab, setActiveTab] = useState(() => {
     const tab = getQueryParam('onglet');
-    return ORDER_TABS.includes(tab) ? tab : 'orders';
+    return ORDER_TABS.includes(tab) ? tab : defaultTab;
   });
+  const shownTab = tabAllowed(activeTab) ? activeTab : defaultTab;
   const changeTab = (tab) => {
     setActiveTab(tab);
     setUrl(PAGE_PATHS.orders, { replace: true, query: { onglet: tab === 'orders' ? null : tab } });
@@ -743,7 +757,7 @@ export default function OrdersPage() {
       <header className="orders-header">
         <div className="orders-tab-switcher">
           <button
-            className={`orders-tab-btn ${activeTab === 'orders' ? 'active' : ''}`}
+            className={`orders-tab-btn ${shownTab === 'orders' ? 'active' : ''}`}
             onClick={() => changeTab('orders')}
           >
             <ShoppingCart size={15} /> {t('navOrders')}
@@ -752,7 +766,7 @@ export default function OrdersPage() {
 
           {can('orders.edit') && (
             <button
-              className={`orders-tab-btn ${activeTab === 'requests' ? 'active' : ''}`}
+              className={`orders-tab-btn ${shownTab === 'requests' ? 'active' : ''}`}
               onClick={() => changeTab('requests')}
             >
               <ShoppingCart size={13} />
@@ -765,9 +779,9 @@ export default function OrdersPage() {
             </button>
           )}
 
-          {can('orders.edit') && (
+          {canAccounting && (
             <button
-              className={`orders-tab-btn ${activeTab === 'suivi' ? 'active' : ''}`}
+              className={`orders-tab-btn ${shownTab === 'suivi' ? 'active' : ''}`}
               onClick={() => changeTab('suivi')}
             >
               <ClipboardList size={13} />
@@ -775,9 +789,9 @@ export default function OrdersPage() {
             </button>
           )}
 
-          {can('orders.edit') && (
+          {canAccounting && (
             <button
-              className={`orders-tab-btn ${activeTab === 'fournisseurs' ? 'active' : ''}`}
+              className={`orders-tab-btn ${shownTab === 'fournisseurs' ? 'active' : ''}`}
               onClick={() => changeTab('fournisseurs')}
             >
               <Truck size={13} />
@@ -799,19 +813,20 @@ export default function OrdersPage() {
       </header>
 
       {/* ── Tab content ──────────────────────────────────────────── */}
-      {activeTab === 'requests' ? (
+      {shownTab === 'requests' ? (
         <PurchaseRequestsPanel
           onChanged={fetchPendingCount}
           isAdmin={isAdmin}
           lang={lang}
         />
-      ) : activeTab === 'suivi' ? (
+      ) : shownTab === 'suivi' ? (
         <SuiviCommandesPanel />
-      ) : activeTab === 'fournisseurs' ? (
+      ) : shownTab === 'fournisseurs' ? (
         <SuppliersPanel
           suppliers={suppliers}
           statusColors={STATUS_COLORS}
           isAdmin={isAdmin}
+          fullEdit={can('orders.edit')}
           onChanged={fetchSuppliers}
           onNewOrder={(s) => { setEditOrder(null); setNewOrderSupplier(s.id); setShowForm(true); }}
           onOpenOrder={(id) => {
@@ -1698,11 +1713,30 @@ function PurchaseRequestsPanel({ onChanged, isAdmin, lang }) {
    drift. Only Facture / Mode de paiement / Type de facture / Remarque are
    editable and persisted.
 ────────────────────────────────────────────────────────────────────────── */
+// Due date of a row: date + countdown / delay; "estimated" when based on the BL date (no invoice date yet)
+function DueCell({ row, t }) {
+  if (row.paiementStatus === 'paye') {
+    return <span className="pr-due pr-due--ok">{t('acPaidOn', { date: row.paiementDate ? new Date(row.paiementDate).toLocaleDateString('fr-FR') : '—' })}</span>;
+  }
+  if (row.delaiPaiement == null) return <span className="pr-faint" title={t('acNoTermTip')}>{t('acNoTerm')}</span>;
+  if (!row.echeance) return <span className="pr-faint" title={t('acNoBaseTip')}>—</span>;
+  const d = new Date(row.echeance);
+  const days = Math.ceil((d - new Date()) / 86400000);
+  return (
+    <span className={`pr-due${row.retardJours > 0 ? ' pr-due--late' : days <= 7 ? ' pr-due--soon' : ''}`}
+      title={row.echeanceEstimee ? t('acEstimatedTip') : undefined}>
+      <strong>{d.toLocaleDateString('fr-FR')}{row.echeanceEstimee ? '*' : ''}</strong>
+      <span>{row.retardJours > 0 ? t('acLateDays', { n: row.retardJours }) : days <= 0 ? t('acDueToday') : t('acDueIn', { n: days })}</span>
+    </span>
+  );
+}
+
 function SuiviCommandesPanel() {
   const { t, currentLanguage: lang } = useLanguage();
   const [savingKey, setSavingKey] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [factureFilter, setFactureFilter] = useState('all'); // 'all' | 'recue' | 'non_recue'
+  const [factureFilter, setFactureFilter] = useState('all'); // 'all' | 'recue' | 'non_recue' | 'sans_pdf'
+  const [docsRow, setDocsRow] = useState(null); // row whose invoices / BL are open
   const [page, setPage] = useState(1);
   // Search runs on the server (debounced while typing); filters + totals + pagination too
   const { data, loading, reload, patch, dropOthers } = usePagedList(
@@ -1719,6 +1753,8 @@ function SuiviCommandesPanel() {
 
   const rowKey = (r) => `${r.orderId}::${r.blNumber}`;
 
+  // Fields that change computed values (due date, remaining amount) reload the page of rows after saving
+  const RECOMPUTE = ['factureDate', 'paiementStatus', 'montantPaye', 'factureStatus'];
   const updateField = async (row, field, value) => {
     const key = rowKey(row);
     patch(d => ({ ...d, rows: d.rows.map(r => rowKey(r) === key ? { ...r, [field]: value } : r) }));
@@ -1730,6 +1766,7 @@ function SuiviCommandesPanel() {
         [field]: value,
       });
       dropOthers();
+      if (RECOMPUTE.includes(field)) fetchRows();
     } catch (e) {
       console.error(e);
       dialog.alert(t('errSave'));
@@ -1776,6 +1813,24 @@ function SuiviCommandesPanel() {
             >
               {t('orInvoiceReceived')}
             </button>
+            <button
+              className={`pr-filter-tab ${factureFilter === 'sans_pdf' ? 'active' : ''}`}
+              onClick={() => changeFilter('sans_pdf')}
+            >
+              {t('tdFilterNoPdf')}
+            </button>
+            <button
+              className={`pr-filter-tab ${factureFilter === 'a_payer' ? 'active' : ''}`}
+              onClick={() => changeFilter('a_payer')}
+            >
+              {t('acFilterToPay')}
+            </button>
+            <button
+              className={`pr-filter-tab ${factureFilter === 'retard' ? 'active' : ''}`}
+              onClick={() => changeFilter('retard')}
+            >
+              {t('acFilterLate')}
+            </button>
           </div>
           <button className="pr-refresh-btn orders-icon-btn orders-icon-btn--sm" onClick={fetchRows} title={t('orRefresh')}>
             <RefreshCw size={14} className={loading ? 'spin' : undefined} />
@@ -1808,9 +1863,15 @@ function SuiviCommandesPanel() {
                 <th>{t('orSupplier')}</th>
                 <th>{t('orBcNo')}</th>
                 <th>BL</th>
+                <th>{t('tdColumn')}</th>
                 <th>{t('orAmountBC')}</th>
                 <th>{t('orAmountBL')}</th>
                 <th>{t('orInvoice')}</th>
+                <th>{t('acInvoiceNo')}</th>
+                <th>{t('acInvoiceDate')}</th>
+                <th>{t('acDueDate')}</th>
+                <th>{t('acPayment')}</th>
+                <th>{t('acPaymentDate')}</th>
                 <th>{t('orPaymentMode')}</th>
                 <th>{t('orInvoiceType')}</th>
                 <th>{t('orOrderState')}</th>
@@ -1834,6 +1895,7 @@ function SuiviCommandesPanel() {
                         ? <strong>{row.blNumber}</strong>
                         : <span className="pr-faint">{t('orPending')}</span>}
                     </td>
+                    <td><DocumentsCell row={row} onOpen={setDocsRow} /></td>
                     <td className="pr-num pr-strong">{row.montantBC.toFixed(2)}</td>
                     <td className="pr-num pr-strong">{row.montantBL.toFixed(2)}</td>
                     <td>
@@ -1845,6 +1907,61 @@ function SuiviCommandesPanel() {
                       >
                         {FACTURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
                       </select>
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        key={`fn-${key}-${row.factureNumber}`}
+                        defaultValue={row.factureNumber}
+                        placeholder="—"
+                        disabled={saving}
+                        onBlur={e => { const v = e.target.value.trim(); if (v !== row.factureNumber) updateField(row, 'factureNumber', v); }}
+                        className="pr-cell-input pr-cell-input--mid"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="date"
+                        value={ymdInput(row.factureDate)}
+                        disabled={saving}
+                        onChange={e => updateField(row, 'factureDate', e.target.value || null)}
+                        className="pr-cell-input pr-cell-input--date"
+                      />
+                    </td>
+                    <td><DueCell row={row} t={t} /></td>
+                    <td>
+                      <select
+                        value={row.paiementStatus}
+                        disabled={saving}
+                        onChange={e => updateField(row, 'paiementStatus', e.target.value)}
+                        className={`pr-cell-input ${row.paiementStatus === 'paye' ? 'pr-cell-input--ok' : row.paiementStatus === 'partiel' ? 'pr-cell-input--warn' : ''}`}
+                      >
+                        {PAIEMENT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
+                      </select>
+                      {row.paiementStatus === 'partiel' && (
+                        <div className="pr-paid">
+                          <input
+                            type="number" min="0" step="0.01"
+                            key={`mp-${key}-${row.montantPaye}`}
+                            defaultValue={row.montantPaye || ''}
+                            placeholder={t('acPaidAmount')}
+                            disabled={saving}
+                            onBlur={e => { const v = Number(e.target.value || 0); if (v !== row.montantPaye) updateField(row, 'montantPaye', v); }}
+                            className="pr-cell-input pr-cell-input--num"
+                            aria-label={t('acPaidAmount')}
+                          />
+                          <span>/ {money2(row.montantDu)}</span>
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <input
+                        type="date"
+                        value={ymdInput(row.paiementDate)}
+                        disabled={saving || row.paiementStatus === 'non_paye'}
+                        onChange={e => updateField(row, 'paiementDate', e.target.value || null)}
+                        className="pr-cell-input pr-cell-input--date"
+                      />
                     </td>
                     <td>
                       <select
@@ -1887,17 +2004,30 @@ function SuiviCommandesPanel() {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={4} className="pr-totals-label">
+                <td colSpan={5} className="pr-totals-label">
                   {t('orTotalsShown')}
                 </td>
                 <td className="pr-num">{totals.bc.toFixed(2)}</td>
                 <td className="pr-num">{totals.bl.toFixed(2)}</td>
-                <td colSpan={5}></td>
+                <td colSpan={10} className="pr-totals-pay">
+                  {t('acRemaining')} <strong>{money2(totals.reste)}</strong>
+                  {totals.retard > 0 && <> · <span className="pr-late">{t('acRemainingLate')} <strong>{money2(totals.retard)}</strong></span></>}
+                </td>
               </tr>
             </tfoot>
           </table>
           <Pager page={data.page} pages={data.pages} total={total} limit={data.limit} onPage={setPage} />
         </div>
+      )}
+      {docsRow && (
+        <DocumentsModal
+          row={docsRow}
+          onClose={() => { setDocsRow(null); if (factureFilter !== 'all') fetchRows(); }}
+          onChange={(changes) => {
+            const key = rowKey(docsRow);
+            patch(d => ({ ...d, rows: d.rows.map(r => rowKey(r) === key ? { ...r, ...changes } : r) }));
+          }}
+        />
       )}
     </div>
   );
