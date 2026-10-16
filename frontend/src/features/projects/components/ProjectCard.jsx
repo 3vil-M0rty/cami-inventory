@@ -1,6 +1,10 @@
 // components/ProjectCard.jsx
 import { useAuth } from '../../../context/AuthContext';
-import { User, PaintBucket } from 'lucide-react';
+import { useState } from 'react';
+import axios from 'axios';
+import { User, PaintBucket, Paperclip, FileText, FileImage, Eye, ChevronDown, LoaderCircle } from 'lucide-react';
+import { openProjectDoc } from './ProjectDocuments';
+import { findRal, inkOn } from '../utils/ralColors';
 
 // Tinted badge tones (dark theme): [text, background, border]
 const STATUS_TONES = {
@@ -87,7 +91,7 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
   const activeEtats = ETAT_ORDER.filter(e => etatCounts[e] > 0);
 
   return (
-    <div className="project-card" onClick={onOpen}>
+    <div className={`project-card${project.ralColor ? ' has-ral' : ''}`} onClick={onOpen} style={project.ralColor ? { '--ral': project.ralColor } : undefined}>
       <div className="project-card__ral" style={{ backgroundColor: project.ralColor || 'var(--300)' }} />
 
       <div className="project-card__body">
@@ -112,10 +116,22 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
 
         <div className="project-card__meta">
           <span>{t('ref')} <strong>{project.reference}</strong></span>
-          <span>
-            {project.ralColor && <span className="project-card__ral-dot" style={{ backgroundColor: project.ralColor }} />}
-            {t('ral')} <strong>{project.ralCode}</strong>
-          </span>
+          {project.ralCode && (() => {
+            // the colour, big and readable: chip in the RAL colour with its number, then its name
+            const r = findRal(project.ralCode);
+            const bg = project.ralColor || r?.hex || 'var(--300)';
+            return (
+              <span className="project-card__ralchip" title={`${project.ralCode}${r ? ` — ${r.name}` : ''}`}>
+                <span className="project-card__ralchip-sw" style={{ backgroundColor: bg, color: inkOn(project.ralColor || r?.hex) }}>
+                  {r ? r.num : ''}
+                </span>
+                <span className="project-card__ralchip-txt">
+                  <strong>{r && project.ralCode === r.code ? r.code : project.ralCode}</strong>
+                  {r && <em>{r.name}</em>}
+                </span>
+              </span>
+            );
+          })()}
           <span>{dateStr}</span>
         </div>
 
@@ -165,7 +181,65 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
       <div className="project-card__actions" onClick={e => e.stopPropagation()}>
         {canEdit && <button className="edit-btn" onClick={onEdit}>{t('edit')}</button>}
         {isAdmin && <button className="delete-btn" onClick={onDelete}>{t('delete')}</button>}
+        {project.documentsCount > 0 && <CardDocsButton project={project} t={t} />}
       </div>
     </div>
+  );
+}
+// « Documents (n) » on the card: the list is fetched on click, a file only when « Ouvrir » is clicked.
+// A single document opens directly.
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+function CardDocsButton({ project, t }) {
+  const [docs, setDocs] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const id = project.id || project._id;
+  const n = project.documentsCount;
+
+  const click = async () => {
+    if (open) { setOpen(false); return; }
+    if (n === 1 && !docs) {
+      // window opened now (click) so the browser doesn't block it, then pointed to the file
+      const w = window.open('', '_blank');
+      try {
+        const r = await axios.get(`${API_URL}/projects/${id}/documents`);
+        const d = (r.data.documents || [])[0];
+        if (!d) { w?.close(); return; }
+        const u = await axios.get(`${API_URL}/project-documents/${d.id}/url`);
+        if (w) w.location.href = u.data.url; else window.location.href = u.data.url;
+      } catch (e) { w?.close(); }
+      return;
+    }
+    setOpen(true);
+    if (!docs) {
+      setLoading(true);
+      try { setDocs((await axios.get(`${API_URL}/projects/${id}/documents`)).data.documents || []); }
+      catch (e) { setDocs([]); }
+      finally { setLoading(false); }
+    }
+  };
+
+  return (
+    <>
+      <button type="button" className={`project-card__docs-btn${open ? ' is-open' : ''}`} onClick={click}
+        title={n === 1 ? t('pdocOpenOne') : t('pdocShowList')}>
+        <Paperclip size={13} /> {t('pdocTab')} <span>{n}</span>{n > 1 && <ChevronDown size={13} className="project-card__docs-chev" />}
+      </button>
+      {open && (
+        <ul className="project-card__docs">
+          {loading && <li className="project-card__docs-wait"><LoaderCircle size={14} className="td-spin" /></li>}
+          {(docs || []).map(d => {
+            const Icon = d.contentType === 'application/pdf' ? FileText : FileImage;
+            return (
+              <li key={d.id}>
+                <button type="button" onClick={() => openProjectDoc(d)} title={d.name}>
+                  <Icon size={14} /><span>{d.name}</span><Eye size={13} className="project-card__docs-eye" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
   );
 }

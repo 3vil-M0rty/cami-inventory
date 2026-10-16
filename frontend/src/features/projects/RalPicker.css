@@ -190,3 +190,60 @@
   font-size: 12px;
 }
 .ral-picker--manual .ral-picker__switch-btn:hover { background: transparent; text-decoration: underline; }
+
+/* ═══ RAL drop-down with search (whole RAL Classic chart + powders in stock) ═══ */
+.ralp { position: relative; }
+.ralp__required { position: absolute; left: 12px; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.ralp__trigger {
+  width: 100%; min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 8px !important;
+  border: 1px solid var(--border-2) !important; border-radius: var(--r-md) !important; background: var(--surface-2) !important;
+  color: var(--text) !important; cursor: pointer; text-align: left; font-family: inherit;
+}
+.ralp__trigger:hover, .ralp__trigger.is-open { border-color: var(--text-3) !important; }
+.ralp__chip {
+  min-width: 52px; height: 34px; padding: 0 8px; border-radius: 8px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; font: 800 13px/1 var(--font); letter-spacing: .02em;
+  box-shadow: inset 0 0 0 1px rgba(127,127,127,.35);
+}
+.ralp__trigger-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ralp__trigger-txt strong { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ralp__trigger-txt span { font-size: 12px; color: var(--text-3); }
+.ralp__placeholder { flex: 1; padding-left: 4px; font-size: 13.5px; color: var(--text-4); }
+.ralp__clear { width: 28px; height: 28px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-3); }
+.ralp__clear:hover { color: var(--danger); background: var(--danger-bg); }
+.ralp__chev { color: var(--text-3); flex-shrink: 0; transition: transform var(--t); }
+.ralp__trigger.is-open .ralp__chev { transform: rotate(180deg); }
+
+.ralp__panel {
+  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 6px);
+  border: 1px solid var(--border-2); border-radius: var(--r-lg); background: var(--surface);
+  box-shadow: 0 18px 40px rgba(0,0,0,.35); overflow: hidden;
+}
+.ralp__search { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-3); }
+.ralp__search input { flex: 1; height: 32px; border: 0 !important; outline: none; background: transparent !important; color: var(--text); font: 500 13.5px/1 var(--font); padding: 0 !important; box-shadow: none !important; }
+.ralp__list { max-height: 300px; overflow-y: auto; padding: 4px; }
+.ralp__group { display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-3); }
+.ralp__opt {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 8px !important; border: 0 !important;
+  border-radius: 8px !important; background: transparent !important; color: var(--text) !important; cursor: pointer; text-align: left; font-family: inherit;
+}
+.ralp__opt.is-active { background: var(--surface-2) !important; }
+.ralp__opt.is-on .ralp__opt-txt strong { color: var(--ink-green); }
+.ralp__sw { width: 34px; height: 26px; border-radius: 6px; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(127,127,127,.4); }
+.ralp__opt-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ralp__opt-txt strong { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ralp__opt-txt span { font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ralp__qty { font-size: 11px; font-weight: 600; color: var(--ink-green); white-space: nowrap; }
+.ralp__qty.is-zero { color: var(--text-4); }
+.ralp__check { color: var(--ink-green); flex-shrink: 0; }
+.ralp__empty { padding: 18px; text-align: center; font-size: 12.5px; color: var(--text-3); }
+.ralp__foot {
+  width: 100%; display: flex; align-items: center; gap: 6px; padding: 9px 12px !important; border: 0 !important; border-top: 1px solid var(--border) !important;
+  border-radius: 0 !important; background: var(--surface-2) !important; color: var(--text-2) !important; font: 600 12.5px/1 var(--font); cursor: pointer;
+}
+.ralp__foot:hover { color: var(--text) !important; }
+
+.ralp--manual { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ralp--manual .ralp__manual-code { flex: 1; min-width: 180px; }
+.ralp--manual .ralp__manual-color { width: 52px !important; height: 40px; padding: 2px !important; flex-shrink: 0; }
+.ralp__link { border: 0 !important; background: none !important; padding: 0 !important; color: var(--text-3) !important; font-size: 12.5px; text-decoration: underline; cursor: pointer; }

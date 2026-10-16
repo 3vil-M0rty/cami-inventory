@@ -1,0 +1,18 @@
+/* « Documents » tab of a project */
+.pdoc { padding: 4px 0; border-radius: 12px; transition: background var(--t); }
+.pdoc.is-drag { background: var(--surface-2); outline: 2px dashed var(--border-2); outline-offset: 6px; }
+.pdoc__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.pdoc__head h3 { margin: 0 0 3px; font-size: 15px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.pdoc__head h3 span { font-size: 11px; font-weight: 700; color: var(--text-3); padding: 1px 7px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); }
+.pdoc__head p { margin: 0; font-size: 12.5px; color: var(--text-3); }
+.pdoc__list li { padding: 6px 6px 6px 10px; gap: 8px; }
+.pdoc__icon { width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--text-3); }
+.pdoc__txt { flex: 1; }
+.pdoc__view {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px !important; border-radius: 8px !important; cursor: pointer; flex-shrink: 0;
+  border: 1px solid var(--border-2) !important; background: var(--surface-2) !important; color: var(--text) !important; font: 600 12.5px/1 var(--font);
+}
+.pdoc__view:hover { border-color: var(--text-3) !important; }
+.pdoc__empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 16px; border-radius: 12px; border: 1px dashed var(--border-2); color: var(--text-3); text-align: center; }
+.pdoc__empty strong { color: var(--text-2); font-size: 14px; }
+.pdoc__empty span { font-size: 12.5px; }

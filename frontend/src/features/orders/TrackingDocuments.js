@@ -12,13 +12,13 @@ const KINDS = ['facture', 'bl'];
 // « BL 4581.pdf » → « BL 4581 »: the name of a delivery note filed without a typed number
 export const fileBase = (name) => String(name || '').replace(/\.[^.]+$/, '').trim().slice(0, 80);
 
-const fmtSize = (b) => (b >= 1073741824 ? `${(b / 1073741824).toFixed(2)} Go` : b >= 1048576 ? `${(b / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(b / 1024))} Ko`);
+export const fmtSize = (b) => (b >= 1073741824 ? `${(b / 1073741824).toFixed(2)} Go` : b >= 1048576 ? `${(b / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(b / 1024))} Ko`);
 
 // Photos (BL taken with a phone: 3–5 MB) are reduced in the browser before upload: longest side 2000 px,
 // JPEG ~82 % — a document stays perfectly readable at 200–400 KB. PDFs are sent as they are.
 const IMG_MAX_SIDE = 2000;
 const IMG_QUALITY = 0.82;
-async function compressImage(file) {
+export async function compressImage(file) {
   if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 300 * 1024) return file;
   try {
     const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); // keeps the phone's rotation
@@ -37,7 +37,7 @@ async function compressImage(file) {
 }
 
 /** Space used by the documents vs the free-tier cap (warning from 80 %, uploads blocked when full) */
-export function StorageGauge({ storage, compact = false }) {
+export function StorageGauge({ storage, compact = false, labelKey = 'tdStorage' }) {
   const { t } = useLanguage();
   if (!storage) return null;
   const level = storage.full ? 'full' : storage.used >= storage.warnAt ? 'warn' : 'ok';
@@ -46,7 +46,7 @@ export function StorageGauge({ storage, compact = false }) {
     <div className={`td-gauge td-gauge--${level}${compact ? ' td-gauge--compact' : ''}`}
       title={t('tdStorageTip', { used: fmtSize(storage.used), limit: fmtSize(storage.limit), n: storage.count })}>
       <HardDrive size={13} />
-      <span className="td-gauge__txt">{compact ? `${fmtSize(storage.used)} / ${fmtSize(storage.limit)}` : t('tdStorage', { used: fmtSize(storage.used), limit: fmtSize(storage.limit) })}</span>
+      <span className="td-gauge__txt">{compact ? `${fmtSize(storage.used)} / ${fmtSize(storage.limit)}` : t(labelKey, { used: fmtSize(storage.used), limit: fmtSize(storage.limit) })}</span>
       <span className="td-gauge__bar"><i style={{ width: `${Math.max(pct, storage.used ? 1 : 0)}%` }} /></span>
       <strong>{pct.toFixed(pct < 10 ? 1 : 0)}%</strong>
     </div>

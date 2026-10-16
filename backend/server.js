@@ -2977,28 +2977,31 @@ async function docUsage(force = false) {
   docUsageCache = { bytes, count, at: Date.now() };
   return docUsageCache;
 }
-const usageView = (u) => ({
-  used: u.bytes, count: u.count, limit: DOC_QUOTA_BYTES, warnAt: Math.round(DOC_QUOTA_BYTES * DOC_WARN_RATIO),
-  pct: Math.round((u.bytes / DOC_QUOTA_BYTES) * 1000) / 10, full: u.bytes >= DOC_QUOTA_BYTES,
+const usageView = (u, quota = DOC_QUOTA_BYTES) => ({
+  used: u.bytes, count: u.count, limit: quota, warnAt: Math.round(quota * DOC_WARN_RATIO),
+  pct: Math.round((u.bytes / quota) * 1000) / 10, full: u.bytes >= quota,
 });
-let r2Client = null;
-function r2() {
-  const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT } = process.env;
+// One client per Cloudflare account: « R2_… » (BL / factures) and « PROJECTS_R2_… » (documents of the
+// projects, a second account → its own free 10 GB)
+const r2Clients = {};
+function r2(prefix = 'R2_') {
+  const env = (k) => process.env[`${prefix}${k}`];
+  const [R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT] = ['ACCOUNT_ID', 'ACCESS_KEY_ID', 'SECRET_ACCESS_KEY', 'BUCKET', 'ENDPOINT'].map(env);
   if (!R2_BUCKET || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || (!R2_ACCOUNT_ID && !R2_ENDPOINT)) {
-    const e = new Error('Stockage des documents non configuré (variables R2_… manquantes dans .env).'); e.status = 503; throw e;
+    const e = new Error(`Stockage des documents non configuré (variables ${prefix}… manquantes dans .env).`); e.status = 503; throw e;
   }
   let sdk, presigner;
   try { sdk = require('@aws-sdk/client-s3'); presigner = require('@aws-sdk/s3-request-presigner'); }
   catch { const e = new Error('Module manquant : lancez « npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner » dans backend.'); e.status = 503; throw e; }
-  if (!r2Client) {
-    r2Client = new sdk.S3Client({
+  if (!r2Clients[prefix]) {
+    r2Clients[prefix] = new sdk.S3Client({
       region: 'auto',
       endpoint: R2_ENDPOINT || `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
       forcePathStyle: !!R2_ENDPOINT,
       credentials: { accessKeyId: R2_ACCESS_KEY_ID, secretAccessKey: R2_SECRET_ACCESS_KEY },
     });
   }
-  return { client: r2Client, sdk, presigner, bucket: R2_BUCKET };
+  return { client: r2Clients[prefix], sdk, presigner, bucket: R2_BUCKET };
 }
 // Real file type from the first bytes (the browser's content-type is not trusted)
 function sniffDoc(buf) {
@@ -3009,6 +3012,30 @@ function sniffDoc(buf) {
   return null;
 }
 const safeKeyPart = (v) => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'x';
+
+// ── Project documents (plans, devis signés, photos…) — same private R2 bucket and quota as the BL / invoices.
+// The list only carries names and sizes: a file is downloaded from R2 when someone clicks « Voir ».
+const projectDocumentSchema = new mongoose.Schema({
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, index: true },
+  name: { type: String, required: true },
+  key: { type: String, required: true },
+  contentType: { type: String, default: 'application/pdf' },
+  size: { type: Number, default: 0 },
+  uploadedBy: { type: String, default: '' },
+}, { timestamps: true });
+const ProjectDocument = mongoose.model('ProjectDocument', projectDocumentSchema);
+const PROJ_R2 = 'PROJECTS_R2_';
+const PROJ_QUOTA_BYTES = Math.min(Number(process.env.PROJECTS_R2_QUOTA_GB) || 9, 9.5) * GB;
+let projUsageCache = null;
+async function projectDocUsage(force = false) {
+  if (!force && projUsageCache && Date.now() - projUsageCache.at < 60000) return projUsageCache;
+  const docs = await ProjectDocument.find().select('size').lean();
+  projUsageCache = { bytes: docs.reduce((n, d) => n + (d.size || 0), 0), count: docs.length, at: Date.now() };
+  return projUsageCache;
+}
+const projUsageView = (u) => usageView(u, PROJ_QUOTA_BYTES);
+const canProjects = (req, what) => isAdmin(req) || (req.permissions || []).includes(`projects.${what}`);
+const projectDocView = (d) => ({ id: String(d._id), name: d.name, contentType: d.contentType, size: d.size, uploadedAt: d.createdAt, uploadedBy: d.uploadedBy });
 
 // POST /api/order-tracking/documents?orderId=&blNumber=&kind=facture|bl&name=  — body: the file itself (max 15 MB)
 const docBody = express.raw({ type: () => true, limit: DOC_MAX_BYTES });
@@ -3109,6 +3136,83 @@ app.get('/api/order-tracking/documents/:docId/url', requireAuth, async (req, res
       Bucket: bucket, Key: d.key, ResponseContentDisposition: disposition, ResponseContentType: d.contentType,
     }), { expiresIn: 300 });
     res.json({ url });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// GET /api/projects/:id/documents → names / sizes only (no file is downloaded)
+app.get('/api/projects/:id/documents', requireAuth, async (req, res) => {
+  try {
+    if (!canProjects(req, 'view')) return res.status(403).json({ error: 'Accès refusé — permission requise: projects.view' });
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Projet invalide' });
+    const docs = await ProjectDocument.find({ projectId: req.params.id }).sort({ createdAt: -1 }).lean();
+    // space left on the projects' Cloudflare account: shown to the admin only
+    const storage = isAdmin(req) ? projUsageView(await projectDocUsage()) : null;
+    res.json({ documents: docs.map(projectDocView), canManage: canProjects(req, 'edit'), storage });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/projects/:id/documents?name=  — body: the file itself (PDF / photo, 15 MB max)
+app.post('/api/projects/:id/documents', requireAuth, readDocBody, async (req, res) => {
+  try {
+    if (!canProjects(req, 'edit')) return res.status(403).json({ error: 'Accès refusé — permission requise: projects.edit' });
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Projet invalide' });
+    const project = await Project.findById(req.params.id).select('name reference date').lean();
+    if (!project) return res.status(404).json({ error: 'Projet introuvable' });
+    const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (!buf.length) return res.status(400).json({ error: 'Fichier vide' });
+    const sniff = sniffDoc(buf);
+    if (!sniff) return res.status(415).json({ error: 'Format non accepté : PDF, JPG, PNG ou WebP uniquement.' });
+    const usage = await projectDocUsage(true);
+    if (usage.bytes + buf.length > PROJ_QUOTA_BYTES) {
+      const go = (b) => (b / GB).toFixed(2).replace('.', ',');
+      return res.status(507).json({ error: `Plus assez d'espace pour les documents des projets : ${go(usage.bytes)} Go utilisés sur ${go(PROJ_QUOTA_BYTES)} Go (limite fixée pour rester gratuit). Supprimez d'anciens documents pour en ajouter.`, storage: projUsageView(usage) });
+    }
+    const { client, sdk, bucket } = r2(PROJ_R2);
+    const year = new Date(project.date || Date.now()).getFullYear();
+    const base = String(req.query.name || `document.${sniff.ext}`).replace(/\.[^.]+$/, '');
+    const key = `projets/${year}/${safeKeyPart(project.reference || project.name || req.params.id)}/${safeKeyPart(base)}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.${sniff.ext}`;
+    await client.send(new sdk.PutObjectCommand({ Bucket: bucket, Key: key, Body: buf, ContentType: sniff.type }));
+    const d = await ProjectDocument.create({
+      projectId: project._id, key, name: `${base.slice(0, 120)}.${sniff.ext}`, contentType: sniff.type, size: buf.length,
+      uploadedBy: req.user?.displayName || req.user?.username || '',
+    });
+    res.status(201).json({ ...projectDocView(d), storage: projUsageView(await projectDocUsage(true)) });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// GET /api/project-documents/storage → space used on the projects' Cloudflare account (admin)
+app.get('/api/project-documents/storage', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try { res.json(projUsageView(await projectDocUsage())); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/project-documents/:docId/url → { url } valid 5 minutes: the file is only fetched now
+app.get('/api/project-documents/:docId/url', requireAuth, async (req, res) => {
+  try {
+    if (!canProjects(req, 'view')) return res.status(403).json({ error: 'Accès refusé — permission requise: projects.view' });
+    if (!mongoose.Types.ObjectId.isValid(req.params.docId)) return res.status(400).json({ error: 'Document invalide' });
+    const d = await ProjectDocument.findById(req.params.docId).lean();
+    if (!d) return res.status(404).json({ error: 'Document introuvable' });
+    const { client, sdk, presigner, bucket } = r2(PROJ_R2);
+    const disposition = `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${safeKeyPart(d.name)}"; filename*=UTF-8''${encodeURIComponent(d.name)}`;
+    const url = await presigner.getSignedUrl(client, new sdk.GetObjectCommand({
+      Bucket: bucket, Key: d.key, ResponseContentDisposition: disposition, ResponseContentType: d.contentType,
+    }), { expiresIn: 300 });
+    res.json({ url });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// DELETE /api/project-documents/:docId
+app.delete('/api/project-documents/:docId', requireAuth, async (req, res) => {
+  try {
+    if (!canProjects(req, 'edit')) return res.status(403).json({ error: 'Accès refusé — permission requise: projects.edit' });
+    if (!mongoose.Types.ObjectId.isValid(req.params.docId)) return res.status(400).json({ error: 'Document invalide' });
+    const d = await ProjectDocument.findById(req.params.docId).lean();
+    if (!d) return res.status(404).json({ error: 'Document introuvable' });
+    const { client, sdk, bucket } = r2(PROJ_R2);
+    await client.send(new sdk.DeleteObjectCommand({ Bucket: bucket, Key: d.key }));
+    await ProjectDocument.deleteOne({ _id: d._id });
+    res.json({ success: true, storage: projUsageView(await projectDocUsage(true)) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
@@ -3281,6 +3385,14 @@ app.get('/api/projects/list', async (req, res) => {
       clientId: p.client ? { ...p.client, id: p.client._id?.toString(), _id: undefined } : null,
     }));
 
+    // Number of documents per card (names / files are only fetched when the card's button is clicked)
+    if (projects.length) {
+      const docs = await ProjectDocument.find({ projectId: { $in: result.data.map(p => p._id) } }).select('projectId').lean();
+      const n = new Map();
+      docs.forEach(d => n.set(String(d.projectId), (n.get(String(d.projectId)) || 0) + 1));
+      for (const pr of projects) pr.documentsCount = n.get(pr.id) || 0;
+    }
+
     // Laquage summary per project card (bars sent to laquage, number of lots) — one indexed query for the page
     if (projects.length) {
       const laq = await LaquageBarres.find({ projectId: { $in: result.data.map(p => p._id) } })
@@ -3378,6 +3490,13 @@ app.delete('/api/projects/:id', async (req, res) => {
       await StockMovement.create({ itemId: bar.itemId, type: 'project_return', quantity: bar.quantity, balanceAfter: restored ? restored.quantity : 0, projectId: p._id, projectName: p.name });
     }
     await Project.findByIdAndDelete(req.params.id);
+    // its documents: files removed from R2 (best effort), then the list
+    const pdocs = await ProjectDocument.find({ projectId: p._id }).select('key').lean();
+    if (pdocs.length) {
+      try { const { client, sdk, bucket } = r2(PROJ_R2); for (const d of pdocs) await client.send(new sdk.DeleteObjectCommand({ Bucket: bucket, Key: d.key })); }
+      catch (err) { console.error('Project documents cleanup:', err.message); }
+      await ProjectDocument.deleteMany({ projectId: p._id });
+    }
     res.json({ success: true, id: req.params.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

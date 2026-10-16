@@ -497,3 +497,46 @@
   padding-left: 7px; margin-left: 1px; border-left: 1px solid var(--lq-bd);
   font-variant-numeric: tabular-nums; font-weight: 800;
 }
+
+/* ── RAL colour, highlighted on the card ── */
+.project-card.has-ral .project-card__ral { height: 8px; }
+.project-card.has-ral {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ral) 13%, var(--surface)) 0, var(--surface) 120px);
+  border-color: color-mix(in srgb, var(--ral) 28%, var(--border));
+}
+.project-card.has-ral:hover { border-color: color-mix(in srgb, var(--ral) 65%, var(--border)); }
+.project-card__ralchip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px 3px 3px; border-radius: 9px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.project-card__ralchip-sw {
+  min-width: 42px; height: 26px; padding: 0 6px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 800 12px/1 var(--font); letter-spacing: .02em;
+  box-shadow: inset 0 0 0 1px rgba(127,127,127,.35);
+}
+.project-card__ralchip-txt { display: flex; flex-direction: column; line-height: 1.15; }
+.project-card__ralchip-txt strong { font-size: 12.5px; color: var(--text); font-weight: 700; }
+.project-card__ralchip-txt em { font-style: normal; font-size: 11px; color: var(--text-3); }
+
+/* « Documents (n) » on the card: list unfolds inside the card (the card clips overflow) */
+.project-card__actions { flex-wrap: wrap; }
+.project-card__docs-btn {
+  margin-left: auto; height: 32px; padding: 0 12px !important; display: inline-flex; align-items: center; gap: 6px;
+  border-radius: var(--r-md); border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text-2);
+  font: 600 12.5px/1 var(--font); cursor: pointer; white-space: nowrap;
+}
+.project-card__docs-btn span { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--surface-3); color: var(--text); }
+.project-card__docs-btn:hover, .project-card__docs-btn.is-open { color: var(--text); border-color: var(--400); }
+.project-card__docs-chev { transition: transform var(--t); }
+.project-card__docs-btn.is-open .project-card__docs-chev { transform: rotate(180deg); }
+.project-card__docs { flex-basis: 100%; list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.project-card__docs li button {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 10px !important; border-radius: 8px !important;
+  border: 1px solid var(--border) !important; background: var(--surface-2) !important; color: var(--text-2) !important;
+  font: 500 12.5px/1.2 var(--font); cursor: pointer; text-align: left;
+}
+.project-card__docs li button span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-card__docs li button:hover { color: var(--text) !important; border-color: var(--border-2) !important; }
+.project-card__docs-eye { color: var(--text-3); flex-shrink: 0; }
+.project-card__docs-wait { display: flex; justify-content: center; padding: 6px; color: var(--text-3); }

@@ -13,6 +13,7 @@ import { fetchChassisTypes, buildChassisLabels, CHASSIS_LABELS as STATIC_LABELS 
 import { BarresLaquerPanel, AccessoiresLaquerPanel } from './LaquagePanel';
 import { StepBack, CircleDashed, PlusCircle, ShipWheel, Package, Save, Wrench, Loader2, Download, Upload, FileSpreadsheet, Printer, CalendarDays, Search, X, AlertTriangle, Undo2, Plus, Pencil, Tag, Tags, Trash2, CircleCheck, PaintBucket, AppWindow, FileText, Banknote, Layers, Clock, CornerDownRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+import ProjectDocuments from './ProjectDocuments';
 import './ProjectDetail.css';
 import { getQueryParam, updateQuery } from '../../../routes';
 
@@ -2411,14 +2412,15 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
     { key: 'bl', label: t('tabBL'), count: null },
     { key: 'barres_laquer', label: t('BarresaLaquer'), count: null },
     { key: 'accessoires_laquer', label: t('AccessoiresaLaquer'), count: null },
+    { key: 'documents', label: t('pdocTab'), count: null }, // files fetched only when opened
   ];
   const ROLE_TAB_ACCESS = {
-    Laquage: ['barres_laquer', 'accessoires_laquer', 'bars'],
-    BARREMAN: ['barres_laquer'],
-    Coordinateur: ['chassis', 'barres_laquer', 'accessoires_laquer'],
-    Magasinier: ['bars', 'accessoires_laquer'],
-    LOGISTIQUE: ['chassis', 'bl'],
-    'Coordinateur-vitrage': ['chassis', 'bl'],
+    Laquage: ['barres_laquer', 'accessoires_laquer', 'bars', 'documents'],
+    BARREMAN: ['barres_laquer', 'documents'],
+    Coordinateur: ['chassis', 'barres_laquer', 'accessoires_laquer', 'documents'],
+    Magasinier: ['bars', 'accessoires_laquer', 'documents'],
+    LOGISTIQUE: ['chassis', 'bl', 'documents'],
+    'Coordinateur-vitrage': ['chassis', 'bl', 'documents'],
   };
   const visibleTabs = adminThing ? detailTabs : detailTabs.filter(sc => (ROLE_TAB_ACCESS[userRole] || []).includes(sc.key));
   // Tab from the URL not allowed for this role (or unknown) → first tab the role can see
@@ -2868,6 +2870,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
       {shownTab === 'bl' && <div className="project-detail__panel"><BLPanel project={project} t={t} language={language} /></div>}
       {shownTab === 'barres_laquer' && <div className="project-detail__panel"><BarresLaquerPanel project={project} currentUser={currentUser} /></div>}
       {shownTab === 'accessoires_laquer' && <div className="project-detail__panel"><AccessoiresLaquerPanel project={project} currentUser={currentUser} /></div>}
+      {shownTab === 'documents' && <div className="project-detail__panel"><ProjectDocuments project={project} /></div>}
 
       {showChassisForm && <ChassisForm chassis={editingChassis} projectId={project.id} projectTab={projectTab} onClose={() => { setShowChassisForm(false); setEditingChassis(null); }} onSave={() => { setShowChassisForm(false); setEditingChassis(null); }} />}
       {showTypeManager && <ChassisTypeManager onClose={() => setShowTypeManager(false)} />}
