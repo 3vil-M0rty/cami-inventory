@@ -132,7 +132,7 @@ const ALL_PERMISSIONS = [
   'inventory.poudre.view', 'inventory.poudre.edit', 'inventory.poudre.delete',
   'inventory.fer.view', 'inventory.fer.edit', 'inventory.fer.delete',
   'inventory.toles.view', 'inventory.toles.edit', 'inventory.toles.delete',
-  'orders.view', 'orders.edit', 'orders.delete', 'orders.receive', 'orders.accounting',
+  'orders.view', 'orders.edit', 'orders.delete', 'orders.receive', 'orders.accounting', 'orders.own',
   'projects.view', 'projects.edit', 'projects.delete',
   'clients.view', 'clients.edit', 'clients.delete',
   'devis.view', 'devis.edit', 'devis.delete', 'devis.prices',
@@ -286,6 +286,9 @@ const orderSchema = new mongoose.Schema({
   notes: { type: String, default: '' },
   sentAt: { type: Date, default: null },
   sentBy: { type: String, default: '' },
+  // Who created the order: a role with « orders.own » (e.g. Coordinateur-vitrage) only sees / manages its own
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  createdByName: { type: String, default: '' },
   receptions: [{
     lineId: { type: mongoose.Schema.Types.ObjectId, required: true },
     quantityReceived: { type: Number, required: true },
@@ -603,6 +606,7 @@ const fournisseurSchema = new mongoose.Schema({
   // finDeMois = pushed to the end of that month ("60 jours fin de mois")
   delaiPaiement: { type: Number, default: null, min: 0, max: 365 },
   finDeMois: { type: Boolean, default: false },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // « orders.own » edits only its own
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const Fournisseur = mongoose.model('Fournisseur', fournisseurSchema);
 
@@ -709,7 +713,41 @@ function canMutateOrder(req, order) {
 // Cancel / delete / status change stay admin-only (canMutateOrder).
 function canEditOrderContent(req, order) {
   if (order.status === 'brouillon' || isAdmin(req)) return true;
+  if (ownOrdersOnly(req)) return order.status !== 'annulee' && isOwnOrder(req, order);
   return order.status !== 'annulee' && (req.permissions || []).includes('orders.edit');
+}
+
+// ── « orders.own »: a receiving role that also buys for its own family (Coordinateur-vitrage → verre).
+// It creates / sends / edits / cancels ITS OWN orders and suppliers, never sees the other orders of
+// ACHAT except the sent ones of its family, which it receives as before.
+const ownOrdersOnly = (req) => !isAdmin(req) && (req.permissions || []).includes('orders.own')
+  && !(req.permissions || []).includes('orders.edit');
+const isOwnOrder = (req, o) => !!o?.createdBy && String(o.createdBy._id || o.createdBy) === String(req.user?._id);
+// families it may order: the ones it receives (empty = no restriction)
+const ownFamilies = (req) => receivingCategoriesForRole(req.user?.roleId?.name || '');
+function requireOrderWrite(req, res, next) {
+  if (isAdmin(req) || (req.permissions || []).some(p => p === 'orders.edit' || p === 'orders.own')) return next();
+  res.status(403).json({ error: 'Accès refusé — permission requise: orders.edit' });
+}
+// order-level guard for « orders.own »: its own order, its families only
+async function checkOwnOrder(req, order, body) {
+  if (!ownOrdersOnly(req)) return null;
+  if (order && !isOwnOrder(req, order)) return 'Ce bon de commande a été créé par le service achat : vous pouvez seulement le réceptionner.';
+  if (body?.supplierId && mongoose.Types.ObjectId.isValid(body.supplierId)) {
+    const sup = await Fournisseur.findById(body.supplierId).select('createdBy').lean();
+    if (sup && String(sup.createdBy || '') !== String(req.user._id)) return 'Choisissez un de vos fournisseurs.';
+  }
+  const fams = ownFamilies(req);
+  if (!fams.length || !body) return null;
+  const cats = Array.isArray(body.categories) ? body.categories.filter(Boolean) : null;
+  if (cats && cats.some(c => !fams.includes(c))) return `Vous pouvez seulement commander : ${fams.join(', ')}.`;
+  const ids = (body.lines || []).map(l => l.itemId).filter(id => mongoose.Types.ObjectId.isValid(id));
+  if (ids.length) {
+    const bad = await Item.find({ _id: { $in: ids } }).select('designation superCategory').lean();
+    const off = bad.find(it => !fams.includes(it.superCategory || 'aluminium'));
+    if (off) return `« ${off.designation?.fr || 'Article'} » n'est pas de votre famille (${fams.join(', ')}).`;
+  }
+  return null;
 }
 const CATEGORY_RECEIVE_ROLE = {
   accessoires: 'Magasinier',
@@ -758,7 +796,7 @@ async function canReceiveOrderLine(req, order, lineItemId) {
 // Can this user at least VIEW the orders list/detail (full access or as a receiver)?
 function canViewOrders(req) {
   if (isAdmin(req)) return true;
-  if ((req.permissions || []).includes('orders.view')) return true;
+  if ((req.permissions || []).some(p => p === 'orders.view' || p === 'orders.own')) return true;
   const userRole = req.user?.roleId?.name || '';
   return receivingCategoriesForRole(userRole).length > 0;
 }
@@ -1505,6 +1543,7 @@ app.get('/api/permissions', requireAuth, requirePermission('admin.view'), async 
     { key: 'orders.receive', label: 'Commandes — Réceptionner', group: 'Commandes' },
     { key: 'orders.delete', label: 'Commandes — Supprimer', group: 'Commandes' },
     { key: 'orders.accounting', label: 'Commandes — Comptabilité (factures, paiements, délais fournisseurs)', group: 'Commandes' },
+    { key: 'orders.own', label: 'Commandes — Ses propres bons de commande et fournisseurs (familles qu\'il réceptionne, ex. verre)', group: 'Commandes' },
     { key: 'projects.view', label: 'Projets — Voir', group: 'Projets' },
     { key: 'projects.edit', label: 'Projets — Créer/Modifier', group: 'Projets' },
     { key: 'projects.delete', label: 'Projets — Supprimer', group: 'Projets' },
@@ -1803,17 +1842,27 @@ app.delete('/api/inventory/:id', optionalAuth, async (req, res) => {
 // Purchase prices are only for Admin, ACHAT (orders.edit) and the accountant (orders.accounting):
 // for everyone else, every `unitPrice` is removed from the order responses (list, detail,
 // receptions, article → orders). Checked when the response is sent, i.e. after requireAuth.
-const stripUnitPrices = (v) => {
-  if (Array.isArray(v)) { v.forEach(stripUnitPrices); return v; }
-  if (v && typeof v === 'object') { delete v.unitPrice; Object.values(v).forEach(stripUnitPrices); }
+const stripUnitPrices = (v, mine = () => false) => {
+  if (Array.isArray(v)) { v.forEach(x => stripUnitPrices(x, mine)); return v; }
+  if (v && typeof v === 'object') {
+    if (mine(v)) return v; // an order this user created (« orders.own ») keeps its prices
+    delete v.unitPrice; Object.values(v).forEach(x => stripUnitPrices(x, mine));
+  }
   return v;
 };
+// Any change to an order (send, reception, cancel, close…) refreshes the « BL à réceptionner » list
+app.use('/api/orders', (req, res, next) => {
+  if (req.method !== 'GET') res.on('finish', () => invalidateBlQueue());
+  next();
+});
 app.use(['/api/orders', '/api/inventory/:id/orders'], (req, res, next) => {
   const json = res.json.bind(res);
   res.json = (body) => {
     if (!req.user || canAccounting(req) || body == null || typeof body !== 'object') return json(body);
     // Copy first: the list may come from ordersListCache, shared with other users
-    return json(stripUnitPrices(JSON.parse(JSON.stringify(body))));
+    const me = String(req.user._id);
+    const mine = (o) => Array.isArray(o.lines) && o.createdBy && String(o.createdBy._id || o.createdBy.id || o.createdBy) === me;
+    return json(stripUnitPrices(JSON.parse(JSON.stringify(body)), mine));
   };
   next();
 });
@@ -1917,7 +1966,12 @@ app.get('/api/orders', requireAuth, requireOrdersView, async (req, res) => {
   try {
     const filter = {};
 
-    if (!isAdmin(req) && !(req.permissions || []).includes('orders.view')) {
+    if (ownOrdersOnly(req)) {
+      // its own orders (drafts included) + the sent orders of its families, for reception
+      const fams = ownFamilies(req);
+      filter.$or = [{ createdBy: req.user._id }];
+      if (fams.length) filter.$or.push({ categories: { $in: fams }, status: { $ne: 'brouillon' } });
+    } else if (!isAdmin(req) && !(req.permissions || []).includes('orders.view')) {
       const userRole = req.user?.roleId?.name || '';
       const allowedCats = receivingCategoriesForRole(userRole);
       if (allowedCats.length === 0) return res.json([]);
@@ -1954,7 +2008,10 @@ app.get('/api/inventory/:id/orders', requireAuth, requireOrdersView, async (req,
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Article invalide' });
     const itemId = new mongoose.Types.ObjectId(req.params.id);
     const filter = { 'lines.itemId': itemId };
-    if (!isAdmin(req) && !(req.permissions || []).includes('orders.view')) {
+    if (ownOrdersOnly(req)) {
+      const fams = ownFamilies(req);
+      filter.$or = [{ createdBy: req.user._id }, ...(fams.length ? [{ categories: { $in: fams }, status: { $ne: 'brouillon' } }] : [])];
+    } else if (!isAdmin(req) && !(req.permissions || []).includes('orders.view')) {
       const allowedCats = receivingCategoriesForRole(req.user?.roleId?.name || '');
       if (allowedCats.length === 0) return res.json([]);
       filter.categories = { $in: allowedCats };
@@ -2000,43 +2057,72 @@ app.get('/api/inventory/:id/orders', requireAuth, requireOrdersView, async (req,
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/orders/bls-to-receive → delivery notes filed in the Suivi (scan + BL number) that are not
-// received in stock yet, limited to the orders where this user has something to receive
-// (Magasinier: accessoires, Laquage: poudre, Coordinateur-vitrage: verre, Admin: everything).
-// Polled by the badge / banner of the receiving accounts.
+// GET /api/orders/bls-to-receive → delivery notes filed in the Suivi that are not received in stock yet
+// (same rows as « à réceptionner » in the Suivi, plus BL scans filed without a number before numbering
+// existed). Who sees what is the usual reception rule, on the order's families: Magasinier →
+// accessoires, Laquage → poudre, Coordinateur-vitrage → verre, Admin → everything.
+// The full list is built once and cached a few seconds (every receiving screen polls it each minute).
+let blQueueCache = null; // { at, items }
+const BL_QUEUE_MS = 20 * 1000;
+const invalidateBlQueue = () => { blQueueCache = null; };
+async function buildBlQueue() {
+  if (blQueueCache && Date.now() - blQueueCache.at < BL_QUEUE_MS) return blQueueCache.items;
+  const rows = await OrderTracking.find({ 'documents.kind': 'bl' }).select('orderId blNumber documents').lean();
+  const ids = [...new Set(rows.map(r => String(r.orderId)))];
+  const orders = ids.length ? await Order.find({ _id: { $in: ids }, status: { $ne: 'annulee' } })
+    .select('number reference supplier supplierId status categories lines._id lines.itemId lines.closed lines.quantityOrdered lines.quantityReceived receptions.blNumber receptions.cancelled receptions.lineId')
+    .populate('supplierId', 'name').populate('lines.itemId', 'superCategory').lean() : [];
+  const byId = new Map(orders.map(o => [String(o._id), o]));
+  const items = [];
+  for (const r of rows) {
+    const o = byId.get(String(r.orderId));
+    if (!o) continue;
+    const blNumber = r.blNumber || '';
+    const famOf = new Map((o.lines || []).map(l => [String(l._id), l.itemId?.superCategory || 'aluminium']));
+    const open = (o.lines || []).filter(l => !l.closed && (l.quantityReceived || 0) < l.quantityOrdered);
+    const openCategories = [...new Set(open.map(l => l.itemId?.superCategory || 'aluminium'))];
+    // families already received under this BL (a mixed BL: the warehouse may have done its part, not the others)
+    const recs = blNumber ? (o.receptions || []).filter(x => !x.cancelled && x.blNumber === blNumber) : [];
+    const doneFamilies = [...new Set(recs.map(x => famOf.get(String(x.lineId))).filter(Boolean))];
+    const pendingFamilies = openCategories.filter(f => !doneFamilies.includes(f));
+    if (recs.length && !pendingFamilies.length) continue; // received for every family still open
+    // scans filed without a number (old way): only while the order still has something to receive
+    if (!blNumber && !open.length) continue;
+    const docs = (r.documents || []).filter(d => d.kind === 'bl')
+      .map(d => ({ id: String(d._id), kind: 'bl', blNumber, name: d.name, contentType: d.contentType, size: d.size, uploadedAt: d.uploadedAt, uploadedBy: d.uploadedBy }));
+    if (!docs.length) continue;
+    // families of the order: its categories + the families of its articles
+    const categories = [...new Set([...(o.categories || []), ...(o.lines || []).map(l => l.itemId?.superCategory).filter(Boolean)])];
+    const first = docs.reduce((m, d) => (new Date(d.uploadedAt) < new Date(m.uploadedAt) ? d : m), docs[0]);
+    items.push({
+      key: `${o._id}::${blNumber || '#'}`, orderId: String(o._id), orderNumber: o.number || o.reference || '',
+      supplier: o.supplierId?.name || o.supplier || '', blNumber, unnumbered: !blNumber,
+      orderStatus: o.status, complete: !open.length, categories, pendingFamilies, doneFamilies,
+      filedAt: first.uploadedAt, filedBy: first.uploadedBy || '', docs,
+    });
+  }
+  items.sort((a, b) => new Date(b.filedAt) - new Date(a.filedAt));
+  blQueueCache = { at: Date.now(), items };
+  return items;
+}
 app.get('/api/orders/bls-to-receive', requireAuth, async (req, res) => {
   try {
     const admin = isAdmin(req);
     const allowed = admin ? null : receivingCategoriesForRole(req.user?.roleId?.name || '');
     if (!admin && !allowed.length) return res.json({ count: 0, items: [] });
-    const filter = { status: { $in: ['envoye', 'partielle'] } };
-    if (!admin) filter.categories = { $in: allowed };
-    const orders = await Order.find(filter)
-      .select('number reference supplier supplierId lines.itemId lines.closed lines.quantityOrdered lines.quantityReceived receptions.blNumber receptions.cancelled')
-      .populate('supplierId', 'name').populate('lines.itemId', 'superCategory').lean();
-    // only orders with an open line this user may receive
-    const mine = orders.filter(o => (o.lines || []).some(l => !l.closed && (l.quantityReceived || 0) < l.quantityOrdered
-      && (admin || allowed.includes(l.itemId?.superCategory || 'aluminium'))));
-    if (!mine.length) return res.json({ count: 0, items: [] });
-    const byId = new Map(mine.map(o => [String(o._id), o]));
-    const rows = await OrderTracking.find({ orderId: { $in: mine.map(o => o._id) }, blNumber: { $ne: '' }, 'documents.kind': 'bl' })
-      .select('orderId blNumber documents').lean();
     const items = [];
-    for (const r of rows) {
-      const o = byId.get(String(r.orderId));
-      if (!o || (o.receptions || []).some(x => !x.cancelled && x.blNumber === r.blNumber)) continue;
-      const docs = (r.documents || []).filter(d => d.kind === 'bl')
-        .map(d => ({ id: String(d._id), kind: 'bl', blNumber: r.blNumber, name: d.name, contentType: d.contentType, size: d.size, uploadedAt: d.uploadedAt, uploadedBy: d.uploadedBy }));
-      if (!docs.length) continue;
-      const first = docs.reduce((m, d) => (new Date(d.uploadedAt) < new Date(m.uploadedAt) ? d : m), docs[0]);
-      items.push({
-        key: `${o._id}::${r.blNumber}`, orderId: String(o._id), orderNumber: o.number || o.reference || '',
-        supplier: o.supplierId?.name || o.supplier || '', blNumber: r.blNumber,
-        filedAt: first.uploadedAt, filedBy: first.uploadedBy || '', docs,
-      });
+    for (const it of await buildBlQueue()) {
+      // like the orders list for receiving roles: sent orders of their families
+      if (!admin && (it.orderStatus === 'brouillon' || !it.categories.some(c => allowed.includes(c)))) continue;
+      if (it.complete) { items.push(it); continue; } // nothing left on the order: shown « to check »
+      // what is still to receive under this BL for THIS person (their families)
+      const mine = admin ? it.pendingFamilies : it.pendingFamilies.filter(f => allowed.includes(f));
+      if (!mine.length) continue;
+      items.push({ ...it, pendingFamilies: mine });
     }
-    items.sort((a, b) => new Date(b.filedAt) - new Date(a.filedAt));
-    res.json({ count: items.length, items });
+    // the badge counts what can be received now (sent order with an open line)
+    const count = items.filter(it => !it.complete && it.orderStatus !== 'brouillon').length;
+    res.json({ count, items });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2085,8 +2171,9 @@ app.get('/api/orders/:id', requireAuth, requireOrdersView, async (req, res) => {
     const o = await populateOrder(Order.findById(req.params.id));
     if (!o) return res.status(404).json({ error: 'Not found' });
 
-    // Permission check for non-admin users
-    if (!isAdmin(req) && !(req.permissions || []).includes('orders.view')) {
+    // Permission check for non-admin users (« orders.own »: its own orders, or as a receiver)
+    if (ownOrdersOnly(req) && isOwnOrder(req, o)) { /* its own */ }
+    else if (!isAdmin(req) && (ownOrdersOnly(req) || !(req.permissions || []).includes('orders.view'))) {
       const userRole = req.user?.roleId?.name || '';
       const allowedCats = receivingCategoriesForRole(userRole);
 
@@ -2106,8 +2193,10 @@ app.get('/api/orders/:id', requireAuth, requireOrdersView, async (req, res) => {
   }
 });
 // Create — always starts as a DRAFT. No number, no orderedQuantity impact yet.
-app.post('/api/orders', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+app.post('/api/orders', requireAuth, requireOrderWrite, async (req, res) => {
   try {
+    const ownErr = await checkOwnOrder(req, null, req.body);
+    if (ownErr) return res.status(403).json({ error: ownErr });
     const categories = Array.isArray(req.body.categories)
       ? req.body.categories.filter(c => c)
       : (req.body.category ? [req.body.category] : []);
@@ -2152,6 +2241,8 @@ app.post('/api/orders', requireAuth, requirePermission('orders.edit'), async (re
       tva: req.body.tva != null ? Number(req.body.tva) : 20,
       notes: req.body.notes || '',
       status: 'brouillon',
+      createdBy: req.user?._id || null,
+      createdByName: req.user?.displayName || req.user?.username || '',
       lines: (req.body.lines || []).map(l => ({
         itemId: l.itemId,
         quantityOrdered: Number(l.quantityOrdered) || 1,
@@ -2170,10 +2261,12 @@ app.post('/api/orders', requireAuth, requirePermission('orders.edit'), async (re
 
 // Edit — drafts: anyone with orders.edit. Sent/beyond: ADMIN ONLY.
 // Edit — drafts: anyone with orders.edit. Sent/beyond: ADMIN ONLY.
-app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+app.put('/api/orders/:id', requireAuth, requireOrderWrite, async (req, res) => {
   try {
     const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Not found' });
+    const ownErr = await checkOwnOrder(req, o, req.body);
+    if (ownErr) return res.status(403).json({ error: ownErr });
     if (!canEditOrderContent(req, o))
       return res.status(403).json({ error: 'Bon de commande annulé — seul un administrateur peut le modifier.' });
     const editable = canEditOrderContent(req, o);
@@ -2295,10 +2388,12 @@ app.put('/api/orders/:id', requireAuth, requirePermission('orders.edit'), async 
 });
 
 // SEND to supplier — draft → envoye. Assigns BC number + reserves orderedQuantity.
-app.post('/api/orders/:id/send', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+app.post('/api/orders/:id/send', requireAuth, requireOrderWrite, async (req, res) => {
   try {
     const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Not found' });
+    const ownErr = await checkOwnOrder(req, o);
+    if (ownErr) return res.status(403).json({ error: ownErr });
     if (o.status !== 'brouillon') return res.status(400).json({ error: 'Ce bon de commande a déjà été envoyé.' });
     if (!o.companyId) return res.status(400).json({ error: 'Sélectionnez une société avant l\'envoi.' });
     if (!o.lines.length) return res.status(400).json({ error: 'Impossible d\'envoyer un bon de commande vide.' });
@@ -2369,6 +2464,18 @@ app.post('/api/orders/:id/receive-batch', requireAuth, async (req, res) => {
     refreshOrderStatus(o);
     await o.save();
     await recomputeOrderedQuantity(plan.map(p => p.line.itemId));
+    // BL scans filed without a number (before numbering): filed now under this BL
+    const attach = (Array.isArray(req.body?.attachDocIds) ? req.body.attachDocIds : []).map(String);
+    if (attach.length) {
+      const loose = await OrderTracking.findOne({ orderId: o._id, blNumber: '' }).select('documents').lean();
+      const moving = (loose?.documents || []).filter(d => d.kind === 'bl' && attach.includes(String(d._id)));
+      if (moving.length) {
+        await OrderTracking.findOneAndUpdate({ orderId: o._id, blNumber }, { $push: { documents: { $each: moving } } }, { upsert: true });
+        // rewrite instead of $pull: works on every MongoDB-compatible database
+        await OrderTracking.updateOne({ _id: loose._id }, { $set: { documents: loose.documents.filter(d => !attach.includes(String(d._id))) } });
+      }
+    }
+    invalidateBlQueue();
     res.json(await populateOrder(Order.findById(o._id)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2608,11 +2715,13 @@ app.patch('/api/orders/:id/lines/:lineId/close', requireAuth, async (req, res) =
 });
 
 // Cancel — restores unreceived reservation. Sent order → admin only.
-app.post('/api/orders/:id/cancel', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+app.post('/api/orders/:id/cancel', requireAuth, requireOrderWrite, async (req, res) => {
   try {
     const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Not found' });
-    if (!canMutateOrder(req, o)) return res.status(403).json({ error: 'Bon de commande envoyé — seul un administrateur peut l\'annuler.' });
+    const ownErr = await checkOwnOrder(req, o);
+    if (ownErr) return res.status(403).json({ error: ownErr });
+    if (!canMutateOrder(req, o) && !(ownOrdersOnly(req) && isOwnOrder(req, o))) return res.status(403).json({ error: 'Bon de commande envoyé — seul un administrateur peut l\'annuler.' });
     o.status = 'annulee';
     await o.save();
     await recomputeOrderedQuantity(o.lines.map(l => l.itemId));
@@ -2626,7 +2735,10 @@ app.delete('/api/orders/:id', requireAuth, async (req, res) => {
     const o = await Order.findById(req.params.id);
     if (!o) return res.status(404).json({ error: 'Not found' });
     const draft = o.status === 'brouillon';
-    if (draft) {
+    if (ownOrdersOnly(req)) {
+      if (!isOwnOrder(req, o)) return res.status(403).json({ error: 'Ce bon de commande a été créé par le service achat.' });
+      if (!draft) return res.status(403).json({ error: 'Bon de commande envoyé — annulez-le au lieu de le supprimer.' });
+    } else if (draft) {
       if (!(req.permissions || []).includes('orders.delete') && !isAdmin(req))
         return res.status(403).json({ error: 'Permission requise : orders.delete' });
     } else if (!isAdmin(req)) {
@@ -2731,7 +2843,7 @@ async function buildTrackingRows(orderFilter) {
       && (t.documents || []).some(d => d.kind === 'bl'));
     for (const t of pending) {
       const first = t.documents.filter(d => d.kind === 'bl').reduce((m, d) => (!m || new Date(d.uploadedAt) < new Date(m) ? d.uploadedAt : m), null);
-      rows.push({ ...buildRow(t.blNumber, first, 0), blPending: true });
+      rows.push({ ...buildRow(t.blNumber, first, 0), blPending: o.status !== 'annulee' }); // nothing to receive on a cancelled order
     }
     if (blKeys.length === 0) {
       rows.push(buildRow('', o.orderDate, 0));
@@ -2909,11 +3021,13 @@ const readDocBody = (req, res, next) => docBody(req, res, (err) => {
 app.post('/api/order-tracking/documents', requireAuth, requireAccounting, readDocBody, async (req, res) => {
     try {
       const { orderId, kind } = req.query;
-      const blNumber = String(req.query.blNumber || '').trim().slice(0, 80);
+      let blNumber = String(req.query.blNumber || '').trim().slice(0, 80);
+      // a delivery note without a typed number is named after its file (« BL 4581.pdf » → « BL 4581 »)
+      if (kind === 'bl' && !blNumber) blNumber = String(req.query.name || '').replace(/\.[^.]+$/, '').trim().slice(0, 80);
       if (!mongoose.Types.ObjectId.isValid(orderId)) return res.status(400).json({ error: 'Commande invalide' });
       if (!['facture', 'bl'].includes(kind)) return res.status(400).json({ error: 'Type de document invalide' });
       // A delivery note is filed under its own number: the warehouse then picks it at reception
-      if (kind === 'bl' && !blNumber.trim()) return res.status(400).json({ error: 'Indiquez le numéro du BL.' });
+      if (kind === 'bl' && !blNumber) return res.status(400).json({ error: 'Indiquez le numéro du BL.' });
       const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
       if (!buf.length) return res.status(400).json({ error: 'Fichier vide' });
       const sniff = sniffDoc(buf);
@@ -2936,6 +3050,7 @@ app.post('/api/order-tracking/documents', requireAuth, requireAccounting, readDo
       if (kind === 'facture') update.$set = { factureStatus: 'recue' }; // an invoice is attached → it was received
       const t = await OrderTracking.findOneAndUpdate({ orderId, blNumber }, update, { upsert: true, new: true });
       const saved = t.documents[t.documents.length - 1];
+      if (kind === 'bl') invalidateBlQueue();
       const after = await docUsage(true);
       res.status(201).json({ id: String(saved._id), kind: saved.kind, blNumber, name: saved.name, contentType: saved.contentType, size: saved.size, uploadedAt: saved.uploadedAt, uploadedBy: saved.uploadedBy, factureStatus: t.factureStatus, storage: usageView(after) });
     } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
@@ -2944,7 +3059,8 @@ app.post('/api/order-tracking/documents', requireAuth, requireAccounting, readDo
 // Same rule as the purchase order page: orders.view / admin see every order; receiving roles only
 // the sent orders of their categories.
 function canSeeOrder(req, order) {
-  if (isAdmin(req) || (req.permissions || []).includes('orders.view')) return true;
+  if (isOwnOrder(req, order)) return true;
+  if (isAdmin(req) || ((req.permissions || []).includes('orders.view') && !ownOrdersOnly(req))) return true;
   const allowed = receivingCategoriesForRole(req.user?.roleId?.name || '');
   return order.status !== 'brouillon' && (order.categories || []).some(c => allowed.includes(c));
 }
@@ -3007,6 +3123,7 @@ app.delete('/api/order-tracking/documents/:docId', requireAuth, requireAccountin
     await client.send(new sdk.DeleteObjectCommand({ Bucket: bucket, Key: d.key }));
     // the list is rewritten without this document (no $pull: works on every MongoDB-compatible database)
     await OrderTracking.updateOne({ _id: t._id }, { $set: { documents: t.documents.filter(x => String(x._id) !== req.params.docId) } });
+    if (d.kind === 'bl') invalidateBlQueue();
     res.json({ success: true, storage: usageView(await docUsage(true)) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
@@ -3430,7 +3547,8 @@ app.delete('/api/projects/:id/chassis/:cid', async (req, res) => {
 
 // Suppliers list — same visibility rule, so the search/labels work for receivers too
 app.get('/api/fournisseurs', requireAuth, requireOrdersView, async (req, res) => {
-  try { res.json(await Fournisseur.find().sort({ name: 1 })); }
+  // « orders.own » (Coordinateur-vitrage): only the suppliers it created
+  try { res.json(await Fournisseur.find(ownOrdersOnly(req) ? { createdBy: req.user._id } : {}).sort({ name: 1 })); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Only the supplier fields — nothing else from the request body is stored
@@ -3458,18 +3576,35 @@ const sameName = (name, exceptId) => Fournisseur.findOne({
   name: new RegExp(`^${escapeRegex(String(name).trim())}$`, 'i'), ...(exceptId ? { _id: { $ne: exceptId } } : {}),
 }).lean();
 
-app.post('/api/fournisseurs', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+app.post('/api/fournisseurs', requireAuth, requireOrderWrite, async (req, res) => {
   try {
     const data = cleanSupplier(req.body);
     if (!data.name) return res.status(400).json({ error: 'Nom requis' });
-    if (await sameName(data.name)) return res.status(409).json({ error: `Un fournisseur « ${data.name} » existe déjà.` });
-    const f = await Fournisseur.create(data);
+    const twin = await sameName(data.name);
+    if (twin) return res.status(409).json({ error: ownOrdersOnly(req) && String(twin.createdBy || '') !== String(req.user._id)
+      ? `Un fournisseur « ${data.name} » existe déjà chez le service achat : choisissez un autre nom ou demandez à ACHAT.`
+      : `Un fournisseur « ${data.name} » existe déjà.` });
+    if (ownOrdersOnly(req)) { delete data.delaiPaiement; delete data.finDeMois; } // payment terms: accounting
+    const f = await Fournisseur.create({ ...data, createdBy: req.user?._id || null });
     res.status(201).json(f);
   } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 });
 // ACHAT edits everything; the accountant (orders.accounting) only the payment term
-app.put('/api/fournisseurs/:id', requireAuth, requireAccounting, async (req, res) => {
+app.put('/api/fournisseurs/:id', requireAuth, async (req, res) => {
   try {
+    if (ownOrdersOnly(req) && !canAccounting(req)) {
+      // « orders.own »: the suppliers it created, contact details only (payment terms stay with accounting)
+      const own = await Fournisseur.findById(req.params.id).select('createdBy').lean();
+      if (!own) return res.status(404).json({ error: 'Not found' });
+      if (String(own.createdBy || '') !== String(req.user._id)) return res.status(403).json({ error: 'Fournisseur créé par le service achat : modification réservée à ACHAT.' });
+      const data = cleanSupplier(req.body); delete data.delaiPaiement; delete data.finDeMois;
+      if (data.name !== undefined && !data.name) return res.status(400).json({ error: 'Nom requis' });
+      if (data.name && await sameName(data.name, req.params.id)) return res.status(409).json({ error: `Un fournisseur « ${data.name} » existe déjà.` });
+      const f = await Fournisseur.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
+      if (data.name) await Order.updateMany({ supplierId: f._id }, { $set: { supplier: f.name } });
+      return res.json(f);
+    }
+    if (!canAccounting(req)) return res.status(403).json({ error: 'Accès refusé — permission requise: orders.edit ou orders.accounting' });
     const full = isAdmin(req) || (req.permissions || []).includes('orders.edit');
     if (!full && SUPPLIER_FIELDS.some(k => req.body[k] !== undefined))
       return res.status(403).json({ error: 'Vous pouvez seulement modifier le délai de paiement.' });

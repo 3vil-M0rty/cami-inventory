@@ -37,7 +37,12 @@ function chime() {
   } catch (e) { }
 }
 
-export const blLink = (it) => `/commandes/${it.orderId}?receptionner=${encodeURIComponent(it.blNumber)}`;
+// Can be received now: sent order with something left (not a fully received / draft order)
+export const isActionable = (it) => !it.complete && it.orderStatus !== 'brouillon';
+
+export const blLink = (it) => (it.unnumbered || isActionable(it) === false
+  ? `/commandes/${it.orderId}`
+  : `/commandes/${it.orderId}?receptionner=${encodeURIComponent(it.blNumber)}`);
 
 // Opens the order page on that BL (reception window preselected), from anywhere in the app
 export function goToBl(it) {
@@ -52,7 +57,7 @@ function announce(fresh) {
   try {
     const first = fresh[0];
     const n = new Notification(fresh.length > 1 ? `${fresh.length} nouveaux BL à réceptionner` : 'Nouveau BL à réceptionner', {
-      body: fresh.slice(0, 4).map(it => `${/^\s*b\.?\s*l\b/i.test(it.blNumber) ? it.blNumber : `BL ${it.blNumber}`} — ${it.supplier || '—'} (BC ${it.orderNumber || '—'})`).join('\n'),
+      body: fresh.slice(0, 4).map(it => `${!it.blNumber ? String(it.docs?.[0]?.name || 'BL').replace(/\.[^.]+$/, '') : /^\s*b\.?\s*l\b/i.test(it.blNumber) ? it.blNumber : `BL ${it.blNumber}`} — ${it.supplier || '—'} (BC ${it.orderNumber || '—'})`).join('\n'),
       tag: 'cami-bl-to-receive',
       renotify: true,
     });
@@ -71,13 +76,14 @@ export function refreshBls() {
   inflight = axios.get(`${API_URL}/orders/bls-to-receive`)
     .then(r => {
       const items = r.data?.items || [];
+      const actionable = items.filter(isActionable);
       // What this computer already knew: anything else is new → notify
       const seenKey = `bls_seen_${userKey}`;
       const raw = lsGet(seenKey);
       const seen = new Set(raw ? JSON.parse(raw) : []);
-      if (raw !== null) announce(items.filter(it => !seen.has(it.key)));
-      lsSet(seenKey, JSON.stringify(items.map(it => it.key)));
-      publish({ items, count: items.length, loaded: true });
+      if (raw !== null) announce(actionable.filter(it => !seen.has(it.key)));
+      lsSet(seenKey, JSON.stringify(actionable.map(it => it.key)));
+      publish({ items, count: actionable.length, loaded: true });
     })
     .catch(() => { })
     .finally(() => { inflight = null; });

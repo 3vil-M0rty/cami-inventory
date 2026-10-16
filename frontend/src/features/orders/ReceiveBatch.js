@@ -5,7 +5,7 @@ import axios from 'axios';
 import { Check, CheckCheck, Eye, FileText, FileImage, Package, PackageCheck, X, AlertTriangle, Truck } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { errorMessage } from '../../components/common/dialog';
-import { openDocument } from './TrackingDocuments';
+import { openDocument, fileBase } from './TrackingDocuments';
 import './ReceiveBatch.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -35,15 +35,26 @@ const DocButtons = ({ docs }) => docs.map(d => {
 });
 
 // Block on the order page: BLs filed but not received in stock yet
-export function PendingBlsBlock({ order, docs, canReceive, onReceive }) {
+export function PendingBlsBlock({ order, docs, canReceive, canReceiveLine = () => true, onReceive }) {
   const { t } = useLanguage();
-  const pending = filedBls(order, docs).filter(b => !b.received);
-  if (!pending.length) return null;
+  // a BL stays pending while one of MY open lines has a family not yet received under it
+  // (mixed BL: the warehouse receives the accessoires, the admin the aluminium…)
+  const famOf = (l) => l.itemId?.superCategory || 'aluminium';
+  const lineFam = new Map((order.lines || []).map(l => [String(l._id || l.id), famOf(l)]));
+  const myOpen = (order.lines || []).filter(l => !l.closed && (l.quantityReceived || 0) < l.quantityOrdered && canReceiveLine(l));
+  const pending = filedBls(order, docs).filter(b => {
+    const done = new Set((order.receptions || []).filter(r => !r.cancelled && r.blNumber === b.blNumber).map(r => lineFam.get(String(r.lineId))));
+    return b.received ? myOpen.some(l => !done.has(famOf(l))) : true;
+  });
+  // scans filed without a number (before numbering existed), while something is left to receive
+  const hasOpen = (order.lines || []).some(l => !l.closed && (l.quantityReceived || 0) < l.quantityOrdered);
+  const loose = hasOpen ? (docs || []).filter(d => d.kind === 'bl' && !d.blNumber) : [];
+  if (!pending.length && !loose.length) return null;
   return (
     <div className="rb-pending">
       <div className="rb-pending__head">
         <Truck size={15} />
-        <h3>{t('rbPendingTitle')}<span>{pending.length}</span></h3>
+        <h3>{t('rbPendingTitle')}<span>{pending.length + loose.length}</span></h3>
       </div>
       <ul>
         {pending.map(b => (
@@ -58,15 +69,38 @@ export function PendingBlsBlock({ order, docs, canReceive, onReceive }) {
             )}
           </li>
         ))}
+        {loose.map(d => (
+          <li key={d.id}>
+            <span className="rb-pending__no" title={d.name}><strong>{blLabel(fileBase(d.name))}</strong> <em className="blq-list__file">{t('blqNoNumberTag')}</em></span>
+            <span className="rb-pending__meta">{t('rbFiledOn', { date: new Date(d.uploadedAt).toLocaleDateString('fr-FR') })}</span>
+            <DocButtons docs={[d]} />
+            {canReceive && (
+              <button type="button" className="btn-receive rb-pending__go" onClick={() => onReceive('', [d.id])}>
+                <PackageCheck size={14} /> {t('rbReceiveThis')}
+              </button>
+            )}
+          </li>
+        ))}
       </ul>
     </div>
   );
 }
 
-export function ReceiveBatchModal({ order, docs, lang, canReceiveLine, initialBl = '', onClose, onDone }) {
+export function ReceiveBatchModal({ order, docs, lang, canReceiveLine, initialBl = '', initialAttach = [], onClose, onDone }) {
   const { t } = useLanguage();
   const bls = useMemo(() => filedBls(order, docs), [order, docs]);
-  const [bl, setBl] = useState(initialBl || (bls.filter(b => !b.received).length === 1 ? bls.find(b => !b.received).blNumber : ''));
+  // BL scans filed without a number: picking one files it under the number typed here
+  const loose = useMemo(() => (docs || []).filter(d => d.kind === 'bl' && !d.blNumber), [docs]);
+  const [attach, setAttach] = useState(initialAttach || []);
+  const [bl, setBl] = useState(initialBl || (initialAttach?.length ? fileBase(loose.find(d => d.id === initialAttach[0])?.name)
+    : bls.filter(b => !b.received).length === 1 ? bls.find(b => !b.received).blNumber : ''));
+  // documents of the order may arrive after the window opened: name the picked scan then
+  useEffect(() => {
+    if (attach.length && !bl) { const d = loose.find(x => x.id === attach[0]); if (d) setBl(fileBase(d.name)); }
+  }, [loose]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pickNumbered = (n) => { setAttach([]); setBl(n); };
+  // a scan without number is named after its file (the number can still be corrected)
+  const pickLoose = (id) => { setAttach([id]); setBl(fileBase(loose.find(d => d.id === id)?.name)); };
   const [qty, setQty] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -99,6 +133,7 @@ export function ReceiveBatchModal({ order, docs, lang, canReceiveLine, initialBl
       const r = await axios.post(`${API_URL}/orders/${order.id}/receive-batch`, {
         blNumber: bl.trim(),
         lines: chosen.map(l => ({ lineId: lineKey(l), quantity: val(l) })),
+        attachDocIds: attach,
       });
       onDone(r.data);
     } catch (e) { setError(errorMessage(e, t('dlgError'))); setSaving(false); }
@@ -118,13 +153,27 @@ export function ReceiveBatchModal({ order, docs, lang, canReceiveLine, initialBl
         {/* 1. The delivery note */}
         <section className="rb-step">
           <h3><span>1</span>{t('rbStepBl')}</h3>
-          {bls.length > 0 && (
+          {(bls.length > 0 || loose.length > 0) && (
             <div className="rb-bls">
+              {loose.map(d => {
+                const on = attach.includes(d.id);
+                return (
+                  <div key={d.id} role="button" tabIndex={0} className={`rb-bl${on ? ' is-on' : ''}`}
+                    onClick={() => pickLoose(d.id)} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && pickLoose(d.id)}>
+                    <span className="rb-bl__radio">{on && <Check size={11} />}</span>
+                    <span className="rb-bl__txt">
+                      <strong title={d.name}>{blLabel(fileBase(d.name))}</strong>
+                      <span>{t('blqNoNumberTag')}</span>
+                    </span>
+                    <DocButtons docs={[d]} />
+                  </div>
+                );
+              })}
               {bls.map(b => (
                 <div key={b.blNumber} role="button" tabIndex={0}
-                  className={`rb-bl${bl.trim() === b.blNumber ? ' is-on' : ''}`}
-                  onClick={() => setBl(b.blNumber)} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setBl(b.blNumber)}>
-                  <span className="rb-bl__radio">{bl.trim() === b.blNumber && <Check size={11} />}</span>
+                  className={`rb-bl${!attach.length && bl.trim() === b.blNumber ? ' is-on' : ''}`}
+                  onClick={() => pickNumbered(b.blNumber)} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && pickNumbered(b.blNumber)}>
+                  <span className="rb-bl__radio">{!attach.length && bl.trim() === b.blNumber && <Check size={11} />}</span>
                   <span className="rb-bl__txt">
                     <strong>{blLabel(b.blNumber)}</strong>
                     <span>{b.received ? t('rbAlreadyPartly') : t('rbFiledOn', { date: new Date(b.at).toLocaleDateString('fr-FR') })}</span>
@@ -135,10 +184,11 @@ export function ReceiveBatchModal({ order, docs, lang, canReceiveLine, initialBl
             </div>
           )}
           <label className="rb-other">
-            <span>{bls.length ? t('rbOtherBl') : t('orBlNumberLabel')}</span>
-            <input type="text" value={bl} maxLength={80} placeholder={t('orBlPlaceholder')} onChange={e => setBl(e.target.value)} autoFocus={!bls.length} />
+            <span>{attach.length ? t('rbTypeNumber') : bls.length ? t('rbOtherBl') : t('orBlNumberLabel')}</span>
+            <input type="text" value={bl} maxLength={80} placeholder={t('orBlPlaceholder')} onChange={e => setBl(e.target.value)} autoFocus={!bls.length || attach.length > 0} />
           </label>
-          {bl.trim() && !blFiled && <p className="rb-hint">{bls.length ? t('rbNotFiled') : t('rbNoneFiled')}</p>}
+          {attach.length > 0 && <p className="rb-hint">{t('rbAttachHint')}</p>}
+          {!attach.length && bl.trim() && !blFiled && <p className="rb-hint">{bls.length ? t('rbNotFiled') : t('rbNoneFiled')}</p>}
         </section>
 
         {/* 2. What arrived */}

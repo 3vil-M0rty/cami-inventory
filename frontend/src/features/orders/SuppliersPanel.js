@@ -63,7 +63,8 @@ function useFmt(lang) {
 }
 
 /* ── Create / edit form ────────────────────────────────────────────────── */
-export function SupplierFormModal({ supplier, onClose, onSaved, paymentOnly = false }) {
+// noTerms: payment terms hidden and not sent (« orders.own »: they belong to accounting)
+export function SupplierFormModal({ supplier, onClose, onSaved, paymentOnly = false, noTerms = false }) {
   const { t } = useLanguage();
   const [form, setForm] = useState(() => ({ ...EMPTY, delaiPaiement: '', finDeMois: false, ...(supplier || {}), ...(supplier?.delaiPaiement == null ? { delaiPaiement: '' } : {}) }));
   const [saving, setSaving] = useState(false);
@@ -77,7 +78,8 @@ export function SupplierFormModal({ supplier, onClose, onSaved, paymentOnly = fa
     if (form.delaiPaiement !== '' && (!Number.isFinite(Number(form.delaiPaiement)) || form.delaiPaiement < 0 || form.delaiPaiement > 365)) { setError(t('acTermInvalid')); return; }
     setSaving(true); setError('');
     const terms = { delaiPaiement: form.delaiPaiement === '' ? null : Number(form.delaiPaiement), finDeMois: !!form.finDeMois };
-    const body = paymentOnly ? terms : { ...Object.fromEntries(Object.keys(EMPTY).map(k => [k, (form[k] || '').trim()])), ...terms };
+    const fields = Object.fromEntries(Object.keys(EMPTY).map(k => [k, (form[k] || '').trim()]));
+    const body = paymentOnly ? terms : noTerms ? fields : { ...fields, ...terms };
     try {
       const r = supplier?.id
         ? await axios.put(`${API_URL}/fournisseurs/${supplier.id}`, body)
@@ -106,7 +108,7 @@ export function SupplierFormModal({ supplier, onClose, onSaved, paymentOnly = fa
           <div className="form-group"><label>{t('orAddress')}</label><input value={form.address} onChange={set('address')} /></div>
           <div className="form-group"><label>{t('orNotes')}</label><textarea rows={2} value={form.notes} onChange={set('notes')} /></div>
           </>}
-          <TermFields value={form} onChange={(patch) => setForm(f => ({ ...f, ...patch }))} t={t} />
+          {!noTerms && <TermFields value={form} onChange={(patch) => setForm(f => ({ ...f, ...patch }))} t={t} />}
           {error && <div className="form-error">{error}</div>}
           <div className="modal-actions">
             <button type="button" onClick={onClose}>{t('cancel')}</button>
@@ -246,7 +248,83 @@ function SupplierDrawer({ supplierId, stats, statusColors, lang, isAdmin, fullEd
 }
 
 /* ── Tab: list of suppliers ────────────────────────────────────────────── */
-export default function SuppliersPanel({ suppliers, onChanged, onNewOrder, onOpenOrder, statusColors, isAdmin, fullEdit = true }) {
+export default function SuppliersPanel(props) {
+  return props.ownUserId ? <OwnSuppliersPanel {...props} /> : <FullSuppliersPanel {...props} />;
+}
+
+// « orders.own » accounts (e.g. Coordinateur-vitrage): only the suppliers it created (the server sends
+// no others); no purchase figures or payment terms (purchasing / accounting)
+function OwnSuppliersPanel({ suppliers, onChanged, onNewOrder }) {
+  const { t } = useLanguage();
+  const [q, setQ] = useState('');
+  const [editing, setEditing] = useState(null);
+  const rows = useMemo(() => {
+    const norm = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const words = norm(q).split(/\s+/).filter(Boolean);
+    return suppliers
+      .filter(s => words.every(w => norm([s.name, s.code, s.contact, s.phone, s.email, s.city].join(' ')).includes(w)))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }, [suppliers, q]);
+  return (
+    <div className="sp">
+      <div className="sp-toolbar">
+        <div className="sp-search">
+          <Search size={15} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('spSearch')} aria-label={t('spSearch')} />
+          {q && <button type="button" className="sp-search__clear" onClick={() => setQ('')} aria-label={t('close')}><X size={14} /></button>}
+        </div>
+        <div className="sp-toolbar__end">
+          <button type="button" className="sp-btn sp-btn--primary" onClick={() => setEditing({})}><Plus size={14} />{t('orNewSupplier')}</button>
+        </div>
+      </div>
+      <div className="sp-card">
+        {rows.length === 0 ? (
+          <div className="sp-empty">{suppliers.length ? t('spNoMatch') : t('spNone')}</div>
+        ) : (
+          <div className="sp-table-wrap">
+            <table className="sp-table">
+              <thead><tr><th>{t('orSupplier')}</th><th className="hide-md">{t('spColContact')}</th><th /></tr></thead>
+              <tbody>
+                {rows.map(s => (
+                  <tr key={s.id}>
+                    <td>
+                      <div className="sp-name">
+                        <span className="sp-avatar">{(s.name || '?').trim().charAt(0).toUpperCase()}</span>
+                        <div>
+                          <strong>{s.name}</strong>
+                          <span className="sp-muted">{[s.code, s.city].filter(Boolean).join(' · ') || '—'}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="hide-md">
+                      <div className="sp-contactcell">
+                        {s.contact && <span>{s.contact}</span>}
+                        {s.phone && <a href={`tel:${s.phone.replace(/\s/g, '')}`}><Phone size={12} />{s.phone}</a>}
+                        {s.email && <a href={`mailto:${s.email}`}><Mail size={12} />{s.email}</a>}
+                        {!s.contact && !s.phone && !s.email && <span className="sp-muted">—</span>}
+                      </div>
+                    </td>
+                    <td className="sp-rowact">
+                      <button type="button" className="sp-icon" title={t('spNewOrder')} aria-label={t('spNewOrder')} onClick={() => onNewOrder(s)}><FilePlus size={14} /></button>
+                      <button type="button" className="sp-icon" title={t('edit')} aria-label={t('edit')} onClick={() => setEditing(s)}><Pencil size={14} /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <p className="sp-own-note">{t('spOwnNote')}</p>
+      {editing && (
+        <SupplierFormModal supplier={editing.id ? editing : null} noTerms
+          onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onChanged(); }} />
+      )}
+    </div>
+  );
+}
+
+function FullSuppliersPanel({ suppliers, onChanged, onNewOrder, onOpenOrder, statusColors, isAdmin, fullEdit = true }) {
   const { t, currentLanguage: lang } = useLanguage();
   const f = useFmt(lang);
   const [stats, setStats] = useState({});

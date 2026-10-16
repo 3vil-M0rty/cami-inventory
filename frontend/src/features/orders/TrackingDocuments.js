@@ -9,6 +9,8 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 const MAX_BYTES = 15 * 1024 * 1024;
 const ACCEPT = 'application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp';
 const KINDS = ['facture', 'bl'];
+// « BL 4581.pdf » → « BL 4581 »: the name of a delivery note filed without a typed number
+export const fileBase = (name) => String(name || '').replace(/\.[^.]+$/, '').trim().slice(0, 80);
 
 const fmtSize = (b) => (b >= 1073741824 ? `${(b / 1073741824).toFixed(2)} Go` : b >= 1048576 ? `${(b / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(b / 1024))} Ko`);
 
@@ -106,10 +108,10 @@ export function DocumentsModal({ row, onClose, onChange, storage, onStorage = ()
 
   const upload = async (kind, files) => {
     setError('');
-    const blNumber = kind === 'bl' && needsBlNo ? blNo.trim() : (row.blNumber || '');
-    if (kind === 'bl' && !blNumber) { setError(t('tdBlNumberRequired')); return; }
     let current = docs;
     for (const original of Array.from(files || [])) {
+      // no number typed: each file becomes its own BL, named after the file
+      const blNumber = kind === 'bl' && needsBlNo ? (blNo.trim() || fileBase(original.name)) : (row.blNumber || '');
       if (!/^(application\/pdf|image\/(jpeg|png|webp))$/.test(original.type) && !/\.(pdf|jpe?g|png|webp)$/i.test(original.name)) {
         setError(t('tdBadType', { name: original.name })); continue;
       }
@@ -148,7 +150,6 @@ export function DocumentsModal({ row, onClose, onChange, storage, onStorage = ()
   };
 
   const onDrop = (kind) => (e) => { e.preventDefault(); setDragKind(null); if (!uploading && !storage?.full) upload(kind, e.dataTransfer.files); };
-  const blocked = (kind) => kind === 'bl' && needsBlNo && !blNo.trim();
 
   return (
     <div className="modal-overlay" onClick={() => !uploading && onClose()}>
@@ -183,8 +184,7 @@ export function DocumentsModal({ row, onClose, onChange, storage, onStorage = ()
                   <input className="td-blno" type="text" value={blNo} maxLength={80} placeholder={t('tdBlNumberPh')}
                     aria-label={t('tdBlNumberPh')} onChange={e => setBlNo(e.target.value)} />
                 )}
-                <button type="button" className="td-btn" disabled={!!uploading || !!storage?.full || blocked(kind)}
-                  title={blocked(kind) ? t('tdBlNumberRequired') : undefined} onClick={() => inputs[kind].current?.click()}>
+                <button type="button" className="td-btn" disabled={!!uploading || !!storage?.full} onClick={() => inputs[kind].current?.click()}>
                   <Upload size={14} />{t('tdAdd')}
                 </button>
               </div>

@@ -11,7 +11,7 @@ import { PAGE_PATHS, subPathFromLocation, getQueryParam, setUrl } from '../../ro
 import SuppliersPanel, { SupplierFormModal } from './SuppliersPanel';
 import { DocumentsCell, DocumentsModal, StorageGauge, BlDocButtons, OrderDocumentsBlock } from './TrackingDocuments';
 import { ReceiveBatchModal, PendingBlsBlock } from './ReceiveBatch';
-import { BlsToReceivePanel } from './BlsToReceive';
+import { BlsToReceivePanel, OrdersToReceiveList } from './BlsToReceive';
 import { useBlsToReceive, canReceiveBls, refreshBls } from './receptionQueue';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -132,10 +132,11 @@ export default function OrdersPage() {
   // « À réceptionner »: BLs filed in the Suivi, for the accounts that receive goods
   const isReceiver = canReceiveBls(user, can);
   const { count: blsToReceive } = useBlsToReceive(isReceiver, user?.id || user?.username || '');
-  const tabAllowed = (k) => k === 'orders' || (k === 'reception' ? isReceiver : k === 'requests' ? can('orders.edit') : canAccounting);
+  const tabAllowed = (k) => k === 'orders' || (k === 'reception' ? isReceiver : k === 'requests' ? can('orders.edit')
+    : k === 'fournisseurs' ? (canAccounting || can('orders.own')) : canAccounting);
   // the accountant lands on Suivi; warehouse-type roles (no full orders access) on « À réceptionner »
   const defaultTab = !can('orders.edit') && canAccounting ? 'suivi'
-    : isReceiver && !isAdmin && !can('orders.view') ? 'reception' : 'orders';
+    : isReceiver && !isAdmin && !can('orders.view') && !can('orders.own') ? 'reception' : 'orders';
   const [activeTab, setActiveTab] = useState(() => {
     const tab = getQueryParam('onglet');
     return ORDER_TABS.includes(tab) ? tab : defaultTab;
@@ -148,11 +149,22 @@ export default function OrdersPage() {
 
   // who may touch THIS order
   // ACHAT (orders.edit) can also edit a BC already sent (not a cancelled one); cancel / delete stay admin-only
-  const canEditSent = isAdmin || can('orders.edit');
-  const canEditOrder = (o) => o.status === 'brouillon' ? can('orders.edit') : (isAdmin || (o.status !== 'annulee' && can('orders.edit')));
-  const canDeleteOrder = (o) => o.status === 'brouillon' ? (can('orders.delete') || isAdmin) : isAdmin;
-  const canSendOrder = (o) => o.status === 'brouillon' && can('orders.edit');
-  const canCancelOrder = (o) => (o.status === 'envoye' || o.status === 'partielle') && isAdmin;
+  // « orders.own » (e.g. Coordinateur-vitrage): creates and manages ITS OWN orders (its families), and only
+  // receives the orders of the purchasing department — same rules on the server
+  const ownOnly = !isAdmin && can('orders.own') && !can('orders.edit');
+  const myId = String(user?.id || user?._id || '');
+  const isMine = (o) => !!o?.createdBy && String(o.createdBy?._id || o.createdBy?.id || o.createdBy) === myId;
+  const ownFamilies = ownOnly ? Object.keys(CATEGORY_RECEIVE_ROLE).filter(c => CATEGORY_RECEIVE_ROLE[c] === user?.role) : null;
+  const canCreateOrder = can('orders.edit') || ownOnly;
+  const canEditSent = isAdmin || can('orders.edit') || ownOnly;
+  const canEditOrder = (o) => (ownOnly ? isMine(o) && o.status !== 'annulee'
+    : o.status === 'brouillon' ? can('orders.edit') : (isAdmin || (o.status !== 'annulee' && can('orders.edit'))));
+  const canDeleteOrder = (o) => (ownOnly ? isMine(o) && o.status === 'brouillon'
+    : o.status === 'brouillon' ? (can('orders.delete') || isAdmin) : isAdmin);
+  const canSendOrder = (o) => o.status === 'brouillon' && (can('orders.edit') || (ownOnly && isMine(o)));
+  const canCancelOrder = (o) => (o.status === 'envoye' || o.status === 'partielle') && (isAdmin || (ownOnly && isMine(o)));
+  // prices: Admin / ACHAT / accountant, and its own orders for « orders.own »
+  const showPricesFor = (o) => canSeePrices || isMine(o);
 
   const userKey = user?.id || user?._id || user?.username || '';
   const hasOrders = useRef(false);
@@ -391,7 +403,9 @@ export default function OrdersPage() {
     return tokens.every(tok => haystack.includes(tok));
   };
 
-  const filteredOrders = orders.filter(o => {
+  // « orders.own »: the list shows its own orders; the purchasing department's ones are in « À réceptionner »
+  const listOrders = ownOnly ? orders.filter(isMine) : orders;
+  const filteredOrders = listOrders.filter(o => {
     if (selectedCompany && o.companyId?.id !== selectedCompany && o.companyId?._id !== selectedCompany) return false;
     if (filterStatus !== 'all' && o.status !== filterStatus) return false;
     return matchesSearch(o);
@@ -401,18 +415,18 @@ export default function OrdersPage() {
   const visibleOrders = filteredOrders.slice(0, displayCount);
   const hasMoreOrders = displayCount < filteredOrders.length;
   const stats = {
-    total: orders.length,
-    brouillon: orders.filter(o => o.status === 'brouillon').length,
-    envoye: orders.filter(o => o.status === 'envoye').length,
-    partielle: orders.filter(o => o.status === 'partielle').length,
-    recue: orders.filter(o => o.status === 'recue').length,
+    total: listOrders.length,
+    brouillon: listOrders.filter(o => o.status === 'brouillon').length,
+    envoye: listOrders.filter(o => o.status === 'envoye').length,
+    partielle: listOrders.filter(o => o.status === 'partielle').length,
+    recue: listOrders.filter(o => o.status === 'recue').length,
   };
 
   const handleExportPDF = async (order) => {
     setExportingPdf(order.id);
     try {
       const company = companies.find(c => c.id === (order.companyId?.id || order.companyId?._id)) || null;
-      await exportOrderPDF(order, lang, company, { hidePrices: !canSeePrices });
+      await exportOrderPDF(order, lang, company, { hidePrices: !showPricesFor(order) });
     } catch (e) { console.error(e); await dialog.alert(t('orExportPdfError')); }
     finally { setExportingPdf(null); }
   };
@@ -536,8 +550,8 @@ export default function OrdersPage() {
           </div>
         )}
 
-        <PendingBlsBlock order={order} docs={orderDocs.documents} canReceive={receivable}
-          onReceive={(bl) => setBatchReceive({ initialBl: bl })} />
+        <PendingBlsBlock order={order} docs={orderDocs.documents} canReceive={receivable} canReceiveLine={canReceiveLine}
+          onReceive={(bl, attach = []) => setBatchReceive({ initialBl: bl, attach })} />
 
         <div className="order-detail-lines">
           <h2 className="order-detail-lines-title">
@@ -580,7 +594,7 @@ export default function OrdersPage() {
                         {item.categoryId.name?.[lang] || item.categoryId.name?.fr}
                       </span>
                     )}
-                    {canSeePrices && line.unitPrice > 0 && (
+                    {showPricesFor(order) && line.unitPrice > 0 && (
                       <span className="detail-line-price">{line.unitPrice.toFixed(2)} /u</span>
                     )}
                   </div>
@@ -769,7 +783,7 @@ export default function OrdersPage() {
         )}
 
         {/* Totals */}
-        {canSeePrices && <div className="order-detail-totals">
+        {showPricesFor(order) && <div className="order-detail-totals">
           <div className="order-detail-totals__row"><span>{t('orTotalHT')}</span><strong>{totalHT.toFixed(2)}</strong></div>
           <div className="order-detail-totals__row"><span>{t('orVatRate', { rate: tvaRate })}</span><strong>{(totalHT * tvaRate / 100).toFixed(2)}</strong></div>
           <div className="order-detail-totals__row order-detail-totals__ttc"><span>{t('orTotalTTC')}</span><strong>{ttc.toFixed(2)}</strong></div>
@@ -782,8 +796,9 @@ export default function OrdersPage() {
             lang={lang}
             canReceiveLine={canReceiveLine}
             initialBl={batchReceive.initialBl}
+            initialAttach={batchReceive.attach || []}
             onClose={() => setBatchReceive(null)}
-            onDone={() => { setBatchReceive(null); fetchOrders(); refreshBls(); }}
+            onDone={() => { setBatchReceive(null); fetchOrders(); loadOrderDocs(); refreshBls(); }}
           />
         )}
         {showForm && (
@@ -794,6 +809,7 @@ export default function OrdersPage() {
             onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
             lang={lang}
             canEditSent={canEditSent}
+            families={ownFamilies}
             initialSupplierId={editOrder ? '' : newOrderSupplier}
             onClose={() => { setShowForm(false); setEditOrder(null); setNewOrderSupplier(''); }}
             onSave={() => { setShowForm(false); setEditOrder(null); setNewOrderSupplier(''); fetchOrders(); }}
@@ -854,7 +870,7 @@ export default function OrdersPage() {
             </button>
           )}
 
-          {canAccounting && (
+          {(canAccounting || ownOnly) && (
             <button
               className={`orders-tab-btn ${shownTab === 'fournisseurs' ? 'active' : ''}`}
               onClick={() => changeTab('fournisseurs')}
@@ -866,10 +882,10 @@ export default function OrdersPage() {
 
         </div>
         <div className="orders-header__actions">
-          <button className="orders-icon-btn orders-icon-btn--excel" title='Excel' onClick={() => exportOrdersExcel(filteredOrders, lang, { hidePrices: !canSeePrices })}>
+          <button className="orders-icon-btn orders-icon-btn--excel" title='Excel' onClick={() => exportOrdersExcel(filteredOrders, lang, { hidePrices: !filteredOrders.every(showPricesFor) })}>
             <Sheet size={16} />
           </button>
-          {can('orders.edit') && (
+          {canCreateOrder && (
             <button className="btn-primary" onClick={() => { setEditOrder(null); setShowForm(true); }}>
               <FilePlus size={15} />{t('orderNew')}
             </button>
@@ -879,11 +895,25 @@ export default function OrdersPage() {
 
       {/* ── Tab content ──────────────────────────────────────────── */}
       {shownTab === 'reception' ? (
-        <BlsToReceivePanel onReceive={(it) => {
-          const o = orders.find(x => x.id === it.orderId);
-          if (o) { openOrder(o); setBatchReceive({ initialBl: it.blNumber }); }
-          else { setUrl(`${PAGE_PATHS.orders}/${it.orderId}`, { query: { receptionner: it.blNumber } }); window.dispatchEvent(new PopStateEvent('popstate')); }
-        }} />
+        <BlsToReceivePanel
+          onReceive={(it) => {
+            const o = orders.find(x => x.id === it.orderId);
+            const attach = it.unnumbered ? it.docs.map(d => d.id) : [];
+            if (o) { openOrder(o); setBatchReceive({ initialBl: it.unnumbered ? '' : it.blNumber, attach }); }
+            else if (!it.unnumbered) { setUrl(`${PAGE_PATHS.orders}/${it.orderId}`, { query: { receptionner: it.blNumber } }); window.dispatchEvent(new PopStateEvent('popstate')); }
+            else { setUrl(`${PAGE_PATHS.orders}/${it.orderId}`); window.dispatchEvent(new PopStateEvent('popstate')); }
+          }}
+          onOpen={(it) => {
+            const o = orders.find(x => x.id === it.orderId);
+            if (o) openOrder(o);
+            else { setUrl(`${PAGE_PATHS.orders}/${it.orderId}`); window.dispatchEvent(new PopStateEvent('popstate')); }
+          }}
+          extra={ownOnly && (
+            <OrdersToReceiveList lang={lang}
+              orders={orders.filter(o => !isMine(o) && (o.status === 'envoye' || o.status === 'partielle'))}
+              onOpen={openOrder} />
+          )}
+        />
       ) : shownTab === 'requests' ? (
         <PurchaseRequestsPanel
           onChanged={fetchPendingCount}
@@ -898,6 +928,7 @@ export default function OrdersPage() {
           statusColors={STATUS_COLORS}
           isAdmin={isAdmin}
           fullEdit={can('orders.edit')}
+          ownUserId={ownOnly ? myId : null}
           onChanged={fetchSuppliers}
           onNewOrder={(s) => { setEditOrder(null); setNewOrderSupplier(s.id); setShowForm(true); }}
           onOpenOrder={(id) => {
@@ -1048,6 +1079,7 @@ export default function OrdersPage() {
           onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
           lang={lang}
           canEditSent={canEditSent}
+          families={ownFamilies}
           initialSupplierId={editOrder ? '' : newOrderSupplier}
           onClose={() => { setShowForm(false); setEditOrder(null); setNewOrderSupplier(''); }}
           onSave={() => { setShowForm(false); setEditOrder(null); setNewOrderSupplier(''); fetchOrders(); }}
@@ -1063,11 +1095,12 @@ export default function OrdersPage() {
 // ─── Article picker for an order line ─────────────────────────────────────────
 // Searches the server as you type (debounced, max 20 rows, indexed search) instead of
 // downloading the whole inventory into the browser.
-function ItemPicker({ item, lang, superCats, categories, onPick }) {
+function ItemPicker({ item, lang, superCats, categories, families = null, onPick }) {
   const { t } = useLanguage();
   const [editing, setEditing] = useState(!item);
   const [q, setQ] = useState('');
-  const [superCat, setSuperCat] = useState('');
+  // « orders.own » (e.g. Coordinateur-vitrage): only its families can be ordered
+  const [superCat, setSuperCat] = useState(families?.length ? families[0] : '');
   const [category, setCategory] = useState('');
   const [results, setResults] = useState([]);
   const [hasMore, setHasMore] = useState(false);
@@ -1137,8 +1170,8 @@ function ItemPicker({ item, lang, superCats, categories, onPick }) {
     <div className="item-picker">
       <div className="item-picker__filters">
         <select value={superCat} onChange={e => { setSuperCat(e.target.value); setCategory(''); }}>
-          <option value="">{t('orAllSuperCats')}</option>
-          {superCats.map(sc => <option key={sc.key} value={sc.key}>{scLabel(sc)}</option>)}
+          {!families?.length && <option value="">{t('orAllSuperCats')}</option>}
+          {superCats.filter(sc => !families?.length || families.includes(sc.key)).map(sc => <option key={sc.key} value={sc.key}>{scLabel(sc)}</option>)}
         </select>
         {superCat && catOptions.length > 0 && (
           <select value={category} onChange={e => setCategory(e.target.value)}>
@@ -1190,7 +1223,7 @@ function ItemPicker({ item, lang, superCats, categories, onPick }) {
   );
 }
 
-function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEditSent = false, initialSupplierId = '', onClose, onSave }) {
+function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEditSent = false, initialSupplierId = '', families = null, onClose, onSave }) {
   const { t } = useLanguage();
   const today = new Date().toISOString().split('T')[0];
   const [showSupplierModal, setShowSupplierModal] = useState(false);
@@ -1230,7 +1263,7 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
     })),
   } : {
     reference: '', companyId: companies[0]?.id || '', supplierId: initialSupplierId || '',
-    categories: [],
+    categories: families?.length === 1 ? [...families] : [],
     orderDate: today, expectedDate: '', notes: '', tva: 20, status: 'brouillon', lines: [],
   });
 
@@ -1289,7 +1322,7 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
             <div className="form-group or-cat-group">
               <label>{t('orCategoriesReq')}</label>
               <div className="or-cat-grid">
-                {Object.entries(CATEGORY_LABELS).map(([key, label]) => {
+                {Object.entries(CATEGORY_LABELS).filter(([key]) => !families?.length || families.includes(key)).map(([key, label]) => {
                   const isChecked = form.categories.includes(key);
                   const isDisabled = isLocked && !canEditSent;
                   return (
@@ -1396,6 +1429,7 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
                     <ItemPicker
                       item={line.item}
                       lang={lang}
+                      families={families}
                       superCats={superCats}
                       categories={categories}
                       onPick={(it) => pickItem(idx, it)}
@@ -1452,6 +1486,7 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
 
         {showSupplierModal && (
           <SupplierFormModal
+            noTerms={!!families}
             onClose={() => setShowSupplierModal(false)}
             onSaved={(s) => { onSupplierAdded(s); setForm(f => ({ ...f, supplierId: s.id })); setShowSupplierModal(false); }}
           />
