@@ -51,7 +51,7 @@ const Header = ({ activePage, onNavigate }) => {
 
   const navItems = [
     { key: 'inventory', label: t('navInventory'), perm: 'inventory.view' },
-    { key: 'orders', label: t('navOrders'), perm: 'orders.view' },
+    { key: 'orders', label: t('navPurchases'), perm: 'orders.view' },
     { key: 'projects', label: t('navProjects'), perm: 'projects.view' },
     { key: 'chantiers', label: t('navChantiers') || 'Chantiers', perm: 'chantiers.view' },
     { key: 'clients', label: t('navClients'), perm: 'clients.view' },

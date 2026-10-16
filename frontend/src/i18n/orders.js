@@ -206,6 +206,7 @@ const fr = {
     spNone: 'Aucun fournisseur pour le moment',
     spDeleteConfirm: 'Supprimer le fournisseur « {name} » ?',
     spDeleteItems: '{n} article(s) ont un code chez « {name} ». Ces codes fournisseur seront retirés des articles. Continuer ?',
+    navPurchases: 'Achats',
 };
 
 const it = {
@@ -407,6 +408,7 @@ const it = {
     spNone: 'Nessun fornitore per ora',
     spDeleteConfirm: 'Eliminare il fornitore « {name} »?',
     spDeleteItems: '{n} articolo/i hanno un codice presso « {name} ». Questi codici fornitore verranno rimossi dagli articoli. Continuare?',
+    navPurchases: 'Acquisti',
 };
 
 const en = {
@@ -608,6 +610,7 @@ const en = {
     spNone: 'No supplier yet',
     spDeleteConfirm: 'Delete the supplier "{name}"?',
     spDeleteItems: '{n} item(s) have a code at "{name}". These supplier codes will be removed from the items. Continue?',
+    navPurchases: 'Purchasing',
 };
 
 export default { fr, it, en };
