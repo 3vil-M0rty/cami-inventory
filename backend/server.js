@@ -3059,26 +3059,129 @@ app.get('/api/fournisseurs', requireAuth, requireOrdersView, async (req, res) =>
   try { res.json(await Fournisseur.find().sort({ name: 1 })); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Only the supplier fields — nothing else from the request body is stored
+const SUPPLIER_FIELDS = ['name', 'code', 'contact', 'phone', 'email', 'address', 'city', 'ice', 'rc', 'notes'];
+const cleanSupplier = (body = {}) => Object.fromEntries(SUPPLIER_FIELDS.filter(k => body[k] !== undefined).map(k => [k, String(body[k] ?? '').trim()]));
+const sameName = (name, exceptId) => Fournisseur.findOne({
+  name: new RegExp(`^${escapeRegex(String(name).trim())}$`, 'i'), ...(exceptId ? { _id: { $ne: exceptId } } : {}),
+}).lean();
+
 app.post('/api/fournisseurs', requireAuth, requirePermission('orders.edit'), async (req, res) => {
   try {
-    if (!req.body.name) return res.status(400).json({ error: 'Nom requis' });
-    const f = await Fournisseur.create(req.body);
+    const data = cleanSupplier(req.body);
+    if (!data.name) return res.status(400).json({ error: 'Nom requis' });
+    if (await sameName(data.name)) return res.status(409).json({ error: `Un fournisseur « ${data.name} » existe déjà.` });
+    const f = await Fournisseur.create(data);
     res.status(201).json(f);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 app.put('/api/fournisseurs/:id', requireAuth, requirePermission('orders.edit'), async (req, res) => {
   try {
-    const f = await Fournisseur.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const data = cleanSupplier(req.body);
+    if (data.name !== undefined && !data.name) return res.status(400).json({ error: 'Nom requis' });
+    if (data.name && await sameName(data.name, req.params.id)) return res.status(409).json({ error: `Un fournisseur « ${data.name} » existe déjà.` });
+    const f = await Fournisseur.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!f) return res.status(404).json({ error: 'Not found' });
+    // Orders keep the supplier name as text too: follow a rename
+    if (data.name) await Order.updateMany({ supplierId: f._id }, { $set: { supplier: f.name } });
     res.json(f);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Delete: refused while orders use the supplier. Articles holding a code at this supplier:
+// the first call answers 409 with their number, ?force=1 removes those codes then deletes.
 app.delete('/api/fournisseurs/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try {
-    const inUse = await Order.countDocuments({ supplierId: req.params.id });
+    const sup = await Fournisseur.findById(req.params.id).select('name').lean();
+    if (!sup) return res.status(404).json({ error: 'Not found' });
+    // orders linked by id, and older orders that only carry the supplier name
+    const inUse = await Order.countDocuments({ $or: [{ supplierId: sup._id }, { supplierId: null, supplier: new RegExp(`^${escapeRegex(sup.name.trim())}$`, 'i') }] });
     if (inUse > 0) return res.status(400).json({ error: `Ce fournisseur est utilisé par ${inUse} commande(s).` });
+    const items = await Item.countDocuments({ 'supplierCodes.supplierId': sup._id });
+    if (items > 0 && req.query.force !== '1') return res.status(409).json({ error: 'ITEMS_LINKED', items });
+    if (items > 0) {
+      const linked = await Item.find({ 'supplierCodes.supplierId': sup._id }).select('supplierCodes').lean();
+      await Item.bulkWrite(linked.map(it => ({
+        updateOne: { filter: { _id: it._id }, update: { $set: { supplierCodes: (it.supplierCodes || []).filter(sc => String(sc.supplierId) !== String(sup._id)) } } },
+      })));
+    }
     await Fournisseur.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
+    res.json({ success: true, itemsUnlinked: items });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Supplier figures (Commandes › Fournisseurs) ──────────────────────────────
+// An order belongs to a supplier by its supplierId, or — older orders without id — by the same supplier name.
+const orderAmount = (o) => (o.lines || []).reduce((s, l) => s + (l.quantityOrdered || 0) * (l.unitPrice || 0), 0);
+const supplierKey = (v) => String(v || '').trim().toLowerCase();
+function orderStatusLate(o, today) {
+  return (o.status === 'envoye' || o.status === 'partielle') && o.expectedDate && new Date(o.expectedDate) < today;
+}
+
+// GET /api/fournisseurs/stats → { [supplierId]: { orders, open, late, amount, lastOrder, items } }
+app.get('/api/fournisseurs/stats', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+  try {
+    const [suppliers, orders, items] = await Promise.all([
+      Fournisseur.find().select('name').lean(),
+      Order.find({ status: { $nin: ['brouillon', 'annulee'] } }).select('supplierId supplier status orderDate sentAt expectedDate lines.quantityOrdered lines.unitPrice').lean(),
+      Item.find({ 'supplierCodes.0': { $exists: true } }).select('supplierCodes.supplierId').lean(),
+    ]);
+    const byName = new Map(suppliers.map(f => [supplierKey(f.name), String(f._id)]));
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const out = Object.fromEntries(suppliers.map(f => [String(f._id), { orders: 0, open: 0, late: 0, amount: 0, lastOrder: null, items: 0 }]));
+    for (const o of orders) {
+      const id = o.supplierId ? String(o.supplierId) : byName.get(supplierKey(o.supplier));
+      const r = out[id];
+      if (!r) continue;
+      r.orders++;
+      if (o.status === 'envoye' || o.status === 'partielle') r.open++;
+      if (orderStatusLate(o, today)) r.late++;
+      r.amount += orderAmount(o);
+      const d = o.sentAt || o.orderDate;
+      if (d && (!r.lastOrder || new Date(d) > new Date(r.lastOrder))) r.lastOrder = d;
+    }
+    for (const it of items) {
+      const seen = new Set();
+      for (const sc of it.supplierCodes || []) { const id = String(sc.supplierId); if (!seen.has(id) && out[id]) { seen.add(id); out[id].items++; } }
+    }
+    for (const r of Object.values(out)) r.amount = Math.round(r.amount * 100) / 100;
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/fournisseurs/:id/details → supplier + its orders (most recent first) + the articles it supplies
+app.get('/api/fournisseurs/:id/details', requireAuth, requirePermission('orders.edit'), async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Fournisseur invalide' });
+    const f = await Fournisseur.findById(req.params.id);
+    if (!f) return res.status(404).json({ error: 'Not found' });
+    const nameRx = new RegExp(`^${escapeRegex(f.name.trim())}$`, 'i');
+    const [orders, items] = await Promise.all([
+      Order.find({ $or: [{ supplierId: f._id }, { supplierId: null, supplier: nameRx }] })
+        .select('number reference status orderDate sentAt expectedDate lines.quantityOrdered lines.quantityReceived lines.unitPrice lines.closed companyId')
+        .populate('companyId', 'name color').sort({ orderDate: -1, createdAt: -1 }).limit(200).lean(),
+      Item.find({ 'supplierCodes.supplierId': f._id })
+        .select('designation codeInterne image quantity threshold superCategory supplierCodes').sort({ 'designation.fr': 1 }).limit(500).lean(),
+    ]);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    res.json({
+      supplier: f,
+      orders: orders.map(o => {
+        const ordered = (o.lines || []).reduce((s, l) => s + (l.quantityOrdered || 0), 0);
+        const received = (o.lines || []).reduce((s, l) => s + Math.min(l.quantityReceived || 0, l.quantityOrdered || 0), 0);
+        return {
+          id: String(o._id), number: o.number || '', reference: o.reference || '', status: o.status,
+          orderDate: o.orderDate, sentAt: o.sentAt, expectedDate: o.expectedDate,
+          amount: Math.round(orderAmount(o) * 100) / 100, lines: (o.lines || []).length,
+          receivedPct: ordered ? Math.round((received / ordered) * 100) : 0, late: !!orderStatusLate(o, today),
+          company: o.companyId ? { name: o.companyId.name, color: o.companyId.color } : null,
+        };
+      }),
+      items: items.map(it => ({
+        id: String(it._id), designation: it.designation, code: it.codeInterne || '', image: it.image || '',
+        quantity: it.quantity || 0, threshold: it.threshold || 0, superCategory: it.superCategory,
+        supplierCode: (it.supplierCodes || []).find(sc => String(sc.supplierId) === String(f._id))?.code || '',
+      })),
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

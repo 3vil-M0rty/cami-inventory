@@ -4,10 +4,11 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import './OrdersPage.css';
 import { exportOrdersExcel, exportOrderPDF } from '../../utils/orderExport';
-import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus, ClipboardList, RefreshCw, X, Check, AlertTriangle, ArrowRight, StickyNote, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, FileText, FilePlus, LoaderCircle, Sheet, Calendar, Pencil, Trash2, ShoppingCart, CheckCheck, Clock, StepBack, CalendarClock, Package, Send, Lock, Ban, Plus, ClipboardList, RefreshCw, X, Check, AlertTriangle, ArrowRight, StickyNote, ChevronLeft, ChevronRight, Truck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dialog, errorMessage } from '../../components/common/dialog';
 import { PAGE_PATHS, subPathFromLocation, getQueryParam, setUrl } from '../../routes';
+import SuppliersPanel, { SupplierFormModal } from './SuppliersPanel';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -109,7 +110,8 @@ export default function OrdersPage() {
     });
   };
   const [pendingRequests, setPendingRequests] = useState(0); // badge on the "Demandes admin" tab
-  const ORDER_TABS = ['orders', 'requests', 'suivi'];
+  const ORDER_TABS = ['orders', 'requests', 'suivi', 'fournisseurs'];
+  const [newOrderSupplier, setNewOrderSupplier] = useState(''); // supplier preselected in a new order
   // 'orders' | 'requests' | 'suivi' — kept in the URL (?onglet=suivi) so a refresh stays on the same tab
   const [activeTab, setActiveTab] = useState(() => {
     const tab = getQueryParam('onglet');
@@ -726,8 +728,9 @@ export default function OrdersPage() {
             onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
             lang={lang}
             canEditSent={canEditSent}
-            onClose={() => { setShowForm(false); setEditOrder(null); }}
-            onSave={() => { setShowForm(false); setEditOrder(null); fetchOrders(); }}
+            initialSupplierId={editOrder ? '' : newOrderSupplier}
+            onClose={() => { setShowForm(false); setEditOrder(null); setNewOrderSupplier(''); }}
+            onSave={() => { setShowForm(false); setEditOrder(null); setNewOrderSupplier(''); fetchOrders(); }}
           />
         )}
       </div>
@@ -772,6 +775,16 @@ export default function OrdersPage() {
             </button>
           )}
 
+          {can('orders.edit') && (
+            <button
+              className={`orders-tab-btn ${activeTab === 'fournisseurs' ? 'active' : ''}`}
+              onClick={() => changeTab('fournisseurs')}
+            >
+              <Truck size={13} />
+              {t('spTitle')}
+            </button>
+          )}
+
         </div>
         <div className="orders-header__actions">
           <button className="orders-icon-btn orders-icon-btn--excel" title='Excel' onClick={() => exportOrdersExcel(filteredOrders, lang)}>
@@ -794,6 +807,20 @@ export default function OrdersPage() {
         />
       ) : activeTab === 'suivi' ? (
         <SuiviCommandesPanel />
+      ) : activeTab === 'fournisseurs' ? (
+        <SuppliersPanel
+          suppliers={suppliers}
+          statusColors={STATUS_COLORS}
+          isAdmin={isAdmin}
+          onChanged={fetchSuppliers}
+          onNewOrder={(s) => { setEditOrder(null); setNewOrderSupplier(s.id); setShowForm(true); }}
+          onOpenOrder={(id) => {
+            const o = orders.find(x => x.id === id);
+            setActiveTab('orders');
+            if (o) openOrder(o);
+            else { setUrl(`${PAGE_PATHS.orders}/${id}`); window.dispatchEvent(new PopStateEvent('popstate')); }
+          }}
+        />
       ) : (
         <>
           <div className="orders-stats">
@@ -935,8 +962,9 @@ export default function OrdersPage() {
           onSupplierAdded={(s) => setSuppliers(prev => [...prev, s])}
           lang={lang}
           canEditSent={canEditSent}
-          onClose={() => { setShowForm(false); setEditOrder(null); }}
-          onSave={() => { setShowForm(false); setEditOrder(null); fetchOrders(); }}
+          initialSupplierId={editOrder ? '' : newOrderSupplier}
+          onClose={() => { setShowForm(false); setEditOrder(null); setNewOrderSupplier(''); }}
+          onSave={() => { setShowForm(false); setEditOrder(null); setNewOrderSupplier(''); fetchOrders(); }}
         />
       )}
 
@@ -1008,52 +1036,6 @@ function ReceiveModal({ receiveModal, receiveQty, lang, setReceiveQty, blNumber,
 }
 
 /* ── Supplier (Fournisseur) Modal ──────────────────────────────── */
-function SupplierModal({ onClose, onSaved }) {
-  const { t } = useLanguage();
-  const [form, setForm] = useState({ name: '', code: '', contact: '', phone: '', email: '', address: '', city: '', ice: '', rc: '', notes: '' });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!form.name.trim()) { setError(t('orNameRequired')); return; }
-    setSaving(true); setError('');
-    try {
-      const r = await axios.post(`${API_URL}/fournisseurs`, form);
-      onSaved(r.data);
-    } catch (err) { setError(errorMessage(err, t('dlgError'))); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <div className="modal-overlay modal-overlay--top" onClick={onClose}>
-      <div className="modal modal--supplier" onClick={e => e.stopPropagation()}>
-        <h2>{t('orNewSupplier')}</h2>
-        <form onSubmit={submit}>
-          <div className="form-grid-2">
-            <div className="form-group"><label>{t('orNameReq')}</label><input value={form.name} onChange={set('name')} autoFocus /></div>
-            <div className="form-group"><label>{t('orSupplierCode')}</label><input value={form.code} onChange={set('code')} /></div>
-            <div className="form-group"><label>{t('orContact')}</label><input value={form.contact} onChange={set('contact')} /></div>
-            <div className="form-group"><label>{t('orPhone')}</label><input value={form.phone} onChange={set('phone')} /></div>
-            <div className="form-group"><label>{t('orEmail')}</label><input type="email" value={form.email} onChange={set('email')} /></div>
-            <div className="form-group"><label>{t('orCity')}</label><input value={form.city} onChange={set('city')} /></div>
-            <div className="form-group"><label>ICE</label><input value={form.ice} onChange={set('ice')} /></div>
-            <div className="form-group"><label>RC</label><input value={form.rc} onChange={set('rc')} /></div>
-          </div>
-          <div className="form-group"><label>{t('orAddress')}</label><input value={form.address} onChange={set('address')} /></div>
-          <div className="form-group"><label>{t('orNotes')}</label><textarea rows={2} value={form.notes} onChange={set('notes')} /></div>
-          {error && <div className="form-error">{error}</div>}
-          <div className="modal-actions">
-            <button type="button" onClick={onClose}>{t('cancel')}</button>
-            <button type="submit" className="primary" disabled={saving}>{saving ? '…' : t('orCreateSupplier')}</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 /* ── Order Form ─────────────────────────────────────────────────── */
 // ─── Article picker for an order line ─────────────────────────────────────────
 // Searches the server as you type (debounced, max 20 rows, indexed search) instead of
@@ -1185,7 +1167,7 @@ function ItemPicker({ item, lang, superCats, categories, onPick }) {
   );
 }
 
-function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEditSent = false, onClose, onSave }) {
+function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEditSent = false, initialSupplierId = '', onClose, onSave }) {
   const { t } = useLanguage();
   const today = new Date().toISOString().split('T')[0];
   const [showSupplierModal, setShowSupplierModal] = useState(false);
@@ -1224,7 +1206,7 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
       note: l.note || '',
     })),
   } : {
-    reference: '', companyId: companies[0]?.id || '', supplierId: '',
+    reference: '', companyId: companies[0]?.id || '', supplierId: initialSupplierId || '',
     categories: [],
     orderDate: today, expectedDate: '', notes: '', tva: 20, status: 'brouillon', lines: [],
   });
@@ -1446,7 +1428,7 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
         </form>
 
         {showSupplierModal && (
-          <SupplierModal
+          <SupplierFormModal
             onClose={() => setShowSupplierModal(false)}
             onSaved={(s) => { onSupplierAdded(s); setForm(f => ({ ...f, supplierId: s.id })); setShowSupplierModal(false); }}
           />
