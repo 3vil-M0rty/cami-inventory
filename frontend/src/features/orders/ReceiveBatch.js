@@ -2,10 +2,10 @@
 // that are still waiting to be received.
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Check, CheckCheck, Eye, FileText, FileImage, Package, PackageCheck, X, AlertTriangle, Truck } from 'lucide-react';
+import { Check, CheckCheck, Eye, FileText, FileImage, Package, PackageCheck, X, AlertTriangle, Truck, Trash2 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { errorMessage } from '../../components/common/dialog';
-import { openDocument, fileBase } from './TrackingDocuments';
+import { openDocument, fileBase, deleteOrderDocument } from './TrackingDocuments';
 import './ReceiveBatch.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -25,18 +25,27 @@ export function filedBls(order, docs) {
   return [...map.values()].sort((a, b) => new Date(a.at) - new Date(b.at));
 }
 
-const DocButtons = ({ docs }) => docs.map(d => {
+// onDelete (ACHAT / accountant / admin): a small bin after each file
+const DocButtons = ({ docs, onDelete }) => docs.map(d => {
   const Icon = d.contentType === 'application/pdf' ? FileText : FileImage;
   return (
-    <button key={d.id} type="button" className="rb-doc" onClick={(e) => { e.stopPropagation(); openDocument(d); }} title={d.name}>
-      <Icon size={13} /><Eye size={12} />
-    </button>
+    <React.Fragment key={d.id}>
+      <button type="button" className="rb-doc" onClick={(e) => { e.stopPropagation(); openDocument(d); }} title={d.name}>
+        <Icon size={13} /><Eye size={12} />
+      </button>
+      {onDelete && (
+        <button type="button" className="rb-doc rb-doc--del" onClick={(e) => { e.stopPropagation(); onDelete(d); }} title={d.name} aria-label="Supprimer">
+          <Trash2 size={12} />
+        </button>
+      )}
+    </React.Fragment>
   );
 });
 
 // Block on the order page: BLs filed but not received in stock yet
-export function PendingBlsBlock({ order, docs, canReceive, canReceiveLine = () => true, onReceive }) {
+export function PendingBlsBlock({ order, docs, canReceive, canReceiveLine = () => true, onReceive, canManage = false, onDeleted }) {
   const { t } = useLanguage();
+  const del = canManage && onDeleted ? async (d) => { if (await deleteOrderDocument(d, t)) onDeleted(d); } : null;
   // a BL stays pending while one of MY open lines has a family not yet received under it
   // (mixed BL: the warehouse receives the accessoires, the admin the aluminium…)
   const famOf = (l) => l.itemId?.superCategory || 'aluminium';
@@ -61,7 +70,7 @@ export function PendingBlsBlock({ order, docs, canReceive, canReceiveLine = () =
           <li key={b.blNumber}>
             <span className="rb-pending__no"><strong>{blLabel(b.blNumber)}</strong></span>
             <span className="rb-pending__meta">{t('rbFiledOn', { date: new Date(b.at).toLocaleDateString('fr-FR') })}</span>
-            <DocButtons docs={b.docs} />
+            <DocButtons docs={b.docs} onDelete={del} />
             {canReceive && (
               <button type="button" className="btn-receive rb-pending__go" onClick={() => onReceive(b.blNumber)}>
                 <PackageCheck size={14} /> {t('rbReceiveThis')}
@@ -73,7 +82,7 @@ export function PendingBlsBlock({ order, docs, canReceive, canReceiveLine = () =
           <li key={d.id}>
             <span className="rb-pending__no" title={d.name}><strong>{blLabel(fileBase(d.name))}</strong> <em className="blq-list__file">{t('blqNoNumberTag')}</em></span>
             <span className="rb-pending__meta">{t('rbFiledOn', { date: new Date(d.uploadedAt).toLocaleDateString('fr-FR') })}</span>
-            <DocButtons docs={[d]} />
+            <DocButtons docs={[d]} onDelete={del} />
             {canReceive && (
               <button type="button" className="btn-receive rb-pending__go" onClick={() => onReceive('', [d.id])}>
                 <PackageCheck size={14} /> {t('rbReceiveThis')}

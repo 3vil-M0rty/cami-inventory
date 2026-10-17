@@ -551,6 +551,7 @@ export default function OrdersPage() {
         )}
 
         <PendingBlsBlock order={order} docs={orderDocs.documents} canReceive={receivable} canReceiveLine={canReceiveLine}
+          canManage={orderDocs.canManage} onDeleted={() => { loadOrderDocs(); refreshBls(); }}
           onReceive={(bl, attach = []) => setBatchReceive({ initialBl: bl, attach })} />
 
         <div className="order-detail-lines">
@@ -692,6 +693,7 @@ export default function OrdersPage() {
                           docs={orderDocs.documents.filter(d => d.kind === 'bl' && d.blNumber === g.blNumber)}
                           canManage={orderDocs.canManage && g.blNumber !== '—'}
                           onManage={() => manageDocs(g.blNumber)}
+                          onDeleted={() => { loadOrderDocs(); refreshBls(); }}
                         />
                       </div>
                     </div>
@@ -762,7 +764,7 @@ export default function OrdersPage() {
         })()}
 
         {orderDocs.canManage && order.status !== 'brouillon' && (
-          <OrderDocumentsBlock docs={orderDocs.documents} onManage={() => {
+          <OrderDocumentsBlock docs={orderDocs.documents} onDeleted={() => { loadOrderDocs(); refreshBls(); }} onManage={() => {
             // Invoices live on the BL rows of the Suivi: with a single BL, manage that one
             const bls = [...new Set((order.receptions || []).filter(r => !r.cancelled && r.blNumber).map(r => r.blNumber))];
             manageDocs(bls.length === 1 ? bls[0] : '');

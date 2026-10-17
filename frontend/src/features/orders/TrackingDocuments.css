@@ -84,3 +84,13 @@
   background: var(--surface); color: var(--text); outline: none;
 }
 .td-modal .td-section__head .td-blno:focus { border-color: var(--900); box-shadow: 0 0 0 3px var(--focus); }
+
+/* BL file + its delete button (order page, ACHAT / accountant / admin) */
+.td-bl-item { display: inline-flex; align-items: center; }
+.td-bl-item .td-bl-view + .td-bl-del { margin-left: -1px; }
+.td-bl-del {
+  height: 28px; width: 26px; padding: 0 !important; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  border-radius: 0 8px 8px 0 !important; border: 1px solid rgba(74,222,128,.35) !important; background: transparent !important; color: var(--text-3) !important;
+}
+.td-bl-item:has(.td-bl-del) .td-bl-view { border-top-right-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+.td-bl-del:hover { color: var(--danger) !important; border-color: var(--danger-bd) !important; background: var(--danger-bg) !important; }

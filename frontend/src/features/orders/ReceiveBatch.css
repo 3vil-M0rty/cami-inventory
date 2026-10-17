@@ -184,3 +184,4 @@
 .blq-sub { display: flex; align-items: center; gap: 8px; margin: 22px 0 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
 .blq-sub span { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); }
 .blq-sub__hint { margin: 0 0 10px; font-size: 12px; color: var(--text-3); }
+.rb-doc--del:hover { color: var(--danger) !important; border-color: var(--danger-bd) !important; background: var(--danger-bg) !important; }

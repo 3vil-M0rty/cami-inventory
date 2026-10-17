@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { FileText, FileImage, Upload, Eye, Download, Trash2, X, Paperclip, LoaderCircle, AlertTriangle, HardDrive } from 'lucide-react';
+import { FileText, FileImage, Upload, Eye, Download, Trash2, X, Paperclip, LoaderCircle, AlertTriangle, HardDrive, Printer } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { dialog, errorMessage } from '../../components/common/dialog';
+import { showDocument, printDocument } from '../../components/common/docViewerBus';
 import './TrackingDocuments.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -55,16 +56,14 @@ export function StorageGauge({ storage, compact = false, labelKey = 'tdStorage' 
 
 // Opens a document: the window is opened right away (no popup blocker), then pointed to the
 // short-lived R2 link the server signs.
+// « Voir »: the in-app viewer (works on tablets, Imprimer = A4); « Télécharger »: the private R2 link
+export const printOrderDocument = (doc) => printDocument(doc, 'order-tracking/documents');
 export async function openDocument(doc, { download = false } = {}) {
-  const w = download ? null : window.open('', '_blank');
+  if (!download) { showDocument(doc, 'order-tracking/documents'); return; }
   try {
-    const r = await axios.get(`${API_URL}/order-tracking/documents/${doc.id}/url`, { params: download ? { download: 1 } : {} });
-    if (w) w.location.href = r.data.url;
-    else window.location.href = r.data.url;
-  } catch (e) {
-    if (w) w.close();
-    dialog.alert(errorMessage(e, 'Erreur'));
-  }
+    const r = await axios.get(`${API_URL}/order-tracking/documents/${doc.id}/url`, { params: { download: 1 } });
+    window.location.href = r.data.url;
+  } catch (e) { dialog.alert(errorMessage(e, 'Erreur')); }
 }
 
 /** Compact cell of the Suivi table: invoice / BL counters, click opens the documents window */
@@ -211,6 +210,7 @@ export function DocumentsModal({ row, onClose, onChange, storage, onStorage = ()
                         </button>
                         <button type="button" className="td-icon" onClick={() => openDocument(d)} title={t('tdView')} aria-label={t('tdView')}><Eye size={15} /></button>
                         <button type="button" className="td-icon" onClick={() => openDocument(d, { download: true })} title={t('tdDownload')} aria-label={t('tdDownload')}><Download size={15} /></button>
+                        <button type="button" className="td-icon" onClick={() => printOrderDocument(d)} title={t('pdocPrint')} aria-label={t('pdocPrint')}><Printer size={15} /></button>
                         <button type="button" className="td-icon td-icon--danger" onClick={() => remove(d)} title={t('deleteAction')} aria-label={t('deleteAction')}><Trash2 size={15} /></button>
                       </li>
                     );
@@ -229,16 +229,33 @@ export function DocumentsModal({ row, onClose, onChange, storage, onStorage = ()
 /* ── Purchase order page ─────────────────────────────────────────────────── */
 
 /** Buttons on a BL card of the order: open each attached delivery note (+ manage, for ACHAT / accountant) */
-export function BlDocButtons({ docs, canManage, onManage }) {
+// Deletes a BL / invoice (file removed from R2) after confirmation → true when done
+export async function deleteOrderDocument(doc, t) {
+  const label = doc.kind === 'facture' ? t('tdInvoiceShort') : t('tdBlShort');
+  if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('tdDeleteConfirm', { name: `${label} « ${doc.name} »` }), danger: true, confirmLabel: t('deleteAction') }))) return false;
+  try { await axios.delete(`${API_URL}/order-tracking/documents/${doc.id}`); return true; }
+  catch (e) { dialog.alert(errorMessage(e, t('dlgError'))); return false; }
+}
+
+// onDeleted: shown to ACHAT / accountant / admin (canManage) — a small bin next to each BL file
+export function BlDocButtons({ docs, canManage, onManage, onDeleted }) {
   const { t } = useLanguage();
   return (
     <div className="td-bl-docs">
       {docs.map((d, i) => {
         const Icon = d.contentType === 'application/pdf' ? FileText : FileImage;
         return (
-          <button key={d.id} type="button" className="td-bl-view" onClick={() => openDocument(d)} title={d.name}>
-            <Icon size={13} />{docs.length > 1 ? t('tdViewBlN', { n: i + 1 }) : t('tdViewBl')}
-          </button>
+          <span key={d.id} className="td-bl-item">
+            <button type="button" className="td-bl-view" onClick={() => openDocument(d)} title={d.name}>
+              <Icon size={13} />{docs.length > 1 ? t('tdViewBlN', { n: i + 1 }) : t('tdViewBl')}
+            </button>
+            {canManage && onDeleted && (
+              <button type="button" className="td-bl-del" title={`${t('deleteAction')} — ${d.name}`} aria-label={t('deleteAction')}
+                onClick={async () => { if (await deleteOrderDocument(d, t)) onDeleted(d); }}>
+                <Trash2 size={12} />
+              </button>
+            )}
+          </span>
         );
       })}
       {canManage && (
@@ -251,7 +268,7 @@ export function BlDocButtons({ docs, canManage, onManage }) {
 }
 
 /** Invoices (and documents not tied to a BL) of the order — only returned to ACHAT / accountant / admin */
-export function OrderDocumentsBlock({ docs, onManage }) {
+export function OrderDocumentsBlock({ docs, onManage, onDeleted }) {
   const { t } = useLanguage();
   const invoices = docs.filter(d => d.kind === 'facture');
   const loose = docs.filter(d => d.kind === 'bl' && !d.blNumber);
@@ -278,6 +295,11 @@ export function OrderDocumentsBlock({ docs, onManage }) {
                 </button>
                 <button type="button" className="td-icon" onClick={() => openDocument(d)} title={t('tdView')} aria-label={t('tdView')}><Eye size={15} /></button>
                 <button type="button" className="td-icon" onClick={() => openDocument(d, { download: true })} title={t('tdDownload')} aria-label={t('tdDownload')}><Download size={15} /></button>
+                        <button type="button" className="td-icon" onClick={() => printOrderDocument(d)} title={t('pdocPrint')} aria-label={t('pdocPrint')}><Printer size={15} /></button>
+                {onDeleted && (
+                  <button type="button" className="td-icon td-icon--danger" title={t('deleteAction')} aria-label={t('deleteAction')}
+                    onClick={async () => { if (await deleteOrderDocument(d, t)) onDeleted(d); }}><Trash2 size={15} /></button>
+                )}
               </li>
             );
           })}

@@ -28,9 +28,9 @@ export async function openProjectDoc(doc, { download = false } = {}) {
 }
 
 // The file itself, fetched through the server (same origin as the app → it can be shown in the app and printed)
-async function fetchDocUrl(doc) {
+async function fetchDocUrl(doc, base = 'project-documents') {
   try {
-    const r = await axios.get(`${API_URL}/project-documents/${doc.id}/file`, { responseType: 'blob' });
+    const r = await axios.get(`${API_URL}/${base}/${doc.id}/file`, { responseType: 'blob' });
     return URL.createObjectURL(new Blob([r.data], { type: doc.contentType || r.data.type }));
   } catch (e) {
     let msg = e;
@@ -49,9 +49,9 @@ async function printA4(url, contentType) {
   printImages(srcs);
 }
 
-export async function printProjectDoc(doc) {
+export async function printProjectDoc(doc, base = 'project-documents') {
   try {
-    const url = await fetchDocUrl(doc);
+    const url = await fetchDocUrl(doc, base);
     await printA4(url, doc.contentType);
     setTimeout(() => URL.revokeObjectURL(url), 120000);
   } catch (e) { dialog.alert(e.message); }
@@ -59,7 +59,7 @@ export async function printProjectDoc(doc) {
 
 // In-app viewer: the document opens inside the app (not as a web page in another tab), with Imprimer /
 // Télécharger / Nouvel onglet. Rendered on <body> so no card or panel can clip it.
-export function DocViewer({ doc, onClose }) {
+export function DocViewer({ doc, onClose, base = 'project-documents' }) {
   const { t } = useLanguage();
   const [url, setUrl] = useState(null);
   const [err, setErr] = useState('');
@@ -85,9 +85,9 @@ export function DocViewer({ doc, onClose }) {
 
   useEffect(() => {
     let alive = true; let made = null;
-    fetchDocUrl(doc).then(u => { made = u; if (alive) setUrl(u); else URL.revokeObjectURL(u); }).catch(e => alive && setErr(e.message));
+    fetchDocUrl(doc, base).then(u => { made = u; if (alive) setUrl(u); else URL.revokeObjectURL(u); }).catch(e => alive && setErr(e.message));
     return () => { alive = false; if (made) setTimeout(() => URL.revokeObjectURL(made), 60000); };
-  }, [doc]);
+  }, [doc, base]);
   useEffect(() => {
     const k = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', k);
@@ -267,3 +267,16 @@ function PrintBtn({ doc, t, className = 'td-icon', size = 15 }) {
   );
 }
 export { PrintBtn };
+
+// Mounted once (App): opens the viewer / prints when asked through docViewerBus (Achats: BL, factures)
+export function DocViewerHost() {
+  const [open, setOpen] = useState(null); // { doc, base }
+  useEffect(() => {
+    const onView = (e) => setOpen(e.detail);
+    const onPrint = (e) => printProjectDoc(e.detail.doc, e.detail.base);
+    window.addEventListener('cami:doc-view', onView);
+    window.addEventListener('cami:doc-print', onPrint);
+    return () => { window.removeEventListener('cami:doc-view', onView); window.removeEventListener('cami:doc-print', onPrint); };
+  }, []);
+  return open ? <DocViewer doc={open.doc} base={open.base} onClose={() => setOpen(null)} /> : null;
+}

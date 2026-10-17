@@ -3097,7 +3097,7 @@ function canSeeOrder(req, order) {
 app.get('/api/orders/:id/documents', requireAuth, requireOrdersView, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Commande invalide' });
-    const order = await Order.findById(req.params.id).select('status categories').lean();
+    const order = await Order.findById(req.params.id).select('status categories createdBy').lean();
     if (!order) return res.status(404).json({ error: 'Not found' });
     if (!canSeeOrder(req, order)) return res.status(403).json({ error: 'Accès refusé à cette commande.' });
     const withInvoices = canAccounting(req);
@@ -3127,7 +3127,7 @@ app.get('/api/order-tracking/documents/:docId/url', requireAuth, async (req, res
     if (!d) return res.status(404).json({ error: 'Document introuvable' });
     if (!canAccounting(req)) {
       // Delivery notes are visible to whoever can see the order (warehouse…); invoices are not
-      const order = d.kind === 'bl' && canViewOrders(req) ? await Order.findById(t.orderId).select('status categories').lean() : null;
+      const order = d.kind === 'bl' && canViewOrders(req) ? await Order.findById(t.orderId).select('status categories createdBy').lean() : null;
       if (!order || !canSeeOrder(req, order)) return res.status(403).json({ error: 'Accès refusé à ce document.' });
     }
     const { client, sdk, presigner, bucket } = r2();
@@ -3235,6 +3235,31 @@ app.delete('/api/project-documents/:docId', requireAuth, async (req, res) => {
     await ProjectDocument.deleteOne({ _id: d._id });
     res.json({ success: true, storage: projUsageView(await projectDocUsage(true)) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// GET /api/order-tracking/documents/:docId/file → the file itself through this server (same origin as the
+// app: shown in the in-app viewer, drawn on tablets, printed on A4). Same access rule as the link above.
+app.get('/api/order-tracking/documents/:docId/file', requireAuth, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.docId)) return res.status(400).json({ error: 'Document invalide' });
+    const t = await OrderTracking.findOne({ 'documents._id': req.params.docId }).select('orderId documents').lean();
+    const d = t?.documents.find(x => String(x._id) === req.params.docId);
+    if (!d) return res.status(404).json({ error: 'Document introuvable' });
+    if (!canAccounting(req)) {
+      const order = d.kind === 'bl' && canViewOrders(req) ? await Order.findById(t.orderId).select('status categories createdBy').lean() : null;
+      if (!order || !canSeeOrder(req, order)) return res.status(403).json({ error: 'Accès refusé à ce document.' });
+    }
+    const { client, sdk, bucket } = r2();
+    const obj = await client.send(new sdk.GetObjectCommand({ Bucket: bucket, Key: d.key }));
+    res.set({
+      'Content-Type': d.contentType || 'application/octet-stream',
+      'Content-Disposition': `inline; filename="${safeKeyPart(d.name)}"; filename*=UTF-8''${encodeURIComponent(d.name)}`,
+      'Cache-Control': 'private, no-store',
+    });
+    if (obj.ContentLength) res.set('Content-Length', String(obj.ContentLength));
+    obj.Body.on('error', () => res.destroy());
+    obj.Body.pipe(res);
+  } catch (e) { if (!res.headersSent) res.status(e.status || 500).json({ error: e.message }); }
 });
 
 // DELETE /api/order-tracking/documents/:docId — removes the file from R2 and from the row

@@ -23,6 +23,7 @@ import { DialogHost } from './components/common/dialog';
 
 import { Lock } from 'lucide-react';
 import { BlsToReceiveBanner } from './features/orders/BlsToReceive';
+import { DocViewerHost } from './features/projects/components/ProjectDocuments';
 const PROJECTS_DEFAULT_ROLES = new Set(['LOGISTIQUE', 'Coordinateur', 'BARREMAN']);
 const CHANTIER_DEFAULT_ROLES = new Set(['chefChantier', 'BARREMAN']);
 // Rôles qui reçoivent des commandes par catégorie (accessoires / poudre / verre)
@@ -138,6 +139,7 @@ function AppInner() {
         <ProjectProvider>
           <div className="app">
             <Header activePage={activePage} onNavigate={navigate} />
+            <DocViewerHost />{/* in-app document viewer (BL, factures, documents des projets) */}
             {canAccessOrders && (
               <BlsToReceiveBanner onOpenList={() => {
                 setUrl(PAGE_PATHS.orders, { query: { onglet: 'reception' } });
