@@ -540,3 +540,11 @@
 .project-card__docs li button:hover { color: var(--text) !important; border-color: var(--border-2) !important; }
 .project-card__docs-eye { color: var(--text-3); flex-shrink: 0; }
 .project-card__docs-wait { display: flex; justify-content: center; padding: 6px; color: var(--text-3); }
+.project-card__docs li { display: flex; gap: 4px; }
+.project-card__docs li > button:first-child { flex: 1; min-width: 0; width: auto; }
+.project-card__docs .project-card__docs-print {
+  width: 34px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; padding: 0 !important;
+  border-radius: 8px !important; border: 1px solid var(--border) !important; background: var(--surface-2) !important;
+  color: var(--text-3) !important; cursor: pointer;
+}
+.project-card__docs .project-card__docs-print:hover { color: var(--text) !important; border-color: var(--border-2) !important; }

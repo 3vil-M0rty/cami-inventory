@@ -3202,6 +3202,27 @@ app.get('/api/project-documents/:docId/url', requireAuth, async (req, res) => {
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
+// GET /api/project-documents/:docId/file → the file itself, through this server (same origin as the app:
+// the browser may print it; a direct R2 link can't be printed from the page). Only called for « Imprimer ».
+app.get('/api/project-documents/:docId/file', requireAuth, async (req, res) => {
+  try {
+    if (!canProjects(req, 'view')) return res.status(403).json({ error: 'Accès refusé — permission requise: projects.view' });
+    if (!mongoose.Types.ObjectId.isValid(req.params.docId)) return res.status(400).json({ error: 'Document invalide' });
+    const d = await ProjectDocument.findById(req.params.docId).lean();
+    if (!d) return res.status(404).json({ error: 'Document introuvable' });
+    const { client, sdk, bucket } = r2(PROJ_R2);
+    const obj = await client.send(new sdk.GetObjectCommand({ Bucket: bucket, Key: d.key }));
+    res.set({
+      'Content-Type': d.contentType || 'application/octet-stream',
+      'Content-Disposition': `inline; filename="${safeKeyPart(d.name)}"; filename*=UTF-8''${encodeURIComponent(d.name)}`,
+      'Cache-Control': 'private, no-store',
+    });
+    if (obj.ContentLength) res.set('Content-Length', String(obj.ContentLength));
+    obj.Body.on('error', () => res.destroy());
+    obj.Body.pipe(res);
+  } catch (e) { if (!res.headersSent) res.status(e.status || 500).json({ error: e.message }); }
+});
+
 // DELETE /api/project-documents/:docId
 app.delete('/api/project-documents/:docId', requireAuth, async (req, res) => {
   try {

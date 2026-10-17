@@ -21,6 +21,8 @@ const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { retur
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { } };
 
 function chime() {
+  // browsers only allow sound once the person has clicked / typed in the page (no console warning otherwise)
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
