@@ -42,30 +42,9 @@ async function fetchDocUrl(doc) {
   }
 }
 
-// Prints a fetched file from a hidden frame (PDF: all its pages; photo: fitted on one page).
-// If the browser refuses, the file opens in a tab instead (print it with Ctrl+P).
-function printUrl(url, contentType, { revoke = false } = {}) {
-  const frame = document.createElement('iframe');
-  frame.setAttribute('aria-hidden', 'true');
-  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
-  const cleanup = () => setTimeout(() => { frame.remove(); if (revoke) URL.revokeObjectURL(url); }, 60000);
-  frame.onload = () => {
-    setTimeout(() => {
-      try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch { window.open(url, '_blank'); }
-      cleanup();
-    }, contentType === 'application/pdf' ? 600 : 150); // the PDF viewer needs a moment
-  };
-  if (contentType === 'application/pdf') frame.src = url;
-  else {
-    frame.srcdoc = `<!doctype html><html><head><style>@page{margin:10mm}html,body{margin:0;height:100%}`
-      + `body{display:flex;align-items:center;justify-content:center}img{max-width:100%;max-height:100%;object-fit:contain}</style></head>`
-      + `<body><img src="${url}"></body></html>`;
-  }
-  document.body.appendChild(frame);
-}
-
-// Tablets / phones: print the page images with the page's own print (a hidden frame can't print there)
-async function printForTouch(url, contentType) {
+// Every print (computer and tablet) goes through page images on A4: the browser's own PDF print would
+// use the printer's default paper (often Letter) and can't be set to A4 from the page.
+async function printA4(url, contentType) {
   const srcs = contentType === 'application/pdf' ? await pdfToImages(url) : [url];
   printImages(srcs);
 }
@@ -73,8 +52,8 @@ async function printForTouch(url, contentType) {
 export async function printProjectDoc(doc) {
   try {
     const url = await fetchDocUrl(doc);
-    if (nativePdfViewer()) printUrl(url, doc.contentType, { revoke: true });
-    else { await printForTouch(url, doc.contentType); setTimeout(() => URL.revokeObjectURL(url), 120000); }
+    await printA4(url, doc.contentType);
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
   } catch (e) { dialog.alert(e.message); }
 }
 
@@ -115,22 +94,13 @@ export function DocViewer({ doc, onClose }) {
     return () => window.removeEventListener('keydown', k);
   }, [onClose]);
 
+  // always A4: pages rendered at print quality, then the page's own print
   const print = async () => {
     if (!url) return;
-    if (!native) {
-      // tablet: the pages already drawn on screen are printed (PDF), or the photo itself
-      setPrinting(true);
-      try {
-        const canvases = pagesRef.current ? [...pagesRef.current.querySelectorAll('canvas')] : [];
-        if (isPdf && canvases.length && !progress) printImages(canvases.map(c => c.toDataURL('image/jpeg', 0.92)));
-        else await printForTouch(url, doc.contentType);
-      } catch (e) { setErr(e.message); } finally { setPrinting(false); }
-      return;
-    }
-    if (isPdf && frameRef.current) {
-      try { frameRef.current.contentWindow.focus(); frameRef.current.contentWindow.print(); return; } catch { /* below */ }
-    }
-    printUrl(url, doc.contentType);
+    setPrinting(true);
+    try { await printA4(url, doc.contentType); }
+    catch (e) { setErr(e.message || 'Impression impossible'); }
+    finally { setPrinting(false); }
   };
   const download = () => {
     if (!url) return;
