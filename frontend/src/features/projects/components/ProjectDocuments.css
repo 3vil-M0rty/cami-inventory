@@ -16,20 +16,3 @@
 .pdoc__empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 16px; border-radius: 12px; border: 1px dashed var(--border-2); color: var(--text-3); text-align: center; }
 .pdoc__empty strong { color: var(--text-2); font-size: 14px; }
 .pdoc__empty span { font-size: 12.5px; }
-
-/* In-app document viewer (Imprimer / Télécharger / Nouvel onglet) */
-.pdv-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; padding: 16px; cursor: default; }
-.pdv { width: min(1100px, 100%); height: min(92vh, 1200px); display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; background: var(--surface); border: 1px solid var(--border-2); box-shadow: 0 24px 60px rgba(0,0,0,.45); }
-.pdv__bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--border); color: var(--text-3); }
-.pdv__bar strong { flex: 1; min-width: 0; font-size: 14px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pdv__btn {
-  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px !important; border-radius: 8px !important; cursor: pointer; flex-shrink: 0;
-  border: 1px solid var(--border-2) !important; background: var(--surface-2) !important; color: var(--text) !important; font: 600 13px/1 var(--font);
-}
-.pdv__btn:disabled { opacity: .45; cursor: default; }
-.pdv__btn--primary { background: var(--900) !important; border-color: var(--900) !important; color: var(--text-inv) !important; }
-.pdv__x { padding: 0 9px !important; }
-.pdv__body { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--text-3); }
-.pdv__frame { width: 100%; height: 100%; border: 0; background: #fff; }
-.pdv__img { max-width: 100%; max-height: 100%; object-fit: contain; }
-@media (max-width: 640px) { .pdv__btn span, .pdv__btn--primary { font-size: 12px; } .pdv { height: 94vh; } }

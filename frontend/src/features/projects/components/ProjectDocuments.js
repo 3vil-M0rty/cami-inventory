@@ -1,9 +1,8 @@
 // « Documents » tab of a project: plans, devis signés, photos… stored on the projects' Cloudflare R2 account.
 // Only names and sizes are loaded; a file is downloaded from R2 when « Voir » / « Télécharger » is clicked.
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import axios from 'axios';
-import { FileText, FileImage, Upload, Eye, Download, Trash2, LoaderCircle, AlertTriangle, FolderOpen, Printer, X, ExternalLink } from 'lucide-react';
+import { FileText, FileImage, Upload, Eye, Download, Trash2, LoaderCircle, AlertTriangle, FolderOpen } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 import { dialog, errorMessage } from '../../../components/common/dialog';
 import { StorageGauge, compressImage, fmtSize } from '../../orders/TrackingDocuments';
@@ -26,100 +25,6 @@ export async function openProjectDoc(doc, { download = false } = {}) {
   }
 }
 
-// The file itself, fetched through the server (same origin as the app → it can be shown in the app and printed)
-async function fetchDocUrl(doc) {
-  try {
-    const r = await axios.get(`${API_URL}/project-documents/${doc.id}/file`, { responseType: 'blob' });
-    return URL.createObjectURL(new Blob([r.data], { type: doc.contentType || r.data.type }));
-  } catch (e) {
-    let msg = e;
-    try { if (e.response?.data instanceof Blob) msg = { response: { data: JSON.parse(await e.response.data.text()) } }; } catch { /* keep e */ }
-    throw new Error(errorMessage(msg, 'Erreur'));
-  }
-}
-
-// Prints a fetched file from a hidden frame (PDF: all its pages; photo: fitted on one page).
-// If the browser refuses, the file opens in a tab instead (print it with Ctrl+P).
-function printUrl(url, contentType, { revoke = false } = {}) {
-  const frame = document.createElement('iframe');
-  frame.setAttribute('aria-hidden', 'true');
-  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
-  const cleanup = () => setTimeout(() => { frame.remove(); if (revoke) URL.revokeObjectURL(url); }, 60000);
-  frame.onload = () => {
-    setTimeout(() => {
-      try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch { window.open(url, '_blank'); }
-      cleanup();
-    }, contentType === 'application/pdf' ? 600 : 150); // the PDF viewer needs a moment
-  };
-  if (contentType === 'application/pdf') frame.src = url;
-  else {
-    frame.srcdoc = `<!doctype html><html><head><style>@page{margin:10mm}html,body{margin:0;height:100%}`
-      + `body{display:flex;align-items:center;justify-content:center}img{max-width:100%;max-height:100%;object-fit:contain}</style></head>`
-      + `<body><img src="${url}"></body></html>`;
-  }
-  document.body.appendChild(frame);
-}
-
-export async function printProjectDoc(doc) {
-  try { printUrl(await fetchDocUrl(doc), doc.contentType, { revoke: true }); }
-  catch (e) { dialog.alert(e.message); }
-}
-
-// In-app viewer: the document opens inside the app (not as a web page in another tab), with Imprimer /
-// Télécharger / Nouvel onglet. Rendered on <body> so no card or panel can clip it.
-export function DocViewer({ doc, onClose }) {
-  const { t } = useLanguage();
-  const [url, setUrl] = useState(null);
-  const [err, setErr] = useState('');
-  const frameRef = useRef(null);
-  const isPdf = doc.contentType === 'application/pdf';
-
-  useEffect(() => {
-    let alive = true; let made = null;
-    fetchDocUrl(doc).then(u => { made = u; if (alive) setUrl(u); else URL.revokeObjectURL(u); }).catch(e => alive && setErr(e.message));
-    return () => { alive = false; if (made) setTimeout(() => URL.revokeObjectURL(made), 60000); };
-  }, [doc]);
-  useEffect(() => {
-    const k = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', k);
-    return () => window.removeEventListener('keydown', k);
-  }, [onClose]);
-
-  const print = () => {
-    if (!url) return;
-    if (isPdf && frameRef.current) {
-      try { frameRef.current.contentWindow.focus(); frameRef.current.contentWindow.print(); return; } catch { /* below */ }
-    }
-    printUrl(url, doc.contentType);
-  };
-  const download = () => {
-    if (!url) return;
-    const a = document.createElement('a'); a.href = url; a.download = doc.name; document.body.appendChild(a); a.click(); a.remove();
-  };
-
-  return createPortal(
-    <div className="pdv-overlay" onClick={onClose}>
-      <div className="pdv" onClick={e => e.stopPropagation()} role="dialog" aria-label={doc.name}>
-        <div className="pdv__bar">
-          {isPdf ? <FileText size={16} /> : <FileImage size={16} />}
-          <strong title={doc.name}>{doc.name}</strong>
-          <button type="button" className="pdv__btn pdv__btn--primary" onClick={print} disabled={!url}><Printer size={15} />{t('pdocPrint')}</button>
-          <button type="button" className="pdv__btn" onClick={download} disabled={!url}><Download size={15} />{t('tdDownload')}</button>
-          <button type="button" className="pdv__btn" onClick={() => url && window.open(url, '_blank')} disabled={!url} title={t('pdocNewTab')}><ExternalLink size={15} /></button>
-          <button type="button" className="pdv__btn pdv__x" onClick={onClose} aria-label={t('close')}><X size={17} /></button>
-        </div>
-        <div className="pdv__body">
-          {err ? <div className="td-error"><AlertTriangle size={14} />{err}</div>
-            : !url ? <LoaderCircle size={22} className="td-spin" />
-              : isPdf ? <iframe ref={frameRef} src={url} title={doc.name} className="pdv__frame" />
-                : <img src={url} alt={doc.name} className="pdv__img" />}
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 export default function ProjectDocuments({ project }) {
   const { t } = useLanguage();
   const [docs, setDocs] = useState(null); // null = loading
@@ -128,7 +33,6 @@ export default function ProjectDocuments({ project }) {
   const [uploading, setUploading] = useState(null);
   const [error, setError] = useState('');
   const [drag, setDrag] = useState(false);
-  const [viewing, setViewing] = useState(null); // document open in the in-app viewer
   const input = useRef(null);
   const projectId = project?.id || project?._id;
 
@@ -227,8 +131,7 @@ export default function ProjectDocuments({ project }) {
                   <strong title={d.name}>{d.name}</strong>
                   <span>{fmtSize(d.size)} · {new Date(d.uploadedAt).toLocaleDateString('fr-FR')}{d.uploadedBy ? ` · ${d.uploadedBy}` : ''}</span>
                 </span>
-                <button type="button" className="pdoc__view" onClick={() => setViewing(d)}><Eye size={14} />{t('tdView')}</button>
-                <PrintBtn doc={d} t={t} />
+                <button type="button" className="pdoc__view" onClick={() => openProjectDoc(d)}><Eye size={14} />{t('tdView')}</button>
                 <button type="button" className="td-icon" onClick={() => openProjectDoc(d, { download: true })} title={t('tdDownload')} aria-label={t('tdDownload')}><Download size={15} /></button>
                 {canManage && <button type="button" className="td-icon td-icon--danger" onClick={() => remove(d)} title={t('deleteAction')} aria-label={t('deleteAction')}><Trash2 size={15} /></button>}
               </li>
@@ -236,18 +139,6 @@ export default function ProjectDocuments({ project }) {
           })}
         </ul>
       )}
-      {viewing && <DocViewer doc={viewing} onClose={() => setViewing(null)} />}
     </div>
   );
 }
-
-function PrintBtn({ doc, t, className = 'td-icon', size = 15 }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <button type="button" className={className} disabled={busy} title={t('pdocPrint')} aria-label={t('pdocPrint')}
-      onClick={async (e) => { e.stopPropagation(); setBusy(true); try { await printProjectDoc(doc); } finally { setBusy(false); } }}>
-      {busy ? <LoaderCircle size={size} className="td-spin" /> : <Printer size={size} />}
-    </button>
-  );
-}
-export { PrintBtn };
