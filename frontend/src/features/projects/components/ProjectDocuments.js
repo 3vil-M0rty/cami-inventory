@@ -9,6 +9,7 @@ import { dialog, errorMessage } from '../../../components/common/dialog';
 import { StorageGauge, compressImage, fmtSize } from '../../orders/TrackingDocuments';
 import '../../orders/TrackingDocuments.css';
 import './ProjectDocuments.css';
+import { nativePdfViewer, renderPdf, printImages, pdfToImages } from './pdfRender';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -63,9 +64,18 @@ function printUrl(url, contentType, { revoke = false } = {}) {
   document.body.appendChild(frame);
 }
 
+// Tablets / phones: print the page images with the page's own print (a hidden frame can't print there)
+async function printForTouch(url, contentType) {
+  const srcs = contentType === 'application/pdf' ? await pdfToImages(url) : [url];
+  printImages(srcs);
+}
+
 export async function printProjectDoc(doc) {
-  try { printUrl(await fetchDocUrl(doc), doc.contentType, { revoke: true }); }
-  catch (e) { dialog.alert(e.message); }
+  try {
+    const url = await fetchDocUrl(doc);
+    if (nativePdfViewer()) printUrl(url, doc.contentType, { revoke: true });
+    else { await printForTouch(url, doc.contentType); setTimeout(() => URL.revokeObjectURL(url), 120000); }
+  } catch (e) { dialog.alert(e.message); }
 }
 
 // In-app viewer: the document opens inside the app (not as a web page in another tab), with Imprimer /
@@ -75,7 +85,24 @@ export function DocViewer({ doc, onClose }) {
   const [url, setUrl] = useState(null);
   const [err, setErr] = useState('');
   const frameRef = useRef(null);
+  const pagesRef = useRef(null);
   const isPdf = doc.contentType === 'application/pdf';
+  const native = nativePdfViewer(); // computer: browser's PDF viewer; tablet: pages drawn by the app
+  const [progress, setProgress] = useState(null); // tablet: { i, n } while drawing the pages
+  const [printing, setPrinting] = useState(false);
+
+  // tablet: draw the PDF pages once the file is here
+  useEffect(() => {
+    if (!url || !isPdf || native || !pagesRef.current) return undefined;
+    const box = pagesRef.current;
+    box.innerHTML = '';
+    let job = null; let alive = true;
+    const width = Math.min(box.clientWidth - 24, 1000);
+    renderPdf(url, box, { width, onPage: (i, n) => alive && setProgress({ i, n }) })
+      .then(j => { job = j; if (!alive) j.cancel(); else setProgress(null); })
+      .catch(e => alive && setErr(e.message || 'PDF illisible'));
+    return () => { alive = false; job?.cancel(); };
+  }, [url, isPdf, native]);
 
   useEffect(() => {
     let alive = true; let made = null;
@@ -88,8 +115,18 @@ export function DocViewer({ doc, onClose }) {
     return () => window.removeEventListener('keydown', k);
   }, [onClose]);
 
-  const print = () => {
+  const print = async () => {
     if (!url) return;
+    if (!native) {
+      // tablet: the pages already drawn on screen are printed (PDF), or the photo itself
+      setPrinting(true);
+      try {
+        const canvases = pagesRef.current ? [...pagesRef.current.querySelectorAll('canvas')] : [];
+        if (isPdf && canvases.length && !progress) printImages(canvases.map(c => c.toDataURL('image/jpeg', 0.92)));
+        else await printForTouch(url, doc.contentType);
+      } catch (e) { setErr(e.message); } finally { setPrinting(false); }
+      return;
+    }
     if (isPdf && frameRef.current) {
       try { frameRef.current.contentWindow.focus(); frameRef.current.contentWindow.print(); return; } catch { /* below */ }
     }
@@ -106,7 +143,7 @@ export function DocViewer({ doc, onClose }) {
         <div className="pdv__bar">
           {isPdf ? <FileText size={16} /> : <FileImage size={16} />}
           <strong title={doc.name}>{doc.name}</strong>
-          <button type="button" className="pdv__btn pdv__btn--primary" onClick={print} disabled={!url}><Printer size={15} />{t('pdocPrint')}</button>
+          <button type="button" className="pdv__btn pdv__btn--primary" onClick={print} disabled={!url || printing}>{printing ? <LoaderCircle size={15} className="td-spin" /> : <Printer size={15} />}{t('pdocPrint')}</button>
           <button type="button" className="pdv__btn" onClick={download} disabled={!url}><Download size={15} />{t('tdDownload')}</button>
           <button type="button" className="pdv__btn" onClick={() => url && window.open(url, '_blank')} disabled={!url} title={t('pdocNewTab')}><ExternalLink size={15} /></button>
           <button type="button" className="pdv__btn pdv__x" onClick={onClose} aria-label={t('close')}><X size={17} /></button>
@@ -114,7 +151,13 @@ export function DocViewer({ doc, onClose }) {
         <div className="pdv__body">
           {err ? <div className="td-error"><AlertTriangle size={14} />{err}</div>
             : !url ? <LoaderCircle size={22} className="td-spin" />
-              : isPdf ? <iframe ref={frameRef} src={url} title={doc.name} className="pdv__frame" />
+              : isPdf && native ? <iframe ref={frameRef} src={url} title={doc.name} className="pdv__frame" />
+              : isPdf ? (
+                <div className="pdv__pages-wrap">
+                  {progress && progress.i < progress.n && <div className="pdv__progress"><LoaderCircle size={14} className="td-spin" /> {t('pdocPages', { i: progress.i, n: progress.n })}</div>}
+                  <div className="pdv__pages" ref={pagesRef} />
+                </div>
+              )
                 : <img src={url} alt={doc.name} className="pdv__img" />}
         </div>
       </div>
