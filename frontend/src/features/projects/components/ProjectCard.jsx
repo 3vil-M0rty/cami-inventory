@@ -3,7 +3,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useState } from 'react';
 import axios from 'axios';
 import { User, PaintBucket, Paperclip, FileText, FileImage, Eye, ChevronDown, LoaderCircle } from 'lucide-react';
-import { openProjectDoc } from './ProjectDocuments';
+import { DocViewer, PrintBtn } from './ProjectDocuments';
 import { findRal, inkOn } from '../utils/ralColors';
 
 // Tinted badge tones (dark theme): [text, background, border]
@@ -193,21 +193,22 @@ function CardDocsButton({ project, t }) {
   const [docs, setDocs] = useState(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [viewing, setViewing] = useState(null); // opened in the in-app viewer (print / download there)
   const id = project.id || project._id;
   const n = project.documentsCount;
 
   const click = async () => {
     if (open) { setOpen(false); return; }
-    if (n === 1 && !docs) {
-      // window opened now (click) so the browser doesn't block it, then pointed to the file
-      const w = window.open('', '_blank');
-      try {
-        const r = await axios.get(`${API_URL}/projects/${id}/documents`);
-        const d = (r.data.documents || [])[0];
-        if (!d) { w?.close(); return; }
-        const u = await axios.get(`${API_URL}/project-documents/${d.id}/url`);
-        if (w) w.location.href = u.data.url; else window.location.href = u.data.url;
-      } catch (e) { w?.close(); }
+    if (n === 1) {
+      // a single document: straight into the viewer
+      let list = docs;
+      if (!list) {
+        setLoading(true);
+        try { list = (await axios.get(`${API_URL}/projects/${id}/documents`)).data.documents || []; setDocs(list); }
+        catch (e) { list = []; }
+        finally { setLoading(false); }
+      }
+      if (list[0]) setViewing(list[0]);
       return;
     }
     setOpen(true);
@@ -232,14 +233,16 @@ function CardDocsButton({ project, t }) {
             const Icon = d.contentType === 'application/pdf' ? FileText : FileImage;
             return (
               <li key={d.id}>
-                <button type="button" onClick={() => openProjectDoc(d)} title={d.name}>
+                <button type="button" onClick={() => setViewing(d)} title={d.name}>
                   <Icon size={14} /><span>{d.name}</span><Eye size={13} className="project-card__docs-eye" />
                 </button>
+                <PrintBtn doc={d} t={t} className="project-card__docs-print" size={14} />
               </li>
             );
           })}
         </ul>
       )}
+      {viewing && <DocViewer doc={viewing} onClose={() => setViewing(null)} />}
     </>
   );
 }
