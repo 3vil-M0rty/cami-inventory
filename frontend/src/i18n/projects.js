@@ -22,7 +22,7 @@ const projects = {
     ralBackToList: 'Choisir dans le nuancier',
     ralUseTyped: 'Utiliser ce texte',
     ralClear: 'Effacer',
-    pdocTab: 'OF(s)',
+    pdocTab: 'Documents',
     pdocTitle: 'Documents du projet',
     pdocHint: 'Plans, devis signés, photos… (PDF ou image, 15 Mo max). Un fichier n\'est téléchargé que lorsque vous cliquez sur « Ouvrir ».',
     pdocAdd: 'Ajouter',
@@ -34,6 +34,7 @@ const projects = {
     pdocPrint: 'Imprimer',
     pdocNewTab: 'Ouvrir dans un nouvel onglet',
     pdocPages: 'Affichage des pages… {i} / {n}',
+    pdocCardLabel: 'OF',
   },
   it: {
     ubToday: 'Oggi alle {time}', ubYesterday: 'Ieri alle {time}', ubDateAt: '{date} alle {time}', ubLoadError: 'Impossibile caricare i movimenti', ubHistory: 'Storico dei consumi', ubNoMovement: 'Nessun movimento registrato per questo progetto.', ubColDate: 'Data / ora', ubColQty: 'Qtà', ubColCumul: 'Cumulato', ubCancelled: 'annullato', ubEntries: '{n} voce/i', ubTotal: 'Totale consumato', ubResults: '{n} risultato/i', ubColMovements: 'Movimenti', ubSeeMovements: 'Vedi i movimenti', ubDetails: 'Dettagli',
@@ -58,7 +59,7 @@ const projects = {
     ralBackToList: 'Scegli dalla cartella',
     ralUseTyped: 'Usa questo testo',
     ralClear: 'Cancella',
-    pdocTab: 'OF(s)',
+    pdocTab: 'Documenti',
     pdocTitle: 'Documenti del progetto',
     pdocHint: 'Disegni, preventivi firmati, foto… (PDF o immagine, max 15 MB). Un file viene scaricato solo quando clicchi « Apri ».',
     pdocAdd: 'Aggiungi',
@@ -70,6 +71,7 @@ const projects = {
     pdocPrint: 'Stampa',
     pdocNewTab: 'Apri in una nuova scheda',
     pdocPages: 'Caricamento pagine… {i} / {n}',
+    pdocCardLabel: 'OF',
   },
   en: {
     ubToday: 'Today at {time}', ubYesterday: 'Yesterday at {time}', ubDateAt: '{date} at {time}', ubLoadError: 'Unable to load movements', ubHistory: 'Consumption history', ubNoMovement: 'No movement recorded for this project.', ubColDate: 'Date / time', ubColQty: 'Qty', ubColCumul: 'Running total', ubCancelled: 'cancelled', ubEntries: '{n} entry(ies)', ubTotal: 'Total consumed', ubResults: '{n} result(s)', ubColMovements: 'Movements', ubSeeMovements: 'View movements', ubDetails: 'Details',
@@ -94,7 +96,7 @@ const projects = {
     ralBackToList: 'Pick from the chart',
     ralUseTyped: 'Use this text',
     ralClear: 'Clear',
-    pdocTab: 'OF(s)',
+    pdocTab: 'Documents',
     pdocTitle: 'Project documents',
     pdocHint: 'Drawings, signed quotes, photos… (PDF or image, 15 MB max). A file is only downloaded when you click « Open ».',
     pdocAdd: 'Add',
@@ -106,6 +108,7 @@ const projects = {
     pdocPrint: 'Print',
     pdocNewTab: 'Open in a new tab',
     pdocPages: 'Drawing pages… {i} / {n}',
+    pdocCardLabel: 'Docs',
   },
 };
 export default projects;

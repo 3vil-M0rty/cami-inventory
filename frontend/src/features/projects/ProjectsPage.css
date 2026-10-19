@@ -548,3 +548,16 @@
   color: var(--text-3) !important; cursor: pointer;
 }
 .project-card__docs .project-card__docs-print:hover { color: var(--text) !important; border-color: var(--border-2) !important; }
+
+/* Card actions on one line: Modifier · Supprimer · OF — same width, same height, same look */
+.project-card__actions { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
+.project-card__actions > button { flex: 1 1 0; min-width: 0; height: 32px; }
+.project-card__actions .edit-btn,
+.project-card__actions .delete-btn,
+.project-card__actions .project-card__docs-btn { padding: 0 8px !important; justify-content: center; margin-left: 0; }
+.project-card__docs-btn { gap: 5px; }
+.project-card__docs-label { font-style: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-card__docs-btn > span { flex-shrink: 0; }
+.project-card__docs-btn > svg { flex-shrink: 0; }
+.project-card__actions > .project-card__docs-btn { flex: 0 0 auto; padding: 0 10px !important; }
+.project-card__docs-btn.is-open { background: var(--surface-3); border-color: var(--400); color: var(--text); }

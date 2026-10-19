@@ -2,7 +2,7 @@
 import { useAuth } from '../../../context/AuthContext';
 import { useState } from 'react';
 import axios from 'axios';
-import { User, PaintBucket, Paperclip, FileText, FileImage, Eye, ChevronDown, LoaderCircle } from 'lucide-react';
+import { User, PaintBucket, Paperclip, FileText, FileImage, Eye, LoaderCircle } from 'lucide-react';
 import { DocViewer, PrintBtn } from './ProjectDocuments';
 import { findRal, inkOn } from '../utils/ralColors';
 
@@ -224,7 +224,7 @@ function CardDocsButton({ project, t }) {
     <>
       <button type="button" className={`project-card__docs-btn${open ? ' is-open' : ''}`} onClick={click}
         title={n === 1 ? t('pdocOpenOne') : t('pdocShowList')}>
-        <Paperclip size={13} /> {t('pdocTab')} <span>{n}</span>{n > 1 && <ChevronDown size={13} className="project-card__docs-chev" />}
+        <Paperclip size={13} /><em className="project-card__docs-label">{t('pdocCardLabel')}</em><span>{n}</span>
       </button>
       {open && (
         <ul className="project-card__docs">
