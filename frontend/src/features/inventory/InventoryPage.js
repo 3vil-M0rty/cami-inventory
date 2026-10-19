@@ -226,7 +226,7 @@ function InventoryPage() {
       const res = await axios.patch(`${API_URL}/inventory/${itemId}/quantity`, { amount, note });
       setItems(items.map(i => i.id === itemId ? res.data : i));
       inventoryViewCache.clear();
-    } catch { await dialog.alert(t('errorUpdating')); }
+    } catch (e) { await dialog.alert(e.response?.data?.error || t('errorUpdating')); } // e.g. the missing permission
   };
 
   const handleMinusClick = (item) => { setTakeOutModal({ item }); setTakeOutQty(isPoudre ? '' : 1); setTakeOutNote(''); };
@@ -310,8 +310,9 @@ function InventoryPage() {
   const canEdit = activeSuperCat && (can(`inventory.${activeSuperCat}.edit`) || (!hasAnySCEdit && can('inventory.edit')));
   const canDelete = activeSuperCat && (can(`inventory.${activeSuperCat}.delete`) || (!hasAnySCDelete && can('inventory.delete')));
   const canView = activeSuperCat && superCats.some(sc => sc.key === activeSuperCat);
-  // Workshop accounts (e.g. usinage / coupeur): may only adjust stock with − / + → minimal screen and cards
-  const workshopMode = !canEdit && can('inventory.quantity');
+  // Workshop accounts (e.g. usinage / coupeur): may only adjust stock with − / + → minimal screen and cards.
+  // BARREMAN also adjusts with − / + only, but keeps the full screen (filters, ordered qty, threshold).
+  const workshopMode = !canEdit && can('inventory.quantity') && authUser?.role !== 'BARREMAN';
 
   // Card badges: quantity in draft purchase orders + admin requests not yet ordered (fetched for the articles on screen)
   const showBadges = canSeeItemOrders && !workshopMode;

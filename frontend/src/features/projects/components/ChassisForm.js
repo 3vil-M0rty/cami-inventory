@@ -21,7 +21,19 @@ function buildComponents(typeObj, existing = []) {
 const PROFILE_SERIES = {
   atla78:     { label: 'ATLA78',      hv: (H, a) => H - 77 - a, lv: (L, n) => (L - 9) / n },
   atla78slim: { label: 'ATLA78-SLIM', hv: (H, a) => H - 78 - a, lv: (L, n) => (L + 32) / n },
+  // ELITE70 (minimaliste): Hv = poignée = H − 72 ; each vantail's width = its traverse length,
+  // ends (gauche/droite) and middle vantaux differ — see elite70Widths
+  elite70:    { label: 'ELITE70',     hv: (H, a) => H - 72 - a, widths: (L, n) => elite70Widths(L, n) },
 };
+
+// ELITE70 traverse lengths per vantail, left to right (calcul minimaliste, n = number of rails/vantaux)
+function elite70Widths(L, n) {
+  if (n <= 1) return [Math.round(L)];
+  if (n === 2) { const lv = Math.round(L / 2 - 44.3); return [lv + 24, lv + 24]; }
+  const lv = Math.round(n === 3 ? (L - 39) / 3 : (L + 45 * (n - 2) + (n - 1) * 4.6 - 93.2) / n);
+  const lm = lv - 45;
+  return Array.from({ length: n }, (_, i) => (i === 0 || i === n - 1 ? lv + 24 : lm + 16));
+}
 const roundMm = (v) => Math.round(v); // nearest whole millimetre
 const toMm = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
 
@@ -31,11 +43,12 @@ function applyProfile(components, profileKey, L, H, allege) {
   const a = parseFloat(allege) || 0;
   if (!serie || !Number.isFinite(l) || !Number.isFinite(h) || l <= 0 || h <= 0) return components;
   const n = components.filter(c => c.role === 'vantail').length || 1;
-  const lv = roundMm(serie.lv(l, n));
+  const widths = serie.widths ? serie.widths(l, n) : Array(n).fill(serie.lv(l, n));
   const hv = roundMm(serie.hv(h, a));
+  let i = 0;
   return components.map(c => c.role === 'dormant'
     ? { ...c, largeur: l, hauteur: h }
-    : { ...c, largeur: lv, hauteur: hv });
+    : { ...c, largeur: roundMm(widths[i++] ?? widths[0]), hauteur: hv });
 }
 
 // A single dimension variant row: repere, largeur, hauteur, quantity for that size
@@ -374,7 +387,7 @@ function ChassisForm({ chassis, projectId, projectTab = 'aluminium', onClose, on
                       </div>
                     </div>
                     <p className="cf-profile__hint">
-                      {profile === 'atla78' ? t('cfAtla78Hint') : t('cfAtla78SlimHint')}
+                      {t({ atla78: 'cfAtla78Hint', atla78slim: 'cfAtla78SlimHint', elite70: 'cfElite70Hint' }[profile])}
                     </p>
                   </>
                 )}
