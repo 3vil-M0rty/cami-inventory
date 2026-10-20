@@ -252,3 +252,61 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.75); cur
 .bl-print-btn, .btn-remove-line, .atp__worker-rm, .ch-proj-tag__rm, .ch-proj-picker__clear, .ubp__search-clear {
   padding-inline: 0 !important; display: inline-flex; align-items: center; justify-content: center;
 }
+
+/* ── Card titles: smooth animation, desktop only ─────────────────────────────────────────
+   Projects, inventory, orders, chantiers. On display the title fades up into place; when the
+   card is hovered a soft light sweeps across it and a thin line draws underneath — in the project's
+   RAL colour on project cards (blue elsewhere). The 3D tilt under the mouse is components/common/cardTilt.js.
+   Phones / tablets (no mouse) and « reduce motion » systems keep plain titles. */
+@media (hover: hover) and (pointer: fine) and (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+  .project-card.has-ral { --title-accent: var(--ral); }
+  .project-card__name,
+  .item-card .item-content h3,
+  .orders-page .order-card-title h3,
+  .ch-card__name {
+    position: relative;
+    animation: cardTitleIn .55s cubic-bezier(.2, .7, .2, 1) both;
+    /* the text is painted by this gradient: plain text colour, with a lighter band parked off to the right */
+    background-image: linear-gradient(100deg,
+      var(--text) 0%, var(--text) 40%,
+      var(--title-accent, var(--info)) 50%,
+      var(--text) 60%, var(--text) 100%);
+    background-size: 250% 100%;
+    background-position: 100% 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .project-card__name::after,
+  .item-card .item-content h3::after,
+  .orders-page .order-card-title h3::after,
+  .ch-card__name::after {
+    content: '';
+    position: absolute; left: 0; bottom: -3px;
+    width: 100%; max-width: 64px; height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, var(--title-accent, var(--info)), transparent);
+    transform: scaleX(0); transform-origin: left;
+    transition: transform .45s cubic-bezier(.2, .7, .2, 1);
+    pointer-events: none;
+  }
+  .project-card:hover .project-card__name,
+  .item-card:hover .item-content h3,
+  .orders-page .order-card:hover .order-card-title h3,
+  .ch-card:hover .ch-card__name {
+    animation: cardTitleSheen .9s ease-in-out both;
+  }
+  .project-card:hover .project-card__name::after,
+  .item-card:hover .item-content h3::after,
+  .orders-page .order-card:hover .order-card-title h3::after,
+  .ch-card:hover .ch-card__name::after {
+    transform: scaleX(1);
+  }
+}
+@keyframes cardTitleIn {
+  from { opacity: 0; transform: translateY(6px); filter: blur(3px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+@keyframes cardTitleSheen {
+  from { background-position: 100% 0; }
+  to   { background-position: 0 0; }
+}
