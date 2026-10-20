@@ -2421,6 +2421,8 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
     Magasinier: ['bars', 'accessoires_laquer', 'documents'],
     LOGISTIQUE: ['chassis', 'bl', 'documents'],
     'Coordinateur-vitrage': ['chassis', 'bl', 'documents'],
+    // consultation only (read-only account): the chassis and the documents (OF, plans…)
+    'Chef de chantier': ['chassis', 'documents'],
   };
   const visibleTabs = adminThing ? detailTabs : detailTabs.filter(sc => (ROLE_TAB_ACCESS[userRole] || []).includes(sc.key));
   // Tab from the URL not allowed for this role (or unknown) → first tab the role can see

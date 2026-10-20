@@ -335,6 +335,10 @@ const fr = {
     spMine: 'créé par vous',
     spMineOnly: 'Mes fournisseurs',
     spOwnNote: 'Vos fournisseurs, utilisables dans vos bons de commande. Les délais de paiement sont gérés par la comptabilité.',
+    acTermPerCompany: 'Délai de paiement par société',
+    acTermDefault: 'Par défaut (BC sans société ou société sans délai)',
+    acTermPerCompanyHint: 'Chaque bon de commande prend le délai de sa société ; laissez « Non défini » pour utiliser le délai par défaut.',
+    acTermOthers: 'autres :',
 };
 
 const it = {
@@ -665,6 +669,10 @@ const it = {
     spMine: 'creato da te',
     spMineOnly: 'I miei fornitori',
     spOwnNote: 'I tuoi fornitori, utilizzabili nei tuoi ordini. I termini di pagamento sono gestiti dalla contabilità.',
+    acTermPerCompany: 'Termini di pagamento per società',
+    acTermDefault: 'Predefinito (ordini senza società o società senza termine)',
+    acTermPerCompanyHint: 'Ogni ordine usa il termine della sua società; lascia « Non definito » per usare quello predefinito.',
+    acTermOthers: 'altre:',
 };
 
 const en = {
@@ -995,6 +1003,10 @@ const en = {
     spMine: 'yours',
     spMineOnly: 'My suppliers',
     spOwnNote: 'Your suppliers, usable in your orders. Payment terms are handled by accounting.',
+    acTermPerCompany: 'Payment term per company',
+    acTermDefault: 'Default (orders without company or company without a term)',
+    acTermPerCompanyHint: 'Each order uses the term of its company; leave « Not set » to use the default one.',
+    acTermOthers: 'others:',
 };
 
 export default { fr, it, en };

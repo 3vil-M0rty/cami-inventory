@@ -33,6 +33,8 @@ const Header = ({ activePage, onNavigate }) => {
   const { user, logout, can } = useAuth();
   // Workshop accounts limited to a few articles: no company filter, oven status or notifications
   const restricted = (user?.restrictedItems || 0) > 0;
+  // read-only accounts (Chef de chantier): no oven switch / laquage notifications to act on
+  const readOnly = can('readonly');
 
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showChangePwd, setShowChangePwd] = useState(false);
@@ -164,8 +166,8 @@ const Header = ({ activePage, onNavigate }) => {
             {!restricted && <div className="hdr__companies">{companyPills}</div>}
             {langPicker}
             {themeBtn}
-            {!restricted && <FourStatus />}
-            {!restricted && <NotifBell />}
+            {!restricted && !readOnly && <FourStatus />}
+            {!restricted && !readOnly && <NotifBell />}
 
             <div className="hdr__user" ref={userMenuRef}>
 
@@ -182,8 +184,8 @@ const Header = ({ activePage, onNavigate }) => {
           {/* Mobile top-bar controls */}
           <div className="hdr__controls mobile-only" style={{ gap: 8 }}>
             {langPicker}
-            {!restricted && <FourStatus />}
-            {!restricted && <NotifBell />}
+            {!restricted && !readOnly && <FourStatus />}
+            {!restricted && !readOnly && <NotifBell />}
             <div className="hdr__user" ref={userMenuRef}>
               <button className="hdr__user-btn" onClick={() => setShowUserMenu(v => !v)}>
                 <span className="hdr__avatar">{user?.displayName?.charAt(0).toUpperCase()}</span>

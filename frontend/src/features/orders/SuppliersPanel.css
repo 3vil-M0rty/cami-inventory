@@ -122,3 +122,14 @@
 .sp-mine { font-style: normal; margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; color: var(--ink-green); background: rgba(74,222,128,.1); border: 1px solid rgba(74,222,128,.35); vertical-align: middle; }
 .sp-own-filter { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); cursor: pointer; }
 .sp-own-note { margin: 10px 2px 0; font-size: 12px; color: var(--text-3); line-height: 1.5; }
+
+/* Payment term per company (supplier form) */
+.modal .sp-terms { margin-top: 6px; padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); }
+.modal .sp-terms__title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); margin-bottom: 8px; }
+.modal .sp-terms__row { padding: 8px 0; border-top: 1px solid var(--border); }
+.modal .sp-terms__row:first-of-type { border-top: 0; }
+.modal .sp-terms__row .form-group { margin-bottom: 4px; }
+.modal .sp-terms__co { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.modal .sp-terms__co span { width: 9px; height: 9px; border-radius: 999px; }
+.modal .sp-terms__row--default .sp-terms__co { color: var(--text-3); font-weight: 600; }
+.sp-termcell { white-space: normal !important; max-width: 220px; font-size: 12px; line-height: 1.35; }

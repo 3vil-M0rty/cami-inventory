@@ -38,6 +38,19 @@ app.use((req, res, next) => {
   });
   next();
 });
+// « Lecture seule » accounts (permission « readonly », e.g. Chef de chantier): nothing can be changed, on any
+// screen — every create / edit / delete request is refused here, whatever the route (login / logout and their
+// own password stay possible).
+app.use('/api', (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path.startsWith('/auth/')) return next();
+  optionalAuth(req, res, () => {
+    const perms = req.permissions || [];
+    if (perms.includes('readonly') && !perms.includes('admin.view')) {
+      return res.status(403).json({ error: 'Compte en lecture seule : aucune modification possible.' });
+    }
+    next();
+  });
+});
 
 // Orders list cache. Safe with several server instances: before serving it, we check in the
 // database (1 cheap round trip) that no order / article / company / supplier changed since.
@@ -133,7 +146,7 @@ const ALL_PERMISSIONS = [
   'inventory.fer.view', 'inventory.fer.edit', 'inventory.fer.delete',
   'inventory.toles.view', 'inventory.toles.edit', 'inventory.toles.delete',
   'orders.view', 'orders.edit', 'orders.delete', 'orders.receive', 'orders.accounting', 'orders.own',
-  'projects.view', 'projects.edit', 'projects.delete',
+  'projects.view', 'projects.edit', 'projects.delete', 'readonly',
   'clients.view', 'clients.edit', 'clients.delete',
   'devis.view', 'devis.edit', 'devis.delete', 'devis.prices',
   'movements.view',
@@ -436,7 +449,7 @@ const chassisSchema = new mongoose.Schema({
   multiDim: { type: Boolean, default: false },   // ← ADD THIS (already sent by ChassisForm)
   variants: { type: mongoose.Schema.Types.Mixed, default: [] }, // ← ADD THIS (already sent)
   components: [componentSchema],
-  profileSerie: { type: String, default: '' }, // 'atla78' | 'atla78slim': components derived from L × H
+  profileSerie: { type: String, default: '' }, // 'atla78' | 'atla78slim' | 'elite70': components derived from L × H
   allege: { type: Number, default: 0 },          // allège (mm) subtracted from the vantaux height
   units: [unitSchema],
   accessories: [chassisAccessorySchema],
@@ -606,6 +619,14 @@ const fournisseurSchema = new mongoose.Schema({
   // finDeMois = pushed to the end of that month ("60 jours fin de mois")
   delaiPaiement: { type: Number, default: null, min: 0, max: 365 },
   finDeMois: { type: Boolean, default: false },
+  // Payment term per company (CAMI, GIMAV…): an order uses the term of its company; without one, the
+  // term above (default, all companies)
+  termsByCompany: [{
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true },
+    delaiPaiement: { type: Number, default: null, min: 0, max: 365 },
+    finDeMois: { type: Boolean, default: false },
+    _id: false,
+  }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // « orders.own » edits only its own
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const Fournisseur = mongoose.model('Fournisseur', fournisseurSchema);
@@ -1547,6 +1568,7 @@ app.get('/api/permissions', requireAuth, requirePermission('admin.view'), async 
     { key: 'projects.view', label: 'Projets — Voir', group: 'Projets' },
     { key: 'projects.edit', label: 'Projets — Créer/Modifier', group: 'Projets' },
     { key: 'projects.delete', label: 'Projets — Supprimer', group: 'Projets' },
+    { key: 'readonly', label: 'Lecture seule — aucune modification possible (consultation uniquement)', group: 'Projets' },
     { key: 'clients.view', label: 'Clients — Voir', group: 'Clients' },
     { key: 'clients.edit', label: 'Clients — Ajouter/Modifier', group: 'Clients' },
     { key: 'clients.delete', label: 'Clients — Supprimer', group: 'Clients' },
@@ -2757,6 +2779,14 @@ app.delete('/api/orders/:id', requireAuth, async (req, res) => {
 // Access: only users with 'orders.edit' — i.e. Achat role + Admin (Admin has ALL_PERMISSIONS).
 
 // Due date of an invoice: base date + supplier term (days), optionally pushed to the end of that month
+// Payment term of a supplier for one company: its own term if set, else the default one
+function termFor(sup, companyId) {
+  if (!sup) return { delaiPaiement: null, finDeMois: false };
+  const own = companyId && (sup.termsByCompany || []).find(x => String(x.companyId) === String(companyId._id || companyId));
+  if (own && own.delaiPaiement != null) return { delaiPaiement: own.delaiPaiement, finDeMois: !!own.finDeMois };
+  return { delaiPaiement: sup.delaiPaiement ?? null, finDeMois: !!sup.finDeMois };
+}
+
 function dueDate(base, delai, finDeMois) {
   if (!base || delai == null) return null;
   const d = new Date(base);
@@ -2769,12 +2799,12 @@ function dueDate(base, delai, finDeMois) {
 // One row per (order, BL), with invoice + payment follow-up. Shared by the Suivi table and the supplier figures.
 async function buildTrackingRows(orderFilter) {
   const orders = await Order.find(orderFilter)
-    .select('number reference orderDate tva status supplier supplierId lines._id lines.quantityOrdered lines.unitPrice receptions.blNumber receptions.cancelled receptions.lineId receptions.quantityReceived receptions.receivedAt')
-    .populate('supplierId', 'name delaiPaiement finDeMois')
+    .select('number reference orderDate tva status companyId supplier supplierId lines._id lines.quantityOrdered lines.unitPrice receptions.blNumber receptions.cancelled receptions.lineId receptions.quantityReceived receptions.receivedAt')
+    .populate('supplierId', 'name delaiPaiement finDeMois termsByCompany')
     .sort({ orderDate: -1 })
     .lean();
   // Older orders only carry the supplier name: find their supplier (and its payment term) by name
-  const byName = new Map((await Fournisseur.find().select('name delaiPaiement finDeMois').lean()).map(f => [String(f.name || '').trim().toLowerCase(), f]));
+  const byName = new Map((await Fournisseur.find().select('name delaiPaiement finDeMois termsByCompany').lean()).map(f => [String(f.name || '').trim().toLowerCase(), f]));
 
   const trackingDocs = orders.length
     ? await OrderTracking.find({ orderId: { $in: orders.map(o => o._id) } })
@@ -2815,7 +2845,8 @@ async function buildTrackingRows(orderFilter) {
       const montantPaye = paiementStatus === 'paye' ? montantDu : paiementStatus === 'partiel' ? (t?.montantPaye || 0) : 0;
       // Due date from the invoice date; without it, from the BL date (estimate)
       const base = t?.factureDate || (blNumber ? date : null);
-      const echeance = sup ? dueDate(base, sup.delaiPaiement, sup.finDeMois) : null;
+      const term = termFor(sup, o.companyId); // the term of the order's company
+      const echeance = sup ? dueDate(base, term.delaiPaiement, term.finDeMois) : null;
       const reste = Math.max(0, parseFloat((montantDu - montantPaye).toFixed(2)));
       const retardJours = echeance && paiementStatus !== 'paye' && reste > 0 && echeance < today
         ? Math.floor((today - echeance) / 86400000) + 1 : 0;
@@ -2833,7 +2864,7 @@ async function buildTrackingRows(orderFilter) {
         factureDate: t?.factureDate || null,
         paiementStatus, paiementDate: t?.paiementDate || null,
         montantPaye: parseFloat(montantPaye.toFixed(2)), montantDu, reste,
-        delaiPaiement: sup?.delaiPaiement ?? null, finDeMois: !!sup?.finDeMois,
+        delaiPaiement: term.delaiPaiement, finDeMois: term.finDeMois,
         echeance, echeanceEstimee: !!echeance && !t?.factureDate, retardJours,
       };
     };
@@ -3065,7 +3096,10 @@ app.post('/api/order-tracking/documents', requireAuth, requireAccounting, readDo
       const usage = await docUsage(true);
       if (usage.bytes + buf.length > DOC_QUOTA_BYTES) {
         const go = (b) => (b / GB).toFixed(2).replace('.', ',');
-        return res.status(507).json({ error: `Plus assez d'espace de stockage : ${go(usage.bytes)} Go utilisés sur ${go(DOC_QUOTA_BYTES)} Go (limite fixée pour rester gratuit). Supprimez d'anciens documents pour en ajouter.`, storage: usageView(usage) });
+        // the figures (Go used / left) are for the admin only
+        return res.status(507).json(isAdmin(req)
+          ? { error: `Plus assez d'espace de stockage : ${go(usage.bytes)} Go utilisés sur ${go(DOC_QUOTA_BYTES)} Go (limite fixée pour rester gratuit). Supprimez d'anciens documents pour en ajouter.`, storage: usageView(usage) }
+          : { error: 'Plus assez d\'espace de stockage pour les documents. Prévenez l\'administrateur.' });
       }
       const { client, sdk, bucket } = r2();
       const year = new Date(order.orderDate || Date.now()).getFullYear();
@@ -3079,7 +3113,7 @@ app.post('/api/order-tracking/documents', requireAuth, requireAccounting, readDo
       const saved = t.documents[t.documents.length - 1];
       if (kind === 'bl') invalidateBlQueue();
       const after = await docUsage(true);
-      res.status(201).json({ id: String(saved._id), kind: saved.kind, blNumber, name: saved.name, contentType: saved.contentType, size: saved.size, uploadedAt: saved.uploadedAt, uploadedBy: saved.uploadedBy, factureStatus: t.factureStatus, storage: usageView(after) });
+      res.status(201).json({ id: String(saved._id), kind: saved.kind, blNumber, name: saved.name, contentType: saved.contentType, size: saved.size, uploadedAt: saved.uploadedAt, uploadedBy: saved.uploadedBy, factureStatus: t.factureStatus, storage: isAdmin(req) ? usageView(after) : undefined });
     } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
@@ -3113,7 +3147,8 @@ app.get('/api/orders/:id/documents', requireAuth, requireOrdersView, async (req,
 });
 
 // GET /api/order-tracking/storage → space used by the documents vs the free-tier cap
-app.get('/api/order-tracking/storage', requireAuth, requireAccounting, async (req, res) => {
+// admin only: the other accounts don't see the Go used / left
+app.get('/api/order-tracking/storage', requireAuth, requirePermission('admin.view'), async (req, res) => {
   try { res.json(usageView(await docUsage())); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3165,7 +3200,9 @@ app.post('/api/projects/:id/documents', requireAuth, readDocBody, async (req, re
     const usage = await projectDocUsage(true);
     if (usage.bytes + buf.length > PROJ_QUOTA_BYTES) {
       const go = (b) => (b / GB).toFixed(2).replace('.', ',');
-      return res.status(507).json({ error: `Plus assez d'espace pour les documents des projets : ${go(usage.bytes)} Go utilisés sur ${go(PROJ_QUOTA_BYTES)} Go (limite fixée pour rester gratuit). Supprimez d'anciens documents pour en ajouter.`, storage: projUsageView(usage) });
+      return res.status(507).json(isAdmin(req)
+        ? { error: `Plus assez d'espace pour les documents des projets : ${go(usage.bytes)} Go utilisés sur ${go(PROJ_QUOTA_BYTES)} Go (limite fixée pour rester gratuit). Supprimez d'anciens documents pour en ajouter.`, storage: projUsageView(usage) }
+        : { error: 'Plus assez d\'espace de stockage pour les documents des projets. Prévenez l\'administrateur.' });
     }
     const { client, sdk, bucket } = r2(PROJ_R2);
     const year = new Date(project.date || Date.now()).getFullYear();
@@ -3176,7 +3213,7 @@ app.post('/api/projects/:id/documents', requireAuth, readDocBody, async (req, re
       projectId: project._id, key, name: `${base.slice(0, 120)}.${sniff.ext}`, contentType: sniff.type, size: buf.length,
       uploadedBy: req.user?.displayName || req.user?.username || '',
     });
-    res.status(201).json({ ...projectDocView(d), storage: projUsageView(await projectDocUsage(true)) });
+    res.status(201).json({ ...projectDocView(d), storage: isAdmin(req) ? projUsageView(await projectDocUsage(true)) : undefined });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
@@ -3233,7 +3270,7 @@ app.delete('/api/project-documents/:docId', requireAuth, async (req, res) => {
     const { client, sdk, bucket } = r2(PROJ_R2);
     await client.send(new sdk.DeleteObjectCommand({ Bucket: bucket, Key: d.key }));
     await ProjectDocument.deleteOne({ _id: d._id });
-    res.json({ success: true, storage: projUsageView(await projectDocUsage(true)) });
+    res.json({ success: true, storage: isAdmin(req) ? projUsageView(await projectDocUsage(true)) : undefined });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
@@ -3274,7 +3311,7 @@ app.delete('/api/order-tracking/documents/:docId', requireAuth, requireAccountin
     // the list is rewritten without this document (no $pull: works on every MongoDB-compatible database)
     await OrderTracking.updateOne({ _id: t._id }, { $set: { documents: t.documents.filter(x => String(x._id) !== req.params.docId) } });
     if (d.kind === 'bl') invalidateBlQueue();
-    res.json({ success: true, storage: usageView(await docUsage(true)) });
+    res.json({ success: true, storage: isAdmin(req) ? usageView(await docUsage(true)) : undefined });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
@@ -3735,6 +3772,19 @@ function cleanPaymentTerms(body = {}) {
     }
   }
   if (body.finDeMois !== undefined) out.finDeMois = !!body.finDeMois;
+  if (body.termsByCompany !== undefined) {
+    // one entry per company; an empty delay = no own term (the default applies)
+    const seen = new Set();
+    out.termsByCompany = (Array.isArray(body.termsByCompany) ? body.termsByCompany : []).flatMap((x) => {
+      const id = String(x?.companyId || '');
+      if (!mongoose.Types.ObjectId.isValid(id) || seen.has(id)) return [];
+      seen.add(id);
+      if (x.delaiPaiement === null || x.delaiPaiement === '' || x.delaiPaiement === undefined) return [];
+      const n = Math.round(Number(x.delaiPaiement));
+      if (!Number.isFinite(n) || n < 0 || n > 365) { const e = new Error('Délai de paiement invalide (0 à 365 jours).'); e.status = 400; throw e; }
+      return [{ companyId: id, delaiPaiement: n, finDeMois: !!x.finDeMois }];
+    });
+  }
   return out;
 }
 const sameName = (name, exceptId) => Fournisseur.findOne({
@@ -3749,7 +3799,7 @@ app.post('/api/fournisseurs', requireAuth, requireOrderWrite, async (req, res) =
     if (twin) return res.status(409).json({ error: ownOrdersOnly(req) && String(twin.createdBy || '') !== String(req.user._id)
       ? `Un fournisseur « ${data.name} » existe déjà chez le service achat : choisissez un autre nom ou demandez à ACHAT.`
       : `Un fournisseur « ${data.name} » existe déjà.` });
-    if (ownOrdersOnly(req)) { delete data.delaiPaiement; delete data.finDeMois; } // payment terms: accounting
+    if (ownOrdersOnly(req)) { delete data.delaiPaiement; delete data.finDeMois; delete data.termsByCompany; } // payment terms: accounting
     const f = await Fournisseur.create({ ...data, createdBy: req.user?._id || null });
     res.status(201).json(f);
   } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
@@ -3762,7 +3812,7 @@ app.put('/api/fournisseurs/:id', requireAuth, async (req, res) => {
       const own = await Fournisseur.findById(req.params.id).select('createdBy').lean();
       if (!own) return res.status(404).json({ error: 'Not found' });
       if (String(own.createdBy || '') !== String(req.user._id)) return res.status(403).json({ error: 'Fournisseur créé par le service achat : modification réservée à ACHAT.' });
-      const data = cleanSupplier(req.body); delete data.delaiPaiement; delete data.finDeMois;
+      const data = cleanSupplier(req.body); delete data.delaiPaiement; delete data.finDeMois; delete data.termsByCompany;
       if (data.name !== undefined && !data.name) return res.status(400).json({ error: 'Nom requis' });
       if (data.name && await sameName(data.name, req.params.id)) return res.status(409).json({ error: `Un fournisseur « ${data.name} » existe déjà.` });
       const f = await Fournisseur.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });

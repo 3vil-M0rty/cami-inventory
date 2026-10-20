@@ -24,7 +24,7 @@ import { DialogHost } from './components/common/dialog';
 import { Lock } from 'lucide-react';
 import { BlsToReceiveBanner } from './features/orders/BlsToReceive';
 import { DocViewerHost } from './features/projects/components/ProjectDocuments';
-const PROJECTS_DEFAULT_ROLES = new Set(['LOGISTIQUE', 'Coordinateur', 'BARREMAN']);
+const PROJECTS_DEFAULT_ROLES = new Set(['LOGISTIQUE', 'Coordinateur', 'BARREMAN', 'Chef de chantier']);
 const CHANTIER_DEFAULT_ROLES = new Set(['chefChantier', 'BARREMAN']);
 // Rôles qui reçoivent des commandes par catégorie (accessoires / poudre / verre)
 // et doivent donc accéder à la page Commandes même sans la permission orders.view

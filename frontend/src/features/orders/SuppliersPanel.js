@@ -6,6 +6,7 @@ import {
   FileSpreadsheet, Truck, Package, AlertTriangle, ArrowUp, ArrowDown, StickyNote, UserRound,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
+import { useCompany } from '../../context/CompanyContext';
 import { dialog, errorMessage } from '../../components/common/dialog';
 import './SuppliersPanel.css';
 
@@ -15,6 +16,17 @@ const EMPTY = { name: '', code: '', contact: '', phone: '', email: '', address: 
 const TERM_PRESETS = [0, 30, 45, 60, 90, 120];
 
 /** "60 j fin de mois" / "Comptant" / "—" */
+// Terms of a supplier per company: « CAMI 60 j fin de mois · GIMAV 30 j » (+ the default for the others)
+export function termsSummary(s, companies, t) {
+  const own = (s.termsByCompany || []).filter(x => x.delaiPaiement != null);
+  if (!own.length) return s.delaiPaiement == null ? '—' : termLabel(s.delaiPaiement, s.finDeMois, t);
+  const name = (id) => (companies.find(c => String(c.id || c._id) === String(id))?.name || '?');
+  const parts = own.map(x => `${name(x.companyId)} ${termLabel(x.delaiPaiement, x.finDeMois, t)}`);
+  const missing = companies.some(c => !own.some(x => String(x.companyId) === String(c.id || c._id)));
+  if (missing && s.delaiPaiement != null) parts.push(`${t('acTermOthers')} ${termLabel(s.delaiPaiement, s.finDeMois, t)}`);
+  return parts.join(' · ');
+}
+
 export function termLabel(delai, finDeMois, t) {
   if (delai == null) return '—';
   if (delai === 0 && !finDeMois) return t('acTermCash');
@@ -66,7 +78,12 @@ function useFmt(lang) {
 // noTerms: payment terms hidden and not sent (« orders.own »: they belong to accounting)
 export function SupplierFormModal({ supplier, onClose, onSaved, paymentOnly = false, noTerms = false }) {
   const { t } = useLanguage();
+  const { companies } = useCompany();
   const [form, setForm] = useState(() => ({ ...EMPTY, delaiPaiement: '', finDeMois: false, ...(supplier || {}), ...(supplier?.delaiPaiement == null ? { delaiPaiement: '' } : {}) }));
+  // one payment term per company ('' = no own term → the default below applies)
+  const [byCompany, setByCompany] = useState(() => Object.fromEntries((supplier?.termsByCompany || [])
+    .filter(x => x.delaiPaiement != null).map(x => [String(x.companyId), { delaiPaiement: x.delaiPaiement, finDeMois: !!x.finDeMois }])));
+  const termOf = (id) => byCompany[id] || { delaiPaiement: '', finDeMois: false };
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -75,9 +92,16 @@ export function SupplierFormModal({ supplier, onClose, onSaved, paymentOnly = fa
     e.preventDefault();
     if (!paymentOnly && !form.name.trim()) { setError(t('orNameRequired')); return; }
     if (!paymentOnly && form.email && !/^\S+@\S+\.\S+$/.test(form.email.trim())) { setError(t('spEmailInvalid')); return; }
-    if (form.delaiPaiement !== '' && (!Number.isFinite(Number(form.delaiPaiement)) || form.delaiPaiement < 0 || form.delaiPaiement > 365)) { setError(t('acTermInvalid')); return; }
+    const bad = (v) => v !== '' && v != null && (!Number.isFinite(Number(v)) || v < 0 || v > 365);
+    if (bad(form.delaiPaiement) || companies.some(c => bad(termOf(String(c.id || c._id)).delaiPaiement))) { setError(t('acTermInvalid')); return; }
     setSaving(true); setError('');
-    const terms = { delaiPaiement: form.delaiPaiement === '' ? null : Number(form.delaiPaiement), finDeMois: !!form.finDeMois };
+    const terms = {
+      delaiPaiement: form.delaiPaiement === '' ? null : Number(form.delaiPaiement), finDeMois: !!form.finDeMois,
+      termsByCompany: companies.map(c => {
+        const x = termOf(String(c.id || c._id));
+        return { companyId: c.id || c._id, delaiPaiement: x.delaiPaiement === '' || x.delaiPaiement == null ? null : Number(x.delaiPaiement), finDeMois: !!x.finDeMois };
+      }),
+    };
     const fields = Object.fromEntries(Object.keys(EMPTY).map(k => [k, (form[k] || '').trim()]));
     const body = paymentOnly ? terms : noTerms ? fields : { ...fields, ...terms };
     try {
@@ -108,7 +132,26 @@ export function SupplierFormModal({ supplier, onClose, onSaved, paymentOnly = fa
           <div className="form-group"><label>{t('orAddress')}</label><input value={form.address} onChange={set('address')} /></div>
           <div className="form-group"><label>{t('orNotes')}</label><textarea rows={2} value={form.notes} onChange={set('notes')} /></div>
           </>}
-          {!noTerms && <TermFields value={form} onChange={(patch) => setForm(f => ({ ...f, ...patch }))} t={t} />}
+          {!noTerms && (
+            <div className="sp-terms">
+              <div className="sp-terms__title">{t('acTermPerCompany')}</div>
+              {companies.map(c => {
+                const id = String(c.id || c._id);
+                return (
+                  <div key={id} className="sp-terms__row">
+                    <div className="sp-terms__co"><span style={{ background: c.color || 'var(--text-3)' }} />{c.name}</div>
+                    <TermFields value={termOf(id)} t={t}
+                      onChange={(patch) => setByCompany(b => ({ ...b, [id]: { ...termOf(id), ...patch } }))} />
+                  </div>
+                );
+              })}
+              <div className="sp-terms__row sp-terms__row--default">
+                <div className="sp-terms__co">{t(companies.length ? 'acTermDefault' : 'acTerm')}</div>
+                <TermFields value={form} onChange={(patch) => setForm(f => ({ ...f, ...patch }))} t={t} />
+              </div>
+              {companies.length > 0 && <p className="sp-hint">{t('acTermPerCompanyHint')}</p>}
+            </div>
+          )}
           {error && <div className="form-error">{error}</div>}
           <div className="modal-actions">
             <button type="button" onClick={onClose}>{t('cancel')}</button>
@@ -123,6 +166,7 @@ export function SupplierFormModal({ supplier, onClose, onSaved, paymentOnly = fa
 /* ── Supplier detail (drawer) ──────────────────────────────────────────── */
 function SupplierDrawer({ supplierId, stats, statusColors, lang, isAdmin, fullEdit, onClose, onEdit, onDelete, onNewOrder, onOpenOrder }) {
   const { t } = useLanguage();
+  const { companies } = useCompany();
   const f = useFmt(lang);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -168,7 +212,7 @@ function SupplierDrawer({ supplierId, stats, statusColors, lang, isAdmin, fullEd
               {isAdmin && <button type="button" className="sp-btn sp-btn--danger" onClick={() => onDelete(s)}><Trash2 size={14} />{t('deleteAction')}</button>}
             </div>
             <div className="sp-term">
-              <Clock size={14} /><span>{t('acTerm')} : <strong>{termLabel(s.delaiPaiement, s.finDeMois, t)}</strong></span>
+              <Clock size={14} /><span>{t('acTerm')} : <strong>{termsSummary(s, companies, t)}</strong></span>
             </div>
 
             <div className="sp-contact">
@@ -326,6 +370,7 @@ function OwnSuppliersPanel({ suppliers, onChanged, onNewOrder }) {
 
 function FullSuppliersPanel({ suppliers, onChanged, onNewOrder, onOpenOrder, statusColors, isAdmin, fullEdit = true }) {
   const { t, currentLanguage: lang } = useLanguage();
+  const { companies } = useCompany();
   const f = useFmt(lang);
   const [stats, setStats] = useState({});
   const [q, setQ] = useState('');
@@ -386,7 +431,7 @@ function FullSuppliersPanel({ suppliers, onChanged, onNewOrder, onOpenOrder, sta
       [t('orCity')]: s.city, [t('orAddress')]: s.address, ICE: s.ice, RC: s.rc,
       [t('spOrders')]: stats[s.id]?.orders || 0, [t('spOpen')]: stats[s.id]?.open || 0, [t('spLate')]: stats[s.id]?.late || 0,
       [t('spAmount')]: stats[s.id]?.amount || 0, [t('spLastOrder')]: stats[s.id]?.lastOrder ? f.d(stats[s.id].lastOrder) : '',
-      [t('spTabItems')]: stats[s.id]?.items || 0, [t('acTerm')]: termLabel(s.delaiPaiement, s.finDeMois, t),
+      [t('spTabItems')]: stats[s.id]?.items || 0, [t('acTerm')]: termsSummary(s, companies, t),
       [t('acToPay')]: stats[s.id]?.toPay || 0, [t('orNotes')]: s.notes,
     }));
     if (!data.length) return;
@@ -467,7 +512,7 @@ function FullSuppliersPanel({ suppliers, onChanged, onNewOrder, onOpenOrder, sta
                       <td className="num">{st.amount ? f.money(st.amount) : <span className="sp-muted">—</span>}</td>
                       <td className="num sp-muted">{f.d(st.lastOrder)}</td>
                       <td className="num">{f.n(st.items)}</td>
-                      <td className="num">{s.delaiPaiement == null ? <span className="sp-muted">—</span> : termLabel(s.delaiPaiement, s.finDeMois, t)}</td>
+                      <td className="num sp-termcell">{termsSummary(s, companies, t) === '—' ? <span className="sp-muted">—</span> : termsSummary(s, companies, t)}</td>
                       <td className="num">
                         {st.toPay ? f.money(st.toPay) : <span className="sp-muted">—</span>}
                         {st.payLate > 0 && <span className="sp-late sp-late--inline" title={t('acFilterLate')}><Clock size={11} />{st.payLate}</span>}
