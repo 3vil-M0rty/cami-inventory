@@ -13,6 +13,8 @@ import { DocumentsCell, DocumentsModal, StorageGauge, BlDocButtons, OrderDocumen
 import { ReceiveBatchModal, PendingBlsBlock } from './ReceiveBatch';
 import { BlsToReceivePanel, OrdersToReceiveList } from './BlsToReceive';
 import { useBlsToReceive, canReceiveBls, refreshBls } from './receptionQueue';
+import { unitLabel, qtyWithUnit, fmtUnitQty, lineFactor, lineToStock, isConverted } from '../inventory/units';
+import { ZoomImg } from '../../components/common/ImagePreview';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -335,22 +337,28 @@ export default function OrdersPage() {
 
   // Correct the quantity of a reception (e.g. 100 entered, 90 really received): only the difference is applied
   const handleAdjustReception = async (order, rec, itemName) => {
+    // a line ordered in cartons of 100 is adjusted in pièces (what was really counted), sent back in cartons
+    const line = (order.lines || []).find(l => String(l._id || l.id) === String(rec.lineId));
+    const conv = line && isConverted(line);
+    const shownQty = conv ? lineToStock(line, rec.quantityReceived) : rec.quantityReceived;
+    const shownUnit = conv ? line.stockUnit : line?.unit;
     const answer = await dialog.prompt({
       title: t('orAdjustReceptionTitle'),
-      message: t('orAdjustReceptionMsg', { name: itemName, bl: rec.blNumber, qty: rec.quantityReceived }),
-      label: t('orNewQtyReceived'),
-      defaultValue: String(rec.quantityReceived),
+      message: t('orAdjustReceptionMsg', { name: itemName, bl: rec.blNumber, qty: qtyWithUnit(shownQty, shownUnit, lang) }),
+      label: t('orNewQtyReceived') + (unitLabel(shownUnit, lang, 2) ? ` (${unitLabel(shownUnit, lang, 2)})` : ''),
+      defaultValue: fmtUnitQty(shownQty),
     });
     if (answer === null) return;
-    const quantity = Number(String(answer).replace(',', '.'));
-    if (!Number.isFinite(quantity) || quantity <= 0) {
+    const typed = Number(String(answer).replace(',', '.'));
+    if (!Number.isFinite(typed) || typed <= 0) {
       await dialog.alert(t('orInvalidQtyUseCancel'));
       return;
     }
+    const quantity = conv ? Math.round((typed / lineFactor(line)) * 1e6) / 1e6 : typed;
     if (quantity === rec.quantityReceived) return;
     const note = await dialog.prompt({
       title: t('orAdjustReceptionTitle'),
-      message: `${rec.quantityReceived} → ${quantity}`,
+      message: `${qtyWithUnit(shownQty, shownUnit, lang)} → ${qtyWithUnit(typed, shownUnit, lang)}`,
       label: t('optionalReason'),
       defaultValue: '',
     });
@@ -574,7 +582,7 @@ export default function OrdersPage() {
               <div key={idx} className={`order-detail-line ${isComplete ? 'line-complete' : ''}`}>
                 <div className="detail-line-image">
                   {item?.image
-                    ? <img loading="lazy" decoding="async" src={item.image} alt={item.designation?.[lang] || ''} />
+                    ? <ZoomImg src={item.image} alt={item.designation?.[lang] || ''} />
                     : <div className="detail-line-no-image"><Package size={15} /></div>
                   }
                 </div>
@@ -596,7 +604,7 @@ export default function OrdersPage() {
                       </span>
                     )}
                     {showPricesFor(order) && line.unitPrice > 0 && (
-                      <span className="detail-line-price">{line.unitPrice.toFixed(2)} /u</span>
+                      <span className="detail-line-price">{line.unitPrice.toFixed(2)} /{unitLabel(line.unit, lang) || 'u'}</span>
                     )}
                   </div>
                   {line.note && <p className="detail-line-note"><StickyNote size={12} style={{ marginRight: 5 }} />{line.note}</p>}
@@ -606,9 +614,15 @@ export default function OrdersPage() {
                     <div className={`detail-line-qty-fill ${isComplete ? 'detail-line-qty-fill--done' : 'detail-line-qty-fill--open'}`} style={{ width: `${linePct}%` }} />
                   </div>
                   <div className="detail-line-qty-text">
-                    {received} / {line.quantityOrdered}
+                    {fmtUnitQty(received)} / {fmtUnitQty(line.quantityOrdered)}
+                    {line.unit && <span className="detail-line-unit"> {unitLabel(line.unit, lang, line.quantityOrdered)}</span>}
                     {isComplete && <span className="line-check"> <Check size={13} /></span>}
                   </div>
+                  {isConverted(line) && (
+                    <div className="detail-line-conv" title={t('orUnitConvTitle', { n: fmtUnitQty(lineFactor(line)) })}>
+                      = {qtyWithUnit(lineToStock(line, received), line.stockUnit, lang)} / {qtyWithUnit(lineToStock(line, line.quantityOrdered), line.stockUnit, lang)}
+                    </div>
+                  )}
                   {line.closed && (
                     <div className="detail-line-closed"
                       title={[line.closedBy && t('orByCap', { by: line.closedBy }), line.closedAt && new Date(line.closedAt).toLocaleString('fr-FR'), line.closedNote].filter(Boolean).join(' — ')}>
@@ -707,7 +721,7 @@ export default function OrdersPage() {
                         return (
                           <div key={idx} className={`reception-row ${rec.cancelled ? 'reception-row--cancelled' : ''}`}>
                             <div className="reception-row__thumb">
-                              {item?.image ? <img loading="lazy" decoding="async" src={item.image} alt="" /> : <Package size={14} />}
+                              {item?.image ? <ZoomImg src={item.image} alt={name} /> : <Package size={14} />}
                             </div>
                             <div className="reception-row__name" title={name}>
                               {name}
@@ -729,10 +743,15 @@ export default function OrdersPage() {
                             </div>
                             {line && (
                               <div className="reception-row__progress">
-                                {line.quantityReceived || 0} / {line.quantityOrdered}
+                                {fmtUnitQty(line.quantityReceived || 0)} / {fmtUnitQty(line.quantityOrdered)}
                               </div>
                             )}
-                            <div className="reception-row__qty">+{rec.quantityReceived}</div>
+                            <div className="reception-row__qty">
+                              +{line ? qtyWithUnit(rec.quantityReceived, line.unit, lang) : rec.quantityReceived}
+                              {line && isConverted(line) && (
+                                <span className="reception-row__conv">= {qtyWithUnit(lineToStock(line, rec.quantityReceived), line.stockUnit, lang)}</span>
+                              )}
+                            </div>
                             <div className="reception-row__time">
                               {new Date(rec.receivedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                             </div>
@@ -1033,7 +1052,7 @@ export default function OrdersPage() {
                         {(order.lines || []).slice(0, 5).map((line, idx) => (
                           <div key={idx} className="order-card-thumb" title={line.itemId?.designation?.[lang] || ''}>
                             {line.itemId?.image
-                              ? <img loading="lazy" decoding="async" src={line.itemId.image} alt="" />
+                              ? <ZoomImg src={line.itemId.image} alt={line.itemId?.designation?.[lang] || ''} />
                               : <Package size={15} />
                             }
                           </div>
@@ -1152,7 +1171,7 @@ function ItemPicker({ item, lang, superCats, categories, families = null, onPick
     return (
       <div className="item-picker item-picker--selected">
         {item.image
-          ? <img loading="lazy" decoding="async" className="item-picker__thumb" src={item.image} alt="" />
+          ? <ZoomImg className="item-picker__thumb" src={item.image} alt={name(item)} />
           : <div className="item-picker__thumb item-picker__thumb--empty"><Package size={16} /></div>}
         <div className="item-picker__info">
           <span className="item-picker__name">{name(item)}</span>
@@ -1262,6 +1281,8 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
       quantityReceived: l.quantityReceived || 0, // display only: the quantity cannot go below it
       unitPrice: l.unitPrice || 0,
       note: l.note || '',
+      // ordered in the purchase unit (carton…) or in the stock unit (pièce…)
+      unitMode: isConverted(l) ? 'achat' : 'stock',
     })),
   } : {
     reference: '', companyId: companies[0]?.id || '', supplierId: initialSupplierId || '',
@@ -1283,7 +1304,8 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
     setForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, [field]: val } : l) }));
 
   const pickItem = (idx, item) =>
-    setForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, itemId: item ? item.id : '', item } : l) }));
+    setForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx
+      ? { ...l, itemId: item ? item.id : '', item, unitMode: item?.purchaseUnit ? 'achat' : 'stock' } : l) }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1449,6 +1471,34 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
                         <span className="or-field-hint">{t('orLineReceivedMin', { n: line.quantityReceived })}</span>
                       )}
                     </div>
+
+                    {/* Unit of the line: the article's purchase unit (carton of 100…) or its stock unit */}
+                    {(() => {
+                      const it = line.item;
+                      if (!it || (!it.unit && !it.purchaseUnit)) return null;
+                      const hasPurchase = !!(it.purchaseUnit && it.purchaseFactor > 0);
+                      const inPurchase = hasPurchase && line.unitMode !== 'stock';
+                      return (
+                        <div className="form-group order-line-unit">
+                          <label>{t('orLineUnit')}</label>
+                          {hasPurchase ? (
+                            <select value={inPurchase ? 'achat' : 'stock'} disabled={line.quantityReceived > 0}
+                              title={line.quantityReceived > 0 ? t('orLineUnitLocked') : undefined}
+                              onChange={e => updateLine(idx, 'unitMode', e.target.value)}>
+                              <option value="achat">{unitLabel(it.purchaseUnit, lang, 2)} ({qtyWithUnit(it.purchaseFactor, it.unit, lang)})</option>
+                              <option value="stock">{unitLabel(it.unit, lang, 2) || t('orStockUnitGeneric')}</option>
+                            </select>
+                          ) : (
+                            <div className="order-line-unit__fixed">{unitLabel(it.unit, lang, 2)}</div>
+                          )}
+                          {inPurchase && (
+                            <span className="or-field-hint or-unit-conv">
+                              = {qtyWithUnit((Number(line.quantityOrdered) || 0) * it.purchaseFactor, it.unit, lang)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     <div className="form-group order-line-price">
                       <label>{t('orUnitPrice')}</label>
@@ -1669,7 +1719,7 @@ function PurchaseRequestsPanel({ onChanged, isAdmin, lang }) {
                 <tr key={req.id || req._id} className={`pr-row pr-row--${req.status}`}>
                   <td>
                     {req.itemImage
-                      ? <img loading="lazy" decoding="async" src={req.itemImage} alt={req.itemName} className="pr-img" />
+                      ? <ZoomImg src={req.itemImage} alt={req.itemName} className="pr-img" />
                       : <span className="pr-faint">—</span>
                     }
                   </td>

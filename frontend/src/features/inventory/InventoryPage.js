@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import ReactDOM from 'react-dom';
-
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import {
   Layers, GlassWater, Wrench, FlaskConical, Settings, Paintbrush, MirrorRectangular,
   Search, AlertTriangle, AlertCircle, Plus, Minus, Pencil, Trash2,
   FileDown, PackagePlus, Package, ChevronRight, ChevronUp, ChevronDown, Tag,
-  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn, ClipboardList, X, Inbox, FilePen } from 'lucide-react';
+  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn, ClipboardList, X, Inbox, FilePen, Ruler, Boxes } from 'lucide-react';
 import ItemOrdersModal from './components/ItemOrdersModal';
 import ItemRequestsModal from './components/ItemRequestsModal';
+import UnitPicker from './components/UnitPicker';
+import { ImagePreviewModal } from '../../components/common/ImagePreview';
+import { unitLabel, qtyWithUnit, allowsDecimals, fmtUnitQty } from './units';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { dialog } from '../../components/common/dialog';
@@ -290,12 +291,14 @@ function InventoryPage() {
         const rows = cd.items.map(item => ({
           [t('designation')]: item.designation[language] || item.designation.fr,
           [t('quantity')]: item.quantity,
+          [t('ivStockUnit')]: unitLabel(item.unit, language, 2),
           [t('orderedQuantity')]: item.orderedQuantity || 0,
           [t('threshold')]: item.threshold,
           [t('status')]: getStockStatus(item).text,
+          [t('ivPurchaseUnit')]: item.purchaseUnit ? t('ivPurchaseInfo', { one: `1 ${unitLabel(item.purchaseUnit, language)}`, content: qtyWithUnit(item.purchaseFactor, item.unit, language) }) : '',
         }));
         const ws = XLSX.utils.json_to_sheet(rows);
-        ws['!cols'] = [{ wch: 40 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 20 }];
+        ws['!cols'] = [{ wch: 40 }, { wch: 15 }, { wch: 14 }, { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 28 }];
         XLSX.utils.book_append_sheet(wb, ws, cd.name.substring(0, 31));
       });
       XLSX.writeFile(wb, `${t('ivExportFilePrefix')}_${activeSuperCat}_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -629,32 +632,11 @@ function InventoryPage() {
   );
 }
 
-/* ── Image Preview Modal ────────────────────────────────────── */
-/* ── Image Preview Modal ────────────────────────────────────── */
-function ImagePreviewModal({ src, alt, onClose }) {
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
-
-  return ReactDOM.createPortal(
-    <div className="modal-overlay image-preview-overlay" onClick={onClose}>
-      <div className="image-preview-modal" onClick={e => e.stopPropagation()}>
-        <button className="image-preview-close" onClick={onClose}>
-          <XCircle size={22} strokeWidth={2} />
-        </button>
-        <img src={src} alt={alt} className="image-preview-img" />
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 /* ── Item Card ──────────────────────────────────────────────── */
 function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit, onDelete, onOrderRequest, onShowOrders, onShowRequests, getStockStatus, t, compact = false, badges = null }) {
   const status = getStockStatus(item);
-  const formatQty = (val) => isPoudre ? fmt(val) : Math.floor(val);
+  const formatQty = (val) => isPoudre ? fmt(val) : fmtUnitQty(val);
+  const unitOf = (val) => unitLabel(item.unit, language, val); // « pièces », « kg »… (nothing when not set)
   const { user } = useAuth();
   const [previewImage, setPreviewImage] = useState(null);
 
@@ -683,18 +665,36 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
       <div className="item-content">
         <h3>{item.designation[language] || item.designation.fr}</h3>
 
+        {/* Units: what the stock counts + how the article is bought (carton of 100 pièces…).
+            The row is always there (empty without units) so the cards of a grid stay aligned. */}
+        <div className="item-units">
+          {item.unit && (
+            <span className="item-unit-chip" title={t('ivStockUnit')}>
+              <Ruler size={11} strokeWidth={2.2} /><span className="item-unit-chip__txt">{unitLabel(item.unit, language, 2)}</span>
+            </span>
+          )}
+          {item.purchaseUnit && item.purchaseFactor > 0 && (
+            <span className="item-unit-chip item-unit-chip--buy"
+              title={`${t('ivPurchaseUnitShort')} : 1 ${unitLabel(item.purchaseUnit, language)} = ${qtyWithUnit(item.purchaseFactor, item.unit, language)}`}>
+              <Boxes size={11} strokeWidth={2.2} />
+              <span className="item-unit-chip__txt">1 {unitLabel(item.purchaseUnit, language)} = {qtyWithUnit(item.purchaseFactor, item.unit, language)}</span>
+            </span>
+          )}
+        </div>
+
         <div className="quantity-section">
           <div className="qty-col">
             <span className="qty-label">{t('quantity')}</span>
             <span className={`qty-value ${item.quantity < item.threshold ? 'qty-value--low' : ''}`}>
               {formatQty(item.quantity)}
+              {item.unit && <span className="qty-unit">{unitOf(item.quantity)}</span>}
             </span>
           </div>
           {!compact && (
             <>
               <div className="qty-col">
                 <span className="qty-label">{t('orderedQuantity')}</span>
-                <span className="qty-value">{formatQty(item.orderedQuantity || 0)}</span>
+                <span className="qty-value">{formatQty(item.orderedQuantity || 0)}{item.unit && <span className="qty-unit">{unitOf(item.orderedQuantity || 0)}</span>}</span>
               </div>
               <div className="qty-col">
                 <span className="qty-label">{t('threshold')}</span>
@@ -703,7 +703,6 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
             </>
           )}
         </div>
-
         {!compact && (
           <div className={`status-pill status-pill--${status.className}`}>
             {status.icon}
@@ -796,6 +795,8 @@ function QuantityModal({ title, item, language, isPoudre, qty, note, onQtyChange
   onClose, onConfirm, maxQty, confirmLabel, confirmStyle, t, icon }) {
 
   const isDisabled = !qty || parseFloat(qty) <= 0 || (maxQty !== undefined && parseFloat(qty) > maxQty);
+  const decimals = isPoudre || allowsDecimals(item.unit);
+  const unitText = unitLabel(item.unit, language, 2);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -806,20 +807,25 @@ function QuantityModal({ title, item, language, isPoudre, qty, note, onQtyChange
         </div>
         <div className="modal-item-name">
           <strong>{item.designation[language]}</strong>
-          <span className="modal-item-stock">{t('takeOutAvailable')}: {fmt(item.quantity)}</span>
+          <span className="modal-item-stock">{t('takeOutAvailable')}: {qtyWithUnit(item.quantity, item.unit, language)}</span>
         </div>
         <div className="form-group">
-          <label>{t('takeOutQtyLabel')}</label>
+          <label>{t('takeOutQtyLabel')}{unitText && ` (${unitText})`}</label>
           <input
             type="number"
-            min={isPoudre ? 0.01 : 1}
+            min={decimals ? 0.001 : 1}
             max={maxQty}
-            step={isPoudre ? 0.01 : 1}
+            step={decimals ? 'any' : 1}
             value={qty}
             onChange={e => onQtyChange(e.target.value)}
             autoFocus
             className="qty-input"
           />
+          {item.purchaseUnit && item.purchaseFactor > 0 && (
+            <small className="inv-form-hint">
+              {t('ivPurchaseInfo', { one: `1 ${unitLabel(item.purchaseUnit, language)}`, content: qtyWithUnit(item.purchaseFactor, item.unit, language) })}
+            </small>
+          )}
         </div>
         <div className="form-group">
           <label>{t('takeOutNoteLabel')}</label>
@@ -1041,19 +1047,27 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
     threshold: item.threshold,
     categoryId: item.categoryId?.id || item.categoryId?._id || '',
     superCategory: item.superCategory || superCategory,
+    unit: item.unit || '',
+    purchaseUnit: item.purchaseUnit || '',
+    purchaseFactor: item.purchaseUnit ? (item.purchaseFactor || 1) : '',
   } : {
     image: '', designation: { it: '', fr: '', en: '' },
     codeInterne: '', supplierCodes: [],
     quantity: 0, orderedQuantity: 0, threshold: 0, categoryId: '', superCategory,
+    unit: isPoudre ? 'kg' : '', purchaseUnit: '', purchaseFactor: '',
   });
 
-  const parseQty = (val) => isPoudre ? parseFloat(val) || 0 : parseInt(val, 10) || 0;
+  const decimals = isPoudre || allowsDecimals(formData.unit);
+  const parseQty = (val) => decimals ? parseFloat(val) || 0 : parseInt(val, 10) || 0;
+  const factor = Number(formData.purchaseFactor) || 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (formData.purchaseUnit && !(factor > 0)) { await dialog.alert(t('ivPurchaseFactorRequired')); return; }
     const payload = {
       ...formData,
       supplierCodes: (formData.supplierCodes || []).filter(s => s.supplierId),
+      purchaseFactor: formData.purchaseUnit ? factor : 1,
     };
     try {
       if (item) await axios.put(`${API_URL}/inventory/${item.id}`, payload);
@@ -1094,10 +1108,55 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
               {categories.map(c => <option key={c.id} value={c.id}>{c.name[language]}</option>)}
             </select>
           </div>
+
+          {/* Units: what the stock counts + optional purchase unit (carton of 100 pièces…) */}
+          <div className="inv-units">
+            <div className="inv-units__title">{t('ivUnitsTitle')}</div>
+            <div className="inv-units__grid">
+              <div className="form-group inv-units__field">
+                <label>{t('ivStockUnit')}</label>
+                <UnitPicker lang={language} value={formData.unit} placeholder={t('ivStockUnitPh')}
+                  onChange={(u) => setFormData(f => ({ ...f, unit: u }))} />
+              </div>
+              <div className="form-group inv-units__field">
+                <label>{t('ivPurchaseUnitShort')} <span className="inv-units__opt">{t('ivOptional')}</span></label>
+                <UnitPicker lang={language} value={formData.purchaseUnit} placeholder={t('ivPurchaseUnitPh')}
+                  onChange={(u) => setFormData(f => ({ ...f, purchaseUnit: u, purchaseFactor: u ? f.purchaseFactor : '' }))} />
+              </div>
+              <div className={`form-group inv-units__field inv-units__field--eq${formData.purchaseUnit ? '' : ' is-off'}`}>
+                <label>{t('ivContent')}</label>
+                {/* « 1 carton = [100] pièces » */}
+                <div className="inv-units__eq">
+                  <span className="inv-units__eq-side" title={unitLabel(formData.purchaseUnit, language)}>
+                    1 {unitLabel(formData.purchaseUnit, language) || t('ivPurchaseUnitGeneric')} =
+                  </span>
+                  <input type="number" min="0" step="any" disabled={!formData.purchaseUnit}
+                    required={!!formData.purchaseUnit} placeholder={formData.purchaseUnit ? '100' : '—'}
+                    aria-label={t('ivContent')}
+                    value={formData.purchaseFactor}
+                    onChange={e => setFormData(f => ({ ...f, purchaseFactor: e.target.value }))} />
+                  <span className="inv-units__eq-side" title={unitLabel(formData.unit, language, 2)}>
+                    {unitLabel(formData.unit, language, 2) || t('ivStockUnitsGeneric')}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <p className={`inv-units__help${formData.purchaseUnit && factor > 0 ? ' is-example' : ''}`}>
+              {formData.purchaseUnit && factor > 0
+                ? t('ivUnitsExample', {
+                  one: `1 ${unitLabel(formData.purchaseUnit, language)}`,
+                  content: qtyWithUnit(factor, formData.unit, language),
+                  order: `10 ${unitLabel(formData.purchaseUnit, language, 10)}`,
+                  receive: qtyWithUnit(10 * factor, formData.unit, language),
+                })
+                : t('ivUnitsHelp')}
+            </p>
+          </div>
+
           <div className="form-row-3">
             <div className="form-group">
               <label>{t('quantityLabel')}</label>
-              <input type="number" required min="0" step={isPoudre ? '0.01' : '1'} placeholder={isPoudre ? '145.23' : '100'} value={formData.quantity} onChange={e => setFormData({ ...formData, quantity: parseQty(e.target.value) })} />
+              <input type="number" required min="0" step={decimals ? '0.001' : '1'} placeholder={decimals ? '145.23' : '100'} value={formData.quantity} onChange={e => setFormData({ ...formData, quantity: parseQty(e.target.value) })} />
             </div>
             <div className="form-group">
               <label>{t('orderedQuantityLabel')}</label>
@@ -1108,7 +1167,7 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
             </div>
             <div className="form-group">
               <label>{t('thresholdLabel')}</label>
-              <input type="number" required min="0" step={isPoudre ? '0.01' : '1'} placeholder={isPoudre ? '10.50' : '20'} value={formData.threshold} onChange={e => setFormData({ ...formData, threshold: parseQty(e.target.value) })} />
+              <input type="number" required min="0" step={decimals ? '0.001' : '1'} placeholder={decimals ? '10.50' : '20'} value={formData.threshold} onChange={e => setFormData({ ...formData, threshold: parseQty(e.target.value) })} />
             </div>
           </div>
           <div className="modal-actions">

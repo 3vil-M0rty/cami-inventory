@@ -3,6 +3,7 @@ import axios from 'axios';
 import { X, ShoppingCart, ChevronRight, Lock } from 'lucide-react';
 import { PAGE_PATHS, setUrl } from '../../../routes';
 import { useLanguage } from '../../../context/LanguageContext';
+import { unitLabel, qtyWithUnit, lineToStock, isConverted } from '../units';
 import './ItemOrdersModal.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -60,7 +61,7 @@ export default function ItemOrdersModal({ item, language = 'fr', onClose }) {
   const pending = rows
     .filter(r => r.status === 'envoye' || r.status === 'partielle')
     .filter(r => !r.closed)
-    .reduce((s, r) => s + Math.max(0, r.quantityOrdered - r.quantityReceived), 0);
+    .reduce((s, r) => s + lineToStock(r, Math.max(0, r.quantityOrdered - r.quantityReceived)), 0); // in stock units
 
   return (
     <div className="iom-overlay" onClick={onClose}>
@@ -81,7 +82,7 @@ export default function ItemOrdersModal({ item, language = 'fr', onClose }) {
         {!loading && !error && rows.length > 0 && (
           <div className="iom__summary">
             <span><strong>{rows.length - cancelledCount}</strong> {t('ivPoAbbr')}</span>
-            <span>{t('ivRemainingToDeliver')}<strong>{fmtQty(pending)}</strong></span>
+            <span>{t('ivRemainingToDeliver')}<strong>{fmtQty(pending)}{item?.unit ? ` ${unitLabel(item.unit, language, pending)}` : ''}</strong></span>
             {cancelledCount > 0 && (
               <label className="iom__toggle">
                 <input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} />
@@ -121,6 +122,8 @@ export default function ItemOrdersModal({ item, language = 'fr', onClose }) {
                 <div className="iom-row__qty">
                   <div className="iom-row__qty-text">
                     <strong>{fmtQty(r.quantityReceived)}</strong> / {fmtQty(r.quantityOrdered)}
+                    {r.unit && <> {unitLabel(r.unit, language, r.quantityOrdered)}</>}
+                    {isConverted(r) && <div className="iom-row__conv">= {qtyWithUnit(lineToStock(r, r.quantityOrdered), r.stockUnit, language)}</div>}
                   </div>
                   <div className="iom-row__bar">
                     <div style={{ width: `${pct}%`, background: done ? 'var(--success)' : 'var(--info)' }} />

@@ -146,3 +146,4 @@
 @media (max-width: 600px) {
   .item-orders-btn--badge .item-orders-btn__label { display: none; }
 }
+.iom-row__conv { font-size: 11px; color: var(--ink-blue); font-weight: 500; }

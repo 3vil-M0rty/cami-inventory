@@ -33,8 +33,9 @@ const Header = ({ activePage, onNavigate }) => {
   const { user, logout, can } = useAuth();
   // Workshop accounts limited to a few articles: no company filter, oven status or notifications
   const restricted = (user?.restrictedItems || 0) > 0;
-  // read-only accounts (Chef de chantier): no oven switch / laquage notifications to act on
-  const readOnly = can('readonly');
+  // read-only accounts (Chef de chantier): no oven switch / laquage notifications to act on.
+  // Never the admin (same rule as the server).
+  const readOnly = can('readonly') && !can('admin.view');
 
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showChangePwd, setShowChangePwd] = useState(false);

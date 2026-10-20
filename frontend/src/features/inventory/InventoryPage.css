@@ -885,60 +885,6 @@
 
 .image-zoom-overlay svg { filter: drop-shadow(0 1px 4px rgba(0, 0, 0, .6)); }
 
-/* ── Full image preview modal (portal) ───────────────── */
-.image-preview-overlay {
-  background: rgba(0, 0, 0, .9) !important;
-  backdrop-filter: blur(10px);
-  z-index: 1100;
-  padding: 20px;
-}
-
-.image-preview-modal {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  max-width: min(90vw, 860px);
-  max-height: 90vh;
-  animation: slideUp .2s ease;
-}
-
-.image-preview-img {
-  max-width: 100%;
-  max-height: 86vh;
-  object-fit: contain;
-  border-radius: 14px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  padding: 16px;
-  box-shadow: var(--sh-xl);
-}
-
-.image-preview-close {
-  position: absolute;
-  top: -14px;
-  right: -14px;
-  width: 36px;
-  height: 36px;
-  padding: 0 !important;
-  border-radius: 50%;
-  background: var(--surface-2);
-  border: 1px solid var(--border-2);
-  color: var(--text-2);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--t);
-  z-index: 1;
-}
-
-.image-preview-close:hover {
-  background: var(--danger-bg);
-  border-color: var(--danger-bd);
-  color: var(--danger);
-}
-
 /* ── Pagination counter / load more ──────────────────── */
 .inv-count {
   margin: 0 0 12px;
@@ -1451,3 +1397,74 @@
 .inventory-app .item-card--compact .quantity-controls { gap: 8px; }
 .inventory-app .item-card--compact .quantity-controls .qty-btn { flex: 1; width: auto; height: 44px; }
 .inventory-app .item-card--compact .quantity-controls .qty-btn svg { width: 18px; height: 18px; }
+
+/* ── Units ─────────────────────────────────────────────────── */
+.qty-unit { display: block; margin-top: 1px; font-size: 10px; font-weight: 600; color: var(--text-3); letter-spacing: 0; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Unit chips under the article name: stock unit + purchase unit */
+.item-units { display: flex; flex-wrap: nowrap; gap: 5px; min-height: 22px; margin: -2px 0 10px; min-width: 0; overflow: hidden; }
+.item-units:empty { min-height: 0; margin: 0; }
+@media (min-width: 640px) { .items-grid .item-units:empty { min-height: 22px; margin: -2px 0 10px; } } /* aligned grid */
+.item-unit-chip {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; line-height: 1.5;
+  color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.item-unit-chip { flex: 0 0 auto; }
+.item-unit-chip--buy { flex: 0 1 auto; } /* the long one shrinks first (full text in its tooltip) */
+.item-unit-chip svg { flex-shrink: 0; opacity: .75; }
+.item-unit-chip__txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.item-unit-chip--buy { color: var(--ink-blue); background: var(--info-bg); border-color: var(--info-bd); }
+/* Units block of the article form: 3 aligned fields + one help line */
+.inv-units {
+  border: 1px solid var(--border); border-radius: var(--r-lg, 12px);
+  background: var(--surface-2); padding: 14px 14px 12px; margin: 4px 0 16px;
+}
+.inv-units__title {
+  font-size: 11px; font-weight: 800; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: .08em; margin-bottom: 12px;
+}
+.inv-units__grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 640px) {
+  /* the two units side by side, the « 1 carton = 100 pièces » line under them, full width */
+  .inv-units__grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .inv-units__field--eq { grid-column: 1 / -1; }
+}
+.inventory-app .inv-units .inv-units__field { margin: 0; min-width: 0; }
+.inventory-app .inv-units .inv-units__field > label {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.inv-units__opt {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: lowercase;
+  color: var(--text-3); background: var(--surface-3); border-radius: 999px; padding: 1px 7px;
+}
+/* the fields sit on the darker block background: inputs one step lighter */
+.inventory-app .inv-units .unitp input { background-color: var(--surface); height: 40px; }
+
+/* « 1 carton = [100] pièces » — looks like one input */
+.inv-units__eq {
+  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px;
+  border: 1px solid var(--border-2); border-radius: var(--r-md);
+  background: var(--surface); transition: border-color var(--t), box-shadow var(--t), opacity var(--t);
+}
+.inv-units__eq:focus-within { border-color: var(--600); box-shadow: 0 0 0 3px var(--focus); }
+.inv-units__eq-side {
+  flex: 0 1 auto; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.inventory-app .inv-units .inv-units__eq input {
+  flex: 0 0 76px; width: 76px; height: 28px; padding: 0 8px; text-align: center;
+  -moz-appearance: textfield; appearance: textfield;
+  font-weight: 700; font-variant-numeric: tabular-nums;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; box-shadow: none;
+}
+.inventory-app .inv-units .inv-units__eq input:focus { border-color: var(--600); box-shadow: none; }
+.inv-units__eq input::-webkit-outer-spin-button,
+.inv-units__eq input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.inventory-app .inv-units .inv-units__eq input:disabled { background: transparent; border-color: transparent; }
+.inv-units__field.is-off .inv-units__eq { opacity: .45; border-style: dashed; }
+
+.inv-units__help { margin: 12px 0 0; font-size: 12px; line-height: 1.45; color: var(--text-3); }
+.inv-units__help.is-example { color: var(--ink-blue); font-weight: 500; }

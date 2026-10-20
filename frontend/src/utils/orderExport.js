@@ -3,6 +3,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { unitLabel, fmtUnitQty, lineToStock, isConverted } from '../features/inventory/units';
 
 const L = {
   bc:        { fr: 'BON DE COMMANDE', it: 'ORDINE D\'ACQUISTO', en: 'PURCHASE ORDER' },
@@ -13,6 +14,8 @@ const L = {
   codeFour:  { fr: 'Code fourn.',     it: 'Cod. fornitore',     en: 'Supplier code' },
   desig:     { fr: 'Désignation',     it: 'Designazione',       en: 'Designation' },
   qty:       { fr: 'Qté',             it: 'Q.tà',               en: 'Qty' },
+  xUnit:     { fr: 'Unité',           it: 'Unità',              en: 'Unit' },
+  xStockQty: { fr: 'Soit (stock)',    it: 'Pari a (magazzino)', en: 'Equals (stock)' },
   pu:        { fr: 'P.U. HT',         it: 'P.U.',               en: 'Unit price' },
   total:     { fr: 'Total HT',        it: 'Totale',             en: 'Total' },
   totalHT:   { fr: 'Total HT',        it: 'Totale imponibile',  en: 'Subtotal' },
@@ -105,7 +108,9 @@ export async function exportOrderPDF(order, lang = 'fr', company = null, { hideP
       it.codeInterne || '',
       supplierCodeFor(it, supplier),
       (it.designation?.[lang] || it.designation?.fr || tr('article', lang)) + (l.note ? `\n${l.note}` : ''),
-      String(l.quantityOrdered || 0),
+      // « 10 cartons » + « (1000 pièces) » when the line is ordered in a purchase unit
+      [fmtUnitQty(l.quantityOrdered || 0), unitLabel(l.unit, lang, l.quantityOrdered)].filter(Boolean).join(' ')
+        + (isConverted(l) ? `\n(${fmtUnitQty(lineToStock(l, l.quantityOrdered))} ${unitLabel(l.stockUnit, lang, 2)})`.replace(' )', ')') : ''),
       ...(hidePrices ? [] : [money(l.unitPrice), money(lineTotal)]),
     ];
   });
@@ -172,6 +177,8 @@ export function exportOrdersExcel(orders, lang = 'fr', { hidePrices = false } = 
         [tr('desig', lang)]: it.designation?.[lang] || it.designation?.fr || '',
         [tr('xQtyOrd', lang)]: l.quantityOrdered,
         [tr('xQtyRec', lang)]: l.quantityReceived || 0,
+        [tr('xUnit', lang)]: unitLabel(l.unit, lang, 2),
+        [tr('xStockQty', lang)]: isConverted(l) ? `${fmtUnitQty(lineToStock(l, l.quantityOrdered))} ${unitLabel(l.stockUnit, lang, 2)}`.trim() : '',
         ...(hidePrices ? {} : {
           [tr('pu', lang)]: l.unitPrice || 0,
           [tr('total', lang)]: (l.quantityOrdered || 0) * (l.unitPrice || 0),

@@ -6,6 +6,8 @@ import { Check, CheckCheck, Eye, FileText, FileImage, Package, PackageCheck, X, 
 import { useLanguage } from '../../context/LanguageContext';
 import { errorMessage } from '../../components/common/dialog';
 import { openDocument, fileBase, deleteOrderDocument } from './TrackingDocuments';
+import { unitLabel, qtyWithUnit, fmtUnitQty, lineFactor, lineToStock, isConverted } from '../inventory/units';
+import { ZoomImg } from '../../components/common/ImagePreview';
 import './ReceiveBatch.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -118,6 +120,11 @@ export function ReceiveBatchModal({ order, docs, lang, canReceiveLine, initialBl
   const mine = open.filter(canReceiveLine);
   const others = open.length - mine.length;
   const remaining = (l) => Math.max(0, l.quantityOrdered - (l.quantityReceived || 0));
+  // A line ordered in cartons of 100 is received in pièces (what is counted at the door): the inputs and the
+  // « rest » are in the stock unit for those lines, and sent back to the server in cartons.
+  const restIn = (l) => (isConverted(l) ? lineToStock(l, remaining(l)) : remaining(l));
+  const toLineQty = (l, typed) => (isConverted(l) ? Math.round((typed / lineFactor(l)) * 1e6) / 1e6 : typed);
+  const inputUnit = (l) => (isConverted(l) ? l.stockUnit : l.unit);
   const val = (l) => Number(qty[lineKey(l)] || 0);
   const chosen = mine.filter(l => val(l) > 0);
   const total = chosen.reduce((s, l) => s + val(l), 0);
@@ -130,7 +137,7 @@ export function ReceiveBatchModal({ order, docs, lang, canReceiveLine, initialBl
     return () => window.removeEventListener('keydown', k);
   }, [onClose, saving]);
 
-  const fillAll = () => setQty(Object.fromEntries(mine.map(l => [lineKey(l), String(remaining(l))])));
+  const fillAll = () => setQty(Object.fromEntries(mine.map(l => [lineKey(l), fmtUnitQty(restIn(l))])));
   const clearAll = () => setQty({});
 
   const submit = async () => {
@@ -141,7 +148,7 @@ export function ReceiveBatchModal({ order, docs, lang, canReceiveLine, initialBl
     try {
       const r = await axios.post(`${API_URL}/orders/${order.id}/receive-batch`, {
         blNumber: bl.trim(),
-        lines: chosen.map(l => ({ lineId: lineKey(l), quantity: val(l) })),
+        lines: chosen.map(l => ({ lineId: lineKey(l), quantity: toLineQty(l, val(l)) })),
         attachDocIds: attach,
       });
       onDone(r.data);
@@ -218,25 +225,35 @@ export function ReceiveBatchModal({ order, docs, lang, canReceiveLine, initialBl
               {mine.map(l => {
                 const it = l.itemId || {};
                 const name = it.designation?.[lang] || it.designation?.fr || it.codeInterne || t('orArticle');
-                const rest = remaining(l);
+                const rest = restIn(l);
                 const v = val(l);
-                const over = v > rest;
+                const over = v > rest + 1e-9;
+                const conv = isConverted(l);
                 return (
                   <li key={lineKey(l)} className={v > 0 ? 'is-set' : ''}>
-                    <span className="rb-lines__img">{it.image ? <img src={it.image} alt="" loading="lazy" /> : <Package size={14} />}</span>
+                    <span className="rb-lines__img">{it.image ? <ZoomImg src={it.image} alt={name} /> : <Package size={14} />}</span>
                     <span className="rb-lines__name">
                       <strong title={name}>{name}</strong>
-                      <span>{it.codeInterne ? `${it.codeInterne} · ` : ''}{t('rbReceivedOf', { r: l.quantityReceived || 0, o: l.quantityOrdered })}</span>
+                      <span>
+                        {it.codeInterne ? `${it.codeInterne} · ` : ''}
+                        {t('rbReceivedOf', { r: fmtUnitQty(l.quantityReceived || 0), o: fmtUnitQty(l.quantityOrdered) })}
+                        {l.unit && ` ${unitLabel(l.unit, lang, l.quantityOrdered)}`}
+                        {conv && ` (${t('rbUnitIs', { one: `1 ${unitLabel(l.unit, lang)}`, content: qtyWithUnit(lineFactor(l), l.stockUnit, lang) })})`}
+                      </span>
                     </span>
                     <span className="rb-lines__qty">
-                      <input type="number" min="0" inputMode="numeric" value={qty[lineKey(l)] ?? ''} placeholder="0"
+                      <input type="number" min="0" step="any" inputMode="decimal" value={qty[lineKey(l)] ?? ''} placeholder="0"
                         className={over ? 'is-over' : ''} aria-label={t('rbQtyNow')}
                         onChange={e => setQty(q => ({ ...q, [lineKey(l)]: e.target.value }))} />
-                      <button type="button" className="rb-rest" onClick={() => setQty(q => ({ ...q, [lineKey(l)]: String(rest) }))} title={t('rbFillRest')}>
-                        / {rest}
+                      <button type="button" className="rb-rest" onClick={() => setQty(q => ({ ...q, [lineKey(l)]: fmtUnitQty(rest) }))} title={t('rbFillRest')}>
+                        / {fmtUnitQty(rest)}
                       </button>
+                      {inputUnit(l) && <span className="rb-lines__unit">{unitLabel(inputUnit(l), lang, 2)}</span>}
                     </span>
-                    {over && <span className="rb-over"><AlertTriangle size={12} /> {t('rbOver', { n: v - rest })}</span>}
+                    {conv && v > 0 && (
+                      <span className="rb-conv">= {qtyWithUnit(toLineQty(l, v), l.unit, lang)}</span>
+                    )}
+                    {over && <span className="rb-over"><AlertTriangle size={12} /> {t('rbOver', { n: fmtUnitQty(v - rest) })}</span>}
                   </li>
                 );
               })}

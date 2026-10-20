@@ -1,0 +1,60 @@
+/* ── Full image preview modal (portal) ───────────────── */
+.image-preview-overlay {
+  background: rgba(0, 0, 0, .9) !important;
+  backdrop-filter: blur(10px);
+  z-index: 1300; /* above every window (order detail, reception…) */
+  padding: 20px;
+}
+
+.image-preview-modal {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: min(90vw, 860px);
+  max-height: 90vh;
+  animation: slideUp .2s ease;
+}
+
+.image-preview-img {
+  /* fits the image: a small image is enlarged (proportions kept), a large one fits the screen */
+  width: auto; height: auto;
+  min-width: min(60vw, 420px);
+  max-width: min(86vw, 760px);
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+}
+
+.image-preview-close {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  width: 36px;
+  height: 36px;
+  padding: 0 !important;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  color: var(--text-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--t);
+  z-index: 1;
+}
+
+.image-preview-close:hover {
+  background: var(--danger-bg);
+  border-color: var(--danger-bd);
+  color: var(--danger);
+}
+
+/* Small image that can be zoomed (purchase orders…) */
+.zoom-img { cursor: zoom-in; transition: transform .15s ease, filter .15s ease; }
+.zoom-img:hover { transform: scale(1.06); filter: brightness(1.08); }
+.zoom-img:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }

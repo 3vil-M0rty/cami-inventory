@@ -218,6 +218,12 @@ const itemSchema = new mongoose.Schema({
     code: { type: String, default: '' },
   }],
   superCategory: { type: String, default: 'aluminium' },
+  // Units. `unit` = what `quantity` counts (pièce, kg, barre…). Optional purchase unit: the article is
+  // bought by `purchaseUnit` (carton, palette…) holding `purchaseFactor` stock units (carton of 100 → 100).
+  // Empty = not set (articles created before the units keep working exactly as before).
+  unit: { type: String, default: '', trim: true, maxlength: 40 },
+  purchaseUnit: { type: String, default: '', trim: true, maxlength: 40 },
+  purchaseFactor: { type: Number, default: 1, min: 0.000001 },
   // Lowercase, accent-free copy of designations + codes, kept in sync on save → fast server-side search
   searchText: { type: String, default: '', select: false },
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; delete ret.searchText; } } });
@@ -271,6 +277,12 @@ const orderLineSchema = new mongoose.Schema({
   quantityReceived: { type: Number, default: 0, min: 0 },
   unitPrice: { type: Number, default: 0 },
   note: { type: String, default: '' },
+  // Unit the line is ordered in, frozen when the line is written: quantityOrdered / quantityReceived and the
+  // receptions count `unit`s, the stock moves by quantity × factor (10 cartons × 100 = 1000 pièces).
+  // Old lines: '' and 1 → stock moves by the quantity itself, as before.
+  unit: { type: String, default: '' },
+  stockUnit: { type: String, default: '' },
+  factor: { type: Number, default: 1, min: 0.000001 },
   // Line closed although not fully received (e.g. 198 / 200): the rest will never come,
   // so it no longer counts in Item.orderedQuantity and the line counts as complete.
   closed: { type: Boolean, default: false },
@@ -1059,15 +1071,17 @@ async function seedSuperCategories() {
 
 async function createDefaultAdminUser() {
   let adminRole = await Role.findOne({ name: 'Admin' });
+  // Admin gets every permission except « readonly » (that one restricts an account, it is not a right)
+  const ADMIN_PERMISSIONS = ALL_PERMISSIONS.filter(p => p !== 'readonly');
   if (!adminRole) {
-    adminRole = await Role.create({ name: 'Admin', permissions: ALL_PERMISSIONS, color: '#1a1a1a', isSystem: true });
+    adminRole = await Role.create({ name: 'Admin', permissions: ADMIN_PERMISSIONS, color: '#1a1a1a', isSystem: true });
     console.log('✅ Admin role created');
   } else {
-    const missing = ALL_PERMISSIONS.filter(p => !adminRole.permissions.includes(p));
-    if (missing.length > 0) {
-      adminRole.permissions = ALL_PERMISSIONS;
+    const missing = ADMIN_PERMISSIONS.filter(p => !adminRole.permissions.includes(p));
+    if (missing.length > 0 || adminRole.permissions.includes('readonly')) {
+      adminRole.permissions = [...new Set([...adminRole.permissions.filter(p => p !== 'readonly'), ...ADMIN_PERMISSIONS])];
       await adminRole.save();
-      console.log('✅ Admin role synced, added:', missing.join(', '));
+      console.log('✅ Admin role synced', missing.length ? `, added: ${missing.join(', ')}` : '', '(readonly removed if present)');
     }
   }
   const existing = await User.findOne({ username: 'admin' });
@@ -1664,7 +1678,7 @@ app.get('/api/inventory/lookup', optionalAuth, async (req, res) => {
     if (and.length) filter.$and = and;
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
     const rows = await Item.find(filter)
-      .select('designation codeInterne image superCategory categoryId quantity threshold orderedQuantity supplierCodes.code')
+      .select('designation codeInterne image superCategory categoryId quantity threshold orderedQuantity supplierCodes.code unit purchaseUnit purchaseFactor')
       .sort({ createdAt: -1, _id: -1 })
       .limit(limit + 1)
       .populate('categoryId', 'name color')
@@ -1798,6 +1812,7 @@ app.post('/api/inventory', optionalAuth, async (req, res) => {
       superCategory: sc,
       codeInterne: req.body.codeInterne || '',
       supplierCodes: sanitizeSupplierCodes(req.body.supplierCodes),
+      ...sanitizeItemUnits(req.body),
     });
     await item.save();
     if (item.quantity > 0) await StockMovement.create({ itemId: item._id, type: 'initial', quantity: item.quantity, balanceAfter: item.quantity, note: 'Stock initial' });
@@ -1820,6 +1835,7 @@ app.put('/api/inventory/:id', optionalAuth, async (req, res) => {
       superCategory: sc,
       codeInterne: req.body.codeInterne || '',
       supplierCodes: sanitizeSupplierCodes(req.body.supplierCodes),
+      ...sanitizeItemUnits(req.body),
       searchText: buildItemSearchText({ designation: req.body.designation, codeInterne: req.body.codeInterne, supplierCodes: req.body.supplierCodes }),
     }, { new: true, runValidators: true }).populate('categoryId');
     if (!item) return res.status(404).json({ error: 'Not found' });
@@ -1895,7 +1911,7 @@ const populateOrder = (q) => q
 
 // Fast version for the orders LIST: plain objects (lean) + only the article fields the page uses.
 // Adds the `id` fields the frontend expects (toJSON is not applied on lean documents).
-const ORDER_LIST_ITEM_FIELDS = 'designation image codeInterne supplierCodes categoryId superCategory';
+const ORDER_LIST_ITEM_FIELDS = 'designation image codeInterne supplierCodes categoryId superCategory unit purchaseUnit purchaseFactor';
 const withId = (d) => (d && typeof d === 'object' && d._id ? Object.assign(d, { id: String(d._id) }) : d);
 // Changes whenever an order / article / company / supplier is created, edited or deleted
 async function ordersListVersion() {
@@ -1927,24 +1943,67 @@ async function findOrdersForList(filter) {
   return orders;
 }
 
-// Item.orderedQuantity = sum of (quantityOrdered - quantityReceived) over every
+// Item.orderedQuantity = sum of (quantityOrdered - quantityReceived) × line factor over every
 // SENT order (envoye / partielle), closed lines excluded. Recomputed from the orders themselves instead of
 // $inc counters, so it can never drift (e.g. after an inventory edit overwrote it).
 const PENDING_ORDER_STATUSES = ['envoye', 'partielle'];
+
+// ── Units ──
+// Stock quantity for `q` units of an order line (3 decimals, so 333.333 × 3 gives 1000 and not 999.999)
+const lineFactor = (line) => (line && line.factor > 0 ? line.factor : 1);
+const toStock = (line, q) => Math.round((Number(q) || 0) * lineFactor(line) * 1000) / 1000;
+// « 10 carton × 100 = 1000 pièce » for the stock history notes (nothing when the line is in stock units)
+const unitNote = (line, q) => (lineFactor(line) !== 1
+  ? ` (${q} ${line.unit || ''} × ${lineFactor(line)} = ${toStock(line, q)} ${line.stockUnit || ''})`.replace(/ +\)/, ')').replace(/ +/g, ' ')
+  : '');
+// Units of an article, from a create / edit form: only the fields sent (a form without them keeps the article's)
+function sanitizeItemUnits(body) {
+  const out = {};
+  const clean = (v) => String(v ?? '').trim().slice(0, 40);
+  if (body.unit !== undefined) out.unit = clean(body.unit);
+  if (body.purchaseUnit !== undefined) out.purchaseUnit = clean(body.purchaseUnit);
+  if (body.purchaseFactor !== undefined) {
+    const f = Number(body.purchaseFactor);
+    out.purchaseFactor = Number.isFinite(f) && f > 0 ? Math.round(f * 1e6) / 1e6 : 1;
+  }
+  if (out.purchaseUnit === '') out.purchaseFactor = 1; // no purchase unit → bought in stock units
+  return out;
+}
+// Unit of a new / edited order line, frozen on the line. `unitMode`: 'achat' = the article's purchase unit
+// (default when it has one), 'stock' = its stock unit. A line already (partly) received keeps its unit.
+function lineUnits(l, item, existing) {
+  if (existing && ((existing.quantityReceived || 0) > 0 || l.unitMode === undefined)) {
+    return { unit: existing.unit || '', stockUnit: existing.stockUnit || '', factor: lineFactor(existing) };
+  }
+  const stockUnit = item?.unit || '';
+  const hasPurchase = !!(item?.purchaseUnit && item.purchaseFactor > 0);
+  if (hasPurchase && l.unitMode !== 'stock') return { unit: item.purchaseUnit, stockUnit, factor: item.purchaseFactor };
+  return { unit: stockUnit, stockUnit, factor: 1 };
+}
+const itemsById = async (lines) => {
+  const ids = [...new Set((lines || []).map(l => String(l.itemId?._id || l.itemId?.id || l.itemId || '')).filter(id => mongoose.Types.ObjectId.isValid(id)))];
+  const items = await Item.find({ _id: { $in: ids } }).select('unit purchaseUnit purchaseFactor').lean();
+  return new Map(items.map(i => [String(i._id), i]));
+};
+
 async function recomputeOrderedQuantity(itemIds) {
   const ids = [...new Set((itemIds || []).filter(Boolean).map(id => String(id._id || id)))]
     .map(id => new mongoose.Types.ObjectId(id));
   if (!ids.length) return;
-  const rows = await Order.aggregate([
-    { $match: { status: { $in: PENDING_ORDER_STATUSES }, 'lines.itemId': { $in: ids } } },
-    { $unwind: '$lines' },
-    { $match: { 'lines.itemId': { $in: ids }, 'lines.closed': { $ne: true } } },
-    { $group: {
-      _id: '$lines.itemId',
-      pending: { $sum: { $max: [0, { $subtract: ['$lines.quantityOrdered', { $ifNull: ['$lines.quantityReceived', 0] }] }] } },
-    } },
-  ]);
-  const pendingById = new Map(rows.map(r => [String(r._id), r.pending]));
+  // still to come per article, in stock units (a line ordered in cartons of 100 counts × 100)
+  const orders = await Order.find({ status: { $in: PENDING_ORDER_STATUSES }, 'lines.itemId': { $in: ids } })
+    .select('lines.itemId lines.quantityOrdered lines.quantityReceived lines.closed lines.factor').lean();
+  const wanted = new Set(ids.map(String));
+  const pendingById = new Map();
+  for (const o of orders) {
+    for (const l of o.lines || []) {
+      const id = String(l.itemId);
+      if (!wanted.has(id) || l.closed) continue;
+      const rest = Math.max(0, (l.quantityOrdered || 0) - (l.quantityReceived || 0));
+      pendingById.set(id, (pendingById.get(id) || 0) + toStock(l, rest));
+    }
+  }
+  for (const [id, v] of pendingById) pendingById.set(id, Math.round(v * 1000) / 1000);
   await Item.bulkWrite(ids.map(id => ({
     updateOne: { filter: { _id: id }, update: { $set: { orderedQuantity: pendingById.get(String(id)) || 0 } } },
   })));
@@ -2069,6 +2128,7 @@ app.get('/api/inventory/:id/orders', requireAuth, requireOrdersView, async (req,
           quantityOrdered: l.quantityOrdered || 0,
           quantityReceived: l.quantityReceived || 0,
           unitPrice: l.unitPrice || 0,
+          unit: l.unit || '', stockUnit: l.stockUnit || '', factor: lineFactor(l),
           closed: !!l.closed,
           lastReceptionAt: lastReception?.receivedAt || null,
           lastBlNumber: lastReception?.blNumber || '',
@@ -2250,6 +2310,7 @@ app.post('/api/orders', requireAuth, requireOrderWrite, async (req, res) => {
     }
 
     await assertOrderItemsExist(req.body.lines);
+    const lineItems = await itemsById(req.body.lines);
 
     const o = new Order({
       reference: req.body.reference || '',
@@ -2271,6 +2332,7 @@ app.post('/api/orders', requireAuth, requireOrderWrite, async (req, res) => {
         quantityReceived: 0,
         unitPrice: Number(l.unitPrice) || 0,
         note: l.note || '',
+        ...lineUnits(l, lineItems.get(String(l.itemId?._id || l.itemId?.id || l.itemId))),
       })),
     });
 
@@ -2363,7 +2425,7 @@ app.put('/api/orders/:id', requireAuth, requireOrderWrite, async (req, res) => {
       for (const l of o.lines) {
         if (incomingIds.has(String(l._id))) continue; // still present, handled below
 
-        const received = l.quantityReceived || 0;
+        const received = toStock(l, l.quantityReceived || 0); // in stock units
 
         if (received > 0) {
           const item = await Item.findById(l.itemId);
@@ -2381,6 +2443,7 @@ app.put('/api/orders/:id', requireAuth, requireOrderWrite, async (req, res) => {
       }
 
       // 2) Rebuild lines array (orderedQuantity is recomputed after save)
+      const lineItems = await itemsById(req.body.lines);
       const newLines = [];
       for (const l of req.body.lines) {
         const existing = l._id ? existingById.get(String(l._id)) : null;
@@ -2394,6 +2457,7 @@ app.put('/api/orders/:id', requireAuth, requireOrderWrite, async (req, res) => {
           quantityReceived: receivedQty,
           unitPrice: Number(l.unitPrice) || 0,
           note: l.note || '',
+          ...lineUnits(l, lineItems.get(String(l.itemId?._id || l.itemId?.id || l.itemId)), existing),
           closed: existing ? !!existing.closed : false,
           closedAt: existing ? existing.closedAt : null,
           closedBy: existing ? existing.closedBy : '',
@@ -2473,12 +2537,15 @@ app.post('/api/orders/:id/receive-batch', requireAuth, async (req, res) => {
     for (const { line, item, quantity } of plan) {
       line.quantityReceived = (line.quantityReceived || 0) + quantity;
       if (item) {
-        item.quantity += quantity;
-        await item.save();
+        const stockQty = toStock(line, quantity); // cartons → pièces
+        // added in the database ($inc), not from the article read above: the same article can be on
+        // two lines of the order, the second reception must not overwrite the first one
+        await Item.updateOne({ _id: item._id }, { $inc: { quantity: stockQty } });
+        const after = await Item.findById(item._id).select('quantity').lean();
         await StockMovement.create({
-          itemId: item._id, type: 'order_reception', quantity,
-          balanceAfter: item.quantity, orderId: o._id,
-          note: `Réception ${o.number || o.reference} — BL ${blNumber}`,
+          itemId: item._id, type: 'order_reception', quantity: stockQty,
+          balanceAfter: after?.quantity ?? 0, orderId: o._id,
+          note: `Réception ${o.number || o.reference} — BL ${blNumber}${unitNote(line, quantity)}`,
         });
       }
       o.receptions.push({ lineId: line._id, quantityReceived: quantity, blNumber, receivedBy: by, receivedAt: now });
@@ -2541,12 +2608,13 @@ app.patch('/api/orders/:id/receive', requireAuth, async (req, res) => {
 
     const item = await Item.findById(line.itemId);
     if (item) {
-      item.quantity += newlyReceived;
+      const stockQty = toStock(line, newlyReceived); // cartons → pièces
+      item.quantity += stockQty;
       await item.save();
       await StockMovement.create({
-        itemId: item._id, type: 'order_reception', quantity: newlyReceived,
+        itemId: item._id, type: 'order_reception', quantity: stockQty,
         balanceAfter: item.quantity, orderId: o._id,
-        note: `Réception ${o.number || o.reference} — BL ${blNumber.trim()}`,
+        note: `Réception ${o.number || o.reference} — BL ${blNumber.trim()}${unitNote(line, newlyReceived)}`,
       });
     }
 
@@ -2602,7 +2670,7 @@ app.post('/api/orders/:id/receptions/:receptionId/cancel', requireAuth, async (r
     if (!isAdmin(req) && !(await canReceiveOrderLine(req, o, line.itemId)))
       return res.status(403).json({ error: 'Vous ne pouvez pas annuler cette réception.' });
 
-    const qty = rec.quantityReceived || 0;
+    const qty = toStock(line, rec.quantityReceived || 0); // in stock units
     const blLabel = `${o.number || o.reference} — BL ${rec.blNumber}`;
 
     // Take the quantity back out of the stock. If part of it was already used, ask for confirmation
@@ -2622,7 +2690,7 @@ app.post('/api/orders/:id/receptions/:receptionId/cancel', requireAuth, async (r
       });
     }
 
-    line.quantityReceived = Math.max(0, (line.quantityReceived || 0) - qty);
+    line.quantityReceived = Math.max(0, (line.quantityReceived || 0) - (rec.quantityReceived || 0));
     rec.cancelled = true;
     rec.cancelledAt = new Date();
     rec.cancelledBy = req.user?.displayName || req.user?.username || '';
@@ -2661,16 +2729,18 @@ app.patch('/api/orders/:id/receptions/:receptionId', requireAuth, async (req, re
     const delta = newQty - oldQty;
     if (delta === 0) return res.status(400).json({ error: 'La quantité est inchangée.' });
 
-    // Stock: +delta when raising; -delta when lowering (confirmation asked if part was already used)
-    let item, moved = Math.abs(delta);
+    // Stock: +delta when raising; -delta when lowering (confirmation asked if part was already used).
+    // delta counts line units (cartons); the stock moves by stockDelta (pièces)
+    const stockDelta = toStock(line, delta);
+    let item, moved = Math.abs(stockDelta);
     if (delta > 0) {
-      item = await Item.findByIdAndUpdate(line.itemId, { $inc: { quantity: delta } }, { new: true });
+      item = await Item.findByIdAndUpdate(line.itemId, { $inc: { quantity: stockDelta } }, { new: true });
     } else {
-      const out = await takeOutStock(line.itemId, -delta, !!req.body.force);
+      const out = await takeOutStock(line.itemId, -stockDelta, !!req.body.force);
       if (out.conflict) {
         return res.status(409).json({
-          code: 'INSUFFICIENT_STOCK', needed: -delta, available: out.conflict.available,
-          error: `Le stock actuel (${out.conflict.available}) est inférieur aux ${-delta} à retirer : une partie a déjà été utilisée.`,
+          code: 'INSUFFICIENT_STOCK', needed: -stockDelta, available: out.conflict.available,
+          error: `Le stock actuel (${out.conflict.available}) est inférieur aux ${-stockDelta} à retirer : une partie a déjà été utilisée.`,
         });
       }
       item = out.item;

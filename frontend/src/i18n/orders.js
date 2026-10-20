@@ -339,6 +339,11 @@ const fr = {
     acTermDefault: 'Par défaut (BC sans société ou société sans délai)',
     acTermPerCompanyHint: 'Chaque bon de commande prend le délai de sa société ; laissez « Non défini » pour utiliser le délai par défaut.',
     acTermOthers: 'autres :',
+    orLineUnit: 'Unité',
+    orLineUnitLocked: 'Ligne déjà réceptionnée : l\'unité ne peut plus changer.',
+    orStockUnitGeneric: 'unité de stock',
+    orUnitConvTitle: '1 unité commandée = {n} en stock',
+    rbUnitIs: '{one} = {content}',
 };
 
 const it = {
@@ -673,6 +678,11 @@ const it = {
     acTermDefault: 'Predefinito (ordini senza società o società senza termine)',
     acTermPerCompanyHint: 'Ogni ordine usa il termine della sua società; lascia « Non definito » per usare quello predefinito.',
     acTermOthers: 'altre:',
+    orLineUnit: 'Unità',
+    orLineUnitLocked: 'Riga già ricevuta: l\'unità non può più cambiare.',
+    orStockUnitGeneric: 'unità di magazzino',
+    orUnitConvTitle: '1 unità ordinata = {n} in magazzino',
+    rbUnitIs: '{one} = {content}',
 };
 
 const en = {
@@ -1007,6 +1017,11 @@ const en = {
     acTermDefault: 'Default (orders without company or company without a term)',
     acTermPerCompanyHint: 'Each order uses the term of its company; leave « Not set » to use the default one.',
     acTermOthers: 'others:',
+    orLineUnit: 'Unit',
+    orLineUnitLocked: 'Line already received: the unit can no longer change.',
+    orStockUnitGeneric: 'stock unit',
+    orUnitConvTitle: '1 ordered unit = {n} in stock',
+    rbUnitIs: '{one} = {content}',
 };
 
 export default { fr, it, en };
