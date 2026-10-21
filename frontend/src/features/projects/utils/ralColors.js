@@ -1,7 +1,7 @@
 // RAL Classic colour chart: code, French name, screen colour (sRGB approximation — the real powder may
 // differ slightly on screen; the reference stays the physical RAL chart).
 const RAL = [
-  ['support encastré', 'brut', '#00000000']
+  ['support encastré', 'brut', '#00000000'],
   ['1000', 'Beige vert', '#BEBD7F'], ['1001', 'Beige', '#C2B078'], ['1002', 'Jaune sable', '#C6A664'],
   ['1003', 'Jaune de sécurité', '#E5BE01'], ['1004', 'Jaune or', '#CDA434'], ['1005', 'Jaune miel', '#A98307'],
   ['1006', 'Jaune maïs', '#E4A010'], ['1007', 'Jaune narcisse', '#DC9D00'], ['1011', 'Beige brun', '#8A6642'],
