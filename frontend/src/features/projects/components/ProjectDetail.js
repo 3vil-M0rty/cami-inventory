@@ -7,7 +7,7 @@ import { dialog } from '../../../components/common/dialog';
 import ChassisForm from './ChassisForm';
 import ChassisTypeManager from './ChassisTypeManager';
 import UsedBarsPanel from './UsedBarsPanel';
-import LabelPrint, { buildLabelHTML } from './LabelPrint';
+import LabelPrint, { buildLabelHTML, LabelModelSwitch, useLabelModel } from './LabelPrint';
 import { exportProjectPDF, exportBarsPDF } from '../utils/pdfExport';
 import { fetchChassisTypes, buildChassisLabels, CHASSIS_LABELS as STATIC_LABELS } from './ChassisTypesConfig';
 import { BarresLaquerPanel, AccessoiresLaquerPanel } from './LaquagePanel';
@@ -2389,6 +2389,8 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
       .catch(() => setAtelierTableOptions(['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 6', 'Table 7', 'Table 8']));
   }, []);
 
+  // ticket model for the print buttons of the list (Standard / Grand repère), remembered on this computer
+  const [labelModel, setLabelModelState] = useLabelModel();
   const startBatchPrint = () => {
     const toPrint = [];
     for (const row of rows) {
@@ -2397,7 +2399,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
       else if (row.kind === 'component') { const rl = row.comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${row.ci}`; toPrint.push({ ...row.ch, _printRowIndex: row.unitIndex, _totalQty: row.ch.quantity || 1, _component: { repere: row.comp.repere || rl, roleLabel: rl, largeur: row.comp.largeur, hauteur: row.comp.hauteur } }); }
     }
     if (!toPrint.length) return;
-    const html = buildLabelHTML(toPrint, project, chassisLabels, language);
+    const html = buildLabelHTML(toPrint, project, chassisLabels, language, labelModel);
     const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
   };
 
@@ -2421,8 +2423,9 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
     Magasinier: ['bars', 'accessoires_laquer', 'documents'],
     LOGISTIQUE: ['chassis', 'bl', 'documents'],
     'Coordinateur-vitrage': ['chassis', 'bl', 'documents'],
-    // consultation only (read-only account): the chassis and the documents (OF, plans…)
+    // consultation only (read-only accounts): the chassis and the documents (OF, plans…)
     'Chef de chantier': ['chassis', 'documents'],
+    'Chef atelier': ['chassis', 'documents'],
   };
   const visibleTabs = adminThing ? detailTabs : detailTabs.filter(sc => (ROLE_TAB_ACCESS[userRole] || []).includes(sc.key));
   // Tab from the URL not allowed for this role (or unknown) → first tab the role can see
@@ -2536,7 +2539,12 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                   </button>
                 )}
 
-                {selectedKeys.size > 0 && adminThing && <button className="print-selected-btn" onClick={startBatchPrint}><Printer size={14} /> {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})</button>}
+                {selectedKeys.size > 0 && adminThing && (
+                  <>
+                    <LabelModelSwitch compact value={labelModel} onChange={setLabelModelState} />
+                    <button className="print-selected-btn" onClick={startBatchPrint}><Printer size={14} /> {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})</button>
+                  </>
+                )}
                 {selectedKeys.size > 0 && stateThing && (() => {
                   // Determine which états the current user can bulk-set
                   // Use a sample etat to compute allowed (LOGISTIQUE is restricted to pret_a_livrer rows)
@@ -2696,7 +2704,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                             <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, _originalId: chId }); setShowChassisForm(true); }}><Pencil size={14} /></button>
                             {adminOnly && <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}><Wrench size={14} /></button>}
                             {adminOnly && (<button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}><Printer size={14} /></button>)}
-                            {adminOnly && (<button className="print-btn" onClick={() => { const toPrint = ch.components.map((comp, ci) => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; return { ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }; }); const html = buildLabelHTML(toPrint, project, chassisLabels, language); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}><Tag size={14} /></button>)}
+                            {adminOnly && (<button className="print-btn" onClick={() => { const toPrint = ch.components.map((comp, ci) => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; return { ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }; }); const html = buildLabelHTML(toPrint, project, chassisLabels, language, labelModel); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}><Tag size={14} /></button>)}
                             <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}><Trash2 size={14} /></button>
                           </div>}</td>
                         </tr>

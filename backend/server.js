@@ -2867,10 +2867,19 @@ function dueDate(base, delai, finDeMois) {
 }
 
 // One row per (order, BL), with invoice + payment follow-up. Shared by the Suivi table and the supplier figures.
+// ?company=<id> → that company's orders only; ?company=none → orders without company; else all
+function companyOrderFilter(req) {
+  const company = String(req.query.company || '');
+  if (company === 'none') return { companyId: null };
+  if (mongoose.Types.ObjectId.isValid(company)) return { companyId: new mongoose.Types.ObjectId(company) };
+  return {};
+}
+
 async function buildTrackingRows(orderFilter) {
   const orders = await Order.find(orderFilter)
     .select('number reference orderDate tva status companyId supplier supplierId lines._id lines.quantityOrdered lines.unitPrice receptions.blNumber receptions.cancelled receptions.lineId receptions.quantityReceived receptions.receivedAt')
     .populate('supplierId', 'name delaiPaiement finDeMois termsByCompany')
+    .populate('companyId', 'name color')
     .sort({ orderDate: -1 })
     .lean();
   // Older orders only carry the supplier name: find their supplier (and its payment term) by name
@@ -2922,6 +2931,9 @@ async function buildTrackingRows(orderFilter) {
         ? Math.floor((today - echeance) / 86400000) + 1 : 0;
       return {
         orderId: String(o._id), blNumber, date, supplierName, supplierId: sup?._id ? String(sup._id) : null, orderNumber,
+        // the company that placed the order (CAMI, GIMAV…)
+        companyId: o.companyId?._id ? String(o.companyId._id) : null,
+        companyName: o.companyId?.name || '', companyColor: o.companyId?.color || '',
         montantBC, montantBL, status: o.status,
         factureStatus: t?.factureStatus || 'non_recue',
         modePaiement: t?.modePaiement || '',
@@ -2973,7 +2985,8 @@ app.get('/api/order-tracking', requireAuth, requireAccounting, async (req, res) 
     const words = normalizeSearch(req.query.q).split(' ').filter(Boolean).slice(0, 6);
     const facture = ['recue', 'non_recue', 'sans_pdf', 'a_payer', 'retard'].includes(req.query.facture) ? req.query.facture : 'all';
 
-    const orderFilter = { status: { $ne: 'brouillon' } };
+    // one company (?company=<id> / none) or all of them
+    const orderFilter = { status: { $ne: 'brouillon' }, ...companyOrderFilter(req) };
     // Narrow the orders in MongoDB when searching: each word must hit the order number/reference,
     // the supplier (free text or linked supplier), a BL number, a tracking remark or an invoice number.
     if (words.length) {
@@ -3014,6 +3027,19 @@ app.get('/api/order-tracking', requireAuth, requireAccounting, async (req, res) 
       bc: acc.bc + (r.montantBC || 0), bl: acc.bl + (r.montantBL || 0),
       reste: acc.reste + (isToPay(r) ? r.reste : 0), retard: acc.retard + (isToPay(r) && r.retardJours > 0 ? r.reste : 0),
     }), { bc: 0, bl: 0, reste: 0, retard: 0 });
+    // Same totals, company by company (amounts to pay of CAMI and of GIMAV are never added up blindly)
+    const byCompanyMap = new Map();
+    for (const r of rows) {
+      const k = r.companyId || 'none';
+      if (!byCompanyMap.has(k)) byCompanyMap.set(k, { companyId: r.companyId, name: r.companyName, color: r.companyColor, bc: 0, bl: 0, reste: 0, retard: 0, lignes: 0 });
+      const c = byCompanyMap.get(k);
+      c.bc += r.montantBC || 0; c.bl += r.montantBL || 0; c.lignes += 1;
+      if (isToPay(r)) { c.reste += r.reste; if (r.retardJours > 0) c.retard += r.reste; }
+    }
+    const r2 = (v) => parseFloat(v.toFixed(2));
+    const byCompany = [...byCompanyMap.values()]
+      .map(c => ({ ...c, bc: r2(c.bc), bl: r2(c.bl), reste: r2(c.reste), retard: r2(c.retard) }))
+      .sort((a, b) => (!a.companyId) - (!b.companyId) || (a.name || '').localeCompare(b.name || '')); // « sans société » last
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
     const total = rows.length;
     const pages = Math.max(1, Math.ceil(total / limit));
@@ -3022,6 +3048,7 @@ app.get('/api/order-tracking', requireAuth, requireAccounting, async (req, res) 
       rows: rows.slice((page - 1) * limit, page * limit),
       total, page, pages, limit,
       totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, parseFloat(v.toFixed(2))])),
+      byCompany,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3933,12 +3960,13 @@ function orderStatusLate(o, today) {
   return (o.status === 'envoye' || o.status === 'partielle') && o.expectedDate && new Date(o.expectedDate) < today;
 }
 
-// GET /api/fournisseurs/stats → { [supplierId]: { orders, open, late, amount, lastOrder, items } }
+// GET /api/fournisseurs/stats[?company=<id>|none] → { [supplierId]: { orders, open, late, amount, lastOrder, items, toPay… } }
+// (with ?company: the figures of that company's orders only)
 app.get('/api/fournisseurs/stats', requireAuth, requireAccounting, async (req, res) => {
   try {
     const [suppliers, orders, items] = await Promise.all([
       Fournisseur.find().select('name').lean(),
-      Order.find({ status: { $nin: ['brouillon', 'annulee'] } }).select('supplierId supplier status orderDate sentAt expectedDate lines.quantityOrdered lines.unitPrice').lean(),
+      Order.find({ status: { $nin: ['brouillon', 'annulee'] }, ...companyOrderFilter(req) }).select('supplierId supplier status orderDate sentAt expectedDate lines.quantityOrdered lines.unitPrice').lean(),
       Item.find({ 'supplierCodes.0': { $exists: true } }).select('supplierCodes.supplierId').lean(),
     ]);
     const byName = new Map(suppliers.map(f => [supplierKey(f.name), String(f._id)]));
@@ -3961,7 +3989,7 @@ app.get('/api/fournisseurs/stats', requireAuth, requireAccounting, async (req, r
     }
     // Payments (same rows and rules as the Suivi table)
     for (const r of Object.values(out)) { r.toPay = 0; r.payLate = 0; r.payLateAmount = 0; }
-    for (const row of await buildTrackingRows({ status: { $ne: 'brouillon' } })) {
+    for (const row of await buildTrackingRows({ status: { $ne: 'brouillon' }, ...companyOrderFilter(req) })) {
       const r = row.supplierId && out[row.supplierId];
       if (!r || !isToPay(row)) continue;
       r.toPay += row.reste;

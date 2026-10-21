@@ -133,3 +133,4 @@
 .modal .sp-terms__co span { width: 9px; height: 9px; border-radius: 999px; }
 .modal .sp-terms__row--default .sp-terms__co { color: var(--text-3); font-weight: 600; }
 .sp-termcell { white-space: normal !important; max-width: 220px; font-size: 12px; line-height: 1.35; }
+.sp > .cf-chips { margin-bottom: 12px; }

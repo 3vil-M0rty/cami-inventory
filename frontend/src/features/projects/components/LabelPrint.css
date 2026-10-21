@@ -113,3 +113,20 @@
   font-weight: 700 !important;
   color: #1a1a1a !important;
 }
+/* ── Ticket model switch (Standard / Grand repère) ── */
+.label-model-switch { display: flex; align-items: center; gap: 8px; margin: -8px 0 14px; flex-wrap: wrap; }
+.label-model-switch__k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
+.label-model-switch button {
+  height: 30px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text-2);
+}
+.label-model-switch button.is-on { background: var(--text); color: var(--text-inv); border-color: var(--text); }
+.label-model-switch--compact { margin: 0; gap: 4px; }
+.label-model-switch--compact button { height: 30px; padding: 0 10px; font-size: 12px; }
+
+/* « Grand repère » preview: the printed HTML itself, 9.5 × 5.5 cm */
+.label-preview-frame--big { padding: 18px; }
+.label-big-iframe {
+  width: 9.5cm; height: 5.5cm; border: 1px solid #ccc; border-radius: 4px; background: #fff;
+  box-shadow: 0 2px 12px rgba(0,0,0,.12); display: block;
+}

@@ -344,6 +344,9 @@ const fr = {
     orStockUnitGeneric: 'unité de stock',
     orUnitConvTitle: '1 unité commandée = {n} en stock',
     rbUnitIs: '{one} = {content}',
+    ocfCompany: 'Société',
+    ocfAllCompanies: 'Toutes',
+    ocfNoCompany: 'Sans société',
 };
 
 const it = {
@@ -683,6 +686,9 @@ const it = {
     orStockUnitGeneric: 'unità di magazzino',
     orUnitConvTitle: '1 unità ordinata = {n} in magazzino',
     rbUnitIs: '{one} = {content}',
+    ocfCompany: 'Società',
+    ocfAllCompanies: 'Tutte',
+    ocfNoCompany: 'Senza società',
 };
 
 const en = {
@@ -1022,6 +1028,9 @@ const en = {
     orStockUnitGeneric: 'stock unit',
     orUnitConvTitle: '1 ordered unit = {n} in stock',
     rbUnitIs: '{one} = {content}',
+    ocfCompany: 'Company',
+    ocfAllCompanies: 'All',
+    ocfNoCompany: 'No company',
 };
 
 export default { fr, it, en };

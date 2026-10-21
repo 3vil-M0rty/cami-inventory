@@ -866,3 +866,9 @@
 .orders-page .detail-line-unit { color:var(--text-3);font-weight:500; }
 .orders-page .detail-line-conv { font-size:11px;color:var(--ink-blue);margin-top:2px;font-variant-numeric:tabular-nums; }
 .orders-page .reception-row__conv { display:block;font-size:11px;font-weight:500;color:var(--ink-blue); }
+
+/* Suivi des commandes: company filter above the search, totals per company in the footer */
+.orders-page .pr-search--with-company { display:flex;flex-direction:column;gap:12px; }
+.orders-page .pr-totals-company td { padding-top:6px;padding-bottom:6px;border-top:1px dashed var(--border); }
+.orders-page .pr-totals-company .pr-totals-label { text-transform:none;letter-spacing:0; }
+.orders-page .pr-totals-company .pr-num { color:var(--text-2);font-size:12.5px; }

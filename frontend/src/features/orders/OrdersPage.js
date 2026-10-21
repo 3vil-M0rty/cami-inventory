@@ -15,6 +15,7 @@ import { BlsToReceivePanel, OrdersToReceiveList } from './BlsToReceive';
 import { useBlsToReceive, canReceiveBls, refreshBls } from './receptionQueue';
 import { unitLabel, qtyWithUnit, fmtUnitQty, lineFactor, lineToStock, isConverted } from '../inventory/units';
 import { ZoomImg } from '../../components/common/ImagePreview';
+import CompanyFilter, { CompanyTag } from './CompanyFilter';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -1828,6 +1829,10 @@ function DueCell({ row, t }) {
 
 function SuiviCommandesPanel() {
   const { t, currentLanguage: lang } = useLanguage();
+  const { selectedCompany } = useCompany();
+  // company shown: follows the company chosen in the header, can be changed here
+  const [companyFilter, setCompanyFilter] = useState(selectedCompany || 'all');
+  useEffect(() => { setCompanyFilter(selectedCompany || 'all'); setPage(1); }, [selectedCompany]);
   const [savingKey, setSavingKey] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [factureFilter, setFactureFilter] = useState('all'); // 'all' | 'recue' | 'non_recue' | 'sans_pdf'
@@ -1841,12 +1846,13 @@ function SuiviCommandesPanel() {
   // Search runs on the server (debounced while typing); filters + totals + pagination too
   const { data, loading, reload, patch, dropOthers } = usePagedList(
     `${API_URL}/order-tracking`,
-    { page, limit: PAGE_SIZE, q: searchTerm.trim(), facture: factureFilter },
+    { page, limit: PAGE_SIZE, q: searchTerm.trim(), facture: factureFilter, company: companyFilter === 'all' ? '' : companyFilter },
     searchTerm ? 300 : 0,
   );
   const rows = data?.rows || [];
   const visibleRows = rows;
   const totals = data?.totals || { bc: 0, bl: 0 };
+  const byCompany = data?.byCompany || [];
   const total = data?.total || 0;
   const fetchRows = reload;
   const changeFilter = (f) => { setFactureFilter(f); setPage(1); };
@@ -1939,7 +1945,8 @@ function SuiviCommandesPanel() {
         </div>
       </div>
 
-      <div className="pr-search">
+      <div className="pr-search pr-search--with-company">
+        <CompanyFilter value={companyFilter} onChange={(c) => { setCompanyFilter(c); setPage(1); }} />
         <div className="orders-controls">
           <input
             className="search-input"
@@ -1961,6 +1968,7 @@ function SuiviCommandesPanel() {
             <thead>
               <tr>
                 <th>{t('orDate')}</th>
+                <th>{t('ocfCompany')}</th>
                 <th>{t('orSupplier')}</th>
                 <th>{t('orBcNo')}</th>
                 <th>BL</th>
@@ -1989,6 +1997,7 @@ function SuiviCommandesPanel() {
                     <td className="pr-date">
                       {new Date(row.date).toLocaleDateString('fr-FR')}
                     </td>
+                    <td><CompanyTag name={row.companyName} color={row.companyColor} /></td>
                     <td className="pr-strong">{row.supplierName || '—'}</td>
                     <td className="pr-num">{row.orderNumber || '—'}</td>
                     <td className="pr-num">
@@ -2106,7 +2115,7 @@ function SuiviCommandesPanel() {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={5} className="pr-totals-label">
+                <td colSpan={6} className="pr-totals-label">
                   {t('orTotalsShown')}
                 </td>
                 <td className="pr-num">{totals.bc.toFixed(2)}</td>
@@ -2116,6 +2125,20 @@ function SuiviCommandesPanel() {
                   {totals.retard > 0 && <> · <span className="pr-late">{t('acRemainingLate')} <strong>{money2(totals.retard)}</strong></span></>}
                 </td>
               </tr>
+              {/* the same totals company by company (when several are shown) */}
+              {byCompany.length > 1 && byCompany.map(c => (
+                <tr key={c.companyId || 'none'} className="pr-totals-company">
+                  <td colSpan={6} className="pr-totals-label">
+                    <CompanyTag name={c.name || t('ocfNoCompany')} color={c.color} />
+                  </td>
+                  <td className="pr-num">{c.bc.toFixed(2)}</td>
+                  <td className="pr-num">{c.bl.toFixed(2)}</td>
+                  <td colSpan={10} className="pr-totals-pay">
+                    {t('acRemaining')} <strong>{money2(c.reste)}</strong>
+                    {c.retard > 0 && <> · <span className="pr-late">{t('acRemainingLate')} <strong>{money2(c.retard)}</strong></span></>}
+                  </td>
+                </tr>
+              ))}
             </tfoot>
           </table>
           <Pager page={data.page} pages={data.pages} total={total} limit={data.limit} onPage={setPage} />

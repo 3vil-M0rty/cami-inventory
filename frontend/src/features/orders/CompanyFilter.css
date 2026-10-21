@@ -1,0 +1,18 @@
+/* Company filter chips (Suivi des commandes, Fournisseurs) */
+.cf-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cf-chips__k { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-right: 2px; }
+.cf-chips button {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text-2);
+  transition: background .15s, border-color .15s, color .15s;
+}
+.cf-chips button:hover { color: var(--text); border-color: var(--border-2); background: var(--surface-3); }
+.cf-chips button.is-on { color: var(--text); border-color: var(--cc, var(--text)); background: color-mix(in srgb, var(--cc, var(--text)) 16%, var(--surface-2)); }
+.cf-chips button:first-of-type.is-on { background: var(--text); color: var(--text-inv); border-color: var(--text); }
+.cf-chips__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cc); flex-shrink: 0; box-shadow: 0 0 0 2px color-mix(in srgb, var(--cc) 25%, transparent); }
+.cf-tag {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; white-space: nowrap;
+  font-size: 11.5px; font-weight: 700; color: var(--text);
+  background: color-mix(in srgb, var(--cc) 14%, transparent); border: 1px solid color-mix(in srgb, var(--cc) 45%, transparent);
+}

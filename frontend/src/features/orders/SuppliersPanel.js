@@ -8,6 +8,7 @@ import {
 import { useLanguage } from '../../context/LanguageContext';
 import { useCompany } from '../../context/CompanyContext';
 import { dialog, errorMessage } from '../../components/common/dialog';
+import CompanyFilter from './CompanyFilter';
 import './SuppliersPanel.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -379,9 +380,14 @@ function FullSuppliersPanel({ suppliers, onChanged, onNewOrder, onOpenOrder, sta
   const [openId, setOpenId] = useState(null);
   const [detailKey, setDetailKey] = useState(0);
 
+  // figures of one company or of all (follows the company chosen in the header, can be changed here)
+  const { selectedCompany } = useCompany();
+  const [company, setCompany] = useState(selectedCompany || 'all');
+  useEffect(() => { setCompany(selectedCompany || 'all'); }, [selectedCompany]);
   const loadStats = useCallback(() => {
-    axios.get(`${API_URL}/fournisseurs/stats`).then(r => setStats(r.data || {})).catch(() => {});
-  }, []);
+    axios.get(`${API_URL}/fournisseurs/stats`, { params: company === 'all' ? {} : { company } })
+      .then(r => setStats(r.data || {})).catch(() => {});
+  }, [company]);
   useEffect(() => { loadStats(); }, [loadStats, suppliers]);
 
   const rows = useMemo(() => {
@@ -443,6 +449,7 @@ function FullSuppliersPanel({ suppliers, onChanged, onNewOrder, onOpenOrder, sta
 
   return (
     <div className="sp">
+      <CompanyFilter value={company} onChange={setCompany} />
       <div className="sp-summary">
         <div><span>{t('spTitle')}</span><strong>{f.n(suppliers.length)}</strong></div>
         <div><span>{t('spActive')}</span><strong>{f.n(withOrders)}</strong></div>
