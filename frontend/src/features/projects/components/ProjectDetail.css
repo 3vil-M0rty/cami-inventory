@@ -2215,3 +2215,37 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
 }
 .laq-add-form .laq-add-form__field label { margin-bottom: 0; }
 .laq-table td.laq-empty-row { color: var(--text-4); }
+
+/* ── « Hors inventaire » rows (no stock taken) ── */
+.laq-free-toggle {
+  display: inline-flex; align-items: center; gap: 6px; align-self: flex-end; height: 36px; padding: 0 10px;
+  border: 1px dashed var(--border-2); border-radius: 8px; cursor: pointer; user-select: none;
+  font-size: 12px; font-weight: 600; color: var(--text-3); white-space: nowrap;
+}
+.laq-free-toggle input { margin: 0; accent-color: var(--ink-amber, #f59e0b); }
+.laq-free-toggle.is-on { border-style: solid; border-color: var(--warning-bd); background: var(--warning-bg); color: var(--ink-amber); }
+.laq-free-toggle__linked { font-style: normal; font-weight: 500; color: var(--ink-green); margin-left: 2px; }
+.laq-free-badge {
+  display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; vertical-align: middle;
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--ink-amber); background: var(--warning-bg); border: 1px solid var(--warning-bd);
+}
+.laq-dropdown__item--free { color: var(--ink-amber); font-weight: 600; border-top: 1px solid var(--border); }
+
+/* ── Automatic save status ── */
+.laq-autosave {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 11px; border-radius: 8px;
+  font-size: 12px; font-weight: 600; color: var(--ink-green); background: var(--success-bg); border: 1px solid var(--success-bd);
+  white-space: nowrap;
+}
+.laq-autosave--busy { color: var(--text-3); background: var(--surface-2); border-color: var(--border); }
+.laq-autosave--error { color: var(--ink-red); background: var(--danger-bg); border-color: var(--danger-bd); cursor: pointer; font-family: inherit; }
+/* the toggle sits among the form fields: not styled like their labels */
+.laq-add-form .laq-free-toggle {
+  display: inline-flex; flex-direction: row; align-items: center; margin: 0; align-self: flex-end;
+  text-transform: none; letter-spacing: 0; font-size: 12.5px; line-height: 1;
+}
+.laq-add-form .laq-free-toggle input[type="checkbox"] {
+  -webkit-appearance: auto; appearance: auto; width: 15px; height: 15px; padding: 0; margin: 0; flex-shrink: 0; cursor: pointer;
+}
+.laq-add-form .laq-free-toggle span { color: inherit; font-weight: 600; }

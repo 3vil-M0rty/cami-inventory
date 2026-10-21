@@ -283,7 +283,8 @@ function LotTimeline({ lot, history }) {
 }
 
 /* ── Inventory search ────────────────────────────────────────── */
-function InvSearch({ value, onChange, onSelect, superCategory, label }) {
+// onFreeText (optional): offers « Ajouter « xxx » hors inventaire » for a text that is not an inventory article
+function InvSearch({ value, onChange, onSelect, superCategory, label, onFreeText }) {
   const { t } = useLanguage();
   const [suggestions, setSuggestions] = useState([]);
   const [open, setOpen] = useState(false);
@@ -305,7 +306,7 @@ function InvSearch({ value, onChange, onSelect, superCategory, label }) {
       try {
         const res = await axios.get(`${API_URL}/inventory/search?q=${encodeURIComponent(q)}&superCategory=${superCategory}`);
         const items = (res.data || []).slice(0, 10);
-        setSuggestions(items); setOpen(items.length > 0);
+        setSuggestions(items); setOpen(items.length > 0 || !!onFreeText);
       } catch { setSuggestions([]); } finally { setBusy(false); }
     }, 250);
   };
@@ -316,7 +317,7 @@ function InvSearch({ value, onChange, onSelect, superCategory, label }) {
       <div style={{ position: 'relative' }}>
         <input className="laq-add-input" value={value} placeholder={t('lqSearchPh')}
           onChange={e => { onChange(e.target.value); search(e.target.value); }}
-          onFocus={() => value.length >= 2 && suggestions.length > 0 && setOpen(true)} />
+          onFocus={() => value.length >= 2 && (suggestions.length > 0 || onFreeText) && setOpen(true)} />
         {busy && <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12 }}>…</span>}
       </div>
       {open && (
@@ -332,9 +333,50 @@ function InvSearch({ value, onChange, onSelect, superCategory, label }) {
               </div>
             );
           })}
+          {/* last: the typed text as an article that is not in the inventory */}
+          {onFreeText && value.trim().length >= 2 && (
+            <div className="laq-dropdown__item laq-dropdown__item--free"
+              onMouseDown={() => { onFreeText(value.trim()); setOpen(false); setSuggestions([]); }}>
+              <Plus size={14} style={{ marginRight: 8 }} />{t('lqAddFree', { text: value.trim() })}
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+/* ── « Hors inventaire » (article typed by hand: no stock taken) ── */
+function FreeArticleToggle({ value, linked, onChange }) {
+  const { t } = useLanguage();
+  return (
+    <label className={`laq-free-toggle${value ? ' is-on' : ''}`} title={t('lqFreeHint')}>
+      <input type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)} />
+      <span>{t('lqFree')}</span>
+      {linked && !value && <em className="laq-free-toggle__linked">{t('lqLinkedInv')}</em>}
+    </label>
+  );
+}
+function FreeArticleBadge() {
+  const { t } = useLanguage();
+  return <span className="laq-free-badge" title={t('lqFreeHint')}>{t('lqFree')}</span>;
+}
+
+/* ── Automatic save status (replaces the « Enregistrer » button) ── */
+function AutosaveStatus({ state, onRetry }) {
+  const { t } = useLanguage();
+  if (state === 'error') {
+    return (
+      <button type="button" className="laq-autosave laq-autosave--error" onClick={onRetry} title={t('lqAutosaveRetry')}>
+        <AlertTriangle size={13} /> {t('lqAutosaveError')}
+      </button>
+    );
+  }
+  const busy = state === 'saving' || state === 'pending';
+  return (
+    <span className={`laq-autosave${busy ? ' laq-autosave--busy' : ''}`} aria-live="polite">
+      {busy ? <Clock size={13} /> : <CheckCircle2 size={13} />} {t(busy ? 'lqAutosaving' : 'lqAutosaved')}
+    </span>
   );
 }
 
@@ -591,8 +633,9 @@ export function BarresLaquerPanel({ project, currentUser }) {
   const [addingLot, setAddingLot] = useState(false);
 
   // itemId links the row to the inventory article: the stock is deducted when the lot is sent to laquage
-  const emptyBB = { reference: '', itemId: null, quantiteBrute: 1 };
-  const emptyBL = { reference: '', itemId: null, ral: '', quantiteLaquee: 1 };
+  // horsStock: article typed by hand, not in the inventory → nothing is taken from the stock for it
+  const emptyBB = { reference: '', itemId: null, horsStock: false, quantiteBrute: 1 };
+  const emptyBL = { reference: '', itemId: null, horsStock: false, ral: '', quantiteLaquee: 1 };
   const emptyMB = { reference: '', mesure: '', quantite: 1 };
   const emptyML = { reference: '', lignes: [{ ral: '', mesure: '', quantite: 1 }] };
 
@@ -637,28 +680,67 @@ export function BarresLaquerPanel({ project, currentUser }) {
 
   const activeLot = (record?.lots || []).find(l => l.lotIndex === activeLotIdx) || (record?.lots || [])[0];
 
-  const saveLot = async () => {
-    if (!activeLot) return;
-    setSaving(true); setError('');
+  // ── Automatic save: every row added / removed is saved right away (no button to forget).
+  // Changes made while a save is running are sent just after it, so nothing is lost.
+  const recordRef = useRef(record);
+  recordRef.current = record;
+  const autosave = useRef({ timer: null, running: null, dirty: new Set() });
+  const [saveState, setSaveState] = useState('idle'); // 'idle' | 'pending' | 'saving' | 'saved' | 'error'
+  const persistLot = useCallback(async (lotIndex) => {
+    const a = autosave.current;
+    const lotNow = (recordRef.current?.lots || []).find(l => l.lotIndex === lotIndex);
+    if (!lotNow) return;
+    a.dirty.delete(lotIndex);
+    setSaveState('saving');
     try {
       const res = await axios.put(
-        `${API_URL}/projects/${project.id}/laquage/barres/lot/${activeLot.lotIndex}`,
+        `${API_URL}/projects/${project.id}/laquage/barres/lot/${lotIndex}`,
         {
-          barresBrutes: activeLot.barresBrutes,
-          barresLaquees: activeLot.barresLaquees,
-          morceauxBruts: activeLot.morceauxBruts,
-          morceauxLaques: activeLot.morceauxLaques,
+          barresBrutes: lotNow.barresBrutes,
+          barresLaquees: lotNow.barresLaquees,
+          morceauxBruts: lotNow.morceauxBruts,
+          morceauxLaques: lotNow.morceauxLaques,
         }
       );
-      setRecord(res.data);
-      toast(t('lqSaved'));
+      // take the server copy only if nothing else was typed meanwhile
+      if (!a.dirty.size && !a.timer) setRecord(res.data);
+      setSaveState(a.dirty.size || a.timer ? 'pending' : 'saved');
+      setError('');
     } catch (e) {
+      a.dirty.add(lotIndex); // still to save: retried with the next change or the « Réessayer » button
+      setSaveState('error');
       setError(e.response?.data?.error || t('lqSaveError'));
-    } finally { setSaving(false); }
-  };
+    }
+  }, [project.id, t]);
+  // save everything waiting, now (before sending a lot, creating a lot, leaving the page…)
+  const flushSave = useCallback(async () => {
+    const a = autosave.current;
+    if (a.timer) { clearTimeout(a.timer); a.timer = null; }
+    if (a.running) await a.running;
+    for (const lotIndex of [...a.dirty]) {
+      a.running = persistLot(lotIndex);
+      await a.running;
+      a.running = null;
+    }
+  }, [persistLot]);
+  const scheduleSave = useCallback((lotIndex) => {
+    const a = autosave.current;
+    a.dirty.add(lotIndex);
+    setSaveState('pending');
+    if (a.timer) clearTimeout(a.timer);
+    a.timer = setTimeout(() => { a.timer = null; flushSave(); }, 500);
+  }, [flushSave]);
+  // closing the page with changes not saved yet: save now and ask the browser to wait
+  useEffect(() => {
+    const h = (e) => { const a = autosave.current; if (a.dirty.size || a.running) { flushSave(); e.preventDefault(); e.returnValue = ''; } };
+    window.addEventListener('beforeunload', h);
+    return () => { window.removeEventListener('beforeunload', h); flushSave(); }; // leaving the tab: saved too
+  }, [flushSave]);
+  const saveLot = () => { if (activeLot) { autosave.current.dirty.add(activeLot.lotIndex); flushSave(); } };
 
   const addNewLot = async () => {
     setAddingLot(true); setError('');
+    await flushSave();
     try {
       const res = await axios.post(
         `${API_URL}/projects/${project.id}/laquage/barres/lot`,
@@ -676,6 +758,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
 
   const transition = async (action, lotIndex, lineKey, extra = {}) => {
     setSaving(true); setError('');
+    await flushSave(); // rows added just before are saved first
     try {
       // Sending a lot: include the rows shown on screen so unsaved rows are sent (and deducted) too
       const sentLot = action === 'send_to_laquage'
@@ -719,23 +802,24 @@ export function BarresLaquerPanel({ project, currentUser }) {
 
   const updateLotData = (key, value) => {
     if (!activeLot) return;
-    setRecord(p => ({
-      ...p,
-      lots: p.lots.map(l =>
-        l.lotIndex === activeLot.lotIndex ? { ...l, [key]: value } : l
-      )
-    }));
+    const lotIndex = activeLot.lotIndex;
+    const next = { ...recordRef.current, lots: recordRef.current.lots.map(l => (l.lotIndex === lotIndex ? { ...l, [key]: value } : l)) };
+    recordRef.current = next; // the save below reads the new rows even before React re-renders
+    setRecord(next);
+    scheduleSave(lotIndex);
   };
 
   const toggleRow = k => setSelected(p => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   const addBB = () => {
     if (!newBB.reference.trim()) return setError(t('lqRefRequired'));
+    if (!newBB.itemId && !newBB.horsStock) return setError(t('lqPickOrFree'));
     updateLotData('barresBrutes', [...(activeLot.barresBrutes || []), { ...newBB, quantiteBrute: Number(newBB.quantiteBrute) || 1 }]);
     setNewBB(emptyBB); setError('');
   };
   const addBL = () => {
     if (!newBL.reference.trim()) return setError(t('lqRefRequired'));
+    if (!newBL.itemId && !newBL.horsStock) return setError(t('lqPickOrFree'));
     updateLotData('barresLaquees', [...(activeLot.barresLaquees || []), { ...newBL, quantiteLaquee: Number(newBL.quantiteLaquee) || 1 }]);
     setNewBL(emptyBL); setError('');
   };
@@ -828,11 +912,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
           <StatusBadge status={lotStatus} />
         </div>
         <div className="laq-panel-actions">
-          {canEdit && isDraft && (
-            <button className="laq-save-btn" disabled={saving} onClick={saveLot}>
-              <Save size={14} /> {saving ? '…' : ''}
-            </button>
-          )}
+          {canEdit && isDraft && <AutosaveStatus state={saveState} onRetry={saveLot} />}
           {/* Per-lot PDF — visible to all */}
           {activeLot && (
             <button
@@ -922,8 +1002,9 @@ export function BarresLaquerPanel({ project, currentUser }) {
         <div className="laq-section-title">{t('lqSecBB')}</div>
         {canEdit && isDraft && (
           <div className="laq-add-form"><div className="laq-add-form__row">
-            <InvSearch value={newBB.reference} onChange={v => setNewBB(p => ({ ...p, reference: v, itemId: null }))} onSelect={(v, item) => { setNewBB(p => ({ ...p, reference: v, itemId: item?.id || item?._id || null })); capImg(v, item); }} superCategory="aluminium" label={t('lqRefAlu')} />
+            <InvSearch value={newBB.reference} onChange={v => setNewBB(p => ({ ...p, reference: v, itemId: null }))} onSelect={(v, item) => { setNewBB(p => ({ ...p, reference: v, itemId: item?.id || item?._id || null, horsStock: false })); capImg(v, item); }} onFreeText={v => setNewBB(p => ({ ...p, reference: v, itemId: null, horsStock: true }))} superCategory="aluminium" label={t('lqRefAlu')} />
             <div className="laq-add-form__field"><label>{t('quantity')}</label><input type="number" className="laq-add-input laq-add-input--sm" min="1" value={newBB.quantiteBrute} onChange={e => setNewBB(p => ({ ...p, quantiteBrute: e.target.value }))} /></div>
+            <FreeArticleToggle value={newBB.horsStock} linked={!!newBB.itemId} onChange={v => setNewBB(p => ({ ...p, horsStock: v, itemId: v ? null : p.itemId }))} />
             <button className="laq-add-btn" onClick={addBB}>{t('lqAdd')}</button>
           </div></div>
         )}
@@ -942,7 +1023,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
                 return (
                   <tr key={i} {...rowProps(k)}>
                     <td onClick={e => e.stopPropagation()}>{imageMap[row.reference] ? <img src={imageMap[row.reference]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span>}</td>
-                    <td><strong>{row.reference || '—'}</strong></td>
+                    <td><strong>{row.reference || '—'}</strong>{row.horsStock && <FreeArticleBadge />}</td>
                     <td>{row.quantiteBrute}</td>
                     {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BB: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask(t('lqConfirmReceptionQ'), () => transition('receive_line_laquage', lot.lotIndex, k, { lineLabel: `BB: ${row.reference}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `BB: ${row.reference}` })} /></td>}
                     {isRetCoord && canReceiveCoord && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BB: ${row.reference}`} lineStatuses={ls} side="coord" onConfirm={() => ask(t('lqConfirmReceptionQ'), () => transition('receive_line_coord', lot.lotIndex, k, { lineLabel: `BB: ${row.reference}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `BB: ${row.reference}` })} /></td>}
@@ -959,9 +1040,10 @@ export function BarresLaquerPanel({ project, currentUser }) {
         <div className="laq-section-title">{t('lqSecBL')}</div>
         {canEdit && isDraft && (
           <div className="laq-add-form"><div className="laq-add-form__row">
-            <InvSearch value={newBL.reference} onChange={v => setNewBL(p => ({ ...p, reference: v, itemId: null }))} onSelect={(v, item) => { setNewBL(p => ({ ...p, reference: v, itemId: item?.id || item?._id || null })); capImg(v, item); }} superCategory="aluminium" label={t('lqRefAlu')} />
+            <InvSearch value={newBL.reference} onChange={v => setNewBL(p => ({ ...p, reference: v, itemId: null }))} onSelect={(v, item) => { setNewBL(p => ({ ...p, reference: v, itemId: item?.id || item?._id || null, horsStock: false })); capImg(v, item); }} onFreeText={v => setNewBL(p => ({ ...p, reference: v, itemId: null, horsStock: true }))} superCategory="aluminium" label={t('lqRefAlu')} />
             <div className="laq-add-form__field"><label>RAL</label><input className="laq-add-input laq-add-input--sm" placeholder={t('lqPhRal')} value={newBL.ral} onChange={e => setNewBL(p => ({ ...p, ral: e.target.value }))} /></div>
             <div className="laq-add-form__field"><label>{t('quantity')}</label><input type="number" className="laq-add-input laq-add-input--sm" min="1" value={newBL.quantiteLaquee} onChange={e => setNewBL(p => ({ ...p, quantiteLaquee: e.target.value }))} /></div>
+            <FreeArticleToggle value={newBL.horsStock} linked={!!newBL.itemId} onChange={v => setNewBL(p => ({ ...p, horsStock: v, itemId: v ? null : p.itemId }))} />
             <button className="laq-add-btn" onClick={addBL}>{t('lqAdd')}</button>
           </div></div>
         )}
@@ -980,7 +1062,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
                 return (
                   <tr key={i} {...rowProps(k)}>
                     <td onClick={e => e.stopPropagation()}>{imageMap[row.reference] ? <img src={imageMap[row.reference]} alt="" style={{ width: 44, height: 36, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span>}</td>
-                    <td><strong>{row.reference || '—'}</strong></td>
+                    <td><strong>{row.reference || '—'}</strong>{row.horsStock && <FreeArticleBadge />}</td>
                     <td><span className="laq-ral-chip">{row.ral || '—'}</span></td>
                     <td>{row.quantiteLaquee}</td>
                     {isSent && canReceiveLaquage && <td onClick={e => e.stopPropagation()}><RowActions lKey={k} lineLabel={`BL: ${row.reference}`} lineStatuses={ls} side="laq" onConfirm={() => ask(t('lqConfirmQ'), () => transition('receive_line_laquage', lot.lotIndex, k, { lineLabel: `BL: ${row.reference} RAL ${row.ral}` }))} onIncomplete={() => setIncomplete({ lKey: k, lotIndex: lot.lotIndex, lineLabel: `BL: ${row.reference}` })} /></td>}

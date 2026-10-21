@@ -5389,6 +5389,8 @@ const laquageBarresBrutesSchema = new mongoose.Schema(
   {
     reference: { type: String, default: '' },
     itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', default: null },
+    // article that is not in the inventory (typed by hand): nothing is taken out of the stock for it
+    horsStock: { type: Boolean, default: false },
     quantiteBrute: { type: Number, default: 0 },
   },
   { _id: false }
@@ -5397,6 +5399,7 @@ const laquageBarresLaqueeSchema = new mongoose.Schema(
   {
     reference: { type: String, default: '' },
     itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', default: null },
+    horsStock: { type: Boolean, default: false }, // not in the inventory: no stock taken
     ral: { type: String, default: '' },
     quantiteLaquee: { type: Number, default: 0 },
   },
@@ -5776,7 +5779,8 @@ async function migrateLaquageToLots() {
 
 // ==================== LAQUAGE STOCK DEDUCTION ====================
 // When a lot is sent to laquage, its barres brutes + barres laquées are taken out of the
-// aluminium inventory. Morceaux and the LaquageAccessoires panel never touch the stock.
+// aluminium inventory (except the rows marked « hors inventaire »). Morceaux and the
+// LaquageAccessoires panel never touch the stock.
 // lot.stockDeducted remembers what was taken, so an admin edit of a sent lot only applies
 // the difference (and never deducts twice).
 
@@ -5804,7 +5808,7 @@ async function syncLaquageLotStock(record, lot, project) {
     ...(lot.barresLaquees || []).map(r => ({ row: r, qty: Number(r.quantiteLaquee) || 0 })),
   ];
   for (const { row, qty } of rows) {
-    if (qty <= 0) continue;
+    if (qty <= 0 || row.horsStock) continue; // « hors inventaire »: nothing taken from the stock
     const item = await resolveLaquageBarItem(row);
     if (!item) { unknown.push(row.reference || '(sans référence)'); continue; }
     if (!row.itemId) row.itemId = item._id;
@@ -5814,7 +5818,7 @@ async function syncLaquageLotStock(record, lot, project) {
     wanted.set(key, cur);
   }
   if (unknown.length) {
-    const err = new Error(`Article(s) introuvable(s) dans l'inventaire aluminium : ${[...new Set(unknown)].join(', ')}. Sélectionnez la référence depuis la recherche.`);
+    const err = new Error(`Article(s) introuvable(s) dans l'inventaire aluminium : ${[...new Set(unknown)].join(', ')}. Sélectionnez la référence depuis la recherche, ou marquez la ligne « hors inventaire ».`);
     err.status = 400;
     throw err;
   }

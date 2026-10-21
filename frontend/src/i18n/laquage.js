@@ -67,6 +67,15 @@ const fr = {
   lqCsName: 'Nom de la société', lqCsColor: 'Couleur de marque', lqCsAddress: 'Adresse',
   lqCsAddressPh: '123 rue exemple, Ville', lqCsPhone: 'Téléphone', lqCsEmail: 'Email',
   lqCsRc: 'RC (Registre de commerce)', lqCsEmailPh: 'contact@societe.ma',
+    lqFree: 'Hors inventaire',
+    lqFreeHint: 'Article qui n\'existe pas dans l\'inventaire : rien n\'est retiré du stock pour cette ligne.',
+    lqAddFree: 'Ajouter « {text} » hors inventaire',
+    lqLinkedInv: 'lié au stock',
+    lqPickOrFree: 'Choisissez l\'article dans la recherche, ou cochez « Hors inventaire » s\'il n\'existe pas dans l\'inventaire.',
+    lqAutosaving: 'Enregistrement…',
+    lqAutosaved: 'Enregistré automatiquement',
+    lqAutosaveError: 'Non enregistré — Réessayer',
+    lqAutosaveRetry: 'L\'enregistrement automatique a échoué : cliquez pour réessayer.',
 };
 
 const it = {
@@ -136,6 +145,15 @@ const it = {
   lqCsName: 'Nome della società', lqCsColor: 'Colore del marchio', lqCsAddress: 'Indirizzo',
   lqCsAddressPh: 'Via esempio 123, Città', lqCsPhone: 'Telefono', lqCsEmail: 'Email',
   lqCsRc: 'RC (Registro delle imprese)', lqCsEmailPh: 'contatto@societa.ma',
+    lqFree: 'Fuori inventario',
+    lqFreeHint: 'Articolo non presente in inventario: nessuna quantità viene scalata dal magazzino per questa riga.',
+    lqAddFree: 'Aggiungi « {text} » fuori inventario',
+    lqLinkedInv: 'collegato al magazzino',
+    lqPickOrFree: 'Scegli l\'articolo dalla ricerca, oppure seleziona « Fuori inventario » se non esiste in inventario.',
+    lqAutosaving: 'Salvataggio…',
+    lqAutosaved: 'Salvato automaticamente',
+    lqAutosaveError: 'Non salvato — Riprova',
+    lqAutosaveRetry: 'Il salvataggio automatico non è riuscito: clicca per riprovare.',
 };
 
 const en = {
@@ -205,6 +223,15 @@ const en = {
   lqCsName: 'Company name', lqCsColor: 'Brand colour', lqCsAddress: 'Address',
   lqCsAddressPh: '123 Example street, City', lqCsPhone: 'Phone', lqCsEmail: 'Email',
   lqCsRc: 'RC (Trade register)', lqCsEmailPh: 'contact@company.ma',
+    lqFree: 'Not in inventory',
+    lqFreeHint: 'Item that is not in the inventory: nothing is taken from the stock for this line.',
+    lqAddFree: 'Add « {text} » (not in inventory)',
+    lqLinkedInv: 'linked to stock',
+    lqPickOrFree: 'Pick the item from the search, or tick « Not in inventory » if it does not exist in the inventory.',
+    lqAutosaving: 'Saving…',
+    lqAutosaved: 'Saved automatically',
+    lqAutosaveError: 'Not saved — Retry',
+    lqAutosaveRetry: 'Automatic save failed: click to retry.',
 };
 
 export default { fr, it, en };

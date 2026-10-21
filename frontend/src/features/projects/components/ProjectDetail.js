@@ -2168,6 +2168,13 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
   // Can see the état dropdown (vs read-only badge) — per TAB_CONFIG.stateRoles
   const stateThing = canSeeEtatDropdown(userRole, project);
 
+  // Chassis labels (tickets): the editors + the Chef atelier (read-only account: prints only, changes nothing).
+  // Not the remplissage labels.
+  const canPrintLabels = adminThing || userRole === 'Chef atelier';
+  const canPrintOneLabel = adminOnly || userRole === 'Chef atelier'; // the ticket button of a row
+  // rows can be ticked: to change their état, or to print their labels
+  const canSelectRows = adminThing || stateThing || canPrintLabels;
+
   // Can assign atelier table (aluminium tab only)
   const canEditAtelierTable = tabCfg.tableRoles.includes(userRole);
 
@@ -2531,15 +2538,15 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
           <div className="panel-toolbar">
             {adminThing && <button className="add-item-btn" onClick={() => { setEditingChassis(null); setShowChassisForm(true); }}>+ {t('addChassis')}</button>}
             {adminThing && <button className="ct-config-btn" onClick={() => setShowTypeManager(true)}><ShipWheel size={15} /></button>}
-            {rows.length > 0 && (adminThing || stateThing || adminVerre) && (
+            {rows.length > 0 && (canSelectRows || adminVerre) && (
               <div className="selection-toolbar">
-                {(adminThing || stateThing) && (
+                {canSelectRows && (
                   <button className="select-btn" onClick={toggleAll}>
                     {logistiqueSelectableKeys.length > 0 && logistiqueSelectableKeys.every(k => selectedKeys.has(k)) ? t('deselectAll') : t('selectAll')}
                   </button>
                 )}
 
-                {selectedKeys.size > 0 && adminThing && (
+                {selectedKeys.size > 0 && canPrintLabels && (
                   <>
                     <LabelModelSwitch compact value={labelModel} onChange={setLabelModelState} />
                     <button className="print-selected-btn" onClick={startBatchPrint}><Printer size={14} /> {t('printSelected')} ({selectedKeys.size} {t('selectedCount')})</button>
@@ -2579,7 +2586,8 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
 
                 {(() => {
                   const allRemp = (project.chassis || []).flatMap(ch => { const numComps = (ch.components || []).length; return (ch.remplissages || []).map(r => ({ r, ch, numComps })); });
-                  if (allRemp.length === 0) return null;
+                  // remplissage labels: same people as before (not the Chef atelier, who prints the chassis labels only)
+                  if (allRemp.length === 0 || !(adminThing || stateThing || adminVerre)) return null;
                   return (
                     <button className="print-selected-btn pd-tone-btn pd-tone-btn--violet" onClick={() => {
                       const byChassisId = {};
@@ -2627,7 +2635,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
               <table className="chassis-table">
                 <thead>
                   <tr>
-                    {(adminThing || stateThing) && <th style={{ width: 40 }}><input type="checkbox" checked={logistiqueSelectableKeys.length > 0 && logistiqueSelectableKeys.every(k => selectedKeys.has(k))} onChange={toggleAll} /></th>}
+                    {canSelectRows && <th style={{ width: 40 }}><input type="checkbox" checked={logistiqueSelectableKeys.length > 0 && logistiqueSelectableKeys.every(k => selectedKeys.has(k))} onChange={toggleAll} /></th>}
                     <th>{t('repere')}</th>
                     <th>{t('type')}</th>
                     <th>{t('largeur')} (mm)</th>
@@ -2655,7 +2663,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                       const allCompsCnt = allCompsRemp.length; const allCompsRdy = allCompsRemp.filter(r => REMP_DONE_ETATS.has(r.etat)).length;
                       return (
                         <tr key={rowKey} className="chassis-row chassis-row--group-head">
-                          {(adminThing || stateThing) && <td className="chassis-row__check" />}
+                          {canSelectRows && <td className="chassis-row__check" />}
                           <td data-label={t('pdRepere')}><strong>{label}</strong><span className="composite-badge" title="Composite">⊞</span></td>
                           <td data-label={t('type')}>{chassisLabels[ch.type]?.[language] || ch.type}</td>
                           <td data-label={t('pdColL')}>{ch.largeur}</td><td data-label={t('pdColH')}>{ch.hauteur}</td>
@@ -2700,12 +2708,12 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                           </td>
                           {showAtelierCols && <td data-label={t('pdAtelierTable')} className="atelier-table-col"><span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span></td>}
                           {showAtelierCols && <td data-label={t('pdVitrageTable')} className="atelier-table-col"><span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span></td>}
-                          <td data-label="">{adminThing && <div className="chassis-row__actions">
-                            <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, _originalId: chId }); setShowChassisForm(true); }}><Pencil size={14} /></button>
+                          <td data-label="">{(adminThing || canPrintOneLabel) && <div className="chassis-row__actions">
+                            {adminThing && <button className="edit-btn" onClick={() => { setEditingChassis({ ...ch, _originalId: chId }); setShowChassisForm(true); }}><Pencil size={14} /></button>}
                             {adminOnly && <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}><Wrench size={14} /></button>}
                             {adminOnly && (<button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}><Printer size={14} /></button>)}
-                            {adminOnly && (<button className="print-btn" onClick={() => { const toPrint = ch.components.map((comp, ci) => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; return { ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }; }); const html = buildLabelHTML(toPrint, project, chassisLabels, language, labelModel); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}><Tag size={14} /></button>)}
-                            <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}><Trash2 size={14} /></button>
+                            {canPrintOneLabel && (<button className="print-btn" onClick={() => { const toPrint = ch.components.map((comp, ci) => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; return { ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }; }); const html = buildLabelHTML(toPrint, project, chassisLabels, language, labelModel); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}><Tag size={14} /></button>)}
+                            {adminThing && <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}><Trash2 size={14} /></button>}
                           </div>}</td>
                         </tr>
                       );
@@ -2718,7 +2726,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                       const compM2 = comp.largeur && comp.hauteur ? ((comp.largeur * comp.hauteur) / 1e6).toFixed(2) : '—';
                       return (
                         <tr key={rowKey} className={`component-row${isSelected ? ' component-row--selected' : ''}${isSaving ? ' component-row--saving' : ''}`}>
-                          {(adminThing || stateThing) && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}                          <td data-label={t('pdRepere')} className="component-indent"><CornerDownRight size={13} style={{ marginRight: 4, color: 'var(--text-4)' }} /><strong>{label}</strong></td>
+                          {canSelectRows && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}                          <td data-label={t('pdRepere')} className="component-indent"><CornerDownRight size={13} style={{ marginRight: 4, color: 'var(--text-4)' }} /><strong>{label}</strong></td>
                           <td data-label={t('type')} className="component-role">{comp.role === 'dormant' ? t('dormant') : t('vantail')}</td>
                           <td data-label={t('pdColL')}>{comp.largeur || '—'}</td><td data-label={t('pdColH')}>{comp.hauteur || '—'}</td>
                           <td data-label={t('pdDimension')} className="dim-cell">{comp.largeur && comp.hauteur ? `${comp.largeur}×${comp.hauteur}` : '—'}</td>
@@ -2768,7 +2776,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                               )}
                             </td>
                           )}
-                          <td data-label="">{adminThing && <div className="chassis-row__actions">
+                          <td data-label="">{canPrintLabels && <div className="chassis-row__actions">
                             <button className="print-btn" onClick={() => { const rl = comp.role === 'dormant' ? t('dormant') : `${t('vantail')} ${ci}`; setPrintingChassis({ ...ch, _printRowIndex: unitIndex, _totalQty: ch.quantity || 1, _component: { repere: comp.repere || rl, roleLabel: rl, largeur: comp.largeur, hauteur: comp.hauteur } }); }}><Tag size={14} /></button>
                           </div>}</td>
                         </tr>
@@ -2781,7 +2789,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                     const unitM2 = ch.largeur && ch.hauteur ? ((ch.largeur * ch.hauteur) / 1e6).toFixed(2) : '—';
                     return (
                       <tr key={rowKey} className={`chassis-row${isSelected ? ' chassis-row--selected' : ''}${isSaving ? ' chassis-row--saving' : ''}`}>
-                        {(adminThing || stateThing) && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}
+                        {canSelectRows && <td className="chassis-row__check"><input type="checkbox" checked={isSelected} onChange={() => toggleKey(rowKey)} onClick={e => e.stopPropagation()} /></td>}
                         <td data-label={t('pdRepere')}>
                           <strong>{label}</strong>
                           {ch.keepAsOne && (ch.quantity || 1) > 1 && (
@@ -2849,8 +2857,8 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                             )}
                           </td>
                         )}
-                        <td data-label="">{adminThing && <div className="chassis-row__actions">
-                          <button className="edit-btn" onClick={() => {
+                        <td data-label="">{(adminThing || canPrintOneLabel) && <div className="chassis-row__actions">
+                          {adminThing && <button className="edit-btn" onClick={() => {
                             const keepAsOne = ch.keepAsOne === true || (ch.keepAsOne == null && projectTab === 'laquage');
                             setEditingChassis({
                               ...ch,
@@ -2860,11 +2868,11 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                               _unitIndex: unitIndex,
                               _totalQty: ch.quantity ?? 1,
                             }); setShowChassisForm(true);
-                          }}><Pencil size={14} /></button>
+                          }}><Pencil size={14} /></button>}
                           {adminOnly && <button className="ct-acc-btn" onClick={() => setAccLineEditor(ch)}><Wrench size={14} /></button>}
                           {adminOnly && (<button className="print-btn" onClick={async () => { let accs = []; try { const r = await axios.get(`${API_URL}/projects/${project.id}/chassis/${chId}/accessories`); accs = r.data || []; } catch { } const html = buildChassisDetailHTML(ch, project, chassisLabels, language, accs, atelierTables[rowKey] || ''); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); } }}><Printer size={14} /></button>)}
-                          {adminOnly && (<button className="print-btn" onClick={() => setPrintingChassis({ ...ch, _printRowIndex: unitIndex })}><Tag size={14} /></button>)}
-                          <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}><Trash2 size={14} /></button>
+                          {canPrintOneLabel && (<button className="print-btn" onClick={() => setPrintingChassis({ ...ch, _printRowIndex: unitIndex })}><Tag size={14} /></button>)}
+                          {adminThing && <button className="delete-btn" onClick={() => handleDeleteUnit(ch, unitIndex)}><Trash2 size={14} /></button>}
                         </div>}</td>
                       </tr>
                     );
