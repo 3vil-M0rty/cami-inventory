@@ -60,7 +60,7 @@ const ORDERS_CACHE_MS = 5 * 60 * 1000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aluminum-inventory';
 
 mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => { console.log('✅ MongoDB connected'); initSampleData(); migrateExistingData(); migrateLaquageToLots(); fixStuckLaquageLots(); seedSuperCategories(); resyncAllOrderedQuantities(); backfillItemSearchText(); })
+  .then(() => { console.log('✅ MongoDB connected'); initSampleData(); migrateExistingData(); migrateLaquageToLots(); fixStuckLaquageLots(); seedSuperCategories(); resyncAllOrderedQuantities(); checkInvoicesToMigrate(); backfillItemSearchText(); })
   .catch(err => { console.error('❌ MongoDB error:', err); process.exit(1); });
 
 
@@ -660,6 +660,8 @@ const orderTrackingSchema = new mongoose.Schema({
   paiementStatus: { type: String, enum: ['non_paye', 'partiel', 'paye'], default: 'non_paye' },
   paiementDate: { type: Date, default: null },
   montantPaye: { type: Number, default: 0, min: 0 },
+  // invoice (Facture) created from this row's invoice fields by migrate-factures.js (null = not migrated)
+  factureId: { type: mongoose.Schema.Types.ObjectId, ref: 'Facture', default: null },
   // Invoices / delivery notes stored in Cloudflare R2 (only the key and the metadata live here)
   documents: [{
     kind: { type: String, enum: ['facture', 'bl'], required: true },
@@ -3099,9 +3101,18 @@ const DOC_WARN_RATIO = 0.8;
 let docUsageCache = null; // { bytes, count, at }
 async function docUsage(force = false) {
   if (!force && docUsageCache && Date.now() - docUsageCache.at < 60000) return docUsageCache;
-  const rows = await OrderTracking.find({ 'documents.0': { $exists: true } }).select('documents.size').lean();
+  const [rows, facts] = await Promise.all([
+    OrderTracking.find({ 'documents.0': { $exists: true } }).select('documents.size documents.key').lean(),
+    Facture.find({ 'documents.0': { $exists: true } }).select('documents.size documents.key').lean(),
+  ]);
+  // each R2 file once (one BL scan can be filed for several orders, an invoice file shared after migration)
+  const seen = new Set();
   let bytes = 0, count = 0;
-  for (const r of rows) for (const d of r.documents || []) { bytes += d.size || 0; count++; }
+  for (const r of [...rows, ...facts]) for (const d of r.documents || []) {
+    if (d.key && seen.has(d.key)) continue;
+    if (d.key) seen.add(d.key);
+    bytes += d.size || 0; count++;
+  }
   docUsageCache = { bytes, count, at: Date.now() };
   return docUsageCache;
 }
@@ -3234,8 +3245,20 @@ app.get('/api/orders/:id/documents', requireAuth, requireOrdersView, async (req,
     const withInvoices = canAccounting(req);
     const rows = await OrderTracking.find({ orderId: order._id, 'documents.0': { $exists: true } }).select('blNumber documents').lean();
     const docs = [];
+    const keys = new Set();
+    // invoices (Factures) covering this order first: their files win over the same file in the old rows
+    if (withInvoices) {
+      for (const f of await Facture.find({ 'links.orderId': order._id, 'documents.0': { $exists: true } }).select('number documents').lean()) {
+        for (const d of f.documents || []) {
+          if (keys.has(d.key)) continue; keys.add(d.key);
+          docs.push({ id: String(d._id), kind: 'facture', source: 'facture', factureId: String(f._id), factureNumber: f.number || '', blNumber: '', name: d.name, contentType: d.contentType, size: d.size, uploadedAt: d.uploadedAt, uploadedBy: d.uploadedBy });
+        }
+      }
+    }
     for (const r of rows) for (const d of r.documents || []) {
       if (d.kind === 'facture' && !withInvoices) continue;
+      if (d.key && keys.has(d.key)) continue;
+      if (d.key) keys.add(d.key);
       docs.push({ id: String(d._id), kind: d.kind, blNumber: r.blNumber || '', name: d.name, contentType: d.contentType, size: d.size, uploadedAt: d.uploadedAt, uploadedBy: d.uploadedBy });
     }
     docs.sort((a, b) => new Date(a.uploadedAt) - new Date(b.uploadedAt));
@@ -3403,14 +3426,610 @@ app.delete('/api/order-tracking/documents/:docId', requireAuth, requireAccountin
     const t = await OrderTracking.findOne({ 'documents._id': req.params.docId }).select('documents').lean();
     const d = t?.documents.find(x => String(x._id) === req.params.docId);
     if (!d) return res.status(404).json({ error: 'Document introuvable' });
-    const { client, sdk, bucket } = r2();
-    await client.send(new sdk.DeleteObjectCommand({ Bucket: bucket, Key: d.key }));
-    // the list is rewritten without this document (no $pull: works on every MongoDB-compatible database)
+    // the list is rewritten without this document (no $pull: works on every MongoDB-compatible database),
+    // then the R2 file is deleted unless another order / invoice still uses it (BL filed for several orders)
     await OrderTracking.updateOne({ _id: t._id }, { $set: { documents: t.documents.filter(x => String(x._id) !== req.params.docId) } });
+    await deleteR2IfUnused(d.key);
     if (d.kind === 'bl') invalidateBlQueue();
     res.json({ success: true, storage: isAdmin(req) ? usageView(await docUsage(true)) : undefined });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
+
+// ==================== SUPPLIER INVOICES (FACTURES) ====================
+// A facture is its own record: one invoice can cover several purchase orders (and some of their BL),
+// a purchase order can have several BL and several invoices. Each link says which order, which BL
+// (optional) and how much of the invoice goes to that order. Payments are made on the invoice
+// (several partial payments allowed). Files live in the same private R2 bucket as the BL.
+const factureDocSchema = new mongoose.Schema({
+  key: { type: String, required: true },
+  name: { type: String, default: '' },
+  contentType: { type: String, default: 'application/pdf' },
+  size: { type: Number, default: 0 },
+  uploadedAt: { type: Date, default: Date.now },
+  uploadedBy: { type: String, default: '' },
+});
+const facturePaymentSchema = new mongoose.Schema({
+  date: { type: Date, required: true },
+  montant: { type: Number, required: true, min: 0.01 },
+  mode: { type: String, enum: ['', 'espece', 'virement', 'cheque', 'effet'], default: '' },
+  reference: { type: String, default: '', trim: true, maxlength: 80 }, // n° de chèque, de virement…
+  note: { type: String, default: '', maxlength: 300 },
+  by: { type: String, default: '' },
+}, { timestamps: true });
+const factureSchema = new mongoose.Schema({
+  number: { type: String, default: '', trim: true, maxlength: 80 },
+  supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Fournisseur', default: null },
+  supplierName: { type: String, default: '' },
+  companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
+  date: { type: Date, default: null },
+  montant: { type: Number, default: 0, min: 0 },              // TTC, what has to be paid
+  typeFacture: { type: String, enum: ['', 'facture', 'bl', 'situation', 'avoir'], default: 'facture' },
+  remarque: { type: String, default: '', maxlength: 500 },
+  links: [{
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
+    blNumbers: { type: [String], default: [] },               // BL of that order covered by the invoice ([] = the order)
+    montant: { type: Number, default: 0 },                    // part of the invoice for that order (TTC)
+    _id: false,
+  }],
+  documents: [factureDocSchema],
+  payments: [facturePaymentSchema],
+  createdBy: { type: String, default: '' },
+  migratedFrom: { type: [mongoose.Schema.Types.ObjectId], default: undefined }, // OrderTracking rows (migration)
+}, { timestamps: true });
+factureSchema.index({ 'links.orderId': 1 });
+factureSchema.index({ supplierId: 1, number: 1 });
+factureSchema.index({ date: -1 });
+factureSchema.index({ 'documents._id': 1 });
+const Facture = mongoose.model('Facture', factureSchema);
+
+const r2c = (v) => Math.round((Number(v) || 0) * 100) / 100;
+const docUploader = (req) => req.user?.displayName || req.user?.username || '';
+
+// An R2 file can be shared (one BL scan filed for several orders, an invoice file migrated from the
+// old Suivi): it is deleted from R2 only when nothing points to it any more.
+async function r2KeyInUse(key) {
+  const [t, f] = await Promise.all([
+    OrderTracking.countDocuments({ 'documents.key': key }),
+    Facture.countDocuments({ 'documents.key': key }),
+  ]);
+  return t + f > 0;
+}
+async function deleteR2IfUnused(key) {
+  if (!key || await r2KeyInUse(key)) return;
+  const { client, sdk, bucket } = r2();
+  await client.send(new sdk.DeleteObjectCommand({ Bucket: bucket, Key: key }));
+}
+// Puts an uploaded file (raw body) in R2 after the usual checks; returns the document metadata
+async function storeUploadedDoc(req, keyPrefix, defaultBase) {
+  const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  if (!buf.length) { const e = new Error('Fichier vide'); e.status = 400; throw e; }
+  const sniff = sniffDoc(buf);
+  if (!sniff) { const e = new Error('Format non accepté : PDF, JPG, PNG ou WebP uniquement.'); e.status = 415; throw e; }
+  const usage = await docUsage(true);
+  if (usage.bytes + buf.length > DOC_QUOTA_BYTES) {
+    const go = (b) => (b / GB).toFixed(2).replace('.', ',');
+    const e = new Error(isAdmin(req)
+      ? `Plus assez d'espace de stockage : ${go(usage.bytes)} Go utilisés sur ${go(DOC_QUOTA_BYTES)} Go (limite fixée pour rester gratuit). Supprimez d'anciens documents pour en ajouter.`
+      : 'Plus assez d\'espace de stockage pour les documents. Prévenez l\'administrateur.');
+    e.status = 507; throw e;
+  }
+  const { client, sdk, bucket } = r2();
+  const base = String(req.query.name || `${defaultBase}.${sniff.ext}`).replace(/\.[^.]+$/, '');
+  const key = `${keyPrefix}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.${sniff.ext}`;
+  await client.send(new sdk.PutObjectCommand({ Bucket: bucket, Key: key, Body: buf, ContentType: sniff.type }));
+  return { key, name: `${base.slice(0, 120)}.${sniff.ext}`, contentType: sniff.type, size: buf.length, uploadedAt: new Date(), uploadedBy: docUploader(req) };
+}
+
+// ── Purchase data shared by the 3 views: every order with its amounts and its BL ──
+// bls: Map blNumber → { blNumber, montant (TTC received), date, received, pending (filed, not received), docs }
+async function loadPurchaseData(orderFilter) {
+  const orders = await Order.find(orderFilter)
+    .select('number reference orderDate tva status companyId supplier supplierId lines._id lines.quantityOrdered lines.unitPrice receptions.blNumber receptions.cancelled receptions.lineId receptions.quantityReceived receptions.receivedAt')
+    .populate('supplierId', 'name delaiPaiement finDeMois termsByCompany')
+    .populate('companyId', 'name color')
+    .sort({ orderDate: -1 })
+    .lean();
+  const byName = new Map((await Fournisseur.find().select('name delaiPaiement finDeMois termsByCompany').lean()).map(f => [supplierKey(f.name), f]));
+  const tracking = orders.length
+    ? await OrderTracking.find({ orderId: { $in: orders.map(o => o._id) } }).select('orderId blNumber remarque documents').lean()
+    : [];
+  const trackByOrder = new Map();
+  for (const t of tracking) { const k = String(t.orderId); if (!trackByOrder.has(k)) trackByOrder.set(k, []); trackByOrder.get(k).push(t); }
+  return orders.map((o) => {
+    const tva = o.tva != null ? Number(o.tva) : 20;
+    const priceByLine = new Map((o.lines || []).map(l => [String(l._id), l.unitPrice || 0]));
+    const montantBC = r2c((o.lines || []).reduce((s, l) => s + (l.quantityOrdered || 0) * (l.unitPrice || 0), 0) * (1 + tva / 100));
+    const sup = o.supplierId || byName.get(supplierKey(o.supplier)) || null;
+    const bls = new Map();
+    for (const rec of o.receptions || []) {
+      if (rec.cancelled || !rec.blNumber) continue;
+      const b = bls.get(rec.blNumber) || { blNumber: rec.blNumber, montantHT: 0, date: rec.receivedAt, received: true, pending: false, docs: [] };
+      b.montantHT += (rec.quantityReceived || 0) * (priceByLine.get(String(rec.lineId)) || 0);
+      if (new Date(rec.receivedAt) > new Date(b.date)) b.date = rec.receivedAt;
+      bls.set(rec.blNumber, b);
+    }
+    for (const b of bls.values()) { b.montant = r2c(b.montantHT * (1 + tva / 100)); delete b.montantHT; }
+    const tr = trackByOrder.get(String(o._id)) || [];
+    for (const t of tr) {
+      const blDocs = (t.documents || []).filter(d => d.kind === 'bl');
+      if (!t.blNumber) continue;
+      let b = bls.get(t.blNumber);
+      if (!b && blDocs.length) { // filed in the Suivi, not received in stock yet
+        const first = blDocs.reduce((m, d) => (!m || new Date(d.uploadedAt) < new Date(m) ? d.uploadedAt : m), null);
+        b = { blNumber: t.blNumber, montant: 0, date: first, received: false, pending: o.status !== 'annulee', docs: [] };
+        bls.set(t.blNumber, b);
+      }
+      if (b) b.docs.push(...blDocs.map(d => ({ id: String(d._id), key: d.key, kind: 'bl', name: d.name, contentType: d.contentType, size: d.size, uploadedAt: d.uploadedAt, uploadedBy: d.uploadedBy })));
+    }
+    const montantRecu = r2c([...bls.values()].reduce((s, b) => s + (b.montant || 0), 0));
+    return {
+      o, id: String(o._id), number: o.number || o.reference || '', date: o.orderDate, status: o.status,
+      sup, supplierId: sup?._id ? String(sup._id) : null, supplierName: o.supplierId?.name || o.supplier || '',
+      companyId: o.companyId?._id ? String(o.companyId._id) : null, companyName: o.companyId?.name || '', companyColor: o.companyId?.color || '',
+      montantBC, montantRecu, bls, remarque: (tr.find(t => !t.blNumber) || {}).remarque || '',
+    };
+  });
+}
+
+// Invoice as shown on screen: paid / left / due date / lateness, and its orders
+function factureView(f, ctx) {
+  const today = new Date();
+  const paye = r2c((f.payments || []).reduce((s, p) => s + (p.montant || 0), 0));
+  const reste = Math.max(0, r2c((f.montant || 0) - paye));
+  const statut = paye <= 0 ? 'non_paye' : reste <= 0.009 ? 'paye' : 'partiel';
+  const sup = (f.supplierId && ctx.supById.get(String(f.supplierId))) || ctx.supByName.get(supplierKey(f.supplierName)) || null;
+  const term = termFor(sup, f.companyId);
+  const echeance = sup ? dueDate(f.date, term.delaiPaiement, term.finDeMois) : null;
+  const retardJours = echeance && statut !== 'paye' && reste > 0 && echeance < today ? Math.floor((today - echeance) / 86400000) + 1 : 0;
+  const comp = f.companyId ? ctx.companyById.get(String(f.companyId)) : null;
+  const lastPay = (f.payments || []).reduce((m, p) => (!m || new Date(p.date) > new Date(m) ? p.date : m), null);
+  return {
+    id: String(f._id), number: f.number || '', date: f.date, montant: r2c(f.montant), paye, reste, statut,
+    supplierId: sup?._id ? String(sup._id) : (f.supplierId ? String(f.supplierId) : null), supplierName: sup?.name || f.supplierName || '',
+    companyId: f.companyId ? String(f.companyId) : null, companyName: comp?.name || '', companyColor: comp?.color || '',
+    typeFacture: f.typeFacture || '', remarque: f.remarque || '',
+    echeance, retardJours, delaiPaiement: term.delaiPaiement, finDeMois: term.finDeMois, lastPaymentDate: lastPay,
+    links: (f.links || []).map(l => {
+      const o = ctx.orderById.get(String(l.orderId));
+      return { orderId: String(l.orderId), orderNumber: o ? (o.number || o.reference || '') : '', orderStatus: o?.status || '', blNumbers: l.blNumbers || [], montant: r2c(l.montant) };
+    }),
+    documents: (f.documents || []).map(d => ({ id: String(d._id), kind: 'facture', name: d.name, contentType: d.contentType, size: d.size, uploadedAt: d.uploadedAt, uploadedBy: d.uploadedBy })),
+    payments: (f.payments || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date)).map(p => ({
+      id: String(p._id), date: p.date, montant: r2c(p.montant), mode: p.mode || '', reference: p.reference || '', note: p.note || '', by: p.by || '',
+    })),
+    createdAt: f.createdAt,
+  };
+}
+async function factureContext(factures) {
+  const orderIds = [...new Set(factures.flatMap(f => (f.links || []).map(l => String(l.orderId))))];
+  const [sups, comps, orders] = await Promise.all([
+    Fournisseur.find().select('name delaiPaiement finDeMois termsByCompany').lean(),
+    Company.find().select('name color').lean(),
+    orderIds.length ? Order.find({ _id: { $in: orderIds } }).select('number reference status').lean() : [],
+  ]);
+  return {
+    supById: new Map(sups.map(s => [String(s._id), s])),
+    supByName: new Map(sups.map(s => [supplierKey(s.name), s])),
+    companyById: new Map(comps.map(c => [String(c._id), c])),
+    orderById: new Map(orders.map(o => [String(o._id), o])),
+  };
+}
+async function allFactureViews(filter = {}) {
+  const factures = await Facture.find(filter).lean();
+  const ctx = await factureContext(factures);
+  return factures.map(f => factureView(f, ctx));
+}
+const factureToPay = (v) => v.statut !== 'paye' && v.reste > 0 && v.typeFacture !== 'avoir';
+// totals of a list of invoices, overall and company by company
+function factureTotals(rows) {
+  const tot = { montant: 0, paye: 0, reste: 0, retard: 0 };
+  const byCo = new Map();
+  for (const v of rows) {
+    const k = v.companyId || 'none';
+    if (!byCo.has(k)) byCo.set(k, { companyId: v.companyId, name: v.companyName, color: v.companyColor, montant: 0, paye: 0, reste: 0, retard: 0, count: 0 });
+    const c = byCo.get(k);
+    const toPay = factureToPay(v);
+    for (const o of [tot, c]) {
+      o.montant += v.montant; o.paye += v.paye;
+      if (toPay) { o.reste += v.reste; if (v.retardJours > 0) o.retard += v.reste; }
+    }
+    c.count += 1;
+  }
+  const round = (o) => ({ ...o, montant: r2c(o.montant), paye: r2c(o.paye), reste: r2c(o.reste), retard: r2c(o.retard) });
+  return {
+    totals: round(tot),
+    byCompany: [...byCo.values()].map(round).sort((a, b) => (!a.companyId) - (!b.companyId) || (a.name || '').localeCompare(b.name || '')),
+  };
+}
+const paginate = (rows, req) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
+  const total = rows.length;
+  const pages = Math.max(1, Math.ceil(total / limit));
+  const page = Math.min(Math.max(parseInt(req.query.page, 10) || 1, 1), pages);
+  return { rows: rows.slice((page - 1) * limit, page * limit), total, page, pages, limit };
+};
+const searchWords = (req) => normalizeSearch(req.query.q).split(' ').filter(Boolean).slice(0, 6);
+const companyMatch = (req, companyId) => {
+  const c = String(req.query.company || '');
+  if (!c || c === 'all') return true;
+  if (c === 'none') return !companyId;
+  return String(companyId || '') === c;
+};
+
+// GET /api/factures?page&limit&q&status=all|a_payer|retard|payee|sans_pdf&company=
+app.get('/api/factures', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    const status = ['a_payer', 'retard', 'payee', 'sans_pdf'].includes(req.query.status) ? req.query.status : 'all';
+    const words = searchWords(req);
+    let rows = (await allFactureViews()).filter(v => companyMatch(req, v.companyId));
+    if (words.length) rows = rows.filter(v => {
+      const hay = normalizeSearch([v.number, v.supplierName, v.remarque, ...v.links.map(l => `${l.orderNumber} ${l.blNumbers.join(' ')}`), ...v.payments.map(p => p.reference)].join(' '));
+      return words.every(w => hay.includes(w));
+    });
+    // totals before the status filter: the cards always show the whole picture of the search / company
+    const all = factureTotals(rows);
+    if (status === 'a_payer') rows = rows.filter(factureToPay);
+    else if (status === 'retard') rows = rows.filter(v => factureToPay(v) && v.retardJours > 0);
+    else if (status === 'payee') rows = rows.filter(v => v.statut === 'paye');
+    else if (status === 'sans_pdf') rows = rows.filter(v => !v.documents.length);
+    if (status === 'a_payer' || status === 'retard') rows.sort((a, b) => (a.echeance ? new Date(a.echeance) : Infinity) - (b.echeance ? new Date(b.echeance) : Infinity));
+    else rows.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
+    const shown = factureTotals(rows);
+    res.json({ ...paginate(rows, req), totals: shown.totals, byCompany: shown.byCompany, overview: all.totals });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/factures/:id → one invoice (with its payments)
+app.get('/api/factures/:id', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Facture invalide' });
+    const f = await Facture.findById(req.params.id).lean();
+    if (!f) return res.status(404).json({ error: 'Facture introuvable' });
+    res.json(factureView(f, await factureContext([f])));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/factures-candidates?supplierId=&supplier=&factureId= → the supplier's purchase orders with
+// their BL and what is already invoiced, to pick the orders / BL covered by an invoice
+app.get('/api/factures-candidates', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    const filter = { status: { $nin: ['brouillon'] } };
+    const supId = String(req.query.supplierId || '');
+    const supName = String(req.query.supplier || '').trim();
+    if (mongoose.Types.ObjectId.isValid(supId)) {
+      const sup = await Fournisseur.findById(supId).select('name').lean();
+      filter.$or = [{ supplierId: new mongoose.Types.ObjectId(supId) }, ...(sup ? [{ supplierId: null, supplier: new RegExp(`^\\s*${escapeRegex(sup.name.trim())}\\s*$`, 'i') }] : [])];
+    } else if (supName) {
+      filter.supplier = new RegExp(`^\\s*${escapeRegex(supName)}\\s*$`, 'i');
+    }
+    const data = await loadPurchaseData(filter);
+    const exclude = mongoose.Types.ObjectId.isValid(String(req.query.factureId || '')) ? String(req.query.factureId) : null;
+    const factures = data.length ? await Facture.find({ 'links.orderId': { $in: data.map(d => d.o._id) } }).select('number links').lean() : [];
+    const invoiced = new Map(); // orderId → { montant, bls: Set, numbers: [] }
+    for (const f of factures) {
+      if (String(f._id) === exclude) continue;
+      for (const l of f.links || []) {
+        const k = String(l.orderId);
+        const cur = invoiced.get(k) || { montant: 0, bls: new Set(), numbers: [] };
+        cur.montant += l.montant || 0; (l.blNumbers || []).forEach(b => cur.bls.add(b)); cur.numbers.push(f.number || '—');
+        invoiced.set(k, cur);
+      }
+    }
+    res.json(data.filter(d => d.status !== 'annulee' || invoiced.has(d.id)).map(d => {
+      const inv = invoiced.get(d.id) || { montant: 0, bls: new Set(), numbers: [] };
+      return {
+        orderId: d.id, number: d.number, date: d.date, status: d.status,
+        supplierId: d.supplierId, supplierName: d.supplierName,
+        companyId: d.companyId, companyName: d.companyName, companyColor: d.companyColor,
+        montantBC: d.montantBC, montantRecu: d.montantRecu, montantFacture: r2c(inv.montant), factures: [...new Set(inv.numbers)],
+        bls: [...d.bls.values()].sort((a, b) => new Date(a.date) - new Date(b.date))
+          .map(b => ({ blNumber: b.blNumber, montant: b.montant, date: b.date, received: b.received, pending: b.pending, invoiced: inv.bls.has(b.blNumber) })),
+      };
+    }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Body of a create / edit: validated, supplier and company taken from the orders when not given
+async function cleanFactureBody(body, current = null) {
+  const err = (m, s = 400) => { const e = new Error(m); e.status = s; return e; };
+  const out = {};
+  if (body.number !== undefined) out.number = String(body.number || '').trim().slice(0, 80);
+  if (!current && !out.number) throw err('Indiquez le numéro de la facture.');
+  if (body.date !== undefined) { const d = body.date ? new Date(body.date) : null; if (d && isNaN(d)) throw err('Date de facture invalide'); out.date = d; }
+  if (body.montant !== undefined) { const n = Number(body.montant); if (!Number.isFinite(n) || n < 0) throw err('Montant invalide'); out.montant = r2c(n); }
+  if (body.typeFacture !== undefined) { if (!['', 'facture', 'bl', 'situation', 'avoir'].includes(body.typeFacture)) throw err('Type de facture invalide'); out.typeFacture = body.typeFacture; }
+  if (body.remarque !== undefined) out.remarque = String(body.remarque || '').slice(0, 500);
+  if (body.links !== undefined) {
+    const links = (Array.isArray(body.links) ? body.links : []).filter(l => mongoose.Types.ObjectId.isValid(String(l?.orderId || '')));
+    if (!links.length) throw err('Choisissez au moins un bon de commande.');
+    const ids = [...new Set(links.map(l => String(l.orderId)))];
+    const orders = await Order.find({ _id: { $in: ids } }).select('supplier supplierId companyId').populate('supplierId', 'name').lean();
+    if (orders.length !== ids.length) throw err('Un bon de commande choisi n\'existe plus.');
+    out.links = ids.map(id => {
+      const ls = links.filter(l => String(l.orderId) === id);
+      const montant = r2c(ls.reduce((s, l) => s + (Number(l.montant) || 0), 0));
+      const blNumbers = [...new Set(ls.flatMap(l => (Array.isArray(l.blNumbers) ? l.blNumbers : []).map(b => String(b).trim()).filter(Boolean)))];
+      return { orderId: id, blNumbers, montant };
+    });
+    const first = orders[0];
+    if (!body.supplierId && !body.supplierName) {
+      out.supplierId = first.supplierId?._id || null;
+      out.supplierName = first.supplierId?.name || first.supplier || '';
+    }
+    const companies = [...new Set(orders.map(o => String(o.companyId || '')))];
+    if (body.companyId === undefined) out.companyId = companies.length === 1 && companies[0] ? companies[0] : (current?.companyId || null);
+  }
+  if (body.supplierId !== undefined && body.supplierId) {
+    if (!mongoose.Types.ObjectId.isValid(String(body.supplierId))) throw err('Fournisseur invalide');
+    const sup = await Fournisseur.findById(body.supplierId).select('name').lean();
+    if (!sup) throw err('Fournisseur introuvable');
+    out.supplierId = sup._id; out.supplierName = sup.name;
+  }
+  if (body.companyId !== undefined) out.companyId = mongoose.Types.ObjectId.isValid(String(body.companyId || '')) ? body.companyId : null;
+  if (out.montant === undefined && out.links && !current) out.montant = r2c(out.links.reduce((s, l) => s + l.montant, 0));
+  return out;
+}
+
+// POST /api/factures  { number, date, montant, typeFacture, remarque, links: [{ orderId, blNumbers, montant }], supplierId?, companyId? }
+app.post('/api/factures', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    const data = await cleanFactureBody(req.body || {});
+    // same number at the same supplier: probably entered twice → confirmation asked (?force=1)
+    if (data.number && req.query.force !== '1') {
+      const dup = await Facture.findOne({ number: new RegExp(`^\\s*${escapeRegex(data.number)}\\s*$`, 'i'), ...(data.supplierId ? { supplierId: data.supplierId } : { supplierName: data.supplierName }) }).select('_id').lean();
+      if (dup) return res.status(409).json({ code: 'DUPLICATE_FACTURE', id: String(dup._id), error: `La facture n° ${data.number} de ce fournisseur existe déjà.` });
+    }
+    const f = await Facture.create({ ...data, createdBy: docUploader(req) });
+    res.status(201).json(factureView(f.toObject(), await factureContext([f.toObject()])));
+  } catch (e) { res.status(e.status || (e.name === 'ValidationError' ? 400 : 500)).json({ error: e.message }); }
+});
+
+// PUT /api/factures/:id — edit (same fields as the creation)
+app.put('/api/factures/:id', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Facture invalide' });
+    const f = await Facture.findById(req.params.id);
+    if (!f) return res.status(404).json({ error: 'Facture introuvable' });
+    const data = await cleanFactureBody(req.body || {}, f);
+    Object.assign(f, data);
+    await f.save();
+    res.json(factureView(f.toObject(), await factureContext([f.toObject()])));
+  } catch (e) { res.status(e.status || (e.name === 'ValidationError' ? 400 : 500)).json({ error: e.message }); }
+});
+
+// DELETE /api/factures/:id — the invoice, its payments and its files (files still used elsewhere are kept)
+app.delete('/api/factures/:id', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Facture invalide' });
+    const f = await Facture.findById(req.params.id).lean();
+    if (!f) return res.status(404).json({ error: 'Facture introuvable' });
+    await Facture.deleteOne({ _id: f._id });
+    for (const d of f.documents || []) await deleteR2IfUnused(d.key).catch(() => {});
+    if (f.migratedFrom?.length) await OrderTracking.updateMany({ _id: { $in: f.migratedFrom } }, { $set: { factureId: null } });
+    res.json({ success: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// POST /api/factures/:id/payments { date, montant, mode, reference, note } — partial payments allowed
+app.post('/api/factures/:id/payments', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Facture invalide' });
+    const f = await Facture.findById(req.params.id);
+    if (!f) return res.status(404).json({ error: 'Facture introuvable' });
+    const montant = r2c(req.body?.montant);
+    if (!(montant > 0)) return res.status(400).json({ error: 'Indiquez le montant payé.' });
+    const paid = (f.payments || []).reduce((s, p) => s + (p.montant || 0), 0);
+    const reste = r2c((f.montant || 0) - paid);
+    if (montant > reste + 0.009) return res.status(400).json({ error: `Le montant dépasse le reste à payer (${reste.toFixed(2)}).` });
+    const date = req.body?.date ? new Date(req.body.date) : new Date();
+    if (isNaN(date)) return res.status(400).json({ error: 'Date de paiement invalide' });
+    const mode = ['', 'espece', 'virement', 'cheque', 'effet'].includes(req.body?.mode) ? req.body.mode : '';
+    f.payments.push({ date, montant, mode, reference: String(req.body?.reference || '').trim().slice(0, 80), note: String(req.body?.note || '').slice(0, 300), by: docUploader(req) });
+    await f.save();
+    res.status(201).json(factureView(f.toObject(), await factureContext([f.toObject()])));
+  } catch (e) { res.status(e.status || (e.name === 'ValidationError' ? 400 : 500)).json({ error: e.message }); }
+});
+// DELETE /api/factures/:id/payments/:paymentId — a payment entered by mistake
+app.delete('/api/factures/:id/payments/:paymentId', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Facture invalide' });
+    const f = await Facture.findById(req.params.id);
+    if (!f) return res.status(404).json({ error: 'Facture introuvable' });
+    const before = f.payments.length;
+    f.payments = f.payments.filter(p => String(p._id) !== req.params.paymentId);
+    if (f.payments.length === before) return res.status(404).json({ error: 'Paiement introuvable' });
+    await f.save();
+    res.json(factureView(f.toObject(), await factureContext([f.toObject()])));
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// POST /api/factures/:id/documents?name= — body: the file (PDF / photo, 15 MB max)
+app.post('/api/factures/:id/documents', requireAuth, requireAccounting, readDocBody, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Facture invalide' });
+    const f = await Facture.findById(req.params.id);
+    if (!f) return res.status(404).json({ error: 'Facture introuvable' });
+    const year = new Date(f.date || Date.now()).getFullYear();
+    const doc = await storeUploadedDoc(req, `achats/${year}/factures/${safeKeyPart(f.supplierName || 'fournisseur')}-${safeKeyPart(f.number || f._id)}`, 'facture');
+    f.documents.push(doc);
+    await f.save();
+    const saved = f.documents[f.documents.length - 1];
+    res.status(201).json({ id: String(saved._id), kind: 'facture', name: saved.name, contentType: saved.contentType, size: saved.size, uploadedAt: saved.uploadedAt, uploadedBy: saved.uploadedBy, storage: isAdmin(req) ? usageView(await docUsage(true)) : undefined });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+// GET /api/factures/documents/:docId/file — the file itself (in-app viewer / print), /url — short-lived R2 link
+async function findFactureDoc(docId) {
+  if (!mongoose.Types.ObjectId.isValid(docId)) return null;
+  const f = await Facture.findOne({ 'documents._id': docId }).select('documents').lean();
+  const d = f?.documents.find(x => String(x._id) === docId);
+  return d ? { f, d } : null;
+}
+app.get('/api/factures/documents/:docId/file', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    const found = await findFactureDoc(req.params.docId);
+    if (!found) return res.status(404).json({ error: 'Document introuvable' });
+    const { d } = found;
+    const { client, sdk, bucket } = r2();
+    const obj = await client.send(new sdk.GetObjectCommand({ Bucket: bucket, Key: d.key }));
+    res.set({
+      'Content-Type': d.contentType || 'application/octet-stream',
+      'Content-Disposition': `inline; filename="${safeKeyPart(d.name)}"; filename*=UTF-8''${encodeURIComponent(d.name)}`,
+      'Cache-Control': 'private, no-store',
+    });
+    if (obj.ContentLength) res.set('Content-Length', String(obj.ContentLength));
+    obj.Body.on('error', () => res.destroy());
+    obj.Body.pipe(res);
+  } catch (e) { if (!res.headersSent) res.status(e.status || 500).json({ error: e.message }); }
+});
+app.get('/api/factures/documents/:docId/url', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    const found = await findFactureDoc(req.params.docId);
+    if (!found) return res.status(404).json({ error: 'Document introuvable' });
+    const { d } = found;
+    const { client, sdk, presigner, bucket } = r2();
+    const disp = `${req.query.download ? 'attachment' : 'inline'}; filename="${safeKeyPart(d.name)}"`;
+    const url = await presigner.getSignedUrl(client, new sdk.GetObjectCommand({ Bucket: bucket, Key: d.key, ResponseContentDisposition: disp, ResponseContentType: d.contentType }), { expiresIn: 300 });
+    res.json({ url });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+app.delete('/api/factures/:id/documents/:docId', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Facture invalide' });
+    const f = await Facture.findById(req.params.id).lean();
+    const d = f?.documents.find(x => String(x._id) === req.params.docId);
+    if (!d) return res.status(404).json({ error: 'Document introuvable' });
+    await Facture.updateOne({ _id: f._id }, { $set: { documents: f.documents.filter(x => String(x._id) !== req.params.docId) } });
+    await deleteR2IfUnused(d.key);
+    res.json({ success: true, storage: isAdmin(req) ? usageView(await docUsage(true)) : undefined });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// POST /api/order-tracking/bl?orderIds=a,b&blNumber=&name= — body: the BL scan. Filed ONCE in R2 and
+// attached to every order chosen (same BL for several purchase orders): each order then shows it in
+// « À réceptionner » like any BL filed from the Suivi.
+app.post('/api/order-tracking/bl', requireAuth, requireAccounting, readDocBody, async (req, res) => {
+  try {
+    const ids = [...new Set(String(req.query.orderIds || '').split(',').map(s => s.trim()).filter(s => mongoose.Types.ObjectId.isValid(s)))];
+    if (!ids.length) return res.status(400).json({ error: 'Choisissez au moins un bon de commande.' });
+    let blNumber = String(req.query.blNumber || '').trim().slice(0, 80);
+    if (!blNumber) blNumber = String(req.query.name || '').replace(/\.[^.]+$/, '').trim().slice(0, 80);
+    if (!blNumber) return res.status(400).json({ error: 'Indiquez le numéro du BL.' });
+    const orders = await Order.find({ _id: { $in: ids } }).select('number reference orderDate status').lean();
+    if (orders.length !== ids.length) return res.status(404).json({ error: 'Un bon de commande choisi est introuvable.' });
+    if (orders.some(o => o.status === 'brouillon')) return res.status(400).json({ error: 'Un bon de commande choisi n\'est pas encore envoyé.' });
+    const year = new Date(orders[0].orderDate || Date.now()).getFullYear();
+    const doc = await storeUploadedDoc(req, `achats/${year}/bl/${safeKeyPart(blNumber)}`, 'bl');
+    for (const o of orders) {
+      await OrderTracking.findOneAndUpdate({ orderId: o._id, blNumber }, { $push: { documents: { kind: 'bl', ...doc } } }, { upsert: true, new: true });
+    }
+    invalidateBlQueue();
+    res.status(201).json({ blNumber, orders: orders.map(o => ({ id: String(o._id), number: o.number || o.reference || '' })), name: doc.name, storage: isAdmin(req) ? usageView(await docUsage(true)) : undefined });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// Invoice links of the given orders: orderId → [{ id, number, blNumbers, montant }]
+async function invoicesByOrder(orderIds) {
+  const factures = orderIds.length ? await Facture.find({ 'links.orderId': { $in: orderIds } }).select('number links payments montant').lean() : [];
+  const map = new Map();
+  for (const f of factures) {
+    const paye = (f.payments || []).reduce((s, p) => s + (p.montant || 0), 0);
+    const statut = paye <= 0 ? 'non_paye' : paye >= (f.montant || 0) - 0.009 ? 'paye' : 'partiel';
+    for (const l of f.links || []) {
+      const k = String(l.orderId);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push({ id: String(f._id), number: f.number || '', blNumbers: l.blNumbers || [], montant: r2c(l.montant), statut });
+    }
+  }
+  return map;
+}
+
+// GET /api/order-tracking/bl-list?page&limit&q&company&status=all|a_receptionner|recu|non_facture
+// One row per delivery note (supplier + BL number), with every purchase order it covers.
+app.get('/api/order-tracking/bl-list', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    const status = ['a_receptionner', 'recu', 'non_facture'].includes(req.query.status) ? req.query.status : 'all';
+    const data = await loadPurchaseData({ status: { $ne: 'brouillon' }, ...companyOrderFilter(req) });
+    const inv = await invoicesByOrder(data.map(d => d.o._id));
+    const groups = new Map();
+    for (const d of data) {
+      const sk = d.supplierId || `n:${supplierKey(d.supplierName)}`;
+      for (const b of d.bls.values()) {
+        const k = `${sk}::${b.blNumber.trim().toLowerCase()}`;
+        const g = groups.get(k) || {
+          key: k, blNumber: b.blNumber, supplierName: d.supplierName, supplierId: d.supplierId,
+          companyId: d.companyId, companyName: d.companyName, companyColor: d.companyColor,
+          date: b.date, montant: 0, orders: [], docs: new Map(), factures: new Map(), pending: false, received: false,
+        };
+        g.montant += b.montant || 0;
+        if (b.date && (!g.date || new Date(b.date) < new Date(g.date))) g.date = b.date;
+        g.pending = g.pending || b.pending; g.received = g.received || b.received;
+        g.orders.push({ orderId: d.id, number: d.number, status: d.status, received: b.received, pending: b.pending, montant: b.montant });
+        for (const doc of b.docs) if (!g.docs.has(doc.key)) g.docs.set(doc.key, doc);
+        for (const f of inv.get(d.id) || []) if (f.blNumbers.includes(b.blNumber) || !f.blNumbers.length) g.factures.set(f.id, { id: f.id, number: f.number, statut: f.statut, whole: !f.blNumbers.length });
+        groups.set(k, g);
+      }
+    }
+    const words = searchWords(req);
+    let rows = [...groups.values()].map(g => ({
+      ...g, montant: r2c(g.montant), docs: [...g.docs.values()].map(({ key, ...rest }) => rest),
+      factures: [...g.factures.values()], facture: [...g.factures.values()].some(f => !f.whole),
+    }));
+    if (words.length) rows = rows.filter(r => { const hay = normalizeSearch([r.blNumber, r.supplierName, ...r.orders.map(o => o.number), ...r.factures.map(f => f.number)].join(' ')); return words.every(w => hay.includes(w)); });
+    if (status === 'a_receptionner') rows = rows.filter(r => r.pending);
+    else if (status === 'recu') rows = rows.filter(r => r.received && !r.pending);
+    else if (status === 'non_facture') rows = rows.filter(r => !r.facture);
+    rows.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    const totals = { montant: r2c(rows.reduce((s, r) => s + r.montant, 0)), nonFacture: r2c(rows.filter(r => !r.facture).reduce((s, r) => s + r.montant, 0)) };
+    res.json({ ...paginate(rows, req), totals });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/order-tracking/bc-list?page&limit&q&company&status=all|a_facturer|facture|en_cours
+// One row per purchase order: its BL, its invoices, received vs invoiced amounts.
+app.get('/api/order-tracking/bc-list', requireAuth, requireAccounting, async (req, res) => {
+  try {
+    const status = ['a_facturer', 'facture', 'en_cours'].includes(req.query.status) ? req.query.status : 'all';
+    const data = await loadPurchaseData({ status: { $ne: 'brouillon' }, ...companyOrderFilter(req) });
+    const inv = await invoicesByOrder(data.map(d => d.o._id));
+    const words = searchWords(req);
+    let rows = data.map(d => {
+      const factures = inv.get(d.id) || [];
+      const montantFacture = r2c(factures.reduce((s, f) => s + f.montant, 0));
+      // what is still to invoice: what came in (or, when cancelled / nothing received, nothing)
+      const resteAFacturer = Math.max(0, r2c(d.montantRecu - montantFacture));
+      return {
+        orderId: d.id, number: d.number, date: d.date, status: d.status,
+        supplierId: d.supplierId, supplierName: d.supplierName,
+        companyId: d.companyId, companyName: d.companyName, companyColor: d.companyColor,
+        montantBC: d.montantBC, montantRecu: d.montantRecu, montantFacture, resteAFacturer, remarque: d.remarque,
+        bls: [...d.bls.values()].sort((a, b) => new Date(a.date) - new Date(b.date)).map(b => ({
+          blNumber: b.blNumber, montant: b.montant, date: b.date, received: b.received, pending: b.pending,
+          invoiced: factures.some(f => f.blNumbers.includes(b.blNumber)),
+          docs: b.docs.map(({ key, ...rest }) => rest),
+        })),
+        factures,
+      };
+    });
+    if (words.length) rows = rows.filter(r => { const hay = normalizeSearch([r.number, r.supplierName, r.remarque, ...r.bls.map(b => b.blNumber), ...r.factures.map(f => f.number)].join(' ')); return words.every(w => hay.includes(w)); });
+    if (status === 'a_facturer') rows = rows.filter(r => r.status !== 'annulee' && r.resteAFacturer > 0.009);
+    else if (status === 'facture') rows = rows.filter(r => r.factures.length);
+    else if (status === 'en_cours') rows = rows.filter(r => r.status === 'envoye' || r.status === 'partielle');
+    rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const sum = (k) => r2c(rows.reduce((s, r) => s + (r.status === 'annulee' ? 0 : r[k]), 0));
+    res.json({ ...paginate(rows, req), totals: { montantBC: sum('montantBC'), montantRecu: sum('montantRecu'), montantFacture: sum('montantFacture'), resteAFacturer: sum('resteAFacturer') } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Invoices typed in the old Suivi (one per order / BL) that are not Factures yet: reminder in the server log
+async function checkInvoicesToMigrate() {
+  try {
+    const n = await OrderTracking.countDocuments({
+      factureId: null,
+      $or: [{ factureNumber: { $nin: ['', null] } }, { factureStatus: 'recue' }, { paiementStatus: { $in: ['partiel', 'paye'] } }, { 'documents.kind': 'facture' }],
+    });
+    if (n) console.log(`ℹ️  ${n} ligne(s) de l'ancien Suivi contiennent des factures / paiements à reprendre : lancez « node migrate-factures.js » (aperçu) puis « --confirm ».`);
+  } catch { /* information only */ }
+}
 
 // ==================== CLIENT ROUTES ====================
 app.get('/api/clients', async (req, res) => {
@@ -3987,13 +4606,14 @@ app.get('/api/fournisseurs/stats', requireAuth, requireAccounting, async (req, r
       const seen = new Set();
       for (const sc of it.supplierCodes || []) { const id = String(sc.supplierId); if (!seen.has(id) && out[id]) { seen.add(id); out[id].items++; } }
     }
-    // Payments (same rows and rules as the Suivi table)
+    // Payments: what is left to pay on the supplier invoices (Factures), same rules as the Suivi
     for (const r of Object.values(out)) { r.toPay = 0; r.payLate = 0; r.payLateAmount = 0; }
-    for (const row of await buildTrackingRows({ status: { $ne: 'brouillon' }, ...companyOrderFilter(req) })) {
-      const r = row.supplierId && out[row.supplierId];
-      if (!r || !isToPay(row)) continue;
-      r.toPay += row.reste;
-      if (row.retardJours > 0) { r.payLate++; r.payLateAmount += row.reste; }
+    for (const v of await allFactureViews()) {
+      if (!companyMatch(req, v.companyId) || !factureToPay(v)) continue;
+      const r = v.supplierId && out[v.supplierId];
+      if (!r) continue;
+      r.toPay += v.reste;
+      if (v.retardJours > 0) { r.payLate++; r.payLateAmount += v.reste; }
     }
     for (const r of Object.values(out)) {
       r.amount = Math.round(r.amount * 100) / 100; r.toPay = Math.round(r.toPay * 100) / 100; r.payLateAmount = Math.round(r.payLateAmount * 100) / 100;

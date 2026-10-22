@@ -9,13 +9,13 @@ import { useAuth } from '../../context/AuthContext';
 import { dialog, errorMessage } from '../../components/common/dialog';
 import { PAGE_PATHS, subPathFromLocation, getQueryParam, setUrl } from '../../routes';
 import SuppliersPanel, { SupplierFormModal } from './SuppliersPanel';
-import { DocumentsCell, DocumentsModal, StorageGauge, BlDocButtons, OrderDocumentsBlock } from './TrackingDocuments';
+import { DocumentsModal, BlDocButtons, OrderDocumentsBlock } from './TrackingDocuments';
 import { ReceiveBatchModal, PendingBlsBlock } from './ReceiveBatch';
 import { BlsToReceivePanel, OrdersToReceiveList } from './BlsToReceive';
 import { useBlsToReceive, canReceiveBls, refreshBls } from './receptionQueue';
 import { unitLabel, qtyWithUnit, fmtUnitQty, lineFactor, lineToStock, isConverted } from '../inventory/units';
 import { ZoomImg } from '../../components/common/ImagePreview';
-import CompanyFilter, { CompanyTag } from './CompanyFilter';
+import SuiviPanel, { FactureModal } from './suivi/SuiviPanel';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -69,31 +69,7 @@ const CATEGORY_RECEIVE_ROLE = {
 };
 
 // ── Suivi des commandes: static option lists ───────────────────────────────
-const FACTURE_OPTIONS = [
-  { value: 'non_recue', label: 'orOptNotReceived' },
-  { value: 'recue', label: 'orOptReceived' },
-];
-const PAIEMENT_OPTIONS = [
-  { value: '', label: '—' },
-  { value: 'espece', label: 'orPayCash' },
-  { value: 'virement', label: 'orPayTransfer' },
-  { value: 'cheque', label: 'orPayCheque' },
-  { value: 'effet', label: 'orPayBill' },
-];
-const PAIEMENT_STATUS_OPTIONS = [
-  { value: 'non_paye', label: 'acPayNone' },
-  { value: 'partiel', label: 'acPayPartial' },
-  { value: 'paye', label: 'acPayDone' },
-];
-const ymdInput = (d) => { if (!d) return ''; const x = new Date(d); return isNaN(x) ? '' : `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
-const money2 = (v) => Number(v || 0).toFixed(2);
 
-const TYPE_FACTURE_OPTIONS = [
-  { value: '', label: '—' },
-  { value: 'bl', label: 'BL' },
-  { value: 'facture', label: 'orTypeInvoice' },
-  { value: 'situation', label: 'orTypeSituation' },
-];
 
 export default function OrdersPage() {
   const { currentLanguage: lang, t } = useLanguage();
@@ -214,6 +190,7 @@ export default function OrdersPage() {
   // Documents attached to the open order (BL for everyone who sees it, invoices for ACHAT / accountant)
   const [orderDocs, setOrderDocs] = useState({ documents: [], canManage: false });
   const [docsManage, setDocsManage] = useState(null); // { blNumber } being managed in the documents window
+  const [invoiceFor, setInvoiceFor] = useState(null); // purchase order an invoice (Facture) is being added for
   const [docStorage, setDocStorage] = useState(null);
   const selectedOrderId = selectedOrder?.id;
   const loadOrderDocs = useCallback(() => {
@@ -784,11 +761,20 @@ export default function OrdersPage() {
         })()}
 
         {orderDocs.canManage && order.status !== 'brouillon' && (
-          <OrderDocumentsBlock docs={orderDocs.documents} onDeleted={() => { loadOrderDocs(); refreshBls(); }} onManage={() => {
-            // Invoices live on the BL rows of the Suivi: with a single BL, manage that one
-            const bls = [...new Set((order.receptions || []).filter(r => !r.cancelled && r.blNumber).map(r => r.blNumber))];
-            manageDocs(bls.length === 1 ? bls[0] : '');
-          }} />
+          <OrderDocumentsBlock docs={orderDocs.documents} onDeleted={() => { loadOrderDocs(); refreshBls(); }}
+            onAddInvoice={() => setInvoiceFor(order)}
+            onManage={() => {
+              // BL files: with a single BL, manage that one
+              const bls = [...new Set((order.receptions || []).filter(r => !r.cancelled && r.blNumber).map(r => r.blNumber))];
+              manageDocs(bls.length === 1 ? bls[0] : '');
+            }} />
+        )}
+        {invoiceFor && (
+          <FactureModal
+            preset={{ supplierId: invoiceFor.supplierId?.id || invoiceFor.supplierId?._id || '', links: [{ orderId: invoiceFor.id, blNumbers: [] }] }}
+            onClose={() => setInvoiceFor(null)}
+            onSaved={() => { setInvoiceFor(null); loadOrderDocs(); }}
+          />
         )}
         {docsManage && (
           <DocumentsModal
@@ -801,6 +787,7 @@ export default function OrdersPage() {
             onStorage={setDocStorage}
             onChange={loadOrderDocs}
             onClose={() => { setDocsManage(null); loadOrderDocs(); }}
+            kinds={['bl']}
           />
         )}
 
@@ -943,7 +930,7 @@ export default function OrdersPage() {
           lang={lang}
         />
       ) : shownTab === 'suivi' ? (
-        <SuiviCommandesPanel />
+        <SuiviPanel />
       ) : shownTab === 'fournisseurs' ? (
         <SuppliersPanel
           suppliers={suppliers}
@@ -1810,353 +1797,3 @@ function PurchaseRequestsPanel({ onChanged, isAdmin, lang }) {
    editable and persisted.
 ────────────────────────────────────────────────────────────────────────── */
 // Due date of a row: date + countdown / delay; "estimated" when based on the BL date (no invoice date yet)
-function DueCell({ row, t }) {
-  if (row.paiementStatus === 'paye') {
-    return <span className="pr-due pr-due--ok">{t('acPaidOn', { date: row.paiementDate ? new Date(row.paiementDate).toLocaleDateString('fr-FR') : '—' })}</span>;
-  }
-  if (row.delaiPaiement == null) return <span className="pr-faint" title={t('acNoTermTip')}>{t('acNoTerm')}</span>;
-  if (!row.echeance) return <span className="pr-faint" title={t('acNoBaseTip')}>—</span>;
-  const d = new Date(row.echeance);
-  const days = Math.ceil((d - new Date()) / 86400000);
-  return (
-    <span className={`pr-due${row.retardJours > 0 ? ' pr-due--late' : days <= 7 ? ' pr-due--soon' : ''}`}
-      title={row.echeanceEstimee ? t('acEstimatedTip') : undefined}>
-      <strong>{d.toLocaleDateString('fr-FR')}{row.echeanceEstimee ? '*' : ''}</strong>
-      <span>{row.retardJours > 0 ? t('acLateDays', { n: row.retardJours }) : days <= 0 ? t('acDueToday') : t('acDueIn', { n: days })}</span>
-    </span>
-  );
-}
-
-function SuiviCommandesPanel() {
-  const { t, currentLanguage: lang } = useLanguage();
-  const { selectedCompany } = useCompany();
-  // company shown: follows the company chosen in the header, can be changed here
-  const [companyFilter, setCompanyFilter] = useState(selectedCompany || 'all');
-  useEffect(() => { setCompanyFilter(selectedCompany || 'all'); setPage(1); }, [selectedCompany]);
-  const [savingKey, setSavingKey] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [factureFilter, setFactureFilter] = useState('all'); // 'all' | 'recue' | 'non_recue' | 'sans_pdf'
-  const [docsRow, setDocsRow] = useState(null); // row whose invoices / BL are open
-  const newBlRef = useRef(false); // a BL was filed under a new number → reload the rows on close
-  const [storage, setStorage] = useState(null);  // space used by the documents vs the free cap
-  useEffect(() => {
-    axios.get(`${API_URL}/order-tracking/storage`).then(r => setStorage(r.data)).catch(() => {});
-  }, []);
-  const [page, setPage] = useState(1);
-  // Search runs on the server (debounced while typing); filters + totals + pagination too
-  const { data, loading, reload, patch, dropOthers } = usePagedList(
-    `${API_URL}/order-tracking`,
-    { page, limit: PAGE_SIZE, q: searchTerm.trim(), facture: factureFilter, company: companyFilter === 'all' ? '' : companyFilter },
-    searchTerm ? 300 : 0,
-  );
-  const rows = data?.rows || [];
-  const visibleRows = rows;
-  const totals = data?.totals || { bc: 0, bl: 0 };
-  const byCompany = data?.byCompany || [];
-  const total = data?.total || 0;
-  const fetchRows = reload;
-  const changeFilter = (f) => { setFactureFilter(f); setPage(1); };
-
-  const rowKey = (r) => `${r.orderId}::${r.blNumber}`;
-
-  // Fields that change computed values (due date, remaining amount) reload the page of rows after saving
-  const RECOMPUTE = ['factureDate', 'paiementStatus', 'montantPaye', 'factureStatus'];
-  const updateField = async (row, field, value) => {
-    const key = rowKey(row);
-    patch(d => ({ ...d, rows: d.rows.map(r => rowKey(r) === key ? { ...r, [field]: value } : r) }));
-    setSavingKey(key);
-    try {
-      await axios.patch(`${API_URL}/order-tracking`, {
-        orderId: row.orderId,
-        blNumber: row.blNumber,
-        [field]: value,
-      });
-      dropOthers();
-      if (RECOMPUTE.includes(field)) fetchRows();
-    } catch (e) {
-      console.error(e);
-      dialog.alert(t('errSave'));
-      fetchRows();
-    } finally { setSavingKey(null); }
-  };
-
-  if (loading && !data) {
-    return (
-      <div className="orders-loading">
-        <LoaderCircle size={22} />
-        <p>{t('orLoadingTracking')}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="pr-panel">
-      <div className="pr-panel__header">
-        <div className="pr-panel__title">
-          <ClipboardList size={16} />
-          <span>{t('orTracking')}</span>
-          <span className="pr-badge pr-badge--neutral">
-            {t(total !== 1 ? 'orLineMany' : 'orLineOne', { n: total })}
-          </span>
-        </div>
-        <div className="pr-panel__tools">
-          <div className="pr-filter-tabs">
-            <button
-              className={`pr-filter-tab ${factureFilter === 'all' ? 'active' : ''}`}
-              onClick={() => changeFilter('all')}
-            >
-              {t('orAll')}
-            </button>
-            <button
-              className={`pr-filter-tab ${factureFilter === 'non_recue' ? 'active' : ''}`}
-              onClick={() => changeFilter('non_recue')}
-            >
-              {t('orInvoiceNotReceived')}
-            </button>
-            <button
-              className={`pr-filter-tab ${factureFilter === 'recue' ? 'active' : ''}`}
-              onClick={() => changeFilter('recue')}
-            >
-              {t('orInvoiceReceived')}
-            </button>
-            <button
-              className={`pr-filter-tab ${factureFilter === 'sans_pdf' ? 'active' : ''}`}
-              onClick={() => changeFilter('sans_pdf')}
-            >
-              {t('tdFilterNoPdf')}
-            </button>
-            <button
-              className={`pr-filter-tab ${factureFilter === 'a_payer' ? 'active' : ''}`}
-              onClick={() => changeFilter('a_payer')}
-            >
-              {t('acFilterToPay')}
-            </button>
-            <button
-              className={`pr-filter-tab ${factureFilter === 'retard' ? 'active' : ''}`}
-              onClick={() => changeFilter('retard')}
-            >
-              {t('acFilterLate')}
-            </button>
-          </div>
-          <StorageGauge storage={storage} compact />
-          <button className="pr-refresh-btn orders-icon-btn orders-icon-btn--sm" onClick={fetchRows} title={t('orRefresh')}>
-            <RefreshCw size={14} className={loading ? 'spin' : undefined} />
-          </button>
-        </div>
-      </div>
-
-      <div className="pr-search pr-search--with-company">
-        <CompanyFilter value={companyFilter} onChange={(c) => { setCompanyFilter(c); setPage(1); }} />
-        <div className="orders-controls">
-          <input
-            className="search-input"
-            placeholder={t('orTrackingSearchPlaceholder')}
-            value={searchTerm}
-            onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
-          />
-        </div>
-      </div>
-
-      {visibleRows.length === 0 ? (
-        <div className="pr-empty">
-          <span className="pr-empty__icon"><ClipboardList size={20} /></span>
-          <p>{t('orNoOrdersToShow')}</p>
-        </div>
-      ) : (
-        <div className={`pr-table-wrap${loading ? ' pr-table-wrap--loading' : ''}`}>
-          <table className="pr-table">
-            <thead>
-              <tr>
-                <th>{t('orDate')}</th>
-                <th>{t('ocfCompany')}</th>
-                <th>{t('orSupplier')}</th>
-                <th>{t('orBcNo')}</th>
-                <th>BL</th>
-                <th>{t('tdColumn')}</th>
-                <th>{t('orAmountBC')}</th>
-                <th>{t('orAmountBL')}</th>
-                <th>{t('orInvoice')}</th>
-                <th>{t('acInvoiceNo')}</th>
-                <th>{t('acInvoiceDate')}</th>
-                <th>{t('acDueDate')}</th>
-                <th>{t('acPayment')}</th>
-                <th>{t('acPaymentDate')}</th>
-                <th>{t('orPaymentMode')}</th>
-                <th>{t('orInvoiceType')}</th>
-                <th>{t('orOrderState')}</th>
-                <th style={{ minWidth: 180 }}>{t('orRemark')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRows.map(row => {
-                const key = rowKey(row);
-                const st = STATUS_COLORS[row.status] || STATUS_COLORS.brouillon;
-                const saving = savingKey === key;
-                return (
-                  <tr key={key}>
-                    <td className="pr-date">
-                      {new Date(row.date).toLocaleDateString('fr-FR')}
-                    </td>
-                    <td><CompanyTag name={row.companyName} color={row.companyColor} /></td>
-                    <td className="pr-strong">{row.supplierName || '—'}</td>
-                    <td className="pr-num">{row.orderNumber || '—'}</td>
-                    <td className="pr-num">
-                      {row.blNumber
-                        ? <strong>{row.blNumber}</strong>
-                        : <span className="pr-faint">{t('orPending')}</span>}
-                      {row.blPending && <span className="pr-bl-pending" title={t('rbPendingHint')}>{t('rbPendingChip')}</span>}
-                    </td>
-                    <td><DocumentsCell row={row} onOpen={setDocsRow} /></td>
-                    <td className="pr-num pr-strong">{row.montantBC.toFixed(2)}</td>
-                    <td className="pr-num pr-strong">{row.montantBL.toFixed(2)}</td>
-                    <td>
-                      <select
-                        value={row.factureStatus}
-                        disabled={saving}
-                        onChange={e => updateField(row, 'factureStatus', e.target.value)}
-                        className={`pr-cell-input ${row.factureStatus === 'recue' ? 'pr-cell-input--ok' : 'pr-cell-input--ko'}`}
-                      >
-                        {FACTURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        key={`fn-${key}-${row.factureNumber}`}
-                        defaultValue={row.factureNumber}
-                        placeholder="—"
-                        disabled={saving}
-                        onBlur={e => { const v = e.target.value.trim(); if (v !== row.factureNumber) updateField(row, 'factureNumber', v); }}
-                        className="pr-cell-input pr-cell-input--mid"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="date"
-                        value={ymdInput(row.factureDate)}
-                        disabled={saving}
-                        onChange={e => updateField(row, 'factureDate', e.target.value || null)}
-                        className="pr-cell-input pr-cell-input--date"
-                      />
-                    </td>
-                    <td><DueCell row={row} t={t} /></td>
-                    <td>
-                      <select
-                        value={row.paiementStatus}
-                        disabled={saving}
-                        onChange={e => updateField(row, 'paiementStatus', e.target.value)}
-                        className={`pr-cell-input ${row.paiementStatus === 'paye' ? 'pr-cell-input--ok' : row.paiementStatus === 'partiel' ? 'pr-cell-input--warn' : ''}`}
-                      >
-                        {PAIEMENT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
-                      </select>
-                      {row.paiementStatus === 'partiel' && (
-                        <div className="pr-paid">
-                          <input
-                            type="number" min="0" step="0.01"
-                            key={`mp-${key}-${row.montantPaye}`}
-                            defaultValue={row.montantPaye || ''}
-                            placeholder={t('acPaidAmount')}
-                            disabled={saving}
-                            onBlur={e => { const v = Number(e.target.value || 0); if (v !== row.montantPaye) updateField(row, 'montantPaye', v); }}
-                            className="pr-cell-input pr-cell-input--num"
-                            aria-label={t('acPaidAmount')}
-                          />
-                          <span>/ {money2(row.montantDu)}</span>
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      <input
-                        type="date"
-                        value={ymdInput(row.paiementDate)}
-                        disabled={saving || row.paiementStatus === 'non_paye'}
-                        onChange={e => updateField(row, 'paiementDate', e.target.value || null)}
-                        className="pr-cell-input pr-cell-input--date"
-                      />
-                    </td>
-                    <td>
-                      <select
-                        value={row.modePaiement}
-                        disabled={saving}
-                        onChange={e => updateField(row, 'modePaiement', e.target.value)}
-                        className="pr-cell-input"
-                      >
-                        {PAIEMENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
-                      </select>
-                    </td>
-                    <td>
-                      <select
-                        value={row.typeFacture}
-                        disabled={saving}
-                        onChange={e => updateField(row, 'typeFacture', e.target.value)}
-                        className="pr-cell-input"
-                      >
-                        {TYPE_FACTURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
-                      </select>
-                    </td>
-                    <td>
-                      <span className="status-badge" style={{ background: st.bg, color: st.text, borderColor: st.bd }}>
-                        {st.label[lang] || st.label.fr}
-                      </span>
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        defaultValue={row.remarque}
-                        placeholder="—"
-                        disabled={saving}
-                        onBlur={e => { if (e.target.value !== row.remarque) updateField(row, 'remarque', e.target.value); }}
-                        className="pr-cell-input pr-cell-input--wide"
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={6} className="pr-totals-label">
-                  {t('orTotalsShown')}
-                </td>
-                <td className="pr-num">{totals.bc.toFixed(2)}</td>
-                <td className="pr-num">{totals.bl.toFixed(2)}</td>
-                <td colSpan={10} className="pr-totals-pay">
-                  {t('acRemaining')} <strong>{money2(totals.reste)}</strong>
-                  {totals.retard > 0 && <> · <span className="pr-late">{t('acRemainingLate')} <strong>{money2(totals.retard)}</strong></span></>}
-                </td>
-              </tr>
-              {/* the same totals company by company (when several are shown) */}
-              {byCompany.length > 1 && byCompany.map(c => (
-                <tr key={c.companyId || 'none'} className="pr-totals-company">
-                  <td colSpan={6} className="pr-totals-label">
-                    <CompanyTag name={c.name || t('ocfNoCompany')} color={c.color} />
-                  </td>
-                  <td className="pr-num">{c.bc.toFixed(2)}</td>
-                  <td className="pr-num">{c.bl.toFixed(2)}</td>
-                  <td colSpan={10} className="pr-totals-pay">
-                    {t('acRemaining')} <strong>{money2(c.reste)}</strong>
-                    {c.retard > 0 && <> · <span className="pr-late">{t('acRemainingLate')} <strong>{money2(c.retard)}</strong></span></>}
-                  </td>
-                </tr>
-              ))}
-            </tfoot>
-          </table>
-          <Pager page={data.page} pages={data.pages} total={total} limit={data.limit} onPage={setPage} />
-        </div>
-      )}
-      {docsRow && (
-        <DocumentsModal
-          row={docsRow}
-          storage={storage}
-          onStorage={setStorage}
-          onNewBl={() => { newBlRef.current = true; }}
-          onClose={() => { setDocsRow(null); if (factureFilter !== 'all' || newBlRef.current) fetchRows(); newBlRef.current = false; }}
-          onChange={(changes) => {
-            const key = rowKey(docsRow);
-            patch(d => ({ ...d, rows: d.rows.map(r => rowKey(r) === key ? { ...r, ...changes } : r) }));
-          }}
-        />
-      )}
-    </div>
-  );
-}

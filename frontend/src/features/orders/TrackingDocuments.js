@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { FileText, FileImage, Upload, Eye, Download, Trash2, X, Paperclip, LoaderCircle, AlertTriangle, HardDrive, Printer } from 'lucide-react';
+import { FileText, FileImage, Upload, Eye, Download, Trash2, X, Paperclip, LoaderCircle, AlertTriangle, HardDrive, Printer, Plus } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { dialog, errorMessage } from '../../components/common/dialog';
 import { showDocument, printDocument } from '../../components/common/docViewerBus';
@@ -57,11 +57,13 @@ export function StorageGauge({ storage, compact = false, labelKey = 'tdStorage' 
 // Opens a document: the window is opened right away (no popup blocker), then pointed to the
 // short-lived R2 link the server signs.
 // « Voir »: the in-app viewer (works on tablets, Imprimer = A4); « Télécharger »: the private R2 link
-export const printOrderDocument = (doc) => printDocument(doc, 'order-tracking/documents');
+// files of an invoice (Facture) live under their own API path, BL / old invoice files under the Suivi's
+const docBase = (doc) => (doc.source === 'facture' || doc.factureId ? 'factures/documents' : 'order-tracking/documents');
+export const printOrderDocument = (doc) => printDocument(doc, docBase(doc));
 export async function openDocument(doc, { download = false } = {}) {
-  if (!download) { showDocument(doc, 'order-tracking/documents'); return; }
+  if (!download) { showDocument(doc, docBase(doc)); return; }
   try {
-    const r = await axios.get(`${API_URL}/order-tracking/documents/${doc.id}/url`, { params: { download: 1 } });
+    const r = await axios.get(`${API_URL}/${docBase(doc)}/${doc.id}/url`, { params: { download: 1 } });
     window.location.href = r.data.url;
   } catch (e) { dialog.alert(errorMessage(e, 'Erreur')); }
 }
@@ -86,7 +88,8 @@ export function DocumentsCell({ row, onOpen }) {
 /** Documents of one (order, BL) row: invoices and delivery notes */
 // onNewBl(doc): a delivery note filed under a NEW BL number from a row without BL (before reception);
 // it belongs to its own row, so the caller reloads instead of adding it to `row`.
-export function DocumentsModal({ row, onClose, onChange, storage, onStorage = () => {}, onNewBl = () => {} }) {
+// kinds: the sections shown (the purchase order page shows the BL only: invoices are added as Factures)
+export function DocumentsModal({ row, onClose, onChange, storage, onStorage = () => {}, onNewBl = () => {}, kinds = KINDS }) {
   const { t } = useLanguage();
   const [docs, setDocs] = useState(row.documents || []);
   const [uploading, setUploading] = useState(null); // { kind, name, pct }
@@ -170,7 +173,7 @@ export function DocumentsModal({ row, onClose, onChange, storage, onStorage = ()
           : storage && storage.used >= storage.warnAt && <div className="td-warn"><AlertTriangle size={14} />{t('tdStorageWarn')}</div>}
         {error && <div className="td-error"><AlertTriangle size={14} />{error}</div>}
 
-        {KINDS.map(kind => {
+        {kinds.map(kind => {
           const list = [...docs.filter(d => d.kind === kind), ...(kind === 'bl' ? filed : [])];
           const busy = uploading?.kind === kind;
           return (
@@ -233,7 +236,10 @@ export function DocumentsModal({ row, onClose, onChange, storage, onStorage = ()
 export async function deleteOrderDocument(doc, t) {
   const label = doc.kind === 'facture' ? t('tdInvoiceShort') : t('tdBlShort');
   if (!(await dialog.confirm({ title: t('deleteTitle'), message: t('tdDeleteConfirm', { name: `${label} « ${doc.name} »` }), danger: true, confirmLabel: t('deleteAction') }))) return false;
-  try { await axios.delete(`${API_URL}/order-tracking/documents/${doc.id}`); return true; }
+  try {
+    await axios.delete(doc.source === 'facture' ? `${API_URL}/factures/${doc.factureId}/documents/${doc.id}` : `${API_URL}/order-tracking/documents/${doc.id}`);
+    return true;
+  }
   catch (e) { dialog.alert(errorMessage(e, t('dlgError'))); return false; }
 }
 
@@ -268,7 +274,8 @@ export function BlDocButtons({ docs, canManage, onManage, onDeleted }) {
 }
 
 /** Invoices (and documents not tied to a BL) of the order — only returned to ACHAT / accountant / admin */
-export function OrderDocumentsBlock({ docs, onManage, onDeleted }) {
+// onAddInvoice: « Ajouter une facture » (a Facture covering this purchase order)
+export function OrderDocumentsBlock({ docs, onManage, onDeleted, onAddInvoice }) {
   const { t } = useLanguage();
   const invoices = docs.filter(d => d.kind === 'facture');
   const loose = docs.filter(d => d.kind === 'bl' && !d.blNumber);
@@ -276,6 +283,7 @@ export function OrderDocumentsBlock({ docs, onManage, onDeleted }) {
     <div className="td-order-docs">
       <div className="td-order-docs__head">
         <h3>{t('tdInvoices')}<span>{invoices.length}</span></h3>
+        {onAddInvoice && <button type="button" className="td-btn" onClick={onAddInvoice}><Plus size={14} />{t('svAddInvoice')}</button>}
         <button type="button" className="td-btn" onClick={onManage}><Upload size={14} />{t('tdManageShort')}</button>
       </div>
       {invoices.length === 0 && loose.length === 0 ? (
@@ -290,7 +298,7 @@ export function OrderDocumentsBlock({ docs, onManage, onDeleted }) {
                   <Icon size={18} />
                   <span className="td-file__txt">
                     <strong>{d.name}</strong>
-                    <span>{d.kind === 'facture' ? t('tdInvoiceShort') : t('tdBlShort')}{d.blNumber ? ` · BL ${d.blNumber}` : ''} · {fmtSize(d.size)} · {new Date(d.uploadedAt).toLocaleDateString('fr-FR')}{d.uploadedBy ? ` · ${d.uploadedBy}` : ''}</span>
+                    <span>{d.kind === 'facture' ? t('tdInvoiceShort') : t('tdBlShort')}{d.factureNumber ? ` n° ${d.factureNumber}` : ''}{d.blNumber ? ` · BL ${d.blNumber}` : ''} · {fmtSize(d.size)} · {new Date(d.uploadedAt).toLocaleDateString('fr-FR')}{d.uploadedBy ? ` · ${d.uploadedBy}` : ''}</span>
                   </span>
                 </button>
                 <button type="button" className="td-icon" onClick={() => openDocument(d)} title={t('tdView')} aria-label={t('tdView')}><Eye size={15} /></button>
