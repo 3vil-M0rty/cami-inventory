@@ -154,6 +154,7 @@ const ALL_PERMISSIONS = [
   'admin.view',
   'ateliertables.view',
   'chantiers.view', 'chantiers.edit', 'chantiers.delete',
+  'four.view', 'four.edit', 'notifications.view',
 ];
 
 const roleSchema = new mongoose.Schema({
@@ -1175,7 +1176,35 @@ async function seedChantierStates() {
 mongoose.connection.once('open', async () => {
   console.log('Connected to MongoDB');
   await createDefaultAdminUser();
+  await grantFourNotifPermissionsOnce();
 });
+
+// The oven and the bell used to be shown to everybody except read-only roles and the workshop accounts
+// limited to a few articles; only the « Laquage » role switched the oven. Those rules become role
+// permissions, given ONCE with the same result — after that the admin decides in Administration › Rôles.
+async function grantFourNotifPermissionsOnce() {
+  try {
+    const meta = mongoose.connection.db.collection('appmigrations');
+    if (await meta.findOne({ _id: 'four-notif-permissions' })) return;
+    const roles = await Role.find({ name: { $ne: 'Admin' } });
+    const changed = [];
+    for (const role of roles) {
+      const add = [];
+      const users = await User.find({ roleId: role._id }).select('allowedItemIds').lean();
+      const onlyLimited = users.length > 0 && users.every(u => (u.allowedItemIds || []).length > 0);
+      if (!role.permissions.includes('readonly') && !onlyLimited) add.push('four.view', 'notifications.view');
+      if (role.name === 'Laquage') add.push('four.view', 'four.edit');
+      const missing = [...new Set(add)].filter(p => !role.permissions.includes(p));
+      if (missing.length) {
+        role.permissions = [...role.permissions, ...missing];
+        await role.save();
+        changed.push(`${role.name} (${missing.join(', ')})`);
+      }
+    }
+    await meta.insertOne({ _id: 'four-notif-permissions', at: new Date() });
+    if (changed.length) console.log(`✅ Four / notifications : droits ajoutés aux rôles ${changed.join(' · ')}`);
+  } catch (e) { console.error('⚠️  Droits four / notifications :', e.message); }
+}
 
 // ==================== HELPERS ====================
 
@@ -1246,9 +1275,14 @@ app.delete('/api/companies/:id', async (req, res) => {
 
 // ==================== FOUR STATUS ROUTES ====================
 
-// GET — anyone authenticated can read the status
+// Oven (four thermolaquage): who sees it and who switches it are set per role in Administration › Rôles
+const canSeeFour = (req) => isAdmin(req) || (req.permissions || []).some(p => p === 'four.view' || p === 'four.edit');
+const canToggleFour = (req) => isAdmin(req) || (req.permissions || []).includes('four.edit');
+
+// GET — roles with « Four — voir » (or « allumer / éteindre »)
 app.get('/api/four-status', requireAuth, async (req, res) => {
   try {
+    if (!canSeeFour(req)) return res.status(403).json({ error: 'Accès refusé' });
     let doc = await FourStatus.findOne({});
     if (!doc) {
       doc = await FourStatus.create({ isOn: false });
@@ -1259,61 +1293,13 @@ app.get('/api/four-status', requireAuth, async (req, res) => {
   }
 });
 
-// PUT — only Laquage role (or Admin) can toggle
+// PUT — roles with « Four — allumer / éteindre » (and the admin)
 app.put('/api/four-status', requireAuth, async (req, res) => {
   try {
     const userRole = req.user?.roleId?.name || '';
-    const isAdmin = userRole === 'Admin';
-    const canToggle = isAdmin || userRole === 'Laquage';
-
-    if (!canToggle) {
+    if (!canToggleFour(req)) {
       return res.status(403).json({
-        error: 'Seul le rôle Laquage peut modifier l\'état du four.'
-      });
-    }
-
-    const { isOn } = req.body;
-    const displayName = req.user?.displayName || req.user?.username || userRole;
-
-    let doc = await FourStatus.findOne({});
-    if (!doc) {
-      doc = await FourStatus.create({ isOn: !!isOn, changedBy: displayName, changedAt: new Date() });
-    } else {
-      doc.isOn = !!isOn;
-      doc.changedBy = displayName;
-      doc.changedAt = new Date();
-      await doc.save();
-    }
-
-    res.json(doc.toJSON());
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});// ==================== FOUR STATUS ROUTES ====================
-
-// GET — anyone authenticated can read the status
-app.get('/api/four-status', requireAuth, async (req, res) => {
-  try {
-    let doc = await FourStatus.findOne({});
-    if (!doc) {
-      doc = await FourStatus.create({ isOn: false });
-    }
-    res.json(doc.toJSON());
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// PUT — only Laquage role (or Admin) can toggle
-app.put('/api/four-status', requireAuth, async (req, res) => {
-  try {
-    const userRole = req.user?.roleId?.name || '';
-    const isAdmin = userRole === 'Admin';
-    const canToggle = isAdmin || userRole === 'Laquage';
-
-    if (!canToggle) {
-      return res.status(403).json({
-        error: 'Seul le rôle Laquage peut modifier l\'état du four.'
+        error: 'Votre rôle ne permet pas d\'allumer ou d\'éteindre le four.'
       });
     }
 
@@ -1606,6 +1592,9 @@ app.get('/api/permissions', requireAuth, requirePermission('admin.view'), async 
     { key: 'chantiers.view', label: 'Chantiers — Voir', group: 'Chantiers' },
     { key: 'chantiers.edit', label: 'Chantiers — Créer/Modifier', group: 'Chantiers' },
     { key: 'chantiers.delete', label: 'Chantiers — Supprimer', group: 'Chantiers' },
+    { key: 'four.view', label: 'Four thermolaquage — Voir l\'état (allumé / éteint) dans la barre du haut', group: 'Four thermolaquage' },
+    { key: 'four.edit', label: 'Four thermolaquage — Allumer / éteindre le four', group: 'Four thermolaquage' },
+    { key: 'notifications.view', label: 'Notifications — Voir la cloche (laquage, réceptions…)', group: 'Notifications' },
   ]);
 });
 

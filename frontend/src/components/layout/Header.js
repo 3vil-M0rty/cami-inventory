@@ -31,11 +31,11 @@ const Header = ({ activePage, onNavigate }) => {
   const { t, currentLanguage, changeLanguage, languageLabels } = useLanguage();
   const { companies, selectedCompany, setSelectedCompany } = useCompany();
   const { user, logout, can } = useAuth();
-  // Workshop accounts limited to a few articles: no company filter, oven status or notifications
+  // Workshop accounts limited to a few articles: no company filter
   const restricted = (user?.restrictedItems || 0) > 0;
-  // read-only accounts (Chef de chantier): no oven switch / laquage notifications to act on.
-  // Never the admin (same rule as the server).
-  const readOnly = can('readonly') && !can('admin.view');
+  // oven (four thermolaquage) and notification bell: shown according to the role (Administration › Rôles)
+  const showFour = can('admin.view') || can('four.view') || can('four.edit');
+  const showBell = can('admin.view') || can('notifications.view');
 
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showChangePwd, setShowChangePwd] = useState(false);
@@ -167,8 +167,8 @@ const Header = ({ activePage, onNavigate }) => {
             {!restricted && <div className="hdr__companies">{companyPills}</div>}
             {langPicker}
             {themeBtn}
-            {!restricted && !readOnly && <FourStatus />}
-            {!restricted && !readOnly && <NotifBell />}
+            {showFour && <FourStatus />}
+            {showBell && <NotifBell />}
 
             <div className="hdr__user" ref={userMenuRef}>
 
@@ -185,8 +185,8 @@ const Header = ({ activePage, onNavigate }) => {
           {/* Mobile top-bar controls */}
           <div className="hdr__controls mobile-only" style={{ gap: 8 }}>
             {langPicker}
-            {!restricted && !readOnly && <FourStatus />}
-            {!restricted && !readOnly && <NotifBell />}
+            {showFour && <FourStatus />}
+            {showBell && <NotifBell />}
             <div className="hdr__user" ref={userMenuRef}>
               <button className="hdr__user-btn" onClick={() => setShowUserMenu(v => !v)}>
                 <span className="hdr__avatar">{user?.displayName?.charAt(0).toUpperCase()}</span>

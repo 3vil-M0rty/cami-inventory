@@ -5,17 +5,13 @@ import { useLanguage } from '../../context/LanguageContext';
 import { Flame, Snowflake } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
-const ROLE_LAQUAGE = 'Laquage';
 
 /* ── FourStatus — thermolaquage furnace on/off indicator ── */
 export default function FourStatus() {
-    const { user } = useAuth();
+    const { can } = useAuth();
     const { t } = useLanguage();
-    const userRole =
-        (typeof user?.role === 'string' ? user.role : user?.role?.name) ||
-        user?.roleName || '';
-    const isAdmin = userRole === 'Admin';
-    const canToggle = userRole === ROLE_LAQUAGE;
+    // « Four — allumer / éteindre » in the role (Administration › Rôles); the admin always can
+    const canToggle = can('four.edit') || can('admin.view');
 
     const [isOn, setIsOn] = useState(false);
     const [loading, setLoading] = useState(true);
