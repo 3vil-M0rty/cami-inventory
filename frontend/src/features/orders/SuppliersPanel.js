@@ -249,7 +249,7 @@ function SupplierDrawer({ supplierId, stats, statusColors, lang, isAdmin, fullEd
                   const c = statusColors[o.status] || statusColors.brouillon;
                   return (
                     <li key={o.id}>
-                      <button type="button" className="sp-row" onClick={() => onOpenOrder(o.id)}>
+                      <button type="button" className="sp-row" onClick={() => onOpenOrder && onOpenOrder(o.id)} disabled={!onOpenOrder}>
                         <div className="sp-row__main">
                           <strong>{o.number || o.reference || t('orDraft')}</strong>
                           <span className="sp-muted">{f.d(o.sentAt || o.orderDate)}{o.company ? ` · ${o.company.name}` : ''} · {t('spLines', { n: o.lines })}</span>
@@ -261,7 +261,7 @@ function SupplierDrawer({ supplierId, stats, statusColors, lang, isAdmin, fullEd
                             ? <span className="sp-late"><Clock size={11} />{t('spLateSince', { date: f.d(o.expectedDate) })}</span>
                             : (o.status === 'envoye' || o.status === 'partielle') ? <span className="sp-muted sp-small">{t('spReceivedPct', { n: o.receivedPct })}</span> : null}
                         </div>
-                        <ExternalLink size={13} className="sp-row__go" />
+                        {onOpenOrder && <ExternalLink size={13} className="sp-row__go" />}
                       </button>
                     </li>
                   );
@@ -553,7 +553,7 @@ function FullSuppliersPanel({ suppliers, onChanged, onNewOrder, onOpenOrder, sta
           onEdit={(s) => setEditing({ ...s, id: s.id || s._id })}
           onDelete={(s) => remove({ ...s, id: s.id || s._id })}
           onNewOrder={(s) => { setOpenId(null); onNewOrder({ ...s, id: s.id || s._id }); }}
-          onOpenOrder={(id) => { setOpenId(null); onOpenOrder(id); }}
+          onOpenOrder={onOpenOrder ? (id) => { setOpenId(null); onOpenOrder(id); } : null}
         />
       )}
     </div>

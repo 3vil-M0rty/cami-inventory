@@ -85,8 +85,9 @@
 .sp-tab.is-on { background: var(--surface) !important; color: var(--text) !important; box-shadow: var(--sh-sm), 0 0 0 1px var(--border-2); }
 .sp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .sp-row, .sp-item { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px !important; border-radius: 10px !important; border: 1px solid var(--border) !important; background: var(--surface) !important; text-align: left; font-family: var(--font); color: var(--text); }
-.sp-row { cursor: pointer; }
-.sp-row:hover { border-color: var(--border-2) !important; background: var(--surface-2) !important; }
+.sp-row:not(:disabled) { cursor: pointer; }
+.sp-row:not(:disabled):hover { border-color: var(--border-2) !important; background: var(--surface-2) !important; }
+.sp-row:disabled { cursor: default; opacity: 1; }
 .sp-row__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .sp-row__main strong { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sp-row__main .sp-muted { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

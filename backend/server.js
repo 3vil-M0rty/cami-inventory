@@ -842,6 +842,14 @@ function requireAccounting(req, res, next) {
   if (!canAccounting(req)) return res.status(403).json({ error: 'Accès refusé — permission requise: orders.edit ou orders.accounting' });
   next();
 }
+// Changes in the Suivi (invoices, BL, files, mails) and the suppliers' details: Admin and ACHAT (orders.edit).
+// The accountant (orders.accounting alone) looks at the invoices / purchase orders, downloads the files, records
+// the payments and sets the suppliers' payment terms — without seeing the due dates of the invoices.
+const canAccountingWrite = (req) => isAdmin(req) || (req.permissions || []).includes('orders.edit');
+function requireAccountingWrite(req, res, next) {
+  if (!canAccountingWrite(req)) return res.status(403).json({ error: 'Consultation seulement : les modifications sont réservées au service achat.' });
+  next();
+}
 
 function requireOrdersView(req, res, next) {
   if (!canViewOrders(req)) {
@@ -3055,7 +3063,7 @@ app.get('/api/order-tracking', requireAuth, requireAccounting, async (req, res) 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.patch('/api/order-tracking', requireAuth, requireAccounting, async (req, res) => {
+app.patch('/api/order-tracking', requireAuth, requireAccountingWrite, async (req, res) => {
   try {
     const { orderId, blNumber } = req.body;
     if (!mongoose.Types.ObjectId.isValid(orderId)) return res.status(400).json({ error: 'orderId requis' });
@@ -3184,7 +3192,7 @@ const readDocBody = (req, res, next) => docBody(req, res, (err) => {
   if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Fichier trop lourd (15 Mo maximum).' });
   res.status(400).json({ error: 'Envoi du fichier interrompu.' });
 });
-app.post('/api/order-tracking/documents', requireAuth, requireAccounting, readDocBody, async (req, res) => {
+app.post('/api/order-tracking/documents', requireAuth, requireAccountingWrite, readDocBody, async (req, res) => {
     try {
       const { orderId, kind } = req.query;
       let blNumber = String(req.query.blNumber || '').trim().slice(0, 80);
@@ -3420,7 +3428,7 @@ app.get('/api/order-tracking/documents/:docId/file', requireAuth, async (req, re
 });
 
 // DELETE /api/order-tracking/documents/:docId — removes the file from R2 and from the row
-app.delete('/api/order-tracking/documents/:docId', requireAuth, requireAccounting, async (req, res) => {
+app.delete('/api/order-tracking/documents/:docId', requireAuth, requireAccountingWrite, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.docId)) return res.status(400).json({ error: 'Document invalide' });
     const t = await OrderTracking.findOne({ 'documents._id': req.params.docId }).select('documents').lean();
@@ -3620,6 +3628,12 @@ async function allFactureViews(filter = {}) {
   return factures.map(f => factureView(f, ctx));
 }
 const factureToPay = (v) => v.statut !== 'paye' && v.reste > 0 && v.typeFacture !== 'avoir';
+// The accountant does not see the due dates (échéance) of the invoices
+const forViewer = (req, v) => {
+  if (canAccountingWrite(req)) return v;
+  const { echeance, delaiPaiement, finDeMois, ...rest } = v;
+  return rest;
+};
 // totals of a list of invoices, overall and company by company
 function factureTotals(rows) {
   const tot = { montant: 0, paye: 0, reste: 0, retard: 0 };
@@ -3675,7 +3689,8 @@ app.get('/api/factures', requireAuth, requireAccounting, async (req, res) => {
     if (status === 'a_payer' || status === 'retard') rows.sort((a, b) => (a.echeance ? new Date(a.echeance) : Infinity) - (b.echeance ? new Date(b.echeance) : Infinity));
     else rows.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
     const shown = factureTotals(rows);
-    res.json({ ...paginate(rows, req), totals: shown.totals, byCompany: shown.byCompany, overview: all.totals });
+    const page = paginate(rows, req);
+    res.json({ ...page, rows: page.rows.map(v => forViewer(req, v)), totals: shown.totals, byCompany: shown.byCompany, overview: all.totals });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3685,13 +3700,13 @@ app.get('/api/factures/:id', requireAuth, requireAccounting, async (req, res) =>
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Facture invalide' });
     const f = await Facture.findById(req.params.id).lean();
     if (!f) return res.status(404).json({ error: 'Facture introuvable' });
-    res.json(factureView(f, await factureContext([f])));
+    res.json(forViewer(req, factureView(f, await factureContext([f]))));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // GET /api/factures-candidates?supplierId=&supplier=&factureId= → the supplier's purchase orders with
 // their BL and what is already invoiced, to pick the orders / BL covered by an invoice
-app.get('/api/factures-candidates', requireAuth, requireAccounting, async (req, res) => {
+app.get('/api/factures-candidates', requireAuth, requireAccountingWrite, async (req, res) => {
   try {
     const filter = { status: { $nin: ['brouillon'] } };
     const supId = String(req.query.supplierId || '');
@@ -3771,7 +3786,7 @@ async function cleanFactureBody(body, current = null) {
 }
 
 // POST /api/factures  { number, date, montant, typeFacture, remarque, links: [{ orderId, blNumbers, montant }], supplierId?, companyId? }
-app.post('/api/factures', requireAuth, requireAccounting, async (req, res) => {
+app.post('/api/factures', requireAuth, requireAccountingWrite, async (req, res) => {
   try {
     const data = await cleanFactureBody(req.body || {});
     // same number at the same supplier: probably entered twice → confirmation asked (?force=1)
@@ -3785,7 +3800,7 @@ app.post('/api/factures', requireAuth, requireAccounting, async (req, res) => {
 });
 
 // PUT /api/factures/:id — edit (same fields as the creation)
-app.put('/api/factures/:id', requireAuth, requireAccounting, async (req, res) => {
+app.put('/api/factures/:id', requireAuth, requireAccountingWrite, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Facture invalide' });
     const f = await Facture.findById(req.params.id);
@@ -3798,7 +3813,7 @@ app.put('/api/factures/:id', requireAuth, requireAccounting, async (req, res) =>
 });
 
 // DELETE /api/factures/:id — the invoice, its payments and its files (files still used elsewhere are kept)
-app.delete('/api/factures/:id', requireAuth, requireAccounting, async (req, res) => {
+app.delete('/api/factures/:id', requireAuth, requireAccountingWrite, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Facture invalide' });
     const f = await Facture.findById(req.params.id).lean();
@@ -3826,7 +3841,7 @@ app.post('/api/factures/:id/payments', requireAuth, requireAccounting, async (re
     const mode = ['', 'espece', 'virement', 'cheque', 'effet'].includes(req.body?.mode) ? req.body.mode : '';
     f.payments.push({ date, montant, mode, reference: String(req.body?.reference || '').trim().slice(0, 80), note: String(req.body?.note || '').slice(0, 300), by: docUploader(req) });
     await f.save();
-    res.status(201).json(factureView(f.toObject(), await factureContext([f.toObject()])));
+    res.status(201).json(forViewer(req, factureView(f.toObject(), await factureContext([f.toObject()]))));
   } catch (e) { res.status(e.status || (e.name === 'ValidationError' ? 400 : 500)).json({ error: e.message }); }
 });
 // DELETE /api/factures/:id/payments/:paymentId — a payment entered by mistake
@@ -3839,12 +3854,12 @@ app.delete('/api/factures/:id/payments/:paymentId', requireAuth, requireAccounti
     f.payments = f.payments.filter(p => String(p._id) !== req.params.paymentId);
     if (f.payments.length === before) return res.status(404).json({ error: 'Paiement introuvable' });
     await f.save();
-    res.json(factureView(f.toObject(), await factureContext([f.toObject()])));
+    res.json(forViewer(req, factureView(f.toObject(), await factureContext([f.toObject()]))));
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 // POST /api/factures/:id/documents?name= — body: the file (PDF / photo, 15 MB max)
-app.post('/api/factures/:id/documents', requireAuth, requireAccounting, readDocBody, async (req, res) => {
+app.post('/api/factures/:id/documents', requireAuth, requireAccountingWrite, readDocBody, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Facture invalide' });
     const f = await Facture.findById(req.params.id);
@@ -3892,7 +3907,7 @@ app.get('/api/factures/documents/:docId/url', requireAuth, requireAccounting, as
     res.json({ url });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
-app.delete('/api/factures/:id/documents/:docId', requireAuth, requireAccounting, async (req, res) => {
+app.delete('/api/factures/:id/documents/:docId', requireAuth, requireAccountingWrite, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Facture invalide' });
     const f = await Facture.findById(req.params.id).lean();
@@ -3907,7 +3922,7 @@ app.delete('/api/factures/:id/documents/:docId', requireAuth, requireAccounting,
 // POST /api/order-tracking/bl?orderIds=a,b&blNumber=&name= — body: the BL scan. Filed ONCE in R2 and
 // attached to every order chosen (same BL for several purchase orders): each order then shows it in
 // « À réceptionner » like any BL filed from the Suivi.
-app.post('/api/order-tracking/bl', requireAuth, requireAccounting, readDocBody, async (req, res) => {
+app.post('/api/order-tracking/bl', requireAuth, requireAccountingWrite, readDocBody, async (req, res) => {
   try {
     const ids = [...new Set(String(req.query.orderIds || '').split(',').map(s => s.trim()).filter(s => mongoose.Types.ObjectId.isValid(s)))];
     if (!ids.length) return res.status(400).json({ error: 'Choisissez au moins un bon de commande.' });
@@ -3945,7 +3960,7 @@ async function invoicesByOrder(orderIds) {
 
 // GET /api/order-tracking/bl-list?page&limit&q&company&status=all|a_receptionner|recu|non_facture
 // One row per delivery note (supplier + BL number), with every purchase order it covers.
-app.get('/api/order-tracking/bl-list', requireAuth, requireAccounting, async (req, res) => {
+app.get('/api/order-tracking/bl-list', requireAuth, requireAccountingWrite, async (req, res) => {
   try {
     const status = ['a_receptionner', 'recu', 'non_facture'].includes(req.query.status) ? req.query.status : 'all';
     const data = await loadPurchaseData({ status: { $ne: 'brouillon' }, ...companyOrderFilter(req) });
@@ -4018,6 +4033,267 @@ app.get('/api/order-tracking/bc-list', requireAuth, requireAccounting, async (re
     const sum = (k) => r2c(rows.reduce((s, r) => s + (r.status === 'annulee' ? 0 : r[k]), 0));
     res.json({ ...paginate(rows, req), totals: { montantBC: sum('montantBC'), montantRecu: sum('montantRecu'), montantFacture: sum('montantFacture'), resteAFacturer: sum('resteAFacturer') } });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==================== RELEVÉ DES FACTURES (mail to accounting) ====================
+// Achats picks a period and the invoices to send; the server builds:
+//   • « Récap factures fournisseurs du … au ….xlsx » — one sheet per company (model of the accounting)
+//   • « Relevé factures fournisseurs du … au ….pdf »  — every invoice file merged into one PDF
+//   • a ready-to-send e-mail (.eml, opens in Outlook as a new message with both files attached)
+// Recipients can be changed in .env (RELEVE_FROM, RELEVE_TO, RELEVE_CC — comma separated).
+const RELEVE_FROM = process.env.RELEVE_FROM || 'g.aouatif@camialuminium.com';
+const RELEVE_TO = process.env.RELEVE_TO || 'bendallah.samira@camialuminium.com';
+const RELEVE_CC = process.env.RELEVE_CC || 'ikidid.abdeljalil@camialuminium.com, candido.federico@camialuminium.com';
+
+const optionalModule = (name) => {
+  try { return require(name); } catch {
+    const e = new Error(`Module manquant : lancez « npm install exceljs pdf-lib » dans backend, puis redémarrez le serveur.`); e.status = 503; throw e;
+  }
+};
+const frDate = (d) => { const x = new Date(d); return `${String(x.getDate()).padStart(2, '0')}/${String(x.getMonth() + 1).padStart(2, '0')}/${x.getFullYear()}`; };
+const fileDate = (d) => frDate(d).replace(/\//g, '-');
+// period from the query / body: from 00:00 to 23:59:59 of the last day
+function relevePeriod(src) {
+  const from = new Date(src.from); const to = new Date(src.to);
+  if (isNaN(from) || isNaN(to)) { const e = new Error('Période invalide'); e.status = 400; throw e; }
+  from.setHours(0, 0, 0, 0); to.setHours(23, 59, 59, 999);
+  if (to < from) { const e = new Error('La date de fin est avant la date de début.'); e.status = 400; throw e; }
+  return { from, to };
+}
+const releveNames = ({ from, to }) => {
+  const span = `du ${fileDate(from)} au ${fileDate(to)}`;
+  return {
+    span, spanText: `du ${frDate(from)} au ${frDate(to)}`,
+    xlsx: `Récap factures fournisseurs ${span}.xlsx`,
+    pdf: `Relevé factures fournisseurs ${span}.pdf`,
+    eml: `Relevé factures fournisseurs ${span}.eml`,
+  };
+};
+const releveMail = (p) => ({
+  from: RELEVE_FROM, to: RELEVE_TO, cc: RELEVE_CC,
+  subject: `Relevé factures fournisseurs ${p.spanText}`,
+  body: `Bonjour,\n\nVeuillez trouver ci-joint l'ensemble des factures disponibles couvrant la période ${p.spanText}.\n\nCordialement`,
+});
+
+// Invoices of the period (date of the invoice, or of its entry when it has no date), oldest first
+async function releveInvoices(period, ids = null) {
+  const views = await allFactureViews(ids ? { _id: { $in: ids.filter(id => mongoose.Types.ObjectId.isValid(id)) } } : {});
+  return views
+    .filter(v => { const d = new Date(v.date || v.createdAt); return d >= period.from && d <= period.to; })
+    .sort((a, b) => (a.companyName || '~').localeCompare(b.companyName || '~') || new Date(a.date || a.createdAt) - new Date(b.date || b.createdAt));
+}
+
+// GET /api/factures-releve?from=&to= → the invoices of the period (for the selection) + the mail
+app.get('/api/factures-releve', requireAuth, requireAccountingWrite, async (req, res) => {
+  try {
+    const period = relevePeriod(req.query);
+    const rows = await releveInvoices(period);
+    res.json({ rows, mail: releveMail(releveNames(period)), names: releveNames(period) });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// ── Excel: one sheet per company, same columns as the accounting model, styled
+async function buildReleveXlsx(rows, names) {
+  const ExcelJS = optionalModule('exceljs');
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'CAMI'; wb.created = new Date();
+  const groups = new Map();
+  for (const v of rows) { const k = v.companyName || 'SANS SOCIÉTÉ'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(v); }
+  if (!groups.size) groups.set('FACTURES', []);
+  const border = { style: 'thin', color: { argb: 'FFBFBFBF' } };
+  const borders = { top: border, left: border, bottom: border, right: border };
+  for (const [company, list] of groups) {
+    const color = (list[0]?.companyColor || '#1F2937').replace('#', '').toUpperCase().padStart(6, '0');
+    const ws = wb.addWorksheet(`FACTURES DISPONIBLES ${company}`.slice(0, 31), {
+      views: [{ state: 'frozen', ySplit: 4 }],
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } },
+      headerFooter: { oddFooter: `&L${company} — ${names.spanText}&RPage &P / &N` },
+    });
+    ws.columns = [
+      { key: 'ordre', width: 10 }, { key: 'date', width: 13 }, { key: 'frs', width: 34 },
+      { key: 'bc', width: 46 }, { key: 'facture', width: 26 }, { key: 'montant', width: 18 },
+    ];
+    // title + period
+    ws.mergeCells('A1:F1');
+    const title = ws.getCell('A1');
+    title.value = `FACTURES DISPONIBLES — ${company}`;
+    title.font = { bold: true, size: 15, color: { argb: 'FFFFFFFF' } };
+    title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${color}` } };
+    title.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    ws.getRow(1).height = 28;
+    ws.mergeCells('A2:F2');
+    const sub = ws.getCell('A2');
+    sub.value = `Récap factures fournisseurs ${names.spanText} — ${list.length} facture(s)`;
+    sub.font = { italic: true, size: 10, color: { argb: 'FF555555' } };
+    sub.alignment = { indent: 1 };
+    // header (yellow, as in the model)
+    const head = ws.getRow(4);
+    head.values = ['N°ORDRE', 'DATE', 'FRS', 'NUM BON DE COMMANDE', 'NUM FACTURE', 'MONTANT TTC'];
+    head.height = 22;
+    head.eachCell(c => {
+      c.font = { bold: true, size: 11, color: { argb: 'FF1F1F1F' } };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE066' } };
+      c.alignment = { vertical: 'middle', horizontal: 'center' };
+      c.border = { ...borders, bottom: { style: 'medium', color: { argb: 'FF7F6000' } } };
+    });
+    list.forEach((v, i) => {
+      const row = ws.addRow({
+        ordre: i + 1,
+        date: v.date ? new Date(v.date) : null,
+        frs: v.supplierName || '',
+        bc: v.links.map(l => l.orderNumber).filter(Boolean).join(', '),
+        facture: v.number || 'Sans n°',
+        montant: v.typeFacture === 'avoir' ? -v.montant : v.montant,
+      });
+      row.height = 18;
+      row.eachCell({ includeEmpty: true }, (c, col) => {
+        c.border = borders;
+        const horizontal = col === 1 || col === 2 ? 'center' : col === 6 ? 'right' : 'left';
+        c.alignment = { vertical: 'middle', horizontal, indent: horizontal === 'center' ? 0 : 1, wrapText: col === 4 };
+        if (i % 2) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF6F7F9' } };
+      });
+      row.getCell('date').numFmt = 'dd/mm/yyyy';
+      row.getCell('montant').numFmt = '#,##0.00';
+    });
+    const first = 5; const last = 4 + list.length;
+    const total = ws.addRow({ ordre: 'TOTAL', montant: list.length ? { formula: `SUM(F${first}:F${last})`, result: r2c(list.reduce((s, v) => s + (v.typeFacture === 'avoir' ? -v.montant : v.montant), 0)) } : 0 });
+    ws.mergeCells(`A${total.number}:E${total.number}`);
+    total.height = 22;
+    total.eachCell({ includeEmpty: true }, (c, col) => {
+      c.font = { bold: true, size: 12 };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE066' } };
+      c.border = { ...borders, top: { style: 'medium', color: { argb: 'FF7F6000' } } };
+      c.alignment = { vertical: 'middle', horizontal: col === 6 ? 'right' : 'center' };
+    });
+    total.getCell('montant').numFmt = '#,##0.00';
+    if (list.length) ws.autoFilter = { from: 'A4', to: `F${last}` };
+  }
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+// ── PDF: the files of the invoices, in the order of the list, merged (photos → one A4 page each)
+async function buildRelevePdf(rows) {
+  const { PDFDocument } = optionalModule('pdf-lib');
+  const out = await PDFDocument.create();
+  out.setTitle('Relevé factures fournisseurs'); out.setProducer('CAMI'); out.setCreator('CAMI');
+  const { client, sdk, bucket } = r2();
+  const skipped = [];
+  const keys = new Map((await Facture.find({ _id: { $in: rows.map(v => v.id) } }).select('documents').lean()).map(f => [String(f._id), f.documents || []]));
+  for (const v of rows) {
+    for (const d of keys.get(v.id) || []) {
+      const label = `${v.number || 'Sans n°'} — ${d.name}`;
+      try {
+        const obj = await client.send(new sdk.GetObjectCommand({ Bucket: bucket, Key: d.key }));
+        const buf = Buffer.from(await obj.Body.transformToByteArray());
+        const kind = sniffDoc(buf)?.type;
+        if (kind === 'application/pdf') {
+          const src = await PDFDocument.load(buf, { ignoreEncryption: true });
+          const pages = await out.copyPages(src, src.getPageIndices());
+          pages.forEach(p => out.addPage(p));
+        } else if (kind === 'image/jpeg' || kind === 'image/png') {
+          const img = kind === 'image/jpeg' ? await out.embedJpg(buf) : await out.embedPng(buf);
+          const landscape = img.width > img.height;
+          const [W, H] = landscape ? [841.89, 595.28] : [595.28, 841.89];
+          const page = out.addPage([W, H]);
+          const m = 24; const s = Math.min((W - 2 * m) / img.width, (H - 2 * m) / img.height);
+          page.drawImage(img, { x: (W - img.width * s) / 2, y: (H - img.height * s) / 2, width: img.width * s, height: img.height * s });
+        } else skipped.push(label); // WebP: cannot go into a PDF
+      } catch { skipped.push(label); }
+    }
+  }
+  if (!out.getPageCount()) { const e = new Error('Aucune des factures choisies n\'a de fichier PDF ou photo.'); e.status = 400; throw e; }
+  return { buffer: Buffer.from(await out.save()), skipped };
+}
+
+// ── e-mail (.eml): « X-Unsent » → Outlook opens it as a NEW message (from / to / cc / subject / text / attachments)
+const b64lines = (buf) => buf.toString('base64').replace(/.{76}/g, '$&\r\n');
+const encWord = (s) => `=?UTF-8?B?${Buffer.from(s, 'utf8').toString('base64')}?=`;
+function buildEml(mail, attachments) {
+  const boundary = `----=_CAMI_${crypto.randomBytes(8).toString('hex')}`;
+  const alt = `----=_ALT_${crypto.randomBytes(8).toString('hex')}`;
+  const html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">${mail.body.split('\n\n').map(p => `<p>${p.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>`).join('')}</div>`;
+  const lines = [
+    'X-Unsent: 1',
+    `From: ${mail.from}`,
+    `To: ${mail.to}`,
+    ...(mail.cc ? [`Cc: ${mail.cc}`] : []),
+    `Subject: ${encWord(mail.subject)}`,
+    `Date: ${new Date().toUTCString()}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    `Content-Type: multipart/alternative; boundary="${alt}"`,
+    '',
+    `--${alt}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    b64lines(Buffer.from(mail.body.replace(/\n/g, '\r\n'), 'utf8')),
+    `--${alt}`,
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    b64lines(Buffer.from(html, 'utf8')),
+    `--${alt}--`,
+  ];
+  for (const a of attachments) {
+    lines.push(
+      `--${boundary}`,
+      `Content-Type: ${a.type}; name="${encWord(a.name)}"`,
+      `Content-Disposition: attachment; filename="${encWord(a.name)}"; filename*=UTF-8''${encodeURIComponent(a.name)}`,
+      'Content-Transfer-Encoding: base64',
+      '',
+      b64lines(a.buffer),
+    );
+  }
+  lines.push(`--${boundary}--`, '');
+  return Buffer.from(lines.join('\r\n'), 'utf8');
+}
+
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const sendFileResponse = (res, buffer, type, name, extra = {}) => {
+  res.set({
+    'Content-Type': type,
+    'Content-Disposition': `attachment; filename="${safeKeyPart(name)}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+    'Content-Length': String(buffer.length),
+    'Cache-Control': 'private, no-store',
+    'Access-Control-Expose-Headers': 'Content-Disposition, X-Skipped-Files',
+    ...extra,
+  });
+  res.end(buffer);
+};
+
+// POST /api/factures-releve/:format  { from, to, ids: [...], mail?: { from, to, cc } }  format = xlsx | pdf | eml
+app.post('/api/factures-releve/:format', requireAuth, requireAccountingWrite, async (req, res) => {
+  try {
+    const format = req.params.format;
+    if (!['xlsx', 'pdf', 'eml'].includes(format)) return res.status(400).json({ error: 'Format inconnu' });
+    const period = relevePeriod(req.body || {});
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    if (!ids.length) return res.status(400).json({ error: 'Choisissez au moins une facture.' });
+    const rows = await releveInvoices(period, ids);
+    if (!rows.length) return res.status(400).json({ error: 'Aucune des factures choisies n\'est dans la période.' });
+    const names = releveNames(period);
+    if (format === 'xlsx') return sendFileResponse(res, await buildReleveXlsx(rows, names), XLSX_TYPE, names.xlsx);
+    if (format === 'pdf') {
+      const { buffer, skipped } = await buildRelevePdf(rows);
+      return sendFileResponse(res, buffer, 'application/pdf', names.pdf, { 'X-Skipped-Files': encodeURIComponent(skipped.join(' | ')) });
+    }
+    const base = releveMail(names);
+    const clean = (v, def) => String(v ?? def).replace(/[\r\n]+/g, ' ').trim().slice(0, 500);
+    const mail = { ...base, from: clean(req.body?.mail?.from, base.from), to: clean(req.body?.mail?.to, base.to), cc: clean(req.body?.mail?.cc, base.cc) };
+    const xlsx = await buildReleveXlsx(rows, names);
+    const attachments = [{ name: names.xlsx, type: XLSX_TYPE, buffer: xlsx }];
+    let skipped = [];
+    const withFiles = rows.filter(v => v.documents.length);
+    if (withFiles.length) {
+      const pdf = await buildRelevePdf(withFiles);
+      skipped = pdf.skipped;
+      attachments.push({ name: names.pdf, type: 'application/pdf', buffer: pdf.buffer });
+    }
+    sendFileResponse(res, buildEml(mail, attachments), 'message/rfc822', names.eml, { 'X-Skipped-Files': encodeURIComponent(skipped.join(' | ')) });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 // Invoices typed in the old Suivi (one per order / BL) that are not Factures yet: reminder in the server log
@@ -4520,7 +4796,7 @@ app.post('/api/fournisseurs', requireAuth, requireOrderWrite, async (req, res) =
     res.status(201).json(f);
   } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 });
-// ACHAT edits everything; the accountant (orders.accounting) only the payment term
+// ACHAT edits everything; the accountant (orders.accounting) only the payment term; « orders.own »: its own suppliers, contact details only
 app.put('/api/fournisseurs/:id', requireAuth, async (req, res) => {
   try {
     if (ownOrdersOnly(req) && !canAccounting(req)) {
@@ -4536,7 +4812,7 @@ app.put('/api/fournisseurs/:id', requireAuth, async (req, res) => {
       return res.json(f);
     }
     if (!canAccounting(req)) return res.status(403).json({ error: 'Accès refusé — permission requise: orders.edit ou orders.accounting' });
-    const full = isAdmin(req) || (req.permissions || []).includes('orders.edit');
+    const full = canAccountingWrite(req); // ACHAT / admin: everything — the accountant: the payment term only
     if (!full && SUPPLIER_FIELDS.some(k => req.body[k] !== undefined))
       return res.status(403).json({ error: 'Vous pouvez seulement modifier le délai de paiement.' });
     const data = full ? cleanSupplier(req.body) : cleanPaymentTerms(req.body);

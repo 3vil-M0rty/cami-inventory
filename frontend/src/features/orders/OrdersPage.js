@@ -111,8 +111,11 @@ export default function OrdersPage() {
   // « À réceptionner »: BLs filed in the Suivi, for the accounts that receive goods
   const isReceiver = canReceiveBls(user, can);
   const { count: blsToReceive } = useBlsToReceive(isReceiver, user?.id || user?.username || '');
-  const tabAllowed = (k) => k === 'orders' || (k === 'reception' ? isReceiver : k === 'requests' ? can('orders.edit')
-    : k === 'fournisseurs' ? (canAccounting || can('orders.own')) : canAccounting);
+  // The accountant alone (no ACHAT rights): the Suivi (invoices + purchase orders: looks, pays) and the
+  // suppliers (payment terms only)
+  const accountantOnly = can('orders.accounting') && !can('orders.edit') && !isAdmin;
+  const tabAllowed = (k) => (accountantOnly ? (k === 'suivi' || k === 'fournisseurs') : k === 'orders' || (k === 'reception' ? isReceiver : k === 'requests' ? can('orders.edit')
+    : k === 'fournisseurs' ? (canAccounting || can('orders.own')) : canAccounting));
   // the accountant lands on Suivi; warehouse-type roles (no full orders access) on « À réceptionner »
   const defaultTab = !can('orders.edit') && canAccounting ? 'suivi'
     : isReceiver && !isAdmin && !can('orders.view') && !can('orders.own') ? 'reception' : 'orders';
@@ -833,13 +836,14 @@ export default function OrdersPage() {
     <div className="orders-page">
       <header className="orders-header">
         <div className="orders-tab-switcher">
-          <button
-            className={`orders-tab-btn ${shownTab === 'orders' ? 'active' : ''}`}
-            onClick={() => changeTab('orders')}
-          >
-            <ShoppingCart size={15} /> {t('navOrders')}
-
-          </button>
+          {!accountantOnly && (
+            <button
+              className={`orders-tab-btn ${shownTab === 'orders' ? 'active' : ''}`}
+              onClick={() => changeTab('orders')}
+            >
+              <ShoppingCart size={15} /> {t('navOrders')}
+            </button>
+          )}
 
           {isReceiver && (
             <button
@@ -891,9 +895,11 @@ export default function OrdersPage() {
 
         </div>
         <div className="orders-header__actions">
-          <button className="orders-icon-btn orders-icon-btn--excel" title='Excel' onClick={() => exportOrdersExcel(filteredOrders, lang, { hidePrices: !filteredOrders.every(showPricesFor) })}>
-            <Sheet size={16} />
-          </button>
+          {!accountantOnly && (
+            <button className="orders-icon-btn orders-icon-btn--excel" title='Excel' onClick={() => exportOrdersExcel(filteredOrders, lang, { hidePrices: !filteredOrders.every(showPricesFor) })}>
+              <Sheet size={16} />
+            </button>
+          )}
           {canCreateOrder && (
             <button className="btn-primary" onClick={() => { setEditOrder(null); setShowForm(true); }}>
               <FilePlus size={15} />{t('orderNew')}
@@ -930,7 +936,7 @@ export default function OrdersPage() {
           lang={lang}
         />
       ) : shownTab === 'suivi' ? (
-        <SuiviPanel />
+        <SuiviPanel readOnly={accountantOnly} />
       ) : shownTab === 'fournisseurs' ? (
         <SuppliersPanel
           suppliers={suppliers}
@@ -940,7 +946,7 @@ export default function OrdersPage() {
           ownUserId={ownOnly ? myId : null}
           onChanged={fetchSuppliers}
           onNewOrder={(s) => { setEditOrder(null); setNewOrderSupplier(s.id); setShowForm(true); }}
-          onOpenOrder={(id) => {
+          onOpenOrder={accountantOnly ? null : (id) => {
             const o = orders.find(x => x.id === id);
             setActiveTab('orders');
             if (o) openOrder(o);

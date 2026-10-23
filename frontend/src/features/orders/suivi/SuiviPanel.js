@@ -8,7 +8,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios';
 import {
   Receipt, Truck, ClipboardList, Plus, Wallet, RefreshCw, LoaderCircle, Search, X, Pencil, Trash2,
-  ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, FileText, FileImage, Paperclip, Check,
+  ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, FileText, FileImage, Paperclip, Check, Mail, Download, Sheet,
 } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useCompany } from '../../../context/CompanyContext';
@@ -91,9 +91,21 @@ const DocLink = ({ doc }) => {
     </button>
   );
 };
-const OrderChip = ({ number, id, sub, tone }) => (
-  <button type="button" className={`sv-chip sv-chip--bc${tone ? ` sv-chip--${tone}` : ''}`} title={number}
-    onClick={(e) => { e.stopPropagation(); if (id) openOrder(id); }}>
+// « Télécharger »: the private file, through a short-lived link
+const DocDownload = ({ doc }) => {
+  const { t } = useLanguage();
+  const go = async (e) => {
+    e.stopPropagation();
+    try {
+      const r = await axios.get(`${API_URL}/${doc.kind === 'facture' ? 'factures/documents' : 'order-tracking/documents'}/${doc.id}/url`, { params: { download: 1 } });
+      window.location.href = r.data.url;
+    } catch (err) { dialog.alert(errorMessage(err, t('dlgError'))); }
+  };
+  return <button type="button" className="sv-mini" onClick={go} title={`${t('tdDownload')} — ${doc.name}`} aria-label={t('tdDownload')}><Download size={13} /></button>;
+};
+const OrderChip = ({ number, id, sub, tone, noLink = false }) => (
+  <button type="button" className={`sv-chip sv-chip--bc${tone ? ` sv-chip--${tone}` : ''}${noLink ? ' sv-chip--static' : ''}`} title={number}
+    onClick={(e) => { e.stopPropagation(); if (id && !noLink) openOrder(id); }}>
     {number || '—'}{sub ? <em>{sub}</em> : null}
   </button>
 );
@@ -109,10 +121,14 @@ function PayStatus({ v }) {
 }
 
 /* ═══════════════════════════════ Panel ═══════════════════════════════ */
-export default function SuiviPanel() {
+// readOnly: the accountant — invoices + purchase orders only, files opened / downloaded, payments recorded;
+// nothing else changed and no due date (échéance) shown
+export default function SuiviPanel({ readOnly = false }) {
   const { t } = useLanguage();
   const { selectedCompany } = useCompany();
-  const [view, setView] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'factures'; } catch { return 'factures'; } });
+  const VIEWS = readOnly ? ['factures', 'bcs'] : ['factures', 'bls', 'bcs'];
+  const [view, setViewState] = useState(() => { try { const v = localStorage.getItem(VIEW_KEY); return v && (readOnly ? v !== 'bls' : true) ? v : 'factures'; } catch { return 'factures'; } });
+  const setView = setViewState;
   const [company, setCompany] = useState(selectedCompany || 'all');
   useEffect(() => { setCompany(selectedCompany || 'all'); }, [selectedCompany]);
   const [q, setQ] = useState('');
@@ -141,16 +157,23 @@ export default function SuiviPanel() {
     <div className="pr-panel sv">
       <div className="pr-panel__header sv-head">
         <div className="sv-views" role="tablist">
-          {[['factures', Receipt, 'svViewInvoices'], ['bls', Truck, 'svViewBls'], ['bcs', ClipboardList, 'svViewOrders']].map(([k, Icon, label]) => (
+          {[['factures', Receipt, 'svViewInvoices'], ['bls', Truck, 'svViewBls'], ['bcs', ClipboardList, 'svViewOrders']].filter(([k]) => VIEWS.includes(k)).map(([k, Icon, label]) => (
             <button key={k} type="button" role="tab" aria-selected={view === k} className={`sv-view${view === k ? ' is-on' : ''}`} onClick={() => changeView(k)}>
               <Icon size={15} /> {t(label)}
             </button>
           ))}
         </div>
         <div className="sv-actions">
-          <button type="button" className="sv-btn sv-btn--primary" onClick={() => setModal({ kind: 'facture' })}><Plus size={15} /> {t('svAddInvoice')}</button>
-          <button type="button" className="sv-btn" onClick={() => setModal({ kind: 'bl' })}><Truck size={15} /> {t('svAddBl')}</button>
-          <button type="button" className="sv-btn sv-btn--pay" onClick={() => setModal({ kind: 'pay' })}><Wallet size={15} /> {t('svPayInvoice')}</button>
+          {readOnly ? (
+            <button type="button" className="sv-btn sv-btn--pay" onClick={() => setModal({ kind: 'pay' })}><Wallet size={15} /> {t('svPayInvoice')}</button>
+          ) : (
+            <>
+              <button type="button" className="sv-btn sv-btn--primary" onClick={() => setModal({ kind: 'facture' })}><Plus size={15} /> {t('svAddInvoice')}</button>
+              <button type="button" className="sv-btn" onClick={() => setModal({ kind: 'bl' })}><Truck size={15} /> {t('svAddBl')}</button>
+              <button type="button" className="sv-btn sv-btn--pay" onClick={() => setModal({ kind: 'pay' })}><Wallet size={15} /> {t('svPayInvoice')}</button>
+              <button type="button" className="sv-btn sv-btn--mail" onClick={() => setModal({ kind: 'mail' })}><Mail size={15} /> {t('svMail')}</button>
+            </>
+          )}
           <StorageGauge storage={storage} compact />
           <button type="button" className="pr-refresh-btn orders-icon-btn orders-icon-btn--sm" onClick={reload} title={t('orRefresh')}>
             <RefreshCw size={14} className={loading ? 'spin' : undefined} />
@@ -191,13 +214,13 @@ export default function SuiviPanel() {
         <div className="pr-empty">
           <span className="pr-empty__icon">{view === 'factures' ? <Receipt size={20} /> : view === 'bls' ? <Truck size={20} /> : <ClipboardList size={20} />}</span>
           <p>{t(view === 'factures' ? 'svNoInvoices' : 'orNoOrdersToShow')}</p>
-          {view === 'factures' && <button type="button" className="sv-btn sv-btn--primary" onClick={() => setModal({ kind: 'facture' })}><Plus size={15} /> {t('svAddInvoice')}</button>}
+          {view === 'factures' && !readOnly && <button type="button" className="sv-btn sv-btn--primary" onClick={() => setModal({ kind: 'facture' })}><Plus size={15} /> {t('svAddInvoice')}</button>}
         </div>
       ) : (
         <div className={`pr-table-wrap${loading ? ' pr-table-wrap--loading' : ''}`}>
-          {view === 'factures' && <InvoicesTable rows={rows} data={data} open={open} setOpen={setOpen} onChanged={reload} setModal={setModal} />}
-          {view === 'bls' && <BlsTable rows={rows} data={data} setModal={setModal} />}
-          {view === 'bcs' && <OrdersTable rows={rows} data={data} setModal={setModal} onChanged={reload} />}
+          {view === 'factures' && <InvoicesTable rows={rows} data={data} open={open} setOpen={setOpen} onChanged={reload} setModal={setModal} readOnly={readOnly} />}
+          {view === 'bls' && !readOnly && <BlsTable rows={rows} data={data} setModal={setModal} />}
+          {view === 'bcs' && <OrdersTable rows={rows} data={data} setModal={setModal} onChanged={reload} readOnly={readOnly} />}
           <Pager data={data} onPage={setPage} />
         </div>
       )}
@@ -205,12 +228,13 @@ export default function SuiviPanel() {
       {modal?.kind === 'facture' && <FactureModal facture={modal.facture} preset={modal.preset} onClose={() => setModal(null)} onSaved={done} />}
       {modal?.kind === 'bl' && <BlModal preset={modal.preset} onClose={() => setModal(null)} onSaved={done} />}
       {modal?.kind === 'pay' && <PayModal factureId={modal.factureId} onClose={() => setModal(null)} onSaved={done} />}
+      {modal?.kind === 'mail' && <MailModal onClose={() => setModal(null)} />}
     </div>
   );
 }
 
 /* ═══════════════════════════════ Factures ═══════════════════════════════ */
-function InvoicesTable({ rows, data, open, setOpen, onChanged, setModal }) {
+function InvoicesTable({ rows, data, open, setOpen, onChanged, setModal, readOnly }) {
   const { t } = useLanguage();
   const del = async (v) => {
     if (!(await dialog.confirm({ title: t('svDeleteInvoice'), message: t('svDeleteInvoiceMsg', { n: v.number || t('svNoNumber') }), danger: true, confirmLabel: t('deleteAction') }))) return;
@@ -222,7 +246,7 @@ function InvoicesTable({ rows, data, open, setOpen, onChanged, setModal }) {
         <tr>
           <th style={{ width: 28 }} /><th>{t('orDate')}</th><th>{t('ocfCompany')}</th><th>{t('orSupplier')}</th><th>{t('acInvoiceNo')}</th>
           <th>{t('svCovers')}</th><th className="sv-num">{t('svAmount')}</th><th className="sv-num">{t('svPaidCol')}</th><th className="sv-num">{t('svLeft')}</th>
-          <th>{t('acDueDate')}</th><th>{t('acPayment')}</th><th>{t('tdColumn')}</th><th />
+          {!readOnly && <th>{t('acDueDate')}</th>}<th>{t('acPayment')}</th><th>{t('tdColumn')}</th><th />
         </tr>
       </thead>
       <tbody>
@@ -235,22 +259,27 @@ function InvoicesTable({ rows, data, open, setOpen, onChanged, setModal }) {
               <td className="pr-strong">{v.supplierName || '—'}</td>
               <td className="pr-num"><strong>{v.number || <span className="pr-faint">{t('svNoNumber')}</span>}</strong>{v.typeFacture && v.typeFacture !== 'facture' && <span className="sv-type">{t(FACTURE_TYPES.find(x => x.value === v.typeFacture)?.label || '')}</span>}</td>
               <td className="sv-links">
-                {v.links.map(l => <OrderChip key={l.orderId} id={l.orderId} number={l.orderNumber} sub={l.blNumbers.length ? `BL ${l.blNumbers.join(', ')}` : ''} />)}
+                {v.links.map(l => <OrderChip key={l.orderId} id={l.orderId} number={l.orderNumber} noLink={readOnly} sub={l.blNumbers.length ? `BL ${l.blNumbers.join(', ')}` : ''} />)}
               </td>
               <td className="sv-num pr-strong">{money(v.montant)}</td>
               <td className="sv-num">{money(v.paye)}</td>
               <td className={`sv-num pr-strong${v.reste > 0 && v.retardJours > 0 ? ' sv-late' : ''}`}>{money(v.reste)}</td>
-              <td className="pr-date">{v.echeance ? fmtDate(v.echeance) : <span className="pr-faint" title={t('acNoTermTip')}>—</span>}</td>
+              {!readOnly && <td className="pr-date">{v.echeance ? fmtDate(v.echeance) : <span className="pr-faint" title={t('acNoTermTip')}>—</span>}</td>}
               <td><PayStatus v={v} /></td>
               <td>{v.documents.length ? <span className="sv-count"><Paperclip size={12} /> {v.documents.length}</span> : <span className="sv-missing">{t('svNoFile')}</span>}</td>
               <td className="sv-row-actions" onClick={e => e.stopPropagation()}>
+                {readOnly ? <>
+                  {v.reste > 0 && v.typeFacture !== 'avoir' && <button type="button" className="sv-mini sv-mini--pay" onClick={() => setModal({ kind: 'pay', factureId: v.id })} title={t('svPayInvoice')}><Wallet size={14} /></button>}
+                  {v.documents.map(d => <DocDownload key={d.id} doc={d} />)}
+                </> : <>
                 {v.reste > 0 && v.typeFacture !== 'avoir' && <button type="button" className="sv-mini sv-mini--pay" onClick={() => setModal({ kind: 'pay', factureId: v.id })} title={t('svPayInvoice')}><Wallet size={14} /></button>}
                 <button type="button" className="sv-mini" onClick={() => setModal({ kind: 'facture', facture: v })} title={t('edit')}><Pencil size={14} /></button>
                 <button type="button" className="sv-mini sv-mini--del" onClick={() => del(v)} title={t('deleteAction')}><Trash2 size={14} /></button>
+                </>}
               </td>
             </tr>
             {open === v.id && (
-              <tr className="sv-detail-row"><td colSpan={13}><InvoiceDetail v={v} onChanged={onChanged} setModal={setModal} /></td></tr>
+              <tr className="sv-detail-row"><td colSpan={readOnly ? 12 : 13}><InvoiceDetail v={v} onChanged={onChanged} setModal={setModal} readOnly={readOnly} /></td></tr>
             )}
           </React.Fragment>
         ))}
@@ -259,13 +288,13 @@ function InvoicesTable({ rows, data, open, setOpen, onChanged, setModal }) {
         <tr>
           <td colSpan={6} className="pr-totals-label">{t('orTotalsShown')}</td>
           <td className="sv-num">{money(data.totals?.montant)}</td><td className="sv-num">{money(data.totals?.paye)}</td><td className="sv-num"><strong>{money(data.totals?.reste)}</strong></td>
-          <td colSpan={4} className="pr-totals-pay">{data.totals?.retard > 0 && <span className="pr-late">{t('acRemainingLate')} <strong>{money(data.totals.retard)}</strong></span>}</td>
+          <td colSpan={readOnly ? 3 : 4} className="pr-totals-pay">{data.totals?.retard > 0 && <span className="pr-late">{t('acRemainingLate')} <strong>{money(data.totals.retard)}</strong></span>}</td>
         </tr>
         {(data.byCompany || []).length > 1 && data.byCompany.map(c => (
           <tr key={c.companyId || 'none'} className="pr-totals-company">
             <td colSpan={6} className="pr-totals-label"><CompanyTag name={c.name || t('ocfNoCompany')} color={c.color} /></td>
             <td className="sv-num">{money(c.montant)}</td><td className="sv-num">{money(c.paye)}</td><td className="sv-num"><strong>{money(c.reste)}</strong></td>
-            <td colSpan={4} className="pr-totals-pay">{c.retard > 0 && <span className="pr-late">{t('acRemainingLate')} <strong>{money(c.retard)}</strong></span>}</td>
+            <td colSpan={readOnly ? 3 : 4} className="pr-totals-pay">{c.retard > 0 && <span className="pr-late">{t('acRemainingLate')} <strong>{money(c.retard)}</strong></span>}</td>
           </tr>
         ))}
       </tfoot>
@@ -273,7 +302,7 @@ function InvoicesTable({ rows, data, open, setOpen, onChanged, setModal }) {
   );
 }
 
-function InvoiceDetail({ v, onChanged, setModal }) {
+function InvoiceDetail({ v, onChanged, setModal, readOnly }) {
   const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
@@ -300,7 +329,7 @@ function InvoiceDetail({ v, onChanged, setModal }) {
           <tbody>
             {v.links.map(l => (
               <tr key={l.orderId}>
-                <td><OrderChip id={l.orderId} number={l.orderNumber} /></td>
+                <td><OrderChip id={l.orderId} number={l.orderNumber} noLink={readOnly} /></td>
                 <td>{l.blNumbers.length ? l.blNumbers.map(b => <span key={b} className="sv-chip sv-chip--bl">BL {b}</span>) : <span className="pr-faint">{t('svWholeOrder')}</span>}</td>
                 <td className="sv-num">{money(l.montant)}</td>
               </tr>
@@ -329,13 +358,15 @@ function InvoiceDetail({ v, onChanged, setModal }) {
       </section>
       <section>
         <h4>{t('tdColumn')}
-          <button type="button" className="sv-link" disabled={busy} onClick={() => fileRef.current?.click()}>{busy ? <LoaderCircle size={13} className="spin" /> : <Plus size={13} />} {t('svAddFile')}</button>
-          <input ref={fileRef} type="file" accept={ACCEPT} multiple hidden onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
+          {!readOnly && <>
+            <button type="button" className="sv-link" disabled={busy} onClick={() => fileRef.current?.click()}>{busy ? <LoaderCircle size={13} className="spin" /> : <Plus size={13} />} {t('svAddFile')}</button>
+            <input ref={fileRef} type="file" accept={ACCEPT} multiple hidden onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
+          </>}
         </h4>
         {v.documents.length === 0 ? <p className="sv-missing">{t('svNoFile')}</p> : (
           <div className="sv-docs">
             {v.documents.map(d => (
-              <span key={d.id} className="sv-doc-wrap"><DocLink doc={d} /><button type="button" className="sv-mini sv-mini--del" onClick={() => delDoc(d)} title={t('deleteAction')}><Trash2 size={12} /></button></span>
+              <span key={d.id} className="sv-doc-wrap"><DocLink doc={d} /><DocDownload doc={d} />{!readOnly && <button type="button" className="sv-mini sv-mini--del" onClick={() => delDoc(d)} title={t('deleteAction')}><Trash2 size={12} /></button>}</span>
             ))}
           </div>
         )}
@@ -388,7 +419,7 @@ function BlsTable({ rows, data, setModal }) {
 
 /* ═══════════════════════════════ Bons de commande ═══════════════════════════════ */
 const ORDER_STATUS = { envoye: 'svStSent', partielle: 'svStPartial', recue: 'svStReceived', annulee: 'svStCancelled' };
-function OrdersTable({ rows, data, setModal, onChanged }) {
+function OrdersTable({ rows, data, setModal, onChanged, readOnly }) {
   const { t } = useLanguage();
   const saveNote = async (r, value) => {
     if (value === r.remarque) return;
@@ -411,7 +442,7 @@ function OrdersTable({ rows, data, setModal, onChanged }) {
             <td className="pr-date">{fmtDate(r.date)}</td>
             <td><CompanyTag name={r.companyName} color={r.companyColor} /></td>
             <td className="pr-strong">{r.supplierName || '—'}</td>
-            <td><OrderChip id={r.orderId} number={r.number} /></td>
+            <td><OrderChip id={r.orderId} number={r.number} noLink={readOnly} /></td>
             <td><span className={`sv-st sv-st--${r.status}`}>{t(ORDER_STATUS[r.status] || 'svStSent')}</span></td>
             <td className="sv-num">{money(r.montantBC)}</td>
             <td className="sv-num">{money(r.montantRecu)}</td>
@@ -428,12 +459,14 @@ function OrdersTable({ rows, data, setModal, onChanged }) {
             </td>
             <td className="sv-links">{r.factures.length ? r.factures.map(f => <span key={f.id} className={`sv-chip sv-chip--inv${f.statut === 'paye' ? ' is-paid' : ''}`} title={money(f.montant)}>{f.number || t('svNoNumber')}</span>) : <span className="pr-faint">—</span>}</td>
             <td>
-              <input type="text" defaultValue={r.remarque} key={`${r.orderId}-${r.remarque}`} placeholder="—" className="pr-cell-input pr-cell-input--wide"
-                onBlur={e => saveNote(r, e.target.value)} />
+              {readOnly ? <span className="sv-note-ro">{r.remarque || '—'}</span> : (
+                <input type="text" defaultValue={r.remarque} key={`${r.orderId}-${r.remarque}`} placeholder="—" className="pr-cell-input pr-cell-input--wide"
+                  onBlur={e => saveNote(r, e.target.value)} />
+              )}
             </td>
             <td className="sv-row-actions">
-              {r.status !== 'annulee' && <button type="button" className="sv-mini" title={t('svAddBl')} onClick={() => setModal({ kind: 'bl', preset: { supplierId: r.supplierId, orderIds: [r.orderId] } })}><Truck size={14} /></button>}
-              {r.status !== 'annulee' && <button type="button" className="sv-mini sv-mini--inv" title={t('svInvoiceIt')} onClick={() => invoiceIt(r)}><Receipt size={14} /></button>}
+              {!readOnly && r.status !== 'annulee' && <button type="button" className="sv-mini" title={t('svAddBl')} onClick={() => setModal({ kind: 'bl', preset: { supplierId: r.supplierId, orderIds: [r.orderId] } })}><Truck size={14} /></button>}
+              {!readOnly && r.status !== 'annulee' && <button type="button" className="sv-mini sv-mini--inv" title={t('svInvoiceIt')} onClick={() => invoiceIt(r)}><Receipt size={14} /></button>}
             </td>
           </tr>
         ))}
@@ -843,6 +876,160 @@ function PayModal({ factureId, onClose, onSaved }) {
           ) : <p className="sv-status sv-status--paid"><Check size={13} /> {t('svAlreadyPaid')}</p>}
         </>
       )}
+      {error && <div className="rb-error"><AlertTriangle size={14} />{error}</div>}
+    </Modal>
+  );
+}
+
+/* ═══════════════════════════════ Mail : relevé des factures pour la comptabilité ═══════════════════════════════ */
+const firstOfMonth = (offset = 0) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + offset); return ymd(d); };
+const lastOfMonth = (offset = 0) => { const d = new Date(); d.setMonth(d.getMonth() + offset + 1, 0); return ymd(d); };
+// Saves a file the server built (blob) under its French name
+const saveBlob = (blob, name) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+};
+// readable error from a blob answer
+const blobError = async (e, fallback) => {
+  try { if (e.response?.data instanceof Blob) { const j = JSON.parse(await e.response.data.text()); return j.error || fallback; } } catch { /* not JSON */ }
+  return errorMessage(e, fallback);
+};
+
+function MailModal({ onClose }) {
+  const { t } = useLanguage();
+  const [from, setFrom] = useState(firstOfMonth(0));
+  const [to, setTo] = useState(today());
+  const [data, setData] = useState(null);       // { rows, mail, names }
+  const [sel, setSel] = useState(new Set());
+  const [company, setCompany] = useState('all');
+  const [mail, setMail] = useState(null);       // { from, to, cc }
+  const [busy, setBusy] = useState(null);       // 'xlsx' | 'pdf' | 'eml'
+  const [error, setError] = useState('');
+  const [done, setDone] = useState('');
+
+  useEffect(() => {
+    if (!from || !to) return undefined;
+    let alive = true;
+    setData(null); setError('');
+    axios.get(`${API_URL}/factures-releve`, { params: { from, to } })
+      .then(r => {
+        if (!alive) return;
+        setData(r.data);
+        setSel(new Set(r.data.rows.map(v => v.id)));       // every invoice of the period, by default
+        setMail(m => m || { from: r.data.mail.from, to: r.data.mail.to, cc: r.data.mail.cc });
+      })
+      .catch(e => alive && setError(errorMessage(e, t('dlgError'))));
+    return () => { alive = false; };
+  }, [from, to, t]);
+
+  const rows = (data?.rows || []).filter(v => company === 'all' || (company === 'none' ? !v.companyId : v.companyId === company));
+  const chosen = rows.filter(v => sel.has(v.id));
+  const total = r2(chosen.reduce((s, v) => s + (v.typeFacture === 'avoir' ? -v.montant : v.montant), 0));
+  const noFile = chosen.filter(v => !v.documents.length);
+  const toggle = (id) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const allOn = rows.length > 0 && rows.every(v => sel.has(v.id));
+  const toggleAll = () => setSel(s => { const n = new Set(s); rows.forEach(v => (allOn ? n.delete(v.id) : n.add(v.id))); return n; });
+  const companies = [...new Map((data?.rows || []).map(v => [v.companyId || 'none', { id: v.companyId || 'none', name: v.companyName || t('ocfNoCompany'), color: v.companyColor }])).values()];
+  const names = data?.names;
+  const subject = data?.mail?.subject || '';
+  const body = data?.mail?.body || '';
+
+  const build = async (format) => {
+    setError(''); setDone('');
+    if (!chosen.length) return setError(t('svMailPick'));
+    setBusy(format);
+    try {
+      const r = await axios.post(`${API_URL}/factures-releve/${format}`, { from, to, ids: chosen.map(v => v.id), mail }, { responseType: 'blob' });
+      saveBlob(r.data, names[format]);
+      const skipped = decodeURIComponent(r.headers['x-skipped-files'] || '');
+      setDone(t(format === 'eml' ? 'svMailEmlDone' : 'svMailFileDone', { name: names[format] }) + (skipped ? ` ${t('svMailSkipped', { list: skipped })}` : ''));
+    } catch (e) { setError(await blobError(e, t('dlgError'))); }
+    finally { setBusy(null); }
+  };
+  // Outlook / default mail app, without attachments (files to attach by hand)
+  const mailto = () => {
+    const q = new URLSearchParams({ cc: mail?.cc || '', subject, body }).toString().replace(/\+/g, '%20');
+    window.location.href = `mailto:${mail?.to || ''}?${q}`;
+  };
+
+  return (
+    <Modal wide busy={!!busy} icon={<Mail size={18} />} title={t('svMailTitle')} onClose={onClose}
+      footer={<>
+        <button type="button" className="sv-link sv-mailto" onClick={mailto} disabled={!data}>{t('svMailNoAttach')}</button>
+        <span className="sv-spacer" />
+        <button type="button" onClick={() => build('xlsx')} disabled={!!busy || !chosen.length}>{busy === 'xlsx' ? <LoaderCircle size={15} className="spin" /> : <Sheet size={15} />} {t('svMailXlsx')}</button>
+        <button type="button" onClick={() => build('pdf')} disabled={!!busy || chosen.length === noFile.length}>{busy === 'pdf' ? <LoaderCircle size={15} className="spin" /> : <FileText size={15} />} {t('svMailPdf')}</button>
+        <button type="button" className="primary" onClick={() => build('eml')} disabled={!!busy || !chosen.length}>{busy === 'eml' ? <LoaderCircle size={15} className="spin" /> : <Mail size={15} />} {t('svMailOutlook')}</button>
+      </>}>
+      {/* 1. period */}
+      <div className="sv-mail-period">
+        <label className="sv-field"><span>{t('svMailFrom')}</span><input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} /></label>
+        <label className="sv-field"><span>{t('svMailTo')}</span><input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} /></label>
+        <div className="sv-mail-quick">
+          <button type="button" className="sv-link" onClick={() => { setFrom(firstOfMonth(0)); setTo(today()); }}>{t('svMailThisMonth')}</button>
+          <button type="button" className="sv-link" onClick={() => { setFrom(firstOfMonth(-1)); setTo(lastOfMonth(-1)); }}>{t('svMailLastMonth')}</button>
+        </div>
+      </div>
+
+      {/* 2. invoices */}
+      <div className="sv-pick">
+        <div className="sv-pick__head">
+          <strong>{t('svMailInvoices')} <span className="sv-count">{chosen.length} / {rows.length}</span></strong>
+          {companies.length > 1 && (
+            <div className="pr-filter-tabs">
+              <button type="button" className={`pr-filter-tab ${company === 'all' ? 'active' : ''}`} onClick={() => setCompany('all')}>{t('ocfAllCompanies')}</button>
+              {companies.map(c => <button key={c.id} type="button" className={`pr-filter-tab ${company === c.id ? 'active' : ''}`} onClick={() => setCompany(c.id)}>{c.name}</button>)}
+            </div>
+          )}
+          {rows.length > 0 && <label className="sv-check"><input type="checkbox" checked={allOn} onChange={toggleAll} /> {t('selectAll')}</label>}
+        </div>
+        {!data ? <p className="pr-faint"><LoaderCircle size={14} className="spin" /> {t('loadingShort')}</p> : rows.length === 0 ? <p className="pr-faint">{t('svMailNone')}</p> : (
+          <div className="sv-pick__list">
+            {rows.map(v => (
+              <label key={v.id} className={`sv-cand sv-cand__main sv-mail-row${sel.has(v.id) ? ' is-on' : ''}`}>
+                <input type="checkbox" checked={sel.has(v.id)} onChange={() => toggle(v.id)} />
+                <span className="pr-date">{fmtDate(v.date || v.createdAt)}</span>
+                <CompanyTag name={v.companyName} color={v.companyColor} />
+                <strong>{v.number || t('svNoNumber')}</strong>
+                <span>{v.supplierName}</span>
+                <span className="pr-faint sv-mail-row__bc">{v.links.map(l => l.orderNumber).join(', ')}</span>
+                {!v.documents.length && <span className="sv-missing">{t('svNoFile')}</span>}
+                <b className="sv-mail-row__amount">{money(v.montant)}</b>
+              </label>
+            ))}
+          </div>
+        )}
+        {chosen.length > 0 && (
+          <div className="sv-mail-sum">
+            {t('svMailTotal', { n: chosen.length })} <b>{money(total)}</b>
+            {noFile.length > 0 && <span className="sv-missing"> · {t('svMailNoFileWarn', { n: noFile.length })}</span>}
+          </div>
+        )}
+      </div>
+
+      {/* 3. the e-mail */}
+      {mail && (
+        <div className="sv-mail">
+          <div className="sv-grid">
+            <label className="sv-field sv-field--wide"><span>{t('svMailFromAddr')}</span><input value={mail.from} onChange={e => setMail(m => ({ ...m, from: e.target.value }))} /></label>
+            <label className="sv-field sv-field--wide"><span>{t('svMailToAddr')}</span><input value={mail.to} onChange={e => setMail(m => ({ ...m, to: e.target.value }))} /></label>
+            <label className="sv-field sv-field--wide"><span>Cc</span><input value={mail.cc} onChange={e => setMail(m => ({ ...m, cc: e.target.value }))} /></label>
+          </div>
+          <div className="sv-mail-preview">
+            <div className="sv-mail-preview__subject">{subject}</div>
+            <div className="sv-mail-preview__body">{body}</div>
+            {names && (
+              <div className="sv-mail-preview__files">
+                <span><Sheet size={13} /> {names.xlsx}</span>
+                {chosen.length > noFile.length && <span><FileText size={13} /> {names.pdf}</span>}
+              </div>
+            )}
+          </div>
+          <p className="sv-hint">{t('svMailHint')}</p>
+        </div>
+      )}
+      {done && <div className="sv-done"><Check size={14} /> {done}</div>}
       {error && <div className="rb-error"><AlertTriangle size={14} />{error}</div>}
     </Modal>
   );
