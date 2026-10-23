@@ -4081,20 +4081,21 @@ const releveMail = (p) => ({
   body: `Bonjour,\n\nVeuillez trouver ci-joint l'ensemble des factures disponibles couvrant la période ${p.spanText}.\n\nCordialement`,
 });
 
-// Invoices of the period (date of the invoice, or of its entry when it has no date), oldest first
-async function releveInvoices(period, ids = null) {
+// Invoices offered for the mail: ALL of them, whatever their date — the period (from / to) only names the
+// recap (« … du … au … »), it does not filter. By company, then oldest first.
+async function releveInvoices(ids = null) {
   const views = await allFactureViews(ids ? { _id: { $in: ids.filter(id => mongoose.Types.ObjectId.isValid(id)) } } : {});
   return views
-    .filter(v => { const d = new Date(v.date || v.createdAt); return d >= period.from && d <= period.to; })
     .sort((a, b) => (a.companyName || '~').localeCompare(b.companyName || '~') || new Date(a.date || a.createdAt) - new Date(b.date || b.createdAt));
 }
 
-// GET /api/factures-releve?from=&to= → the invoices of the period (for the selection) + the mail
+// GET /api/factures-releve?from=&to= → every invoice (for the selection; the period only names the recap) + the mail
 app.get('/api/factures-releve', requireAuth, requireAccountingWrite, async (req, res) => {
   try {
     const period = relevePeriod(req.query);
-    const rows = await releveInvoices(period);
-    res.json({ rows, mail: releveMail(releveNames(period)), names: releveNames(period) });
+    const rows = await releveInvoices();
+    const sentTotal = await Facture.countDocuments({ 'releve.sentAt': { $ne: null } });
+    res.json({ rows, sentTotal, mail: releveMail(releveNames(period)), names: releveNames(period) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
@@ -4278,8 +4279,8 @@ app.post('/api/factures-releve/:format', requireAuth, requireAccountingWrite, as
     const period = relevePeriod(req.body || {});
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
     if (!ids.length) return res.status(400).json({ error: 'Choisissez au moins une facture.' });
-    const rows = await releveInvoices(period, ids);
-    if (!rows.length) return res.status(400).json({ error: 'Aucune des factures choisies n\'est dans la période.' });
+    const rows = await releveInvoices(ids);
+    if (!rows.length) return res.status(400).json({ error: 'Factures introuvables.' });
     const names = releveNames(period);
     // an invoice already sent in a previous mail goes again only when asked explicitly
     const alreadySent = rows.filter(v => v.releve);
@@ -4308,6 +4309,16 @@ app.post('/api/factures-releve/:format', requireAuth, requireAccountingWrite, as
     await Facture.updateMany({ _id: { $in: rows.map(v => v.id) } }, { $set: { releve: { sentAt: new Date(), by: docUploader(req), span: names.spanText } } });
     sendFileResponse(res, eml, 'message/rfc822', names.eml, { 'X-Skipped-Files': encodeURIComponent(skipped.join(' | ')) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// GET /api/factures-releve/sent → every invoice already sent (all periods), latest mail first
+app.get('/api/factures-releve/sent', requireAuth, requireAccountingWrite, async (req, res) => {
+  try {
+    const rows = (await allFactureViews({ 'releve.sentAt': { $ne: null } }))
+      .filter(v => v.releve)
+      .sort((a, b) => new Date(b.releve.sentAt) - new Date(a.releve.sentAt) || (a.companyName || '~').localeCompare(b.companyName || '~') || new Date(a.date || a.createdAt) - new Date(b.date || b.createdAt));
+    res.json({ rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // DELETE /api/factures-releve/sent  { ids } → the mail was not sent after all: offer these invoices again

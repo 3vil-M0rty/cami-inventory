@@ -181,6 +181,17 @@
 .sv-sent { display: inline-flex; vertical-align: middle; margin-left: 6px; color: var(--ink-green); cursor: help; }
 .sv-check--sent { color: var(--text-3); }
 .sv-done__text { flex: 1; min-width: 0; }
+.sv-mail-tabs { align-self: flex-start; margin-bottom: 2px; }
+.sv-mail-tabs .sv-count { margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--surface-2); font-size: 11px; }
+.sv-sent-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; font-size: 12.5px; color: var(--ink-green); }
+.sv-sent-recap { display: flex; flex-direction: column; gap: 10px; }
+.sv-sent-recap .sv-search { flex: 0 0 auto; }
+.sv-sent-scroll { max-height: 60vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+.sv-sent-table td { vertical-align: middle; }
+.sv-sent-table tr:last-child td { border-bottom: 0; }
+.sv-sent-group td { position: sticky; top: 0; z-index: 1; padding: 9px 8px !important; background: var(--surface-2); font-size: 12.5px; }
+.sv-sent-group td svg { vertical-align: -2px; color: var(--ink-green); }
+.sv-sent-act { width: 1%; white-space: nowrap; text-align: right; }
 .sv-done__sent { flex-basis: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 6px 0 0 22px; margin-top: 2px; border-top: 1px solid var(--success-bd); font-weight: 600; }
 .sv-mail-sum { font-size: 13px; color: var(--text-2); text-align: right; }
 .sv-mail-sum b { color: var(--text); font-variant-numeric: tabular-nums; }

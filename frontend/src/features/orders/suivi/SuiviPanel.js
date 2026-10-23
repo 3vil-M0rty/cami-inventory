@@ -321,6 +321,10 @@ function InvoiceDetail({ v, onChanged, setModal, readOnly }) {
     finally { setBusy(false); }
   };
   const modeLabel = (m) => t(PAY_MODES.find(x => x.value === m)?.label || '—');
+  const undoSent = async () => {
+    if (!(await dialog.confirm({ title: t('svSentUndoTitle'), message: t('svSentUndoMsg', { n: v.number || t('svNoNumber') }), confirmLabel: t('svSentUndo') }))) return;
+    try { await axios.delete(`${API_URL}/factures-releve/sent`, { data: { ids: [v.id] } }); onChanged(); } catch (e) { dialog.alert(errorMessage(e, t('dlgError'))); }
+  };
   return (
     <div className="sv-detail">
       <section>
@@ -337,6 +341,11 @@ function InvoiceDetail({ v, onChanged, setModal, readOnly }) {
           </tbody>
         </table>
         {v.remarque && <p className="sv-note">{v.remarque}</p>}
+        {v.releve && (
+          <p className="sv-sent-line"><MailCheck size={13} /> {t('svSentTitle', { d: fmtDate(v.releve.sentAt), p: v.releve.span })}
+            {!readOnly && <button type="button" className="sv-link" onClick={undoSent}><Undo2 size={13} /> {t('svSentUndo')}</button>}
+          </p>
+        )}
       </section>
       <section>
         <h4>{t('svPayments')} {v.reste > 0 && v.typeFacture !== 'avoir' && <button type="button" className="sv-link" onClick={() => setModal({ kind: 'pay', factureId: v.id })}><Plus size={13} /> {t('svPayInvoice')}</button>}</h4>
@@ -910,16 +919,18 @@ function MailModal({ onClose }) {
   const [showSent, setShowSent] = useState(false); // invoices already sent in a previous mail
   const [marked, setMarked] = useState([]);        // ids marked as sent by the last mail (to undo)
   const [reload, setReload] = useState(0);
+  const [tab, setTab] = useState('new');           // 'new' = next mail | 'sent' = recap of the invoices already sent
 
+  const selFor = useRef(-1); // the default selection is set once per (re)load, not when only the dates change
   useEffect(() => {
     if (!from || !to) return undefined;
     let alive = true;
-    setData(null); setError('');
+    setError('');
     axios.get(`${API_URL}/factures-releve`, { params: { from, to } })
       .then(r => {
         if (!alive) return;
         setData(r.data);
-        setSel(new Set(r.data.rows.filter(v => !v.releve).map(v => v.id))); // every invoice not sent yet, by default
+        if (selFor.current !== reload) { selFor.current = reload; setSel(new Set(r.data.rows.filter(v => !v.releve).map(v => v.id))); } // every invoice not sent yet
         setMail(m => m || { from: r.data.mail.from, to: r.data.mail.to, cc: r.data.mail.cc });
       })
       .catch(e => alive && setError(errorMessage(e, t('dlgError'))));
@@ -970,13 +981,20 @@ function MailModal({ onClose }) {
 
   return (
     <Modal wide busy={!!busy} icon={<Mail size={18} />} title={t('svMailTitle')} onClose={onClose}
-      footer={<>
+      footer={tab === 'sent' ? <button type="button" onClick={onClose}>{t('close')}</button> : <>
         <button type="button" className="sv-link sv-mailto" onClick={mailto} disabled={!data}>{t('svMailNoAttach')}</button>
         <span className="sv-spacer" />
         <button type="button" onClick={() => build('xlsx')} disabled={!!busy || !chosen.length}>{busy === 'xlsx' ? <LoaderCircle size={15} className="spin" /> : <Sheet size={15} />} {t('svMailXlsx')}</button>
         <button type="button" onClick={() => build('pdf')} disabled={!!busy || chosen.length === noFile.length}>{busy === 'pdf' ? <LoaderCircle size={15} className="spin" /> : <FileText size={15} />} {t('svMailPdf')}</button>
         <button type="button" className="primary" onClick={() => build('eml')} disabled={!!busy || !chosen.length}>{busy === 'eml' ? <LoaderCircle size={15} className="spin" /> : <Mail size={15} />} {t('svMailOutlook')}</button>
       </>}>
+      <div className="sv-views sv-mail-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === 'new'} className={`sv-view${tab === 'new' ? ' is-on' : ''}`} onClick={() => setTab('new')}><Mail size={15} /> {t('svMailTabNew')}</button>
+        <button type="button" role="tab" aria-selected={tab === 'sent'} className={`sv-view${tab === 'sent' ? ' is-on' : ''}`} onClick={() => setTab('sent')}>
+          <MailCheck size={15} /> {t('svMailTabSent')}{data?.sentTotal ? <span className="sv-count">{data.sentTotal}</span> : null}
+        </button>
+      </div>
+      {tab === 'sent' ? <SentRecap onChanged={() => { setMarked([]); setReload(n => n + 1); }} /> : <>
       {/* 1. period */}
       <div className="sv-mail-period">
         <label className="sv-field"><span>{t('svMailFrom')}</span><input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} /></label>
@@ -1053,6 +1071,92 @@ function MailModal({ onClose }) {
         </div>
       )}
       {error && <div className="rb-error"><AlertTriangle size={14} />{error}</div>}
+      </>}
     </Modal>
+  );
+}
+
+// Every invoice already sent to the accounting, one group per mail; an envoi can be cancelled
+// (the invoices are then offered again in the next mail)
+const fmtDateTime = (d) => (d ? new Date(d).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+function SentRecap({ onChanged }) {
+  const { t } = useLanguage();
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState('');
+  const [q, setQ] = useState('');
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    axios.get(`${API_URL}/factures-releve/sent`)
+      .then(r => alive && setRows(r.data.rows))
+      .catch(e => alive && setError(errorMessage(e, t('dlgError'))));
+    return () => { alive = false; };
+  }, [reload, t]);
+  const undo = async (list, message) => {
+    if (!(await dialog.confirm({ title: t('svSentUndoTitle'), message, confirmLabel: t('svSentUndo') }))) return;
+    setError('');
+    try { await axios.delete(`${API_URL}/factures-releve/sent`, { data: { ids: list.map(v => v.id) } }); setReload(n => n + 1); onChanged(); }
+    catch (e) { setError(errorMessage(e, t('dlgError'))); }
+  };
+  const needle = q.trim().toLowerCase();
+  const shown = (rows || []).filter(v => !needle || [v.number, v.supplierName, v.companyName, v.releve.span, ...v.links.map(l => l.orderNumber)]
+    .some(x => String(x || '').toLowerCase().includes(needle)));
+  // the invoices of one mail share the same sending time
+  const groups = [];
+  const byKey = new Map();
+  for (const v of shown) {
+    const k = `${v.releve.sentAt}|${v.releve.span}`;
+    if (!byKey.has(k)) { const g = { key: k, releve: v.releve, rows: [] }; byKey.set(k, g); groups.push(g); }
+    byKey.get(k).rows.push(v);
+  }
+  const sum = (list) => r2(list.reduce((s, v) => s + (v.typeFacture === 'avoir' ? -v.montant : v.montant), 0));
+
+  return (
+    <div className="sv-sent-recap">
+      <div className="sv-search">
+        <Search size={15} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('svSearchInvoices')} />
+        {q && <button type="button" onClick={() => setQ('')} aria-label={t('close')}><X size={14} /></button>}
+      </div>
+      {error && <div className="rb-error"><AlertTriangle size={14} />{error}</div>}
+      {!rows ? <p className="pr-faint"><LoaderCircle size={14} className="spin" /> {t('loadingShort')}</p>
+        : groups.length === 0 ? <p className="pr-faint">{t(rows.length ? 'svSentNoMatch' : 'svSentNone')}</p> : (
+        <div className="sv-sent-scroll">
+          <table className="sv-mini-table sv-sent-table">
+            <tbody>
+              {groups.map(g => (
+                <React.Fragment key={g.key}>
+                  <tr className="sv-sent-group">
+                    <td colSpan={6}>
+                      <MailCheck size={14} /> <b>{t('svSentGroup', { d: fmtDateTime(g.releve.sentAt) })}</b>
+                      {g.releve.by && <span className="pr-faint"> · {g.releve.by}</span>}
+                      {g.releve.span && <span className="pr-faint"> · {t('svSentPeriod', { p: g.releve.span })}</span>}
+                      <span className="pr-faint"> · {t('svSentCount', { n: g.rows.length })}</span> · <b>{money(sum(g.rows))}</b>
+                    </td>
+                    <td className="sv-sent-act">
+                      <button type="button" className="sv-link" onClick={() => undo(g.rows, t('svSentUndoGroupMsg', { n: g.rows.length, d: fmtDateTime(g.releve.sentAt) }))}><Undo2 size={13} /> {t('svSentUndoGroup')}</button>
+                    </td>
+                  </tr>
+                  {g.rows.map(v => (
+                    <tr key={v.id}>
+                      <td className="pr-date">{fmtDate(v.date || v.createdAt)}</td>
+                      <td><CompanyTag name={v.companyName} color={v.companyColor} /></td>
+                      <td>{v.supplierName}</td>
+                      <td><strong>{v.number || t('svNoNumber')}</strong></td>
+                      <td className="pr-faint sv-mail-row__bc">{v.links.map(l => l.orderNumber).join(', ')}</td>
+                      <td className="sv-num pr-strong">{money(v.montant)}</td>
+                      <td className="sv-sent-act">
+                        <button type="button" className="sv-mini" title={t('svSentUndo')} aria-label={t('svSentUndo')}
+                          onClick={() => undo([v], t('svSentUndoMsg', { n: v.number || t('svNoNumber') }))}><Undo2 size={13} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
