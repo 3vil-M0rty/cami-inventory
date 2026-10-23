@@ -8,7 +8,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios';
 import {
   Receipt, Truck, ClipboardList, Plus, Wallet, RefreshCw, LoaderCircle, Search, X, Pencil, Trash2,
-  ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, FileText, FileImage, Paperclip, Check, Mail, Download, Sheet,
+  ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, FileText, FileImage, Paperclip, Check, Mail, Download, Sheet, MailCheck, Undo2,
 } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useCompany } from '../../../context/CompanyContext';
@@ -257,7 +257,7 @@ function InvoicesTable({ rows, data, open, setOpen, onChanged, setModal, readOnl
               <td className="pr-date">{fmtDate(v.date)}</td>
               <td><CompanyTag name={v.companyName} color={v.companyColor} /></td>
               <td className="pr-strong">{v.supplierName || '—'}</td>
-              <td className="pr-num"><strong>{v.number || <span className="pr-faint">{t('svNoNumber')}</span>}</strong>{v.typeFacture && v.typeFacture !== 'facture' && <span className="sv-type">{t(FACTURE_TYPES.find(x => x.value === v.typeFacture)?.label || '')}</span>}</td>
+              <td className="pr-num"><strong>{v.number || <span className="pr-faint">{t('svNoNumber')}</span>}</strong>{v.typeFacture && v.typeFacture !== 'facture' && <span className="sv-type">{t(FACTURE_TYPES.find(x => x.value === v.typeFacture)?.label || '')}</span>}{v.releve && <span className="sv-sent" title={t('svSentTitle', { d: fmtDate(v.releve.sentAt), p: v.releve.span })}><MailCheck size={12} /></span>}</td>
               <td className="sv-links">
                 {v.links.map(l => <OrderChip key={l.orderId} id={l.orderId} number={l.orderNumber} noLink={readOnly} sub={l.blNumbers.length ? `BL ${l.blNumbers.join(', ')}` : ''} />)}
               </td>
@@ -907,6 +907,9 @@ function MailModal({ onClose }) {
   const [busy, setBusy] = useState(null);       // 'xlsx' | 'pdf' | 'eml'
   const [error, setError] = useState('');
   const [done, setDone] = useState('');
+  const [showSent, setShowSent] = useState(false); // invoices already sent in a previous mail
+  const [marked, setMarked] = useState([]);        // ids marked as sent by the last mail (to undo)
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     if (!from || !to) return undefined;
@@ -916,14 +919,16 @@ function MailModal({ onClose }) {
       .then(r => {
         if (!alive) return;
         setData(r.data);
-        setSel(new Set(r.data.rows.map(v => v.id)));       // every invoice of the period, by default
+        setSel(new Set(r.data.rows.filter(v => !v.releve).map(v => v.id))); // every invoice not sent yet, by default
         setMail(m => m || { from: r.data.mail.from, to: r.data.mail.to, cc: r.data.mail.cc });
       })
       .catch(e => alive && setError(errorMessage(e, t('dlgError'))));
     return () => { alive = false; };
-  }, [from, to, t]);
+  }, [from, to, t, reload]);
 
-  const rows = (data?.rows || []).filter(v => company === 'all' || (company === 'none' ? !v.companyId : v.companyId === company));
+  const inCompany = (data?.rows || []).filter(v => company === 'all' || (company === 'none' ? !v.companyId : v.companyId === company));
+  const sentCount = inCompany.filter(v => v.releve).length;
+  const rows = showSent ? inCompany : inCompany.filter(v => !v.releve);
   const chosen = rows.filter(v => sel.has(v.id));
   const total = r2(chosen.reduce((s, v) => s + (v.typeFacture === 'avoir' ? -v.montant : v.montant), 0));
   const noFile = chosen.filter(v => !v.documents.length);
@@ -940,12 +945,22 @@ function MailModal({ onClose }) {
     if (!chosen.length) return setError(t('svMailPick'));
     setBusy(format);
     try {
-      const r = await axios.post(`${API_URL}/factures-releve/${format}`, { from, to, ids: chosen.map(v => v.id), mail }, { responseType: 'blob' });
+      const ids = chosen.map(v => v.id);
+      const r = await axios.post(`${API_URL}/factures-releve/${format}`, { from, to, ids, mail, resend: chosen.some(v => v.releve) }, { responseType: 'blob' });
       saveBlob(r.data, names[format]);
       const skipped = decodeURIComponent(r.headers['x-skipped-files'] || '');
       setDone(t(format === 'eml' ? 'svMailEmlDone' : 'svMailFileDone', { name: names[format] }) + (skipped ? ` ${t('svMailSkipped', { list: skipped })}` : ''));
+      if (format === 'eml') { setMarked(ids); setReload(n => n + 1); } // they are now « sent »: not offered again
     } catch (e) { setError(await blobError(e, t('dlgError'))); }
     finally { setBusy(null); }
+  };
+  // the mail was not sent after all: offer these invoices again
+  const undoSent = async () => {
+    setError('');
+    try {
+      await axios.delete(`${API_URL}/factures-releve/sent`, { data: { ids: marked } });
+      setDone(t('svMailUndone', { n: marked.length })); setMarked([]); setReload(n => n + 1);
+    } catch (e) { setError(errorMessage(e, t('dlgError'))); }
   };
   // Outlook / default mail app, without attachments (files to attach by hand)
   const mailto = () => {
@@ -982,12 +997,13 @@ function MailModal({ onClose }) {
               {companies.map(c => <button key={c.id} type="button" className={`pr-filter-tab ${company === c.id ? 'active' : ''}`} onClick={() => setCompany(c.id)}>{c.name}</button>)}
             </div>
           )}
+          {sentCount > 0 && <label className="sv-check sv-check--sent"><input type="checkbox" checked={showSent} onChange={e => setShowSent(e.target.checked)} /> {t('svMailShowSent', { n: sentCount })}</label>}
           {rows.length > 0 && <label className="sv-check"><input type="checkbox" checked={allOn} onChange={toggleAll} /> {t('selectAll')}</label>}
         </div>
-        {!data ? <p className="pr-faint"><LoaderCircle size={14} className="spin" /> {t('loadingShort')}</p> : rows.length === 0 ? <p className="pr-faint">{t('svMailNone')}</p> : (
+        {!data ? <p className="pr-faint"><LoaderCircle size={14} className="spin" /> {t('loadingShort')}</p> : rows.length === 0 ? <p className="pr-faint">{sentCount ? t('svMailAllSent', { n: sentCount }) : t('svMailNone')}</p> : (
           <div className="sv-pick__list">
             {rows.map(v => (
-              <label key={v.id} className={`sv-cand sv-cand__main sv-mail-row${sel.has(v.id) ? ' is-on' : ''}`}>
+              <label key={v.id} className={`sv-cand sv-cand__main sv-mail-row${sel.has(v.id) ? ' is-on' : ''}${v.releve ? ' is-sent' : ''}`}>
                 <input type="checkbox" checked={sel.has(v.id)} onChange={() => toggle(v.id)} />
                 <span className="pr-date">{fmtDate(v.date || v.createdAt)}</span>
                 <CompanyTag name={v.companyName} color={v.companyColor} />
@@ -995,6 +1011,7 @@ function MailModal({ onClose }) {
                 <span>{v.supplierName}</span>
                 <span className="pr-faint sv-mail-row__bc">{v.links.map(l => l.orderNumber).join(', ')}</span>
                 {!v.documents.length && <span className="sv-missing">{t('svNoFile')}</span>}
+                {v.releve && <span className="sv-sent-chip" title={v.releve.span}><MailCheck size={12} /> {t('svMailSentOn', { d: fmtDate(v.releve.sentAt) })}</span>}
                 <b className="sv-mail-row__amount">{money(v.montant)}</b>
               </label>
             ))}
@@ -1004,6 +1021,7 @@ function MailModal({ onClose }) {
           <div className="sv-mail-sum">
             {t('svMailTotal', { n: chosen.length })} <b>{money(total)}</b>
             {noFile.length > 0 && <span className="sv-missing"> · {t('svMailNoFileWarn', { n: noFile.length })}</span>}
+            {chosen.some(v => v.releve) && <span className="sv-missing"> · {t('svMailResendWarn', { n: chosen.filter(v => v.releve).length })}</span>}
           </div>
         )}
       </div>
@@ -1029,7 +1047,11 @@ function MailModal({ onClose }) {
           <p className="sv-hint">{t('svMailHint')}</p>
         </div>
       )}
-      {done && <div className="sv-done"><Check size={14} /> {done}</div>}
+      {done && (
+        <div className="sv-done"><Check size={14} /> <span className="sv-done__text">{done}</span>
+          {marked.length > 0 && <span className="sv-done__sent">{t('svMailMarked', { n: marked.length })} <button type="button" className="sv-link" onClick={undoSent}><Undo2 size={13} /> {t('svMailUndo')}</button></span>}
+        </div>
+      )}
       {error && <div className="rb-error"><AlertTriangle size={14} />{error}</div>}
     </Modal>
   );

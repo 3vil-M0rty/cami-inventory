@@ -466,6 +466,14 @@ const fr = {
     svMailEmlDone: 'Mail prêt : ouvrez « {name} » (en bas de l\'écran ou dans Téléchargements), il s\'ouvre dans Outlook.',
     svMailFileDone: 'Fichier téléchargé : {name}',
     svMailSkipped: 'Fichiers non ajoutés au PDF : {list}.',
+    svSentTitle: 'Relevé envoyé le {d} (période {p})',
+    svMailShowSent: 'Afficher les déjà envoyées ({n})',
+    svMailAllSent: 'Toutes les factures de la période ont déjà été envoyées ({n}).',
+    svMailSentOn: 'Envoyée le {d}',
+    svMailResendWarn: '{n} déjà envoyée(s), elle(s) partira(ont) une 2e fois',
+    svMailMarked: '{n} facture(s) marquée(s) comme envoyée(s) : elles ne seront plus proposées.',
+    svMailUndo: 'Annuler (mail pas envoyé)',
+    svMailUndone: '{n} facture(s) de nouveau proposée(s).',
 };
 
 const it = {
@@ -927,6 +935,14 @@ const it = {
     svMailEmlDone: 'Mail pronta: apri « {name} » (in basso o in Download), si apre in Outlook.',
     svMailFileDone: 'File scaricato: {name}',
     svMailSkipped: 'File non aggiunti al PDF: {list}.',
+    svSentTitle: 'Riepilogo inviato il {d} (periodo {p})',
+    svMailShowSent: 'Mostra quelle già inviate ({n})',
+    svMailAllSent: 'Tutte le fatture del periodo sono già state inviate ({n}).',
+    svMailSentOn: 'Inviata il {d}',
+    svMailResendWarn: '{n} già inviata/e, partirà/anno una 2a volta',
+    svMailMarked: '{n} fattura/e segnata/e come inviata/e: non saranno più proposte.',
+    svMailUndo: 'Annulla (mail non inviata)',
+    svMailUndone: '{n} fattura/e di nuovo proposta/e.',
 };
 
 const en = {
@@ -1388,6 +1404,14 @@ const en = {
     svMailEmlDone: 'E-mail ready: open « {name} » (bottom of the screen or Downloads), it opens in Outlook.',
     svMailFileDone: 'File downloaded: {name}',
     svMailSkipped: 'Files not added to the PDF: {list}.',
+    svSentTitle: 'Statement sent on {d} (period {p})',
+    svMailShowSent: 'Show already sent ({n})',
+    svMailAllSent: 'Every invoice of the period has already been sent ({n}).',
+    svMailSentOn: 'Sent on {d}',
+    svMailResendWarn: '{n} already sent, will go a 2nd time',
+    svMailMarked: '{n} invoice(s) marked as sent: they will not be offered again.',
+    svMailUndo: 'Undo (mail not sent)',
+    svMailUndone: '{n} invoice(s) offered again.',
 };
 
 export default { fr, it, en };

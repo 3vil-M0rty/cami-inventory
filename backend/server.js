@@ -3483,6 +3483,11 @@ const factureSchema = new mongoose.Schema({
   payments: [facturePaymentSchema],
   createdBy: { type: String, default: '' },
   migratedFrom: { type: [mongoose.Schema.Types.ObjectId], default: undefined }, // OrderTracking rows (migration)
+  // sent to the accounting in a « Relevé factures fournisseurs » mail: not offered again in the next mails
+  releve: {
+    type: { sentAt: Date, by: { type: String, default: '' }, span: { type: String, default: '' }, _id: false },
+    default: null,
+  },
 }, { timestamps: true });
 factureSchema.index({ 'links.orderId': 1 });
 factureSchema.index({ supplierId: 1, number: 1 });
@@ -3597,6 +3602,7 @@ function factureView(f, ctx) {
     companyId: f.companyId ? String(f.companyId) : null, companyName: comp?.name || '', companyColor: comp?.color || '',
     typeFacture: f.typeFacture || '', remarque: f.remarque || '',
     echeance, retardJours, delaiPaiement: term.delaiPaiement, finDeMois: term.finDeMois, lastPaymentDate: lastPay,
+    releve: f.releve?.sentAt ? { sentAt: f.releve.sentAt, by: f.releve.by || '', span: f.releve.span || '' } : null,
     links: (f.links || []).map(l => {
       const o = ctx.orderById.get(String(l.orderId));
       return { orderId: String(l.orderId), orderNumber: o ? (o.number || o.reference || '') : '', orderStatus: o?.status || '', blNumbers: l.blNumbers || [], montant: r2c(l.montant) };
@@ -4275,6 +4281,11 @@ app.post('/api/factures-releve/:format', requireAuth, requireAccountingWrite, as
     const rows = await releveInvoices(period, ids);
     if (!rows.length) return res.status(400).json({ error: 'Aucune des factures choisies n\'est dans la période.' });
     const names = releveNames(period);
+    // an invoice already sent in a previous mail goes again only when asked explicitly
+    const alreadySent = rows.filter(v => v.releve);
+    if (format === 'eml' && alreadySent.length && !req.body?.resend) {
+      return res.status(409).json({ error: `Déjà envoyée(s) : ${alreadySent.map(v => v.number || 'sans n°').join(', ')}`, alreadySent: alreadySent.map(v => v.id) });
+    }
     if (format === 'xlsx') return sendFileResponse(res, await buildReleveXlsx(rows, names), XLSX_TYPE, names.xlsx);
     if (format === 'pdf') {
       const { buffer, skipped } = await buildRelevePdf(rows);
@@ -4292,8 +4303,21 @@ app.post('/api/factures-releve/:format', requireAuth, requireAccountingWrite, as
       skipped = pdf.skipped;
       attachments.push({ name: names.pdf, type: 'application/pdf', buffer: pdf.buffer });
     }
-    sendFileResponse(res, buildEml(mail, attachments), 'message/rfc822', names.eml, { 'X-Skipped-Files': encodeURIComponent(skipped.join(' | ')) });
+    const eml = buildEml(mail, attachments);
+    // the mail is ready: its invoices are marked as sent (undo with DELETE /api/factures-releve/sent)
+    await Facture.updateMany({ _id: { $in: rows.map(v => v.id) } }, { $set: { releve: { sentAt: new Date(), by: docUploader(req), span: names.spanText } } });
+    sendFileResponse(res, eml, 'message/rfc822', names.eml, { 'X-Skipped-Files': encodeURIComponent(skipped.join(' | ')) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// DELETE /api/factures-releve/sent  { ids } → the mail was not sent after all: offer these invoices again
+app.delete('/api/factures-releve/sent', requireAuth, requireAccountingWrite, async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(String).filter(id => mongoose.Types.ObjectId.isValid(id));
+    if (!ids.length) return res.status(400).json({ error: 'Aucune facture' });
+    const r = await Facture.updateMany({ _id: { $in: ids } }, { $set: { releve: null } });
+    res.json({ ok: true, count: r.modifiedCount });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Invoices typed in the old Suivi (one per order / BL) that are not Factures yet: reminder in the server log
