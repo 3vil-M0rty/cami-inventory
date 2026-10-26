@@ -2424,10 +2424,12 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
     { key: 'documents', label: t('pdocTab'), count: null }, // files fetched only when opened
   ];
   const ROLE_TAB_ACCESS = {
-    Laquage: ['barres_laquer', 'accessoires_laquer', 'bars', 'documents'],
+    // Laquage: chassis of every project; état editable only on laquage projects (TAB_CONFIG.stateRoles),
+    // read-only badges on aluminium / vitrage projects
+    Laquage: ['chassis', 'barres_laquer', 'accessoires_laquer', 'bars', 'documents'],
     BARREMAN: ['barres_laquer', 'documents'],
     Coordinateur: ['chassis', 'barres_laquer', 'accessoires_laquer', 'documents'],
-    Magasinier: ['bars', 'accessoires_laquer', 'documents'],
+    Magasinier: ['chassis', 'bars', 'accessoires_laquer', 'documents'], // chassis: consultation only
     LOGISTIQUE: ['chassis', 'bl', 'documents'],
     'Coordinateur-vitrage': ['chassis', 'bl', 'documents'],
     // consultation only (read-only accounts): the chassis and the documents (OF, plans…)
