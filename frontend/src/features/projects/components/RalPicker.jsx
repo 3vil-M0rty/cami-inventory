@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { Check, ChevronDown, Search, X, PenLine, Package } from 'lucide-react';
-import { RAL_COLORS, searchRal, findRal, inkOn } from '../utils/ralColors';
+import { RAL_COLORS, RAL_OPTIONS, searchRal, findRal, inkOn, ralLabel } from '../utils/ralColors';
 import '../RalPicker.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -49,11 +49,12 @@ export default function RalPicker({ language, value, colorValue, onChange, t }) 
         const r = findRal(pName(p));
         return { key: `p-${p.id}`, kind: 'stock', label: pName(p), sub: r ? r.name : '', hex: r?.hex || p.categoryId?.color || '#9ca3af', qty: p.quantity, value: pName(p) };
       });
-    const chart = searchRal(q).map(r => ({ key: r.code, kind: 'ral', label: r.code, sub: r.name, hex: r.hex, qty: stockByRal.get(r.num), value: r.code }));
+    const chart = searchRal(q, f => tr(f.tKey, f.fr))
+      .map(r => ({ key: r.code, kind: 'ral', label: ralLabel(r.code, tr), sub: r.name, hex: r.hex, qty: stockByRal.get(r.num), value: r.code }));
     const free = q.trim() && !chart.length && !stock.length
       ? [{ key: 'free', kind: 'free', label: q.trim(), sub: tr('ralUseTyped', 'Utiliser ce texte'), hex: colorValue || '#9ca3af', value: q.trim() }] : [];
     return [...stock, ...chart, ...free];
-  }, [q, poudres, stockByRal, colorValue]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, poudres, stockByRal, colorValue, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const choose = (o) => {
     onChange({ ralCode: o.value, ralColor: o.hex });
@@ -69,8 +70,9 @@ export default function RalPicker({ language, value, colorValue, onChange, t }) 
 
   const ral = findRal(value);
   const shown = value ? (colorValue || ral?.hex || '#ffffff') : null;
-  // « RAL 9010 » → shows « Blanc pur » under it; a powder name → shows its RAL code
-  const selectedSub = !ral ? '' : value === ral.code ? ral.name : `${ral.code} · ${ral.name}`;
+  // « RAL 9010 » / « RAL 9010 Givré » → shows « Blanc pur » under it; a powder name → shows its RAL code
+  const isChartValue = !!ral && (value === ral.code || RAL_OPTIONS.some(o => o.code === value));
+  const selectedSub = !ral ? '' : isChartValue ? ral.name : `${ral.code} · ${ral.name}`;
 
   if (manual) {
     return (
@@ -97,7 +99,7 @@ export default function RalPicker({ language, value, colorValue, onChange, t }) 
           <>
             <span className="ralp__chip" style={{ background: shown, color: inkOn(shown) }}>{ral ? ral.num : ''}</span>
             <span className="ralp__trigger-txt">
-              <strong>{value}</strong>
+              <strong>{ralLabel(value, tr)}</strong>
               {selectedSub && <span>{selectedSub}</span>}
             </span>
             <span role="button" tabIndex={0} className="ralp__clear" aria-label={tr('ralClear', 'Effacer')}

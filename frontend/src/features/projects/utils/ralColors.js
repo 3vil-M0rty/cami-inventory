@@ -64,7 +64,7 @@ const RAL = [
   ['7040', 'Gris fenêtre', '#9DA1AA'], ['7042', 'Gris signalisation A', '#8D948D'], ['7043', 'Gris signalisation B', '#4E5452'],
   ['7044', 'Gris soie', '#CAC4B0'], ['7045', 'Télégris 1', '#909090'], ['7046', 'Télégris 2', '#82898F'],
   ['7047', 'Télégris 4', '#D0D0D0'], ['7048', 'Gris souris nacré', '#898176'],
-  ['7760', 'Gris givré', '#383E42'], 
+  ['7760', 'Gris', '#383E42'],
   ['8000', 'Brun vert', '#826C34'], ['8001', 'Brun terre de Sienne', '#955F20'], ['8002', 'Brun de sécurité', '#6C3B2A'],
   ['8003', 'Brun argile', '#734222'], ['8004', 'Brun cuivré', '#8E402A'], ['8007', 'Brun fauve', '#59351F'],
   ['8008', 'Brun olive', '#6F4F28'], ['8011', 'Brun noisette', '#5B3A29'], ['8012', 'Brun rouge', '#592321'],
@@ -81,7 +81,35 @@ const RAL = [
 
 export const RAL_COLORS = RAL.map(([code, name, hex]) => ({ code: `RAL ${code}`, num: code, name, hex }));
 
+// Finishes offered for every chart colour. The stored text stays in French (« RAL 9010 Lisse mat »);
+// only the displayed label is translated (i18n keys ralFinish…).
+export const RAL_FINISHES = [
+  { key: 'givre', fr: 'Givré', tKey: 'ralFinishGivre' },
+  { key: 'lisse_mat', fr: 'Lisse mat', tKey: 'ralFinishLisseMat' },
+  { key: 'lisse_brillant', fr: 'Lisse brillant', tKey: 'ralFinishLisseBrillant' },
+];
+// not a colour (raw, unpainted): no finish
+const NO_FINISH = new Set(['support encastré']);
+
+// one entry per colour × finish: { code: 'RAL 9010 Givré', num: '9010', name: 'Blanc pur', hex, finish }
+export const RAL_OPTIONS = RAL_COLORS.flatMap(r => (NO_FINISH.has(r.num)
+  ? [{ ...r, finish: null }]
+  : RAL_FINISHES.map(f => ({ ...r, code: `${r.code} ${f.fr}`, finish: f }))));
+
 const norm = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+// « RAL 9010 Lisse mat » → the finish entry, else null
+export function findFinish(text) {
+  const n = norm(text);
+  return RAL_FINISHES.find(f => n.includes(norm(f.fr))) || null;
+}
+
+// the stored French text with its finish translated: tr = (i18nKey, fallback) => label
+export function ralLabel(text, tr) {
+  const f = findFinish(text);
+  if (!f || !tr) return text || '';
+  return String(text).replace(new RegExp(f.fr, 'i'), tr(f.tKey, f.fr));
+}
 
 // « RAL 9010 », « ral9010 », « 9010 mat », « Blanc pur RAL 9010 » → the chart entry, else null
 export function findRal(text) {
@@ -89,12 +117,14 @@ export function findRal(text) {
   return m ? RAL_COLORS.find(r => r.num === m[1]) || null : null;
 }
 
-// search by number (« 90 », « 9010 ») or by words of the name (« gris anth »)
-export function searchRal(q) {
+// search the colour × finish entries by number (« 90 », « 9010 »), by words of the name (« gris anth »)
+// or of the finish, in French or translated (« 9010 mat », « givré »); finishLabel = (finish) => translated label
+export function searchRal(q, finishLabel) {
   const words = norm(q).replace(/\bral\b/g, ' ').split(/\s+/).filter(Boolean);
-  if (!words.length) return RAL_COLORS;
-  return RAL_COLORS.filter(r => {
-    const hay = `${r.num} ${norm(r.name)}`;
+  if (!words.length) return RAL_OPTIONS;
+  return RAL_OPTIONS.filter(r => {
+    const fin = r.finish ? `${norm(r.finish.fr)} ${norm(finishLabel ? finishLabel(r.finish) : '')}` : '';
+    const hay = `${r.num} ${norm(r.name)} ${fin}`;
     return words.every(w => hay.includes(w));
   });
 }

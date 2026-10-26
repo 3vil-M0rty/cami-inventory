@@ -4,7 +4,7 @@ import { useState } from 'react';
 import axios from 'axios';
 import { User, PaintBucket, Paperclip, FileText, FileImage, Eye, LoaderCircle } from 'lucide-react';
 import { DocViewer, PrintBtn } from './ProjectDocuments';
-import { findRal, inkOn } from '../utils/ralColors';
+import { findRal, inkOn, ralLabel } from '../utils/ralColors';
 
 // Tinted badge tones (dark theme): [text, background, border]
 const STATUS_TONES = {
@@ -119,6 +119,7 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
           {project.ralCode && (() => {
             // the colour, big and readable: chip in the RAL colour with its number, then its name
             const r = findRal(project.ralCode);
+            const tr = (k, fb) => (t(k) && t(k) !== k ? t(k) : fb);
             const bg = project.ralColor || r?.hex || 'var(--300)';
             return (
               <span className="project-card__ralchip" title={`${project.ralCode}${r ? ` — ${r.name}` : ''}`}>
@@ -126,7 +127,7 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
                   {r ? r.num : ''}
                 </span>
                 <span className="project-card__ralchip-txt">
-                  <strong>{r && project.ralCode === r.code ? r.code : project.ralCode}</strong>
+                  <strong>{ralLabel(project.ralCode, tr)}</strong>
                   {r && <em>{r.name}</em>}
                 </span>
               </span>
