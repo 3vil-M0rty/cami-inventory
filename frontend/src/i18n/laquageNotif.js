@@ -10,6 +10,8 @@ const laquageNotif = {
     lnNone: 'Aucune activité récente', lnFooter: '{n} notification(s) · {r} lue(s)',
     fsOnAria: 'Four allumé — cliquer pour éteindre', fsOffAria: 'Four éteint — cliquer pour allumer',
     fsOn: 'Four thermolaquage — Allumé', fsOff: 'Four thermolaquage — Éteint', fsOnlyLaquage: "(Seul le rôle Laquage peut changer l'état)",
+    gzTitle: 'Gaz propane (thermolaquage)', gzLow: 'Niveau bas — prévoir le remplissage', gzUpdated: 'Mis à jour par {by} · {at}',
+    gzReadOnly: '(Lecture seule)', gzSave: 'Enregistrer', gzRange: 'Entre 0 et 100 %',
   },
   it: {
     lnAddLot: 'Nuovo lotto creato', lnSent: 'Inviato alla verniciatura', lnAllRecvLaq: 'Tutto ricevuto (Verniciatura)', lnReturned: 'Restituito al coordinatore',
@@ -22,6 +24,8 @@ const laquageNotif = {
     lnNone: 'Nessuna attività recente', lnFooter: '{n} notifica/e · {r} letta/e',
     fsOnAria: 'Forno acceso — clicca per spegnere', fsOffAria: 'Forno spento — clicca per accendere',
     fsOn: 'Forno di verniciatura — Acceso', fsOff: 'Forno di verniciatura — Spento', fsOnlyLaquage: '(Solo il ruolo Laquage può cambiare lo stato)',
+    gzTitle: 'Gas propano (verniciatura)', gzLow: 'Livello basso — prevedere il rifornimento', gzUpdated: 'Aggiornato da {by} · {at}',
+    gzReadOnly: '(Sola lettura)', gzSave: 'Salva', gzRange: 'Tra 0 e 100 %',
   },
   en: {
     lnAddLot: 'New batch created', lnSent: 'Sent to coating', lnAllRecvLaq: 'All received (Coating)', lnReturned: 'Returned to coordinator',
@@ -34,6 +38,8 @@ const laquageNotif = {
     lnNone: 'No recent activity', lnFooter: '{n} notification(s) · {r} read',
     fsOnAria: 'Oven on — click to turn off', fsOffAria: 'Oven off — click to turn on',
     fsOn: 'Powder-coating oven — On', fsOff: 'Powder-coating oven — Off', fsOnlyLaquage: '(Only the Laquage role can change the state)',
+    gzTitle: 'Propane gas (powder coating)', gzLow: 'Low level — plan a refill', gzUpdated: 'Updated by {by} · {at}',
+    gzReadOnly: '(Read only)', gzSave: 'Save', gzRange: 'Between 0 and 100 %',
   },
 };
 export default laquageNotif;

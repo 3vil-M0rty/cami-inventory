@@ -9,6 +9,7 @@ import { useCompany } from '../../context/CompanyContext';
 import { useAuth } from '../../context/AuthContext';
 import NotifBell from '../../features/laquage/LaquageNotifBell';
 import FourStatus from '../../features/laquage/FourStatus';
+import GazStatus from '../../features/laquage/GazStatus';
 import ChangePasswordModal from '../../features/admin/ChangePasswordModal';
 import { useBlsToReceive, canReceiveBls } from '../../features/orders/receptionQueue';
 
@@ -35,6 +36,7 @@ const Header = ({ activePage, onNavigate }) => {
   const restricted = (user?.restrictedItems || 0) > 0;
   // oven (four thermolaquage) and notification bell: shown according to the role (Administration › Rôles)
   const showFour = can('admin.view') || can('four.view') || can('four.edit');
+  const showGaz = can('admin.view') || can('gaz.view') || can('gaz.edit');
   const showBell = can('admin.view') || can('notifications.view');
 
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -168,6 +170,7 @@ const Header = ({ activePage, onNavigate }) => {
             {langPicker}
             {themeBtn}
             {showFour && <FourStatus />}
+            {showGaz && <GazStatus />}
             {showBell && <NotifBell />}
 
             <div className="hdr__user" ref={userMenuRef}>
@@ -186,6 +189,7 @@ const Header = ({ activePage, onNavigate }) => {
           <div className="hdr__controls mobile-only" style={{ gap: 8 }}>
             {langPicker}
             {showFour && <FourStatus />}
+            {showGaz && <GazStatus />}
             {showBell && <NotifBell />}
             <div className="hdr__user" ref={userMenuRef}>
               <button className="hdr__user-btn" onClick={() => setShowUserMenu(v => !v)}>

@@ -155,6 +155,7 @@ const ALL_PERMISSIONS = [
   'ateliertables.view',
   'chantiers.view', 'chantiers.edit', 'chantiers.delete',
   'four.view', 'four.edit', 'notifications.view',
+  'gaz.view', 'gaz.edit',
 ];
 
 const roleSchema = new mongoose.Schema({
@@ -603,6 +604,15 @@ const fourStatusSchema = new mongoose.Schema({
   }
 });
 const FourStatus = mongoose.model('FourStatus', fourStatusSchema);
+
+// ==================== GAZ PROPANE (thermolaquage) SCHEMA ====================
+// level of the propane tank feeding the oven, in % (one document, like the oven status)
+const gazStatusSchema = new mongoose.Schema({
+  percent: { type: Number, default: 100, min: 0, max: 100 },
+  changedBy: { type: String, default: '' },
+  changedAt: { type: Date, default: Date.now },
+}, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
+const GazStatus = mongoose.model('GazStatus', gazStatusSchema);
 
 // ==================== BL METADATA ====================
 
@@ -1188,7 +1198,32 @@ mongoose.connection.once('open', async () => {
   console.log('Connected to MongoDB');
   await createDefaultAdminUser();
   await grantFourNotifPermissionsOnce();
+  await grantGazPermissionsOnce();
 });
+
+// Propane gas level: given ONCE with the same rule as the oven — whoever sees the oven sees the gas,
+// whoever switches the oven updates the gas. After that the admin decides in Administration › Rôles.
+async function grantGazPermissionsOnce() {
+  try {
+    const meta = mongoose.connection.db.collection('appmigrations');
+    if (await meta.findOne({ _id: 'gaz-permissions' })) return;
+    const roles = await Role.find({ name: { $ne: 'Admin' } });
+    const changed = [];
+    for (const role of roles) {
+      const add = [];
+      if (role.permissions.includes('four.view') || role.permissions.includes('four.edit')) add.push('gaz.view');
+      if (role.permissions.includes('four.edit')) add.push('gaz.edit');
+      const missing = add.filter(p => !role.permissions.includes(p));
+      if (missing.length) {
+        role.permissions = [...role.permissions, ...missing];
+        await role.save();
+        changed.push(`${role.name} (${missing.join(', ')})`);
+      }
+    }
+    await meta.insertOne({ _id: 'gaz-permissions', at: new Date() });
+    if (changed.length) console.log(`✅ Gaz propane : droits ajoutés aux rôles ${changed.join(' · ')}`);
+  } catch (e) { console.error('⚠️  Droits gaz propane :', e.message); }
+}
 
 // The oven and the bell used to be shown to everybody except read-only roles and the workshop accounts
 // limited to a few articles; only the « Laquage » role switched the oven. Those rules become role
@@ -1332,6 +1367,31 @@ app.put('/api/four-status', requireAuth, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ==================== GAZ PROPANE ROUTES ====================
+const canSeeGaz = (req) => isAdmin(req) || (req.permissions || []).some(p => p === 'gaz.view' || p === 'gaz.edit');
+const canEditGaz = (req) => isAdmin(req) || (req.permissions || []).includes('gaz.edit');
+
+// GET — roles with « Gaz — voir » (or « modifier »)
+app.get('/api/gaz-status', requireAuth, async (req, res) => {
+  try {
+    if (!canSeeGaz(req)) return res.status(403).json({ error: 'Accès refusé' });
+    const doc = (await GazStatus.findOne({})) || (await GazStatus.create({ percent: 100 }));
+    res.json(doc.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT — roles with « Gaz — modifier le niveau » (and the admin)
+app.put('/api/gaz-status', requireAuth, async (req, res) => {
+  try {
+    if (!canEditGaz(req)) return res.status(403).json({ error: 'Votre rôle ne permet pas de modifier le niveau de gaz.' });
+    const percent = Math.round(Number(req.body.percent));
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) return res.status(400).json({ error: 'Pourcentage entre 0 et 100.' });
+    const changedBy = req.user?.displayName || req.user?.username || req.user?.roleId?.name || '';
+    const doc = await GazStatus.findOneAndUpdate({}, { percent, changedBy, changedAt: new Date() }, { new: true, upsert: true, setDefaultsOnInsert: true });
+    res.json(doc.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ==================== AUTH MIDDLEWARE ====================
@@ -1606,6 +1666,8 @@ app.get('/api/permissions', requireAuth, requirePermission('admin.view'), async 
     { key: 'chantiers.delete', label: 'Chantiers — Supprimer', group: 'Chantiers' },
     { key: 'four.view', label: 'Four thermolaquage — Voir l\'état (allumé / éteint) dans la barre du haut', group: 'Four thermolaquage' },
     { key: 'four.edit', label: 'Four thermolaquage — Allumer / éteindre le four', group: 'Four thermolaquage' },
+    { key: 'gaz.view', label: 'Gaz propane (thermolaquage) — Voir le niveau (%) dans la barre du haut', group: 'Four thermolaquage' },
+    { key: 'gaz.edit', label: 'Gaz propane (thermolaquage) — Modifier le niveau (%)', group: 'Four thermolaquage' },
     { key: 'notifications.view', label: 'Notifications — Voir la cloche (laquage, réceptions…)', group: 'Notifications' },
   ]);
 });
