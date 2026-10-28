@@ -181,6 +181,75 @@ function ReceptionNoteModal({ title, onConfirm, onCancel }) {
   );
 }
 
+/* ── Send back to the coordinator, all or part (barres) ──────────── */
+// One input per line of the lot (default: everything). Pieces sent back go to a new lot on the server;
+// the rest stays in this lot.
+function returnLines(lot) {
+  const lines = [];
+  (lot.barresBrutes || []).forEach((r, i) => lines.push({ key: `bb-${i}`, sec: 'lqSecBB', ref: r.reference, info: '', max: Number(r.quantiteBrute) || 0 }));
+  (lot.barresLaquees || []).forEach((r, i) => lines.push({ key: `bl-${i}`, sec: 'lqSecBL', ref: r.reference, info: r.ral ? `RAL ${r.ral}` : '', max: Number(r.quantiteLaquee) || 0 }));
+  (lot.morceauxBruts || []).forEach((r, i) => lines.push({ key: `mb-${i}`, sec: 'lqSecMB', ref: r.reference, info: r.mesure || '', max: Number(r.quantite) || 0 }));
+  (lot.morceauxLaques || []).forEach((r, i) => (r.lignes || []).forEach((lg, li) => lines.push({
+    key: `ml-${i}-${li}`, sec: 'lqSecML', ref: r.reference, info: [lg.ral && `RAL ${lg.ral}`, lg.mesure].filter(Boolean).join(' · '), max: Number(lg.quantite) || 0,
+  })));
+  return lines.filter(l => l.max > 0);
+}
+
+function ReturnToCoordModal({ lot, saving, onConfirm, onCancel }) {
+  const { t } = useLanguage();
+  const lines = returnLines(lot);
+  const [qty, setQty] = useState(() => Object.fromEntries(lines.map(l => [l.key, l.max])));
+  const [error, setError] = useState('');
+  const setAll = (full) => setQty(Object.fromEntries(lines.map(l => [l.key, full ? l.max : 0])));
+  const val = (l) => Math.min(l.max, Math.max(0, Math.floor(Number(qty[l.key]) || 0)));
+  const total = lines.reduce((s, l) => s + l.max, 0);
+  const chosen = lines.reduce((s, l) => s + val(l), 0);
+  const submit = () => {
+    if (!chosen) return setError(t('lqRetNothing'));
+    onConfirm(Object.fromEntries(lines.map(l => [l.key, val(l)])));
+  };
+  let lastSec = null;
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <span className="modal-head__icon"><RotateCcw size={14} /></span>
+          <h2>{t('lqRetTitle', { n: lot.lotIndex + 1 })}</h2>
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--text-3)', margin: '0 0 10px' }}>{t('lqRetHint', { n: lot.lotIndex + 1 })}</p>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          <button type="button" className="laq-add-ligne-btn" onClick={() => setAll(true)}>{t('lqRetAll')}</button>
+          <button type="button" className="laq-add-ligne-btn" onClick={() => setAll(false)}>{t('lqRetNone')}</button>
+        </div>
+        <div className="laq-ret-list">
+          {lines.map(l => {
+            const head = l.sec !== lastSec ? (lastSec = l.sec) : null;
+            return (
+              <React.Fragment key={l.key}>
+                {head && <div className="laq-ret-sec">{t(head)}</div>}
+                <div className="laq-ret-row">
+                  <div className="laq-ret-ref"><strong>{l.ref || '—'}</strong>{l.info && <span>{l.info}</span>}</div>
+                  <input type="number" min="0" max={l.max} step="1" className="qty-input laq-ret-input"
+                    value={qty[l.key]} onChange={e => { setQty(q => ({ ...q, [l.key]: e.target.value })); setError(''); }} />
+                  <span className="laq-ret-of">{t('lqRetOf', { n: l.max })}</span>
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
+        <div className="laq-ret-total">{t('lqRetTotal', { n: chosen, total })}</div>
+        {error && <div className="laq-error">{error}</div>}
+        <div className="modal-actions">
+          <button className="btn-cancel" onClick={onCancel}>{t('cancel')}</button>
+          <button className="btn-confirm primary" disabled={saving || !chosen} onClick={submit}>
+            <RotateCcw size={14} /> {t('lqRetSend')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Action history log ──────────────────────────────────────── */
 /** History action → { label (translated), color }. `tr` is t() or tx() */
 const HISTORY_META = {
@@ -627,6 +696,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
   const [confirm, setConfirm] = useState(null);
   const [incomplete, setIncomplete] = useState(null);
   const [receptionNote, setReceptionNote] = useState(null);
+  const [returning, setReturning] = useState(null); // lot being sent back (all or part) to the coordinator
   const [activeLotIdx, setActiveLotIdx] = useState(0);
   const [selected, setSelected] = useState(new Set());
   const [imageMap, setImageMap] = useState({});
@@ -790,11 +860,16 @@ export function BarresLaquerPanel({ project, currentUser }) {
         receive_line_coord: t('lqTLineCoord'),
         incomplete_line: t('lqTIncomplete'),
       };
-      toast(labels[action] || t('lqTDone'));
+      if (action === 'return_partial_to_coord' && res.data.splitLotIndex != null) {
+        const q = Object.values(extra.returnQty || {}).reduce((s, n) => s + (Number(n) || 0), 0);
+        toast(t('lqTPartialReturned', { q, lot: res.data.splitLotIndex + 1 }));
+      } else {
+        toast(action === 'return_partial_to_coord' ? labels.return_to_coord : (labels[action] || t('lqTDone')));
+      }
     } catch (e) {
       setError(e.response?.data?.error || t('lqActionError'));
       toast(t('lqActionErrorToast'), 'error');
-    } finally { setSaving(false); setConfirm(null); setIncomplete(null); setReceptionNote(null); }
+    } finally { setSaving(false); setConfirm(null); setIncomplete(null); setReceptionNote(null); setReturning(null); }
   };
 
   const ask = (msg, fn) => setConfirm({ message: msg, action: fn });
@@ -904,6 +979,14 @@ export function BarresLaquerPanel({ project, currentUser }) {
           }
         />
       )}
+      {returning && (
+        <ReturnToCoordModal
+          lot={returning}
+          saving={saving}
+          onCancel={() => setReturning(null)}
+          onConfirm={(returnQty) => transition('return_partial_to_coord', returning.lotIndex, null, { returnQty })}
+        />
+      )}
 
       {/* Header */}
       <div className="laq-panel-header">
@@ -971,6 +1054,11 @@ export function BarresLaquerPanel({ project, currentUser }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>
               {t('lqProgress', { n: activeLot.lotIndex + 1 })}
+              {activeLot.returnedFrom != null && (
+                <span style={{ marginLeft: 8, fontWeight: 500, color: 'var(--ink-violet)' }}>
+                  <RotateCcw size={11} style={{ marginRight: 3, verticalAlign: -1 }} />{t('lqReturnedFrom', { n: activeLot.returnedFrom + 1 })}
+                </span>
+              )}
             </span>
             {activeLot.receptionLaquageNote && (
               <span style={{ fontSize: 11, color: 'var(--ink-blue)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1187,7 +1275,7 @@ export function BarresLaquerPanel({ project, currentUser }) {
           )}
           {canReturnToCoord && isRecvLaq && (
             <button className="laq-wf-btn laq-wf-btn--return" disabled={saving}
-              onClick={() => ask(t('lqReturnConfirm', { n: lot.lotIndex + 1 }), () => transition('return_to_coord', lot.lotIndex, null))}>
+              onClick={() => setReturning(lot)}>
               <RotateCcw size={14} /> {t('lqReturnBtn', { n: lot.lotIndex + 1 })}
             </button>
           )}

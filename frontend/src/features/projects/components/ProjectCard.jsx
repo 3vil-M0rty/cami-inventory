@@ -1,8 +1,8 @@
 // components/ProjectCard.jsx
 import { useAuth } from '../../../context/AuthContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { User, PaintBucket, Paperclip, FileText, FileImage, Eye, LoaderCircle } from 'lucide-react';
+import { User, PaintBucket, Paperclip, FileText, FileImage, Eye, LoaderCircle, Scissors, Pencil, Trash2 } from 'lucide-react';
 import { DocViewer, PrintBtn } from './ProjectDocuments';
 import { findRal, inkOn, ralLabel } from '../utils/ralColors';
 
@@ -80,6 +80,11 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
     (userRole === 'Laquage' && project?.tab === 'laquage') ||
     (userRole === 'Coordinateur-vitrage' && project?.tab === 'vitrage');
 
+  // coupeurs: Admin and Coordinateur set them right here on the card
+  const canSetCoupeurs = userRole === 'Admin' || userRole === 'Coordinateur';
+  const [coupeurs, setCoupeurs] = useState(project.coupeurIds || []);
+  useEffect(() => { setCoupeurs(project.coupeurIds || []); }, [project.coupeurIds]);
+
   const statusTone = STATUS_TONES[project.status] || STATUS_TONES.non_entame;
   const statusLabel = t(`status_${project.status}`) || project.status || '';
   const dateStr = project.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
@@ -134,6 +139,16 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
             );
           })()}
           <span>{dateStr}</span>
+          {coupeurs.length > 0 && (() => {
+            const names = coupeurs.map(c => c?.name).filter(Boolean).join(', ');
+            return (
+              <span className="project-card__coupeurs" tabIndex={0} aria-label={`${t('cpCutBy')} : ${names}`}>
+                <Scissors size={13} />
+                {coupeurs.length > 1 && <span>{coupeurs.length}</span>}
+                <span className="project-card__coupeurs-tip" role="tooltip">{t('cpCutBy')} : <strong>{names}</strong></span>
+              </span>
+            );
+          })()}
         </div>
 
         {project.clientId && (
@@ -180,13 +195,70 @@ export default function ProjectCard({ project, t, onOpen, onEdit, onDelete }) {
       </div>
 
       <div className="project-card__actions" onClick={e => e.stopPropagation()}>
-        {canEdit && <button className="edit-btn" onClick={onEdit}>{t('edit')}</button>}
-        {isAdmin && <button className="delete-btn" onClick={onDelete}>{t('delete')}</button>}
+        {/* icon buttons, the text shows on hover */}
+        {canEdit && <button className="edit-btn project-card__icon-btn" onClick={onEdit} title={t('edit')} aria-label={t('edit')}><Pencil size={14} /></button>}
+        {isAdmin && <button className="delete-btn project-card__icon-btn" onClick={onDelete} title={t('delete')} aria-label={t('delete')}><Trash2 size={14} /></button>}
+        {(canEdit || isAdmin || canSetCoupeurs || project.documentsCount > 0) && <span className="project-card__actions-gap" />}
+        {canSetCoupeurs && <CardCoupeursButton project={project} value={coupeurs} onSaved={setCoupeurs} t={t} />}
         {project.documentsCount > 0 && <CardDocsButton project={project} t={t} />}
       </div>
     </div>
   );
 }
+// « ✂ Coupeurs » on the card (Admin, Coordinateur): the list of the coupeurs of the Administration,
+// a click ticks / unticks one and saves at once.
+function CardCoupeursButton({ project, value, onSaved, t }) {
+  const { authFetch } = useAuth();
+  const [all, setAll] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const id = project.id || project._id;
+  const selected = value.map(c => c?.id || c?._id || c);
+
+  const click = async () => {
+    if (open) { setOpen(false); return; }
+    setOpen(true); setError('');
+    if (!all) {
+      try { const d = await (await authFetch(`${API_URL}/coupeurs`)).json(); setAll(Array.isArray(d) ? d : []); }
+      catch (e) { setAll([]); }
+    }
+  };
+  const toggle = async (cid) => {
+    const next = selected.includes(cid) ? selected.filter(x => x !== cid) : [...selected, cid];
+    setSaving(true); setError('');
+    try {
+      const r = await authFetch(`${API_URL}/projects/${id}/coupeurs`, { method: 'PATCH', body: JSON.stringify({ coupeurIds: next }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setError(data.error || t('errSave')); return; }
+      onSaved(data.coupeurIds || []);
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <>
+      <button type="button" className={`project-card__docs-btn project-card__cp-btn${open ? ' is-open' : ''}`} onClick={click}
+        title={t('cpCoupeurs')} aria-label={t('cpCoupeurs')}>
+        <Scissors size={14} />{value.length > 0 && <span>{value.length}</span>}
+      </button>
+      {open && (
+        <div className="project-card__cp">
+          {all === null && <LoaderCircle size={14} className="td-spin" />}
+          {all && all.length === 0 && <small className="project-form-hint">{t('cpNone')}</small>}
+          {(all || []).map(c => (
+            <button key={c.id} type="button" disabled={saving}
+              className={`project-card__cp-opt${selected.includes(c.id) ? ' is-on' : ''}`} onClick={() => toggle(c.id)}>
+              {c.name}
+            </button>
+          ))}
+          {error && <small className="project-card__cp-err">{error}</small>}
+        </div>
+      )}
+    </>
+  );
+}
+
 // « Documents (n) » on the card: the list is fetched on click, a file only when « Ouvrir » is clicked.
 // A single document opens directly.
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -224,8 +296,8 @@ function CardDocsButton({ project, t }) {
   return (
     <>
       <button type="button" className={`project-card__docs-btn${open ? ' is-open' : ''}`} onClick={click}
-        title={n === 1 ? t('pdocOpenOne') : t('pdocShowList')}>
-        <Paperclip size={13} /><em className="project-card__docs-label">{t('pdocCardLabel')}</em><span>{n}</span>
+        title={`${t('pdocCardLabel')} — ${n === 1 ? t('pdocOpenOne') : t('pdocShowList')}`} aria-label={t('pdocCardLabel')}>
+        <Paperclip size={14} /><span>{n}</span>
       </button>
       {open && (
         <ul className="project-card__docs">

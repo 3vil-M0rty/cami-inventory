@@ -7,7 +7,7 @@ import AtelierTablesPage from '../AtelierTables';
 
 import './AdminPage.css';
 
-import { CornerDownRight, Search, X, Package, Lock } from 'lucide-react';
+import { CornerDownRight, Search, X, Package, Lock, Scissors } from 'lucide-react';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 export default function AdminPage() {
@@ -32,16 +32,21 @@ export default function AdminPage() {
   const [showStateForm, setShowStateForm]   = useState(false);
   const [editState, setEditState]           = useState(null);
 
+  // Coupeurs (people who cut the bars of the projects)
+  const [coupeurs, setCoupeurs]             = useState([]);
+  const [newCoupeur, setNewCoupeur]         = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [uRes, rRes, pRes, cRes, tRes, sRes] = await Promise.all([
+      const [uRes, rRes, pRes, cRes, tRes, sRes, cpRes] = await Promise.all([
         authFetch(`${API_URL}/users`),
         authFetch(`${API_URL}/roles`),
         authFetch(`${API_URL}/permissions`),
         authFetch(`${API_URL}/companies`),
         authFetch(`${API_URL}/teams`),
         authFetch(`${API_URL}/chantier-states`),
+        authFetch(`${API_URL}/coupeurs`),
       ]);
       setUsers(await uRes.json());
       setRoles(await rRes.json());
@@ -49,6 +54,7 @@ export default function AdminPage() {
       setCompanies(await cRes.json());
       const tm = await tRes.json(); setTeams(Array.isArray(tm) ? tm : []);
       const st = await sRes.json(); setChantierStates(Array.isArray(st) ? st : []);
+      const cp = await cpRes.json(); setCoupeurs(Array.isArray(cp) ? cp : []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [authFetch]);
@@ -77,6 +83,21 @@ export default function AdminPage() {
   const deleteRole = async (role) => {
     if (!(await confirmDelete(t('adDeleteRoleConfirm', { name: role.name })))) return;
     removeAt(`${API_URL}/roles/${role.id}`);
+  };
+
+  // POST / PUT a coupeur; error shown in a dialog
+  const saveCoupeur = async (coupeur, name) => {
+    if (!name || !name.trim()) return false;
+    const r = await authFetch(coupeur ? `${API_URL}/coupeurs/${coupeur.id}` : `${API_URL}/coupeurs`, {
+      method: coupeur ? 'PUT' : 'POST', body: JSON.stringify({ name: name.trim() }),
+    });
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      dialog.alert(data.error || t('errSave'));
+      return false;
+    }
+    load();
+    return true;
   };
 
   const toggleUserActive = async (user) => {
@@ -114,6 +135,9 @@ export default function AdminPage() {
         </button>
         <button className={`admin-tab ${activeTab === 'chantier_states' ? 'active' : ''}`} onClick={() => setActiveTab('chantier_states')}>
           {t('adChantierStates')} <span className="tab-count">{chantierStates.length}</span>
+        </button>
+        <button className={`admin-tab ${activeTab === 'coupeurs' ? 'active' : ''}`} onClick={() => setActiveTab('coupeurs')}>
+          {t('cpCoupeurs')} <span className="tab-count">{coupeurs.length}</span>
         </button>
       </div>
 
@@ -282,6 +306,42 @@ export default function AdminPage() {
                   </div>
                 ))}
                 {chantierStates.length === 0 && <div className="admin-empty">{t('adNoState')}</div>}
+              </div>
+            </div>
+          )}
+
+          {/* ── COUPEURS TAB ── */}
+          {activeTab === 'coupeurs' && (
+            <div className="admin-section">
+              <div className="admin-section-header">
+                <h2>{t('cpCount', { n: coupeurs.length })}</h2>
+                <form className="admin-inline-add" onSubmit={async e => {
+                  e.preventDefault();
+                  if (await saveCoupeur(null, newCoupeur)) setNewCoupeur('');
+                }}>
+                  <input type="text" required placeholder={t('cpNew')} value={newCoupeur}
+                    onChange={e => setNewCoupeur(e.target.value)} />
+                  <button type="submit" className="btn-primary">+ {t('cpAdd')}</button>
+                </form>
+              </div>
+              <div className="state-list">
+                {coupeurs.map(c => (
+                  <div key={c.id} className="state-row">
+                    <Scissors size={14} />
+                    <strong className="state-label">{c.name}</strong>
+                    <div className="table-actions">
+                      <button className="btn-sm" onClick={async () => {
+                        const name = await dialog.prompt({ title: t('cpRename'), defaultValue: c.name });
+                        if (name != null && name.trim() !== c.name) saveCoupeur(c, name);
+                      }}>{t('edit')}</button>
+                      <button className="btn-sm btn-sm-danger" onClick={async () => {
+                        if (!(await confirmDelete(t('cpDeleteConfirm', { name: c.name })))) return;
+                        removeAt(`${API_URL}/coupeurs/${c.id}`);
+                      }}>{t('delete')}</button>
+                    </div>
+                  </div>
+                ))}
+                {coupeurs.length === 0 && <div className="admin-empty">{t('cpEmpty')}</div>}
               </div>
             </div>
           )}

@@ -478,6 +478,7 @@ const projectSchema = new mongoose.Schema({
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', default: null },
   tab: { type: String, enum: ['aluminium', 'laquage', 'vitrage'], default: 'aluminium' },
+  coupeurIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Coupeur' }], // who cut the bars of the project
   chassis: [chassisSchema],
 
   usedBars: [{ itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true }, quantity: { type: Number, required: true, min: 0.01 } }]
@@ -513,6 +514,16 @@ projectSchema.index({ tab: 1, cachedStatus: 1, createdAt: -1 });
 projectSchema.index({ companyId: 1, createdAt: -1 });
 
 const Project = mongoose.model('Project', projectSchema);
+
+// Coupeurs: the people who cut the bars of a project — names managed in Administration › Coupeurs
+const coupeurSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true, unique: true },
+}, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
+const Coupeur = mongoose.model('Coupeur', coupeurSchema);
+
+// valid ObjectIds only, no duplicates
+const cleanCoupeurIds = (ids) => [...new Set((Array.isArray(ids) ? ids : [])
+  .map(id => String(id?.id || id?._id || id || '')).filter(id => mongoose.Types.ObjectId.isValid(id)))];
 
 // ==================== CHANTIER SCHEMAS ====================
 
@@ -1212,6 +1223,7 @@ async function populateAndReturn(project) {
   await project.populate('usedBars.itemId');
   await project.populate('companyId');
   await project.populate('clientId');
+  await project.populate('coupeurIds', 'name');
   return project.toJSON();
 }
 
@@ -4403,7 +4415,7 @@ app.get('/api/projects', async (req, res) => {
   try {
     const filter = {};
     if (req.query.companyId) filter.companyId = req.query.companyId;
-    const projects = await Project.find(filter).populate('usedBars.itemId').populate('companyId').populate('clientId').sort({ createdAt: -1 });
+    const projects = await Project.find(filter).populate('usedBars.itemId').populate('companyId').populate('clientId').populate('coupeurIds', 'name').sort({ createdAt: -1 });
     res.json(projects.map(p => p.toJSON()));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -4443,6 +4455,7 @@ app.get('/api/projects/list', async (req, res) => {
     pipeline.push(
       { $lookup: { from: 'companies', localField: 'companyId', foreignField: '_id', as: 'company' } },
       { $unwind: { path: '$company', preserveNullAndEmptyArrays: true } },
+      { $lookup: { from: 'coupeurs', localField: 'coupeurIds', foreignField: '_id', as: 'coupeurs' } },
       { $sort: { createdAt: -1 } },
       {
         $facet: {
@@ -4456,7 +4469,7 @@ app.get('/api/projects/list', async (req, res) => {
                 cachedTotalPieces: { $ifNull: ['$cachedTotalPieces', 0] },
                 cachedEtatCounts: { $ifNull: ['$cachedEtatCounts', {}] },
                 createdAt: 1,
-                company: 1, client: 1,
+                company: 1, client: 1, coupeurs: 1,
               },
             },
           ],
@@ -4482,6 +4495,7 @@ app.get('/api/projects/list', async (req, res) => {
       createdAt: p.createdAt,
       companyId: p.company ? { ...p.company, id: p.company._id?.toString(), _id: undefined } : null,
       clientId: p.client ? { ...p.client, id: p.client._id?.toString(), _id: undefined } : null,
+      coupeurIds: (p.coupeurs || []).map(c => ({ id: c._id.toString(), name: c.name })),
     }));
 
     // Number of documents per card (names / files are only fetched when the card's button is clicked)
@@ -4543,7 +4557,7 @@ app.post('/api/migrate/cached-status', requireAuth, requirePermission('admin.vie
 
 app.get('/api/projects/:id', async (req, res) => {
   try {
-    const p = await Project.findById(req.params.id).populate('usedBars.itemId').populate('companyId').populate('clientId');
+    const p = await Project.findById(req.params.id).populate('usedBars.itemId').populate('companyId').populate('clientId').populate('coupeurIds', 'name');
     if (!p) return res.status(404).json({ error: 'Project not found' });
     res.json(p.toJSON());
   } catch (e) { res.status(e.kind === 'ObjectId' ? 400 : 500).json({ error: e.message }); }
@@ -4559,8 +4573,9 @@ app.post('/api/projects', async (req, res) => {
       companyId: req.body.companyId || null,
       clientId: req.body.clientId || null,
       tab: req.body.tab || 'aluminium',        // ← ADD THIS
+      coupeurIds: cleanCoupeurIds(req.body.coupeurIds),
     });
-    await p.save(); res.status(201).json(p.toJSON());
+    await p.save(); await p.populate('coupeurIds', 'name'); res.status(201).json(p.toJSON());
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
 });
 app.put('/api/projects/:id', async (req, res) => {
@@ -4574,8 +4589,10 @@ app.put('/api/projects/:id', async (req, res) => {
       companyId: req.body.companyId || null,
       clientId: req.body.clientId || null,
       tab: req.body.tab || 'aluminium',        // ← ADD THIS
+      // only when sent: an older client that does not know the coupeurs keeps them as they are
+      ...(req.body.coupeurIds !== undefined ? { coupeurIds: cleanCoupeurIds(req.body.coupeurIds) } : {}),
     }, { new: true, runValidators: true })
-      .populate('usedBars.itemId').populate('companyId').populate('clientId');
+      .populate('usedBars.itemId').populate('companyId').populate('clientId').populate('coupeurIds', 'name');
     if (!p) return res.status(404).json({ error: 'Not found' });
     res.json(p.toJSON());
   } catch (e) { res.status(e.name === 'ValidationError' ? 400 : 500).json({ error: e.message }); }
@@ -6380,6 +6397,8 @@ const laquageLotSchema = new mongoose.Schema(
     // Inventory deducted when the lot was sent to laquage (barres brutes + barres laquées)
     stockDeducted: { type: [laquageStockDeductionSchema], default: undefined },
     stockDeductedAt: { type: Date, default: null },
+    // partial return: this lot holds the quantities the Laquage sent back from lot « returnedFrom »
+    returnedFrom: { type: Number, default: null },
   },
   { _id: false }
 );
@@ -6798,6 +6817,84 @@ async function syncLaquageLotStock(record, lot, project) {
   record.markModified('lots');
 }
 
+// Partial return to the coordinator: the Laquage sends back only part of a received lot.
+// returnQty = { 'bb-0': 3, 'bl-1': 2, 'mb-0': 1, 'ml-0-1': 4 } (line key → pieces sent back now).
+// The pieces sent back go to a NEW lot (status returned_to_coord, received by the coordinator as usual);
+// the source lot keeps the rest (status received_laquage). The stock already taken out follows the pieces.
+// Returns the new lot index, or null when everything was sent back (plain return of the whole lot).
+function splitLaquageBarresReturn(record, lot, returnQty, by) {
+  const q = (k, max) => {
+    const n = Math.floor(Number(returnQty?.[k]) || 0);
+    if (n < 0 || n > max) { const e = new Error(`Quantité invalide pour la ligne ${k} (0 à ${max}).`); e.status = 400; throw e; }
+    return n;
+  };
+  const ls = lot.lineStatuses || {};
+  const keep = { barresBrutes: [], barresLaquees: [], morceauxBruts: [], morceauxLaques: [], lineStatuses: {} };
+  const back = { barresBrutes: [], barresLaquees: [], morceauxBruts: [], morceauxLaques: [], lineStatuses: {} };
+  let total = 0, all = true;
+  const plain = (r) => (typeof r?.toObject === 'function' ? r.toObject() : { ...r });
+
+  // simple lines: bb / bl / mb
+  for (const [sec, prefix, field] of [['barresBrutes', 'bb', 'quantiteBrute'], ['barresLaquees', 'bl', 'quantiteLaquee'], ['morceauxBruts', 'mb', 'quantite']]) {
+    (lot[sec] || []).forEach((row, i) => {
+      const k = `${prefix}-${i}`, full = Number(row[field]) || 0, n = q(k, full);
+      total += n; if (n < full) all = false;
+      if (n > 0) { back.lineStatuses[`${prefix}-${back[sec].length}`] = ls[k] || {}; back[sec].push({ ...plain(row), [field]: n }); }
+      if (full - n > 0) { keep.lineStatuses[`${prefix}-${keep[sec].length}`] = ls[k] || {}; keep[sec].push({ ...plain(row), [field]: full - n }); }
+    });
+  }
+  // morceaux laqués: one reference, several RAL / mesure lines
+  (lot.morceauxLaques || []).forEach((row, i) => {
+    const r = plain(row), kL = [], bL = [], kS = [], bS = [];
+    (r.lignes || []).forEach((lg, li) => {
+      const k = `ml-${i}-${li}`, full = Number(lg.quantite) || 0, n = q(k, full);
+      total += n; if (n < full) all = false;
+      if (n > 0) { bS.push(ls[k] || {}); bL.push({ ...lg, quantite: n }); }
+      if (full - n > 0) { kS.push(ls[k] || {}); kL.push({ ...lg, quantite: full - n }); }
+    });
+    if (bL.length) { const bi = back.morceauxLaques.length; bS.forEach((st, li) => { back.lineStatuses[`ml-${bi}-${li}`] = st; }); back.morceauxLaques.push({ reference: r.reference, lignes: bL }); }
+    if (kL.length) { const ki = keep.morceauxLaques.length; kS.forEach((st, li) => { keep.lineStatuses[`ml-${ki}-${li}`] = st; }); keep.morceauxLaques.push({ reference: r.reference, lignes: kL }); }
+  });
+
+  if (total === 0) { const e = new Error('Indiquez au moins une pièce à renvoyer.'); e.status = 400; throw e; }
+  if (all) return null; // everything: the whole lot goes back, no split
+
+  // stock already taken out: moves with the pieces (per inventory article)
+  let stockBack;
+  if (Array.isArray(lot.stockDeducted)) {
+    const moved = new Map();
+    for (const r of [...back.barresBrutes.map(x => [x, x.quantiteBrute]), ...back.barresLaquees.map(x => [x, x.quantiteLaquee])]) {
+      const [row, n] = r;
+      if (row.horsStock || !row.itemId) continue;
+      moved.set(String(row.itemId), (moved.get(String(row.itemId)) || 0) + n);
+    }
+    stockBack = [];
+    lot.stockDeducted = lot.stockDeducted.map(d => {
+      const d0 = plain(d), m = Math.min(moved.get(String(d0.itemId)) || 0, d0.quantity || 0);
+      if (m > 0) stockBack.push({ itemId: d0.itemId, reference: d0.reference, quantity: m });
+      return { ...d0, quantity: (d0.quantity || 0) - m };
+    }).filter(d => d.quantity > 0);
+  }
+
+  const newIdx = record.lots.length;
+  record.lots.push({
+    lotIndex: newIdx, status: 'returned_to_coord', returnedFrom: lot.lotIndex,
+    barresBrutes: back.barresBrutes, barresLaquees: back.barresLaquees,
+    morceauxBruts: back.morceauxBruts, morceauxLaques: back.morceauxLaques,
+    lineStatuses: back.lineStatuses,
+    ...(stockBack ? { stockDeducted: stockBack, stockDeductedAt: lot.stockDeductedAt || new Date() } : {}),
+  });
+  lot.barresBrutes = keep.barresBrutes; lot.barresLaquees = keep.barresLaquees;
+  lot.morceauxBruts = keep.morceauxBruts; lot.morceauxLaques = keep.morceauxLaques;
+  lot.lineStatuses = keep.lineStatuses;
+  record.markModified('lots');
+  record.history.push({
+    action: 'return_to_coord', by, at: new Date(), lotIndex: newIdx, partialQty: total,
+    note: `Retour partiel du Lot ${lot.lotIndex + 1} — ${total} pièce(s)`,
+  });
+  return newIdx;
+}
+
 // ==================== LAQUAGE BARRES ROUTES (REPLACE EXISTING) ====================
 
 app.get('/api/projects/:projectId/laquage/barres', requireAuth, async (req, res) => {
@@ -6930,6 +7027,18 @@ app.post('/api/projects/:projectId/laquage/barres/action', requireAuth, async (r
       (lot.morceauxLaques || []).forEach((r, i) =>
         (r.lignes || [{}]).forEach((_, li) => allLineKeys.push(`ml-${i}-${li}`))
       );
+    }
+
+    // Laquage sends back all or part of a received lot (see splitLaquageBarresReturn)
+    if (action === 'return_partial_to_coord') {
+      if (!lot) return res.status(404).json({ error: `Lot ${lotIdx} not found` });
+      const roleName = req.user?.roleId?.name || '';
+      if (!isAdmin(req) && roleName !== 'Laquage') return res.status(403).json({ error: 'Réservé au Laquage.' });
+      if (lot.status !== 'received_laquage') return res.status(400).json({ error: 'Ce lot doit être réceptionné au laquage avant d\'être renvoyé.' });
+      const splitIdx = splitLaquageBarresReturn(record, lot, req.body.returnQty, by);
+      if (splitIdx == null) applyLaquageAction(record, 'return_to_coord', lotIdx, null, by);
+      await record.save();
+      return res.json({ ...record.toJSON(), splitLotIndex: splitIdx });
     }
 
     if (action === 'send_to_laquage') {
@@ -7229,6 +7338,51 @@ app.delete('/api/laquage/history-all', requireAuth, requirePermission('admin.vie
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ==================== COUPEUR ROUTES ====================
+// list: any signed-in account (project form, project detail); create / rename / delete: Administration
+
+app.get('/api/coupeurs', requireAuth, async (req, res) => {
+  try { res.json(await Coupeur.find().collation({ locale: 'fr' }).sort({ name: 1 })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/coupeurs', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Nom requis' });
+    res.status(201).json(await Coupeur.create({ name }));
+  } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ error: e.code === 11000 ? 'Ce coupeur existe déjà' : e.message }); }
+});
+app.put('/api/coupeurs/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Nom requis' });
+    const c = await Coupeur.findByIdAndUpdate(req.params.id, { name }, { new: true, runValidators: true });
+    if (!c) return res.status(404).json({ error: 'Not found' });
+    res.json(c);
+  } catch (e) { res.status(e.code === 11000 ? 409 : 500).json({ error: e.code === 11000 ? 'Ce coupeur existe déjà' : e.message }); }
+});
+// set the coupeurs of ONE project from its card: Admin and Coordinateur only (the rest of the project untouched)
+app.patch('/api/projects/:id/coupeurs', requireAuth, async (req, res) => {
+  try {
+    if (!isAdmin(req) && req.user?.roleId?.name !== 'Coordinateur') {
+      return res.status(403).json({ error: 'Accès refusé — réservé à l\'Admin et au Coordinateur' });
+    }
+    const p = await Project.findByIdAndUpdate(req.params.id, { coupeurIds: cleanCoupeurIds(req.body.coupeurIds) }, { new: true })
+      .select('coupeurIds').populate('coupeurIds', 'name');
+    if (!p) return res.status(404).json({ error: 'Not found' });
+    res.json({ coupeurIds: p.coupeurIds.map(c => ({ id: c._id.toString(), name: c.name })) });
+  } catch (e) { res.status(e.kind === 'ObjectId' ? 400 : 500).json({ error: e.message }); }
+});
+app.delete('/api/coupeurs/:id', requireAuth, requirePermission('admin.view'), async (req, res) => {
+  try {
+    const c = await Coupeur.findByIdAndDelete(req.params.id);
+    if (!c) return res.status(404).json({ error: 'Not found' });
+    // removed from the projects it was on (updateMany: no pre-save hook, the project caches stay valid)
+    await Project.updateMany({ coupeurIds: c._id }, { $pull: { coupeurIds: c._id } });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ==================== CHANTIER STATE ROUTES ====================
 

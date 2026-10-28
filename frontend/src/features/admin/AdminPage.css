@@ -236,3 +236,7 @@
   display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 2px 7px; border-radius: 999px;
   font-size: 10.5px; font-weight: 700; background: var(--info-bg); color: var(--ink-blue); border: 1px solid var(--info-bd); vertical-align: middle;
 }
+
+/* Coupeurs: inline add */
+.admin-inline-add { display:flex;gap:8px;align-items:center;flex-wrap:wrap; }
+.admin-inline-add input { min-width:200px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:13px; }

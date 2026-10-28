@@ -11,7 +11,7 @@ import LabelPrint, { buildLabelHTML, LabelModelSwitch, useLabelModel } from './L
 import { exportProjectPDF, exportBarsPDF } from '../utils/pdfExport';
 import { fetchChassisTypes, buildChassisLabels, CHASSIS_LABELS as STATIC_LABELS } from './ChassisTypesConfig';
 import { BarresLaquerPanel, AccessoiresLaquerPanel } from './LaquagePanel';
-import { StepBack, CircleDashed, PlusCircle, ShipWheel, Package, Save, Wrench, Loader2, Download, Upload, FileSpreadsheet, Printer, CalendarDays, Search, X, AlertTriangle, Undo2, Plus, Pencil, Tag, Tags, Trash2, CircleCheck, PaintBucket, AppWindow, FileText, Banknote, Layers, Clock, CornerDownRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { StepBack, CircleDashed, PlusCircle, ShipWheel, Package, Save, Wrench, Loader2, Download, Upload, FileSpreadsheet, Printer, CalendarDays, Search, X, AlertTriangle, Undo2, Plus, Pencil, Tag, Tags, Trash2, CircleCheck, PaintBucket, AppWindow, FileText, Banknote, Layers, Clock, CornerDownRight, ChevronDown, ChevronUp, Scissors } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import ProjectDocuments from './ProjectDocuments';
 import './ProjectDetail.css';
@@ -2501,6 +2501,9 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
               <span>{t('ref')} <strong>{project.reference}</strong></span>
               <span>{t('ral')} <strong>{project.ralCode}</strong></span>
               <span>{t('date')}: <strong>{dateStr}</strong></span>
+              {(project.coupeurIds || []).length > 0 && (
+                <span className="project-detail__coupeurs"><Scissors size={13} /> {t('cpCutBy')} : <strong>{project.coupeurIds.map(c => c?.name).filter(Boolean).join(', ')}</strong></span>
+              )}
               <span className="project-detail__status" style={{ backgroundColor: statusColor + '1f', color: statusColor, border: `1px solid ${statusColor}59` }}>{t(`status_${project.status}`) || project.status}</span>
               {project.tab && project.tab !== 'aluminium' && (
                 <span style={{

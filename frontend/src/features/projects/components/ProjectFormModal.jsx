@@ -2,11 +2,14 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import RalPicker from './RalPicker';
+import { useAuth } from '../../../context/AuthContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 export default function ProjectFormModal({ language, project, companies, tab, t, onClose, onSave }) {
+  const { authFetch } = useAuth();
   const [clients, setClients] = useState([]);
+  const [coupeurs, setCoupeurs] = useState([]);
 
   const [formData, setFormData] = useState(project ? {
     name:      project.name,
@@ -17,17 +20,25 @@ export default function ProjectFormModal({ language, project, companies, tab, t,
     companyId: project.companyId?.id || project.companyId?._id || '',
     clientId:  project.clientId?.id  || project.clientId?._id  || '',
     tab:       project.tab || tab || 'aluminium',
+    coupeurIds: (project.coupeurIds || []).map(c => c?.id || c?._id || c),
   } : {
     name: '', reference: '', ralCode: '', ralColor: '#ffffff',
     date: new Date().toISOString().split('T')[0],
     companyId: companies[0]?.id || '',
     clientId: '',
     tab: tab || 'aluminium',   // always locked to the current tab
+    coupeurIds: [],
   });
 
   useEffect(() => {
     axios.get(`${API_URL}/clients`).then(r => setClients(r.data)).catch(console.error);
-  }, []);
+    authFetch(`${API_URL}/coupeurs`).then(r => r.json()).then(d => setCoupeurs(Array.isArray(d) ? d : [])).catch(console.error);
+  }, [authFetch]);
+
+  const toggleCoupeur = (id) => setFormData(prev => ({
+    ...prev,
+    coupeurIds: prev.coupeurIds.includes(id) ? prev.coupeurIds.filter(x => x !== id) : [...prev.coupeurIds, id],
+  }));
 
   const set = (key, val) => setFormData(prev => ({ ...prev, [key]: val }));
 
@@ -104,6 +115,23 @@ export default function ProjectFormModal({ language, project, companies, tab, t,
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>{t('cpCutBy')} (optionnel)</label>
+            {coupeurs.length === 0
+              ? <small className="project-form-hint">{t('cpNone')}</small>
+              : (
+                <div className="company-choice-btns">
+                  {coupeurs.map(c => (
+                    <button key={c.id} type="button"
+                      className={`company-choice-btn ${formData.coupeurIds.includes(c.id) ? 'active' : ''}`}
+                      onClick={() => toggleCoupeur(c.id)}>
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              )}
           </div>
 
           <div className="modal-actions">
