@@ -611,6 +611,10 @@ const gazStatusSchema = new mongoose.Schema({
   percent: { type: Number, default: 100, min: 0, max: 100 },
   changedBy: { type: String, default: '' },
   changedAt: { type: Date, default: Date.now },
+  // ACHATS clicked « Commandé » on the low-gas banner: the admin is asked to update the level on delivery.
+  // Cleared when the level is updated.
+  orderedAt: { type: Date, default: null },
+  orderedBy: { type: String, default: '' },
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; return ret; } } });
 const GazStatus = mongoose.model('GazStatus', gazStatusSchema);
 
@@ -1390,7 +1394,18 @@ app.put('/api/gaz-status', requireAuth, async (req, res) => {
     const percent = Math.round(Number(req.body.percent));
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) return res.status(400).json({ error: 'Pourcentage entre 0 et 100.' });
     const changedBy = req.user?.displayName || req.user?.username || req.user?.roleId?.name || '';
-    const doc = await GazStatus.findOneAndUpdate({}, { percent, changedBy, changedAt: new Date() }, { new: true, upsert: true, setDefaultsOnInsert: true });
+    // a new level closes the pending order (the gas was delivered / the level checked)
+    const doc = await GazStatus.findOneAndUpdate({}, { percent, changedBy, changedAt: new Date(), orderedAt: null, orderedBy: '' }, { new: true, upsert: true, setDefaultsOnInsert: true });
+    res.json(doc.toJSON());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST — ACHATS (orders.edit) mark the propane as ordered → the admin gets the « mettre à jour le % » banner
+app.post('/api/gaz-status/ordered', requireAuth, async (req, res) => {
+  try {
+    if (!isAdmin(req) && !(req.permissions || []).includes('orders.edit')) return res.status(403).json({ error: 'Réservé aux achats.' });
+    const orderedBy = req.user?.displayName || req.user?.username || req.user?.roleId?.name || '';
+    const doc = await GazStatus.findOneAndUpdate({}, { orderedAt: new Date(), orderedBy }, { new: true, upsert: true, setDefaultsOnInsert: true });
     res.json(doc.toJSON());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -8,8 +8,10 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 // at or below this level, ACHATS get the « commander du gaz » banner (GazLowBanner)
 export const GAZ_ALERT_PERCENT = 40;
-// tells the banner (same tab) that the level just changed
+// tells the banner / the top bar (same tab) that the gas state just changed
 export const GAZ_EVENT = 'gaz-status-changed';
+// asks the top bar to open the level editor (admin banner « mettre à jour le % »)
+export const GAZ_OPEN_EDITOR = 'gaz-open-editor';
 
 // level colour: green ≥ 50 %, amber ≥ 20 %, red below
 const levelColor = (p) => (p >= 50 ? '#4ade80' : p >= 20 ? '#fbbf24' : '#f87171');
@@ -34,6 +36,12 @@ export default function GazStatus() {
         catch { /* silently fail, like the oven */ }
     }, []);
     useEffect(() => { load(); }, [load]);
+    // state changed elsewhere in this tab (« Commandé » on the banner) / the admin banner asks for the editor
+    useEffect(() => {
+        const onChange = (e) => (e.detail ? setData(e.detail) : load());
+        window.addEventListener(GAZ_EVENT, onChange);
+        return () => window.removeEventListener(GAZ_EVENT, onChange);
+    }, [load]);
 
     // close the editor when clicking outside
     useEffect(() => {
@@ -50,6 +58,12 @@ export default function GazStatus() {
         if (!canEdit) return;
         setDraft(percent ?? 100); setError(''); setOpen(o => !o); setHover(false);
     };
+    useEffect(() => {
+        if (!canEdit) return undefined;
+        const onOpen = () => { setDraft(percent ?? 100); setError(''); setOpen(true); setHover(false); };
+        window.addEventListener(GAZ_OPEN_EDITOR, onOpen);
+        return () => window.removeEventListener(GAZ_OPEN_EDITOR, onOpen);
+    }, [canEdit, percent]);
     const save = async () => {
         const p = Math.round(Number(draft));
         if (!Number.isFinite(p) || p < 0 || p > 100) return setError(t('gzRange'));
@@ -97,6 +111,7 @@ export default function GazStatus() {
                     </span>
                     {percent < 20 && <div style={{ fontSize: 10, color: '#f87171', marginTop: 2 }}>{t('gzLow')}</div>}
                     {data?.changedBy && <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 500, marginTop: 2 }}>{t('gzUpdated', { by: data.changedBy, at: when })}</div>}
+                    {data?.orderedAt && <div style={{ fontSize: 10, color: 'var(--ink-blue)', fontWeight: 600, marginTop: 2 }}>{t('gzOrderedShort', { by: data.orderedBy || '—', at: new Date(data.orderedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) })}</div>}
                     {!canEdit && <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 500, marginTop: 2 }}>{t('gzReadOnly')}</div>}
                 </div>
             )}

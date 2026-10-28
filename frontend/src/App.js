@@ -141,13 +141,8 @@ function AppInner() {
           <div className="app">
             <Header activePage={activePage} onNavigate={navigate} />
             <DocViewerHost />{/* in-app document viewer (BL, factures, documents des projets) */}
-            {/* ACHATS: propane gas of the oven at 40 % or less → order gas */}
-            {can('orders.edit') && (
-              <GazLowBanner onOpenOrders={() => {
-                setUrl(PAGE_PATHS.orders);
-                window.dispatchEvent(new PopStateEvent('popstate'));
-              }} />
-            )}
+            {/* propane gas of the oven: ACHATS « commandé » when at 40 % or less, then the admin updates the % */}
+            {(can('orders.edit') || can('admin.view')) && <GazLowBanner />}
             {canAccessOrders && (
               <BlsToReceiveBanner onOpenList={() => {
                 setUrl(PAGE_PATHS.orders, { query: { onglet: 'reception' } });
