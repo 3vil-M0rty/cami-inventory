@@ -6,6 +6,11 @@ import { Fuel } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
+// at or below this level, ACHATS get the « commander du gaz » banner (GazLowBanner)
+export const GAZ_ALERT_PERCENT = 40;
+// tells the banner (same tab) that the level just changed
+export const GAZ_EVENT = 'gaz-status-changed';
+
 // level colour: green ≥ 50 %, amber ≥ 20 %, red below
 const levelColor = (p) => (p >= 50 ? '#4ade80' : p >= 20 ? '#fbbf24' : '#f87171');
 
@@ -49,7 +54,11 @@ export default function GazStatus() {
         const p = Math.round(Number(draft));
         if (!Number.isFinite(p) || p < 0 || p > 100) return setError(t('gzRange'));
         setSaving(true); setError('');
-        try { setData((await axios.put(`${API_URL}/gaz-status`, { percent: p })).data); setOpen(false); }
+        try {
+            const res = await axios.put(`${API_URL}/gaz-status`, { percent: p });
+            setData(res.data); setOpen(false);
+            window.dispatchEvent(new CustomEvent(GAZ_EVENT, { detail: res.data }));
+        }
         catch (e) { setError(e.response?.data?.error || t('errSave')); }
         finally { setSaving(false); }
     };

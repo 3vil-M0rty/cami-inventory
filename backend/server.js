@@ -1370,7 +1370,8 @@ app.put('/api/four-status', requireAuth, async (req, res) => {
 });
 
 // ==================== GAZ PROPANE ROUTES ====================
-const canSeeGaz = (req) => isAdmin(req) || (req.permissions || []).some(p => p === 'gaz.view' || p === 'gaz.edit');
+// ACHATS (orders.edit) also read the level: they get the « gaz bas » banner to order propane
+const canSeeGaz = (req) => isAdmin(req) || (req.permissions || []).some(p => p === 'gaz.view' || p === 'gaz.edit' || p === 'orders.edit');
 const canEditGaz = (req) => isAdmin(req) || (req.permissions || []).includes('gaz.edit');
 
 // GET — roles with « Gaz — voir » (or « modifier »)

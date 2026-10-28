@@ -12,6 +12,7 @@ const laquageNotif = {
     fsOn: 'Four thermolaquage — Allumé', fsOff: 'Four thermolaquage — Éteint', fsOnlyLaquage: "(Seul le rôle Laquage peut changer l'état)",
     gzTitle: 'Gaz propane (thermolaquage)', gzLow: 'Niveau bas — prévoir le remplissage', gzUpdated: 'Mis à jour par {by} · {at}',
     gzReadOnly: '(Lecture seule)', gzSave: 'Enregistrer', gzRange: 'Entre 0 et 100 %',
+    gzBannerTitle: 'Gaz propane du four thermolaquage à {n} % — à commander', gzBannerText: 'Le niveau est à {n} % ou moins : passez une commande de gaz.', gzBannerOrder: 'Commandes', gzBannerHide: 'Masquer jusqu\'à la prochaine mise à jour du niveau',
   },
   it: {
     lnAddLot: 'Nuovo lotto creato', lnSent: 'Inviato alla verniciatura', lnAllRecvLaq: 'Tutto ricevuto (Verniciatura)', lnReturned: 'Restituito al coordinatore',
@@ -26,6 +27,7 @@ const laquageNotif = {
     fsOn: 'Forno di verniciatura — Acceso', fsOff: 'Forno di verniciatura — Spento', fsOnlyLaquage: '(Solo il ruolo Laquage può cambiare lo stato)',
     gzTitle: 'Gas propano (verniciatura)', gzLow: 'Livello basso — prevedere il rifornimento', gzUpdated: 'Aggiornato da {by} · {at}',
     gzReadOnly: '(Sola lettura)', gzSave: 'Salva', gzRange: 'Tra 0 e 100 %',
+    gzBannerTitle: 'Gas propano del forno di verniciatura al {n} % — da ordinare', gzBannerText: 'Il livello è al {n} % o meno: fate un ordine di gas.', gzBannerOrder: 'Ordini', gzBannerHide: 'Nascondi fino al prossimo aggiornamento del livello',
   },
   en: {
     lnAddLot: 'New batch created', lnSent: 'Sent to coating', lnAllRecvLaq: 'All received (Coating)', lnReturned: 'Returned to coordinator',
@@ -40,6 +42,7 @@ const laquageNotif = {
     fsOn: 'Powder-coating oven — On', fsOff: 'Powder-coating oven — Off', fsOnlyLaquage: '(Only the Laquage role can change the state)',
     gzTitle: 'Propane gas (powder coating)', gzLow: 'Low level — plan a refill', gzUpdated: 'Updated by {by} · {at}',
     gzReadOnly: '(Read only)', gzSave: 'Save', gzRange: 'Between 0 and 100 %',
+    gzBannerTitle: 'Powder-coating oven propane at {n} % — to order', gzBannerText: 'The level is at {n} % or less: place a gas order.', gzBannerOrder: 'Orders', gzBannerHide: 'Hide until the level is updated again',
   },
 };
 export default laquageNotif;

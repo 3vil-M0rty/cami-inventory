@@ -23,6 +23,7 @@ import { DialogHost } from './components/common/dialog';
 
 import { Lock } from 'lucide-react';
 import { BlsToReceiveBanner } from './features/orders/BlsToReceive';
+import GazLowBanner from './features/laquage/GazLowBanner';
 import { DocViewerHost } from './features/projects/components/ProjectDocuments';
 const PROJECTS_DEFAULT_ROLES = new Set(['LOGISTIQUE', 'Coordinateur', 'BARREMAN', 'Chef de chantier', 'Chef atelier']);
 const CHANTIER_DEFAULT_ROLES = new Set(['chefChantier', 'BARREMAN']);
@@ -140,6 +141,13 @@ function AppInner() {
           <div className="app">
             <Header activePage={activePage} onNavigate={navigate} />
             <DocViewerHost />{/* in-app document viewer (BL, factures, documents des projets) */}
+            {/* ACHATS: propane gas of the oven at 40 % or less → order gas */}
+            {can('orders.edit') && (
+              <GazLowBanner onOpenOrders={() => {
+                setUrl(PAGE_PATHS.orders);
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }} />
+            )}
             {canAccessOrders && (
               <BlsToReceiveBanner onOpenList={() => {
                 setUrl(PAGE_PATHS.orders, { query: { onglet: 'reception' } });
