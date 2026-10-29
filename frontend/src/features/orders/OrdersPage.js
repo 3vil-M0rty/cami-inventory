@@ -165,6 +165,19 @@ export default function OrdersPage() {
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }, [userKey]);
 
+  // The order sent back by a reception / clôture: shown at once (the quantity turns green right away),
+  // then the whole list is reloaded in the background to catch anything else that changed.
+  const applyOrder = useCallback((updated) => {
+    if (updated && updated.id) {
+      setOrders(prev => {
+        const next = prev.map(o => (o.id === updated.id ? updated : o));
+        writeOrdersCache(userKey, next);
+        return next;
+      });
+    }
+    fetchOrders();
+  }, [fetchOrders, userKey]);
+
   const fetchSuppliers = useCallback(async () => {
     try {
       const res = await axios.get(`${API_URL}/fournisseurs`);
@@ -368,8 +381,8 @@ export default function OrdersPage() {
       return;
     }
     try {
-      await axios.patch(`${API_URL}/orders/${order.id}/lines/${line._id || line.id}/close`, { closed, note });
-      await fetchOrders();
+      const r = await axios.patch(`${API_URL}/orders/${order.id}/lines/${line._id || line.id}/close`, { closed, note });
+      applyOrder(r.data);
     } catch (e) { await dialog.alert(errorMessage(e, t('dlgError'))); }
   };
 
@@ -810,7 +823,7 @@ export default function OrdersPage() {
             initialBl={batchReceive.initialBl}
             initialAttach={batchReceive.attach || []}
             onClose={() => setBatchReceive(null)}
-            onDone={() => { setBatchReceive(null); fetchOrders(); loadOrderDocs(); refreshBls(); }}
+            onDone={(updated) => { setBatchReceive(null); applyOrder(updated); loadOrderDocs(); refreshBls(); }}
           />
         )}
         {showForm && (

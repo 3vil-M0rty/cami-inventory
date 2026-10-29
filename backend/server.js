@@ -2016,6 +2016,10 @@ async function ordersListVersion() {
   return `${o}-${i}-${c}-${f}-${nO}-${nI}`;
 }
 
+// One order in the same light shape as the list (GET /api/orders): returned by the reception / clôture
+// routes so the page shows the result right away, without reloading the whole list first.
+const orderForList = async (id) => (await findOrdersForList({ _id: id }))[0] || null;
+
 async function findOrdersForList(filter) {
   const orders = await Order.find(filter)
     .sort({ createdAt: -1 })
@@ -2611,15 +2615,22 @@ app.post('/api/orders/:id/receive-batch', requireAuth, async (req, res) => {
     if (o.status === 'brouillon') return res.status(400).json({ error: 'Envoyez le bon de commande avant de réceptionner.' });
     if (o.status === 'annulee') return res.status(400).json({ error: 'Bon de commande annulé.' });
 
+    // every article of the BL in ONE query (was 2 queries per line), the reception right checked from it
+    const lineOf = (w) => (mongoose.Types.ObjectId.isValid(w.lineId) ? o.lines.id(w.lineId) : null);
+    const itemIds = wanted.map(lineOf).filter(Boolean).map(l => l.itemId).filter(Boolean);
+    const itemMap = new Map((await Item.find({ _id: { $in: itemIds } }).select('designation codeInterne superCategory').lean())
+      .map(i => [String(i._id), i]));
+    const myCats = isAdmin(req) ? null : receivingCategoriesForRole(req.user?.roleId?.name || '');
     const plan = [];
     for (const w of wanted) {
-      const line = mongoose.Types.ObjectId.isValid(w.lineId) ? o.lines.id(w.lineId) : null;
+      const line = lineOf(w);
       if (!line) return res.status(404).json({ error: 'Ligne introuvable dans ce bon de commande.' });
-      const item = await Item.findById(line.itemId);
+      const item = itemMap.get(String(line.itemId)) || null;
       const label = item?.designation?.fr || item?.codeInterne || 'article';
       if (line.closed) return res.status(400).json({ error: `La ligne « ${label} » est clôturée.` });
-      if (!(await canReceiveOrderLine(req, o, line.itemId))) {
-        const sc = item?.superCategory || 'aluminium';
+      // same rule as canReceiveOrderLine: admin, or the role receiving the article's family
+      const sc = item?.superCategory || 'aluminium';
+      if (myCats && (!item || !myCats.includes(sc))) {
         return res.status(403).json({ error: `Vous ne pouvez pas réceptionner les articles "${sc}" (« ${label} »). Cette action est réservée au rôle "${CATEGORY_RECEIVE_ROLE[sc] || 'Admin'}" (ou Admin).` });
       }
       plan.push({ line, item, quantity: w.quantity });
@@ -2627,15 +2638,15 @@ app.post('/api/orders/:id/receive-batch', requireAuth, async (req, res) => {
 
     const by = req.user?.displayName || req.user?.username || '';
     const now = new Date();
+    const movements = [];
     for (const { line, item, quantity } of plan) {
       line.quantityReceived = (line.quantityReceived || 0) + quantity;
       if (item) {
         const stockQty = toStock(line, quantity); // cartons → pièces
-        // added in the database ($inc), not from the article read above: the same article can be on
+        // added in the database ($inc) and read back in the same request: the same article can be on
         // two lines of the order, the second reception must not overwrite the first one
-        await Item.updateOne({ _id: item._id }, { $inc: { quantity: stockQty } });
-        const after = await Item.findById(item._id).select('quantity').lean();
-        await StockMovement.create({
+        const after = await Item.findOneAndUpdate({ _id: item._id }, { $inc: { quantity: stockQty } }, { new: true, projection: { quantity: 1 } }).lean();
+        movements.push({
           itemId: item._id, type: 'order_reception', quantity: stockQty,
           balanceAfter: after?.quantity ?? 0, orderId: o._id,
           note: `Réception ${o.number || o.reference} — BL ${blNumber}${unitNote(line, quantity)}`,
@@ -2645,10 +2656,10 @@ app.post('/api/orders/:id/receive-batch', requireAuth, async (req, res) => {
     }
     refreshOrderStatus(o);
     await o.save();
-    await recomputeOrderedQuantity(plan.map(p => p.line.itemId));
     // BL scans filed without a number (before numbering): filed now under this BL
     const attach = (Array.isArray(req.body?.attachDocIds) ? req.body.attachDocIds : []).map(String);
-    if (attach.length) {
+    const fileLooseScans = async () => {
+      if (!attach.length) return;
       const loose = await OrderTracking.findOne({ orderId: o._id, blNumber: '' }).select('documents').lean();
       const moving = (loose?.documents || []).filter(d => d.kind === 'bl' && attach.includes(String(d._id)));
       if (moving.length) {
@@ -2656,9 +2667,16 @@ app.post('/api/orders/:id/receive-batch', requireAuth, async (req, res) => {
         // rewrite instead of $pull: works on every MongoDB-compatible database
         await OrderTracking.updateOne({ _id: loose._id }, { $set: { documents: loose.documents.filter(d => !attach.includes(String(d._id))) } });
       }
-    }
+    };
+    // independent writes, in parallel; then the order in the list's shape
+    const [, , , updated] = await Promise.all([
+      movements.length ? StockMovement.insertMany(movements) : null,
+      recomputeOrderedQuantity(plan.map(p => p.line.itemId)),
+      fileLooseScans(),
+      orderForList(o._id),
+    ]);
     invalidateBlQueue();
-    res.json(await populateOrder(Order.findById(o._id)));
+    res.json(updated);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2894,8 +2912,9 @@ app.patch('/api/orders/:id/lines/:lineId/close', requireAuth, async (req, res) =
 
     refreshOrderStatus(o);
     await o.save();
-    await recomputeOrderedQuantity([line.itemId]);
-    res.json(await populateOrder(Order.findById(o._id)));
+    // in parallel: the list shape does not include orderedQuantity
+    const [, updated] = await Promise.all([recomputeOrderedQuantity([line.itemId]), orderForList(o._id)]);
+    res.json(updated);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
