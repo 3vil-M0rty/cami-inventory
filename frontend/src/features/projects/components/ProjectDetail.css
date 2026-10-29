@@ -2281,12 +2281,27 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
 .project-remarks__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .project-remarks__actions button { display: inline-flex; align-items: center; gap: 5px; }
 
-.remark-cell { max-width: 220px; }
-.remark-cell__txt { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-2); }
+.remark-cell { max-width: 200px; }
 .remark-cell__btn {
-  display: inline-flex; align-items: center; gap: 4px; max-width: 220px; padding: 3px 8px !important; border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 5px; max-width: 200px; min-width: 0; padding: 3px 8px !important; border-radius: 6px;
   border: 1px dashed var(--border-2); background: transparent; color: var(--text-4); font-size: 11.5px; cursor: pointer; text-align: left;
 }
 .remark-cell__btn:hover { color: var(--text); border-color: var(--400); }
 .remark-cell__btn.has-note { border-style: solid; border-color: var(--border); background: var(--surface-2); color: var(--text-2); }
-.remark-cell__btn.has-note .remark-cell__txt { color: var(--text-2); }
+/* long remark: cut to one line with « … » (the full text is in the window and on hover) */
+.remark-cell__txt { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-2); }
+.remark-cell__txt em { font-style: normal; font-weight: 700; color: var(--text); }
+.remark-cell__count { flex-shrink: 0; font-size: 10.5px; font-weight: 800; padding: 0 6px; border-radius: 999px; background: var(--surface-3); color: var(--text); }
+
+/* remarks window */
+.remarks-modal { max-width: 560px; width: 100%; }
+.remarks-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; margin-bottom: 10px; }
+.remark-item { padding: 9px 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); }
+.remark-item.is-mine { border-color: var(--border-2); }
+.remark-item__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
+.remark-item__head strong { color: var(--text); }
+.remark-item__role { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); }
+.remark-item__date { font-size: 11px; color: var(--text-3); }
+.remark-item__actions { margin-left: auto; display: inline-flex; gap: 4px; }
+.remark-item__txt { margin: 6px 0 0; font-size: 13px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+.remarks-add { margin-top: 4px; }

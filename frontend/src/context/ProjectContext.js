@@ -162,6 +162,10 @@ export const ProjectProvider = ({ children }) => {
   }, []);
 
   const getProjectById = useCallback((id) => projects.find(p => p.id === id) || null, [projects]);
+  // a project returned by a route (e.g. chassis remarks): replaces the loaded copy, no extra request
+  const replaceProject = useCallback((updated) => {
+    if (updated?.id) setProjects(prev => prev.map(p => (p.id === updated.id ? updated : p)));
+  }, []);
 
   const value = useMemo(() => ({
     projects, loading, error, loadProjects, refreshProject,
@@ -171,7 +175,7 @@ export const ProjectProvider = ({ children }) => {
     updateUnit, updateComponent,
     getBonsLivraison, getBonLivraison,
     addUsedBar, removeUsedBar,
-    getProjectById,
+    getProjectById, replaceProject,
   }), [
     projects, loading, error, loadProjects, refreshProject,
     projectList, listLoading, loadProjectList, patchProjectInList,
@@ -180,7 +184,7 @@ export const ProjectProvider = ({ children }) => {
     updateUnit, updateComponent,
     getBonsLivraison, getBonLivraison,
     addUsedBar, removeUsedBar,
-    getProjectById,
+    getProjectById, replaceProject,
   ]);
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;

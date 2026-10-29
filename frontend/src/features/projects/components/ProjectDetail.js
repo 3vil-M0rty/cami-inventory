@@ -2112,26 +2112,109 @@ function BulkRemplissageModal({ project, onClose, onSaved }) {
 }
 // ─── ProjectDetail ────────────────────────────────────────────────────────────
 // ─── Remarks ──────────────────────────────────────────────────────────────────
-// Remark of a chassis row (stored in unit.notes, also shown in the « Notes » column of the BL).
-// A click opens a text box; read-only accounts only see it.
-function RemarkCell({ notes, canEdit, onSave }) {
+// Remarks of a chassis row (unit.remarks): several authors, everyone reads them all, each author edits /
+// deletes only his own. The cell shows the latest one, cut to one line, and the count.
+const fmtRemarkDate = (d) => (d ? new Date(d).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '');
+
+function RemarkCell({ remarks, canAdd, onOpen }) {
   const { t } = useLanguage();
-  const [saving, setSaving] = useState(false);
-  const edit = async () => {
-    const v = await dialog.prompt({ title: t('pdRemarkTitle'), defaultValue: notes || '', multiline: true });
-    if (v == null || v.trim() === (notes || '').trim()) return;
-    setSaving(true);
-    try { await onSave(v.trim()); } finally { setSaving(false); }
-  };
-  if (!canEdit) {
-    return <td data-label={t('pdRemark')} className="remark-cell">{notes ? <span className="remark-cell__txt" title={notes}>{notes}</span> : <span className="date-placeholder">—</span>}</td>;
-  }
+  const list = remarks || [];
+  const last = list[list.length - 1];
+  if (!list.length && !canAdd) return <td data-label={t('pdRemark')} className="remark-cell"><span className="date-placeholder">—</span></td>;
   return (
     <td data-label={t('pdRemark')} className="remark-cell">
-      <button type="button" className={`remark-cell__btn${notes ? ' has-note' : ''}`} onClick={edit} disabled={saving} title={notes || t('pdRemarkAdd')}>
-        {notes ? <span className="remark-cell__txt">{notes}</span> : <><MessageSquareText size={13} /> <span className="remark-cell__add">{t('pdRemarkAdd')}</span></>}
+      <button type="button" className={`remark-cell__btn${list.length ? ' has-note' : ''}`} onClick={onOpen}
+        title={list.length ? list.map(r => `${r.by || '—'} : ${r.text}`).join('\n') : t('pdRemarkAdd')}>
+        {list.length ? (
+          <>
+            <span className="remark-cell__txt"><em>{last.by || '—'} :</em> {last.text}</span>
+            {list.length > 1 && <span className="remark-cell__count">{list.length}</span>}
+          </>
+        ) : <><MessageSquareText size={13} /> <span className="remark-cell__add">{t('pdRemarkAdd')}</span></>}
       </button>
     </td>
+  );
+}
+
+// Window with every remark of one chassis row: add (non read-only accounts), edit / delete one's own
+function ChassisRemarksModal({ project, chId, unitIndex, label, canAdd, onClose }) {
+  const { t } = useLanguage();
+  const { user } = useAuth();
+  const { getProjectById, replaceProject } = useProjects();
+  const live = getProjectById(project.id) || project;
+  const ch = (live.chassis || []).find(c => (c._id || c.id) === chId);
+  const remarks = (ch?.units || []).find(u => u.unitIndex === unitIndex)?.remarks || [];
+  const [text, setText] = useState('');
+  const [editing, setEditing] = useState(null); // { id, text }
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const base = `${API_URL}/projects/${project.id}/chassis/${chId}/units/${unitIndex}/remarks`;
+  const myId = String(user?.id || user?._id || '');
+  const run = async (fn) => {
+    setBusy(true); setError('');
+    try { const r = await fn(); replaceProject(r.data); return true; }
+    catch (e) { setError(e.response?.data?.error || t('errSave')); return false; }
+    finally { setBusy(false); }
+  };
+  const add = async () => { if (text.trim() && await run(() => axios.post(base, { text: text.trim() }))) setText(''); };
+  const save = async () => { if (editing?.text.trim() && await run(() => axios.put(`${base}/${editing.id}`, { text: editing.text.trim() }))) setEditing(null); };
+  const remove = async (r) => {
+    if (!(await dialog.confirm({ message: t('pdRemarkDeleteQ'), danger: true }))) return;
+    run(() => axios.delete(`${base}/${r._id || r.id}`));
+  };
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal remarks-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <span className="modal-head__icon"><MessageSquareText size={14} /></span>
+          <h2>{t('pdRemarksOf', { label })}</h2>
+        </div>
+        <div className="remarks-list">
+          {!remarks.length && <div className="project-remarks__empty">{t('pdRemarksEmpty')}</div>}
+          {remarks.map(r => {
+            const id = r._id || r.id;
+            const mine = !!r.byId && String(r.byId) === myId;
+            const isEditing = editing?.id === id;
+            return (
+              <div key={id} className={`remark-item${mine ? ' is-mine' : ''}`}>
+                <div className="remark-item__head">
+                  <strong>{r.by || '—'}</strong>
+                  {r.role && <span className="remark-item__role">{r.role}</span>}
+                  <span className="remark-item__date">{fmtRemarkDate(r.at)}{r.editedAt ? ` · ${t('pdRemarkEdited')}` : ''}</span>
+                  {mine && !isEditing && (
+                    <span className="remark-item__actions">
+                      <button type="button" className="edit-btn" title={t('edit')} disabled={busy} onClick={() => setEditing({ id, text: r.text })}><Pencil size={13} /></button>
+                      <button type="button" className="delete-btn" title={t('delete')} disabled={busy} onClick={() => remove(r)}><Trash2 size={13} /></button>
+                    </span>
+                  )}
+                </div>
+                {isEditing ? (
+                  <>
+                    <textarea className="project-remarks__input" rows={3} value={editing.text} autoFocus maxLength={2000}
+                      onChange={e => setEditing(ed => ({ ...ed, text: e.target.value }))} />
+                    <div className="project-remarks__actions">
+                      <button type="button" onClick={() => setEditing(null)}>{t('cancel')}</button>
+                      <button type="button" className="primary" disabled={busy || !editing.text.trim()} onClick={save}><Save size={13} /> {t('save')}</button>
+                    </div>
+                  </>
+                ) : <p className="remark-item__txt">{r.text}</p>}
+              </div>
+            );
+          })}
+        </div>
+        {canAdd && (
+          <div className="remarks-add">
+            <textarea className="project-remarks__input" rows={3} value={text} maxLength={2000}
+              placeholder={t('pdRemarkPh')} onChange={e => setText(e.target.value)} />
+          </div>
+        )}
+        {error && <div className="form-error">{error}</div>}
+        <div className="modal-actions">
+          <button type="button" onClick={onClose}>{t('close')}</button>
+          {canAdd && <button type="button" className="primary" disabled={busy || !text.trim()} onClick={add}><Plus size={13} /> {t('pdRemarkAdd')}</button>}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2225,6 +2308,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
   const userRole = user?.role;
   // remarks (project + chassis rows): every account that can change things, not the read-only ones
   const canRemark = !can('readonly') || can('admin.view');
+  const [remarksFor, setRemarksFor] = useState(null); // { chId, unitIndex, label } — remarks window of a row
 
 
   // ── Derived permission flags ────────────────────────────────────────────────
@@ -2363,16 +2447,6 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
       if (refreshProject) await refreshProject(project.id);
       setSavingKey(null);
     }
-  };
-  // remark of a chassis row → unit.notes (a grouped line « ×N » writes it on every piece of the line)
-  const saveRemark = async (ch, unitIndex, notes) => {
-    const chId = ch._id || ch.id;
-    const qty = ch.quantity || 1;
-    const keepAsOne = ch.keepAsOne === true || (ch.keepAsOne == null && projectTab === 'laquage');
-    const idxs = keepAsOne && qty > 1 ? Array.from({ length: qty }, (_, i) => i) : [unitIndex];
-    const results = await Promise.all(idxs.map(i => updateUnit(project.id, chId, i, { notes })));
-    const failed = results.find(r => r && r.success === false);
-    if (failed) dialog.alert(failed.error || t('errSave'));
   };
   const handleComponentEtatChange = async (ch, unitIndex, ci, newEtat, rowKey) => {
     if (newEtat === 'livre') { setDeliveryModal({ kind: 'component', chId: ch._id || ch.id, unitIndex, ci, rowKey, currentDate: null }); return; }
@@ -2799,7 +2873,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                               );
                             })()}
                           </td>
-                          <RemarkCell notes={row.unit?.notes} canEdit={canRemark} onSave={(v) => saveRemark(ch, unitIndex, v)} />
+                          <RemarkCell remarks={row.unit?.remarks} canAdd={canRemark} onOpen={() => setRemarksFor({ chId, unitIndex, label })} />
                           {showAtelierCols && <td data-label={t('pdAtelierTable')} className="atelier-table-col"><span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span></td>}
                           {showAtelierCols && <td data-label={t('pdVitrageTable')} className="atelier-table-col"><span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span></td>}
                           <td data-label="">{(adminThing || canPrintOneLabel) && <div className="chassis-row__actions">
@@ -2927,7 +3001,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                               : <span className="date-placeholder"><CalendarDays size={13} /> {unit.deliveryDate ? fmtDate(unit.deliveryDate) : '—'}</span>
                             : <span className="date-placeholder">—</span>}
                         </td>
-                        <RemarkCell notes={unit?.notes} canEdit={canRemark} onSave={(v) => saveRemark(ch, unitIndex, v)} />
+                        <RemarkCell remarks={unit?.remarks} canAdd={canRemark} onOpen={() => setRemarksFor({ chId, unitIndex, label })} />
                         {showAtelierCols && (
                           <td data-label={t('pdAtelierTable')} className="atelier-table-col">
                             {canEditAtelierTable ? (
@@ -2988,6 +3062,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
 
       {showChassisForm && <ChassisForm chassis={editingChassis} projectId={project.id} projectTab={projectTab} onClose={() => { setShowChassisForm(false); setEditingChassis(null); }} onSave={() => { setShowChassisForm(false); setEditingChassis(null); }} />}
       {showTypeManager && <ChassisTypeManager onClose={() => setShowTypeManager(false)} />}
+      {remarksFor && <ChassisRemarksModal project={project} {...remarksFor} canAdd={canRemark} onClose={() => setRemarksFor(null)} />}
       {printingChassis && <LabelPrint chassis={printingChassis} project={project} chassisLabels={chassisLabels} onClose={() => setPrintingChassis(null)} />}
       {deliveryModal && <DeliveryDateModal defaultDate={deliveryModal.currentDate} onConfirm={handleDeliveryConfirm} onCancel={() => setDeliveryModal(null)} t={t} />}
       {accLineEditor && <ChassisLineAccessoryEditor chassis={accLineEditor} project={project} onClose={() => setAccLineEditor(null)} onSaved={() => { if (refreshProject) refreshProject(project.id); }} />}

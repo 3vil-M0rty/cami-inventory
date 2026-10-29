@@ -422,13 +422,25 @@ const unitComponentSchema = new mongoose.Schema({
   atelierTable: { type: String, default: '' },
 }, { _id: false });
 
+// Remarks of a chassis row: several authors (Admin, Coordinateur…), everyone reads them all,
+// each author edits / deletes only his own
+const unitRemarkSchema = new mongoose.Schema({
+  text: { type: String, required: true, trim: true, maxlength: 2000 },
+  byId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  by: { type: String, default: '' },
+  role: { type: String, default: '' },
+  at: { type: Date, default: Date.now },
+  editedAt: { type: Date, default: null },
+}, { _id: true });
+
 const unitSchema = new mongoose.Schema({
   unitIndex: { type: Number, required: true },
   etat: { type: String, enum: ['non_entame', 'en_cours', 'fabrique', 'livre', 'non_vitre', 'pret_a_livrer'], default: 'non_entame' },
   deliveryDate: { type: Date, default: null },
   notes: { type: String, default: '' },
   atelierTable: { type: String, default: '' },
-  componentStates: [unitComponentSchema]
+  componentStates: [unitComponentSchema],
+  remarks: [unitRemarkSchema],
 }, { _id: true });
 
 const chassisAccessorySchema = new mongoose.Schema({
@@ -4867,6 +4879,62 @@ app.patch('/api/projects/:id/chassis/:cid/units/:unitIndex/components/:compIndex
     await project.save(); res.json(await populateAndReturn(project));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// ── Remarks of a chassis row (several authors). Read-only accounts are refused by the « readonly » guard.
+async function loadRemarkUnit(req, res) {
+  const project = await Project.findById(req.params.id);
+  if (!project) { res.status(404).json({ error: 'Project not found' }); return null; }
+  const chassis = project.chassis.id(req.params.cid);
+  if (!chassis) { res.status(404).json({ error: 'Chassis not found' }); return null; }
+  const idx = parseInt(req.params.unitIndex, 10);
+  if (!Number.isInteger(idx) || idx < 0) { res.status(400).json({ error: 'Invalid unit' }); return null; }
+  let unit = chassis.units.find(u => u.unitIndex === idx);
+  if (!unit) {
+    chassis.units.push({ unitIndex: idx, etat: 'non_entame', deliveryDate: null, notes: '', componentStates: [] });
+    unit = chassis.units.find(u => u.unitIndex === idx);
+  }
+  return { project, unit };
+}
+const remarkText = (req) => String(req.body?.text || '').trim().slice(0, 2000);
+const isRemarkAuthor = (req, r) => !!r?.byId && String(r.byId) === String(req.user?._id);
+
+app.post('/api/projects/:id/chassis/:cid/units/:unitIndex/remarks', requireAuth, async (req, res) => {
+  try {
+    const text = remarkText(req);
+    if (!text) return res.status(400).json({ error: 'Remarque vide.' });
+    const ctx = await loadRemarkUnit(req, res); if (!ctx) return;
+    ctx.unit.remarks.push({
+      text, byId: req.user._id, by: req.user.displayName || req.user.username || '',
+      role: req.user.roleId?.name || '', at: new Date(),
+    });
+    await ctx.project.save();
+    res.status(201).json(await populateAndReturn(ctx.project));
+  } catch (e) { res.status(e.kind === 'ObjectId' ? 400 : 500).json({ error: e.message }); }
+});
+app.put('/api/projects/:id/chassis/:cid/units/:unitIndex/remarks/:rid', requireAuth, async (req, res) => {
+  try {
+    const text = remarkText(req);
+    if (!text) return res.status(400).json({ error: 'Remarque vide.' });
+    const ctx = await loadRemarkUnit(req, res); if (!ctx) return;
+    const r = ctx.unit.remarks.id(req.params.rid);
+    if (!r) return res.status(404).json({ error: 'Remarque introuvable.' });
+    if (!isRemarkAuthor(req, r)) return res.status(403).json({ error: 'Vous ne pouvez modifier que vos propres remarques.' });
+    r.text = text; r.editedAt = new Date();
+    await ctx.project.save();
+    res.json(await populateAndReturn(ctx.project));
+  } catch (e) { res.status(e.kind === 'ObjectId' ? 400 : 500).json({ error: e.message }); }
+});
+app.delete('/api/projects/:id/chassis/:cid/units/:unitIndex/remarks/:rid', requireAuth, async (req, res) => {
+  try {
+    const ctx = await loadRemarkUnit(req, res); if (!ctx) return;
+    const r = ctx.unit.remarks.id(req.params.rid);
+    if (!r) return res.status(404).json({ error: 'Remarque introuvable.' });
+    if (!isRemarkAuthor(req, r)) return res.status(403).json({ error: 'Vous ne pouvez supprimer que vos propres remarques.' });
+    ctx.unit.remarks.pull(r._id);
+    await ctx.project.save();
+    res.json(await populateAndReturn(ctx.project));
+  } catch (e) { res.status(e.kind === 'ObjectId' ? 400 : 500).json({ error: e.message }); }
+});
+
 app.delete('/api/projects/:id/chassis/:cid', async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
