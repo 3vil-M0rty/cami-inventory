@@ -2281,9 +2281,13 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
 .project-remarks__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .project-remarks__actions button { display: inline-flex; align-items: center; gap: 5px; }
 
-.remark-cell { max-width: 200px; }
+/* the cell keeps its own space: room on the right before the « Table atelier » dropdown (desktop table) */
+@media (min-width: 600px) {
+  .chassis-table td.remark-cell { max-width: 220px; padding-right: 26px; }
+  .chassis-table td.remark-cell + td { padding-left: 18px; }
+}
 .remark-cell__btn {
-  display: inline-flex; align-items: center; gap: 5px; max-width: 200px; min-width: 0; padding: 3px 8px !important; border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 5px; max-width: 190px; min-width: 0; padding: 3px 8px !important; border-radius: 6px;
   border: 1px dashed var(--border-2); background: transparent; color: var(--text-4); font-size: 11.5px; cursor: pointer; text-align: left;
 }
 .remark-cell__btn:hover { color: var(--text); border-color: var(--400); }

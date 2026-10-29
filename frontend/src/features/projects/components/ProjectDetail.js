@@ -2127,7 +2127,7 @@ function RemarkCell({ remarks, canAdd, onOpen }) {
         title={list.length ? list.map(r => `${r.by || '—'} : ${r.text}`).join('\n') : t('pdRemarkAdd')}>
         {list.length ? (
           <>
-            <span className="remark-cell__txt"><em>{last.by || '—'} :</em> {last.text}</span>
+            <span className="remark-cell__txt"><em>{(last.by || '—').split(' ')[0]} :</em> {last.text}</span>
             {list.length > 1 && <span className="remark-cell__count">{list.length}</span>}
           </>
         ) : <><MessageSquareText size={13} /> <span className="remark-cell__add">{t('pdRemarkAdd')}</span></>}
