@@ -480,6 +480,10 @@ const projectSchema = new mongoose.Schema({
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', default: null },
   tab: { type: String, enum: ['aluminium', 'laquage', 'vitrage'], default: 'aluminium' },
   coupeurIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Coupeur' }], // who cut the bars of the project
+  // free remarks on the project (Fiche projet › Remarques), with who wrote them last
+  remarques: { type: String, default: '' },
+  remarquesBy: { type: String, default: '' },
+  remarquesAt: { type: Date, default: null },
   chassis: [chassisSchema],
 
   usedBars: [{ itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true }, quantity: { type: Number, required: true, min: 0.01 } }]
@@ -7440,6 +7444,19 @@ app.put('/api/coupeurs/:id', requireAuth, requirePermission('admin.view'), async
     res.json(c);
   } catch (e) { res.status(e.code === 11000 ? 409 : 500).json({ error: e.code === 11000 ? 'Ce coupeur existe déjà' : e.message }); }
 });
+// remarks of a project (project detail) — the rest of the project untouched; read-only accounts are refused
+// by the « readonly » guard on every write
+app.patch('/api/projects/:id/remarques', requireAuth, async (req, res) => {
+  try {
+    const remarques = String(req.body.remarques ?? '').slice(0, 5000);
+    const remarquesBy = req.user?.displayName || req.user?.username || '';
+    const p = await Project.findByIdAndUpdate(req.params.id, { remarques, remarquesBy, remarquesAt: new Date() }, { new: true })
+      .select('remarques remarquesBy remarquesAt');
+    if (!p) return res.status(404).json({ error: 'Not found' });
+    res.json({ remarques: p.remarques, remarquesBy: p.remarquesBy, remarquesAt: p.remarquesAt });
+  } catch (e) { res.status(e.kind === 'ObjectId' ? 400 : 500).json({ error: e.message }); }
+});
+
 // set the coupeurs of ONE project from its card: Admin and Coordinateur only (the rest of the project untouched)
 app.patch('/api/projects/:id/coupeurs', requireAuth, async (req, res) => {
   try {

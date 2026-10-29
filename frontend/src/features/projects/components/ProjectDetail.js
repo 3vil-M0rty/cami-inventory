@@ -11,7 +11,7 @@ import LabelPrint, { buildLabelHTML, LabelModelSwitch, useLabelModel } from './L
 import { exportProjectPDF, exportBarsPDF } from '../utils/pdfExport';
 import { fetchChassisTypes, buildChassisLabels, CHASSIS_LABELS as STATIC_LABELS } from './ChassisTypesConfig';
 import { BarresLaquerPanel, AccessoiresLaquerPanel } from './LaquagePanel';
-import { StepBack, CircleDashed, PlusCircle, ShipWheel, Package, Save, Wrench, Loader2, Download, Upload, FileSpreadsheet, Printer, CalendarDays, Search, X, AlertTriangle, Undo2, Plus, Pencil, Tag, Tags, Trash2, CircleCheck, PaintBucket, AppWindow, FileText, Banknote, Layers, Clock, CornerDownRight, ChevronDown, ChevronUp, Scissors } from 'lucide-react';
+import { StepBack, CircleDashed, PlusCircle, ShipWheel, Package, Save, Wrench, Loader2, Download, Upload, FileSpreadsheet, Printer, CalendarDays, Search, X, AlertTriangle, Undo2, Plus, Pencil, Tag, Tags, Trash2, CircleCheck, PaintBucket, AppWindow, FileText, Banknote, Layers, Clock, CornerDownRight, ChevronDown, ChevronUp, Scissors, MessageSquareText } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import ProjectDocuments from './ProjectDocuments';
 import './ProjectDetail.css';
@@ -2111,6 +2111,79 @@ function BulkRemplissageModal({ project, onClose, onSaved }) {
   );
 }
 // ─── ProjectDetail ────────────────────────────────────────────────────────────
+// ─── Remarks ──────────────────────────────────────────────────────────────────
+// Remark of a chassis row (stored in unit.notes, also shown in the « Notes » column of the BL).
+// A click opens a text box; read-only accounts only see it.
+function RemarkCell({ notes, canEdit, onSave }) {
+  const { t } = useLanguage();
+  const [saving, setSaving] = useState(false);
+  const edit = async () => {
+    const v = await dialog.prompt({ title: t('pdRemarkTitle'), defaultValue: notes || '', multiline: true });
+    if (v == null || v.trim() === (notes || '').trim()) return;
+    setSaving(true);
+    try { await onSave(v.trim()); } finally { setSaving(false); }
+  };
+  if (!canEdit) {
+    return <td data-label={t('pdRemark')} className="remark-cell">{notes ? <span className="remark-cell__txt" title={notes}>{notes}</span> : <span className="date-placeholder">—</span>}</td>;
+  }
+  return (
+    <td data-label={t('pdRemark')} className="remark-cell">
+      <button type="button" className={`remark-cell__btn${notes ? ' has-note' : ''}`} onClick={edit} disabled={saving} title={notes || t('pdRemarkAdd')}>
+        {notes ? <span className="remark-cell__txt">{notes}</span> : <><MessageSquareText size={13} /> <span className="remark-cell__add">{t('pdRemarkAdd')}</span></>}
+      </button>
+    </td>
+  );
+}
+
+// « Remarques » of the project, under the header of the project detail
+function ProjectRemarks({ project, canEdit, onSaved }) {
+  const { t } = useLanguage();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(project.remarques || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => { if (!editing) setText(project.remarques || ''); }, [project.remarques, editing]);
+  if (!canEdit && !project.remarques) return null;
+  const save = async () => {
+    setSaving(true); setError('');
+    try {
+      await axios.patch(`${API_URL}/projects/${project.id}/remarques`, { remarques: text.trim() });
+      setEditing(false); onSaved && onSaved();
+    } catch (e) { setError(e.response?.data?.error || t('errSave')); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="project-remarks">
+      <div className="project-remarks__head">
+        <MessageSquareText size={15} /><strong>{t('pdRemarks')}</strong>
+        {project.remarquesBy && project.remarques && !editing && (
+          <span className="project-remarks__meta">{t('pdRemarksBy', { by: project.remarquesBy, at: project.remarquesAt ? new Date(project.remarquesAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '' })}</span>
+        )}
+        {canEdit && !editing && (
+          <button type="button" className="project-remarks__edit" onClick={() => setEditing(true)}>
+            <Pencil size={13} /> {project.remarques ? t('edit') : t('pdRemarksAdd')}
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <>
+          <textarea className="project-remarks__input" rows={4} value={text} autoFocus maxLength={5000}
+            placeholder={t('pdRemarksPh')} onChange={e => setText(e.target.value)} />
+          {error && <div className="form-error">{error}</div>}
+          <div className="project-remarks__actions">
+            <button type="button" onClick={() => { setEditing(false); setText(project.remarques || ''); setError(''); }}>{t('cancel')}</button>
+            <button type="button" className="primary" onClick={save} disabled={saving}><Save size={13} /> {t('save')}</button>
+          </div>
+        </>
+      ) : (
+        project.remarques
+          ? <p className="project-remarks__txt">{project.remarques}</p>
+          : <p className="project-remarks__empty">{t('pdRemarksEmpty')}</p>
+      )}
+    </div>
+  );
+}
+
 function ProjectDetail({ projectId, onBack, currentUser }) {
   const { deleteChassis, updateChassis, updateUnit, updateComponent, getProjectById, refreshProject } = useProjects();
 
@@ -2148,8 +2221,10 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
   const statusColor = STATUS_COLORS[project?.status] || '#9ca3af';
   const dateStr = project?.date ? new Date(project.date).toLocaleDateString('fr-FR') : '';
 
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const userRole = user?.role;
+  // remarks (project + chassis rows): every account that can change things, not the read-only ones
+  const canRemark = !can('readonly') || can('admin.view');
 
 
   // ── Derived permission flags ────────────────────────────────────────────────
@@ -2288,6 +2363,16 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
       if (refreshProject) await refreshProject(project.id);
       setSavingKey(null);
     }
+  };
+  // remark of a chassis row → unit.notes (a grouped line « ×N » writes it on every piece of the line)
+  const saveRemark = async (ch, unitIndex, notes) => {
+    const chId = ch._id || ch.id;
+    const qty = ch.quantity || 1;
+    const keepAsOne = ch.keepAsOne === true || (ch.keepAsOne == null && projectTab === 'laquage');
+    const idxs = keepAsOne && qty > 1 ? Array.from({ length: qty }, (_, i) => i) : [unitIndex];
+    const results = await Promise.all(idxs.map(i => updateUnit(project.id, chId, i, { notes })));
+    const failed = results.find(r => r && r.success === false);
+    if (failed) dialog.alert(failed.error || t('errSave'));
   };
   const handleComponentEtatChange = async (ch, unitIndex, ci, newEtat, rowKey) => {
     if (newEtat === 'livre') { setDeliveryModal({ kind: 'component', chId: ch._id || ch.id, unitIndex, ci, rowKey, currentDate: null }); return; }
@@ -2528,6 +2613,8 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
         )}
       </div>
 
+      <ProjectRemarks project={project} canEdit={canRemark} onSaved={() => refreshProject && refreshProject(project.id)} />
+
       <ProgressBar chassis={project.chassis} t={t} />
 
       <div className="project-detail__tabs">
@@ -2651,6 +2738,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                     {showAtelierCols && <th>{t('remplissage')}</th>}
                     <th>{t('etat')}</th>
                     <th>{t('deliveryDate')}</th>
+                    <th>{t('pdRemark')}</th>
                     {/* Atelier / Vitrage cols: aluminium tab only */}
                     {showAtelierCols && <th className="atelier-table-col">{t('pdAtelierTable')}</th>}
                     {showAtelierCols && <th className="atelier-table-col" style={{ color: 'var(--ink-blue)' }}>{t('pdVitrageTable')}</th>}
@@ -2711,6 +2799,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                               );
                             })()}
                           </td>
+                          <RemarkCell notes={row.unit?.notes} canEdit={canRemark} onSave={(v) => saveRemark(ch, unitIndex, v)} />
                           {showAtelierCols && <td data-label={t('pdAtelierTable')} className="atelier-table-col"><span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span></td>}
                           {showAtelierCols && <td data-label={t('pdVitrageTable')} className="atelier-table-col"><span style={{ color: 'var(--text-4)', fontSize: 11 }}>—</span></td>}
                           <td data-label="">{(adminThing || canPrintOneLabel) && <div className="chassis-row__actions">
@@ -2758,6 +2847,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                               return <span className="date-placeholder">—</span>;
                             })()}
                           </td>
+                          <td data-label={t('pdRemark')} className="remark-cell" />
                           {showAtelierCols && (
                             <td data-label={t('pdAtelierTable')} className="atelier-table-col">
                               {canEditAtelierTable ? (
@@ -2837,6 +2927,7 @@ function ProjectDetail({ projectId, onBack, currentUser }) {
                               : <span className="date-placeholder"><CalendarDays size={13} /> {unit.deliveryDate ? fmtDate(unit.deliveryDate) : '—'}</span>
                             : <span className="date-placeholder">—</span>}
                         </td>
+                        <RemarkCell notes={unit?.notes} canEdit={canRemark} onSave={(v) => saveRemark(ch, unitIndex, v)} />
                         {showAtelierCols && (
                           <td data-label={t('pdAtelierTable')} className="atelier-table-col">
                             {canEditAtelierTable ? (

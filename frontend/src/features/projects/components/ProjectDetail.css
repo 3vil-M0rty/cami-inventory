@@ -2261,3 +2261,32 @@ span.etat-select.atelier-select { display: inline-block; cursor: default; backgr
 .laq-ret-input { width: 84px; text-align: right; }
 .laq-ret-of { font-size: 12px; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .laq-ret-total { margin: 10px 0 4px; font-size: 13px; font-weight: 700; color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Remarks: project (under the header) and chassis rows ── */
+.project-remarks { margin: 12px 0 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+.project-remarks__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--text-2); font-size: 13px; }
+.project-remarks__head strong { color: var(--text); }
+.project-remarks__meta { font-size: 11.5px; color: var(--text-3); }
+.project-remarks__edit {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px;
+  border-radius: 8px; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.project-remarks__edit:hover { color: var(--text); border-color: var(--400); }
+.project-remarks__txt { margin: 8px 0 0; font-size: 13px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.project-remarks__empty { margin: 8px 0 0; font-size: 12.5px; color: var(--text-4); }
+.project-remarks__input {
+  width: 100%; margin-top: 8px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-2);
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; resize: vertical; box-sizing: border-box;
+}
+.project-remarks__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.project-remarks__actions button { display: inline-flex; align-items: center; gap: 5px; }
+
+.remark-cell { max-width: 220px; }
+.remark-cell__txt { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-2); }
+.remark-cell__btn {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 220px; padding: 3px 8px !important; border-radius: 6px;
+  border: 1px dashed var(--border-2); background: transparent; color: var(--text-4); font-size: 11.5px; cursor: pointer; text-align: left;
+}
+.remark-cell__btn:hover { color: var(--text); border-color: var(--400); }
+.remark-cell__btn.has-note { border-style: solid; border-color: var(--border); background: var(--surface-2); color: var(--text-2); }
+.remark-cell__btn.has-note .remark-cell__txt { color: var(--text-2); }
