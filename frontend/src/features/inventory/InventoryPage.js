@@ -5,19 +5,22 @@ import {
   Layers, GlassWater, Wrench, FlaskConical, Settings, Paintbrush, MirrorRectangular,
   Search, AlertTriangle, AlertCircle, Plus, Minus, Pencil, Trash2,
   FileDown, PackagePlus, Package, ChevronRight, ChevronUp, ChevronDown, Tag,
-  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn, ClipboardList, X, Inbox, FilePen, Ruler, Boxes } from 'lucide-react';
+  CheckCircle2, XCircle, Clock, Lock, ShoppingCart, Sheet, ZoomIn, ClipboardList, X, Inbox, FilePen, Ruler, Boxes, LineChart } from 'lucide-react';
 import ItemOrdersModal from './components/ItemOrdersModal';
 import ItemRequestsModal from './components/ItemRequestsModal';
 import UnitPicker from './components/UnitPicker';
+import { LastPrice, PriceHistoryModal, SupplierPrices, useCanSeePrices } from './components/PriceHistory';
 import { ImagePreviewModal } from '../../components/common/ImagePreview';
 import { unitLabel, qtyWithUnit, allowsDecimals, fmtUnitQty, conversionParts, itemConversion } from './units';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { dialog } from '../../components/common/dialog';
+import { getQueryParam, updateQuery } from '../../routes';
 import './InventoryPage.css';
 import './InventoryPaging.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const LS_FAMILY = 'inventory_famille'; // last family opened (Aluminium, Verre…)
 
 axios.interceptors.request.use((config) => {
   const t = localStorage.getItem('auth_token');
@@ -120,6 +123,12 @@ function InventoryPage() {
   }, [searchTerm]);
 
   const isPoudre = activeSuperCat === 'poudre';
+  // write the chosen family in the URL (replace: no new entry in the back history)
+  useEffect(() => {
+    if (!activeSuperCat) return;
+    updateQuery({ famille: activeSuperCat });
+    try { localStorage.setItem(LS_FAMILY, activeSuperCat); } catch (e) { /* storage off */ }
+  }, [activeSuperCat]);
 
   const fetchSuperCats = useCallback(async () => {
     try {
@@ -135,11 +144,15 @@ function InventoryPage() {
       setSuperCats(visible);
       if (visible.length > 0) {
         const keys = visible.map(sc => sc.key);
-        setActiveSuperCat(prev => (prev && keys.includes(prev)) ? prev : keys[0]);
+        // the family is kept in the URL (?famille=verre) so a refresh stays on it
+        // (and remembered on this browser: coming back to the page from the menu opens it too)
+        let fromUrl = getQueryParam('famille');
+        if (!fromUrl) { try { fromUrl = localStorage.getItem(LS_FAMILY); } catch (e) { /* storage off */ } }
+        setActiveSuperCat(prev => (prev && keys.includes(prev)) ? prev : (fromUrl && keys.includes(fromUrl) ? fromUrl : keys[0]));
       } else { setActiveSuperCat(null); }
     } catch {
       setSuperCats(DEFAULT_SUPER_CATS);
-      setActiveSuperCat(prev => prev || 'aluminium');
+      setActiveSuperCat(prev => prev || getQueryParam('famille') || 'aluminium');
     }
   }, [can]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -634,6 +647,8 @@ function InventoryPage() {
 
 /* ── Item Card ──────────────────────────────────────────────── */
 function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit, onDelete, onOrderRequest, onShowOrders, onShowRequests, getStockStatus, t, compact = false, badges = null }) {
+  const seePrices = useCanSeePrices();
+  const [showPrices, setShowPrices] = useState(false);
   const status = getStockStatus(item);
   const formatQty = (val) => isPoudre ? fmt(val) : fmtUnitQty(val);
   const unitOf = (val) => unitLabel(item.unit, language, val); // « pièces », « kg »… (nothing when not set)
@@ -681,6 +696,8 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
             </span>
           )}
         </div>
+        {/* last purchase price (Admin / ACHAT / accountant — the server sends it only to them) */}
+        {seePrices && <LastPrice item={item} compact onOpen={() => setShowPrices(true)} />}
 
         <div className="quantity-section">
           <div className="qty-col">
@@ -742,7 +759,7 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
           )}
         </div>
 
-        {!compact && (onShowOrders || onShowRequests) && (
+        {!compact && (onShowOrders || onShowRequests || seePrices) && (
           <div className="item-orders-row">
             {onShowOrders && (
               <button className={`item-orders-btn${badges?.draftQty > 0 ? ' item-orders-btn--badge' : ''}`} onClick={() => onShowOrders(item)} title={t('ivSeeItemOrders')}>
@@ -763,8 +780,16 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
                 {badges?.pendingReqs > 0 && <span className="item-requests-badge">{badges.pendingReqs > 99 ? '99+' : badges.pendingReqs}</span>}
               </button>
             )}
+            {/* purchase price history (Admin / ACHAT) */}
+            {seePrices && (
+              <button className="item-requests-btn item-prices-btn" onClick={() => setShowPrices(true)}
+                title={t('ivPriceHistoryBtn')} aria-label={t('ivPriceHistoryBtn')}>
+                <LineChart size={14} strokeWidth={2.4} />
+              </button>
+            )}
           </div>
         )}
+        {showPrices && <PriceHistoryModal item={item} onClose={() => setShowPrices(false)} />}
 
         {!compact && (onEdit || onDelete) && (
           <div className="item-actions">
@@ -994,7 +1019,9 @@ function CategoryModal({ language, superCategory, category, t, onClose, onSave }
 
 /* ── Item Modal ────────────────────────────────────────────── */
 /* ── Supplier Codes Editor (one code per supplier) ─────────── */
-function SupplierCodesEditor({ suppliers, value, onChange, t }) {
+// prices (optional, Admin / ACHAT / accountant): { [supplierId]: catalogue price } typed next to each code,
+// in `priceUnit` (the article's purchase unit, else its stock unit)
+function SupplierCodesEditor({ suppliers, value, onChange, t, prices = null, onPrice, priceUnit = '' }) {
   const rows = value || [];
   const used = new Set(rows.map(r => r.supplierId));
   const add = () => onChange([...rows, { supplierId: '', code: '' }]);
@@ -1027,6 +1054,15 @@ function SupplierCodesEditor({ suppliers, value, onChange, t }) {
             value={r.code}
             onChange={e => upd(i, 'code', e.target.value)}
           />
+          {prices && (
+            <span className="inv-supplier-price" title={t('ivCatalogPriceTitle')}>
+              <input type="number" min="0" step="any" inputMode="decimal" disabled={!r.supplierId}
+                placeholder={t('ivCatalogPricePh')} aria-label={t('ivCatalogPriceTitle')}
+                value={r.supplierId ? (prices[r.supplierId] ?? '') : ''}
+                onChange={e => onPrice(r.supplierId, e.target.value)} />
+              <span>MAD{priceUnit ? ` / ${priceUnit}` : ''}</span>
+            </span>
+          )}
           <button type="button" className="btn-remove-line" onClick={() => del(i)}><X size={15} /></button>
         </div>
       ))}
@@ -1039,6 +1075,13 @@ function SupplierCodesEditor({ suppliers, value, onChange, t }) {
 
 /* ── Item Modal ────────────────────────────────────────────── */
 function ItemModal({ language, categories, suppliers = [], item, superCategory, isPoudre, t, onClose, onSave }) {
+  const seePrices = useCanSeePrices();
+  const [showPrices, setShowPrices] = useState(false);
+  // catalogue price per supplier (typed next to the supplier codes), sent only by the accounts that see prices
+  // reference purchase price of the article (any supplier), proposed on new purchase order lines
+  const [refPrice, setRefPrice] = useState(() => (item?.refPrice?.price > 0 ? String(item.refPrice.price) : ''));
+  const [catalogPrices, setCatalogPrices] = useState(() => Object.fromEntries(
+    (item?.supplierPrices || []).map(p => [String(p.supplierId?._id || p.supplierId), String(p.price)])));
   const [formData, setFormData] = useState(item ? {
     image: item.image || '',
     designation: { ...item.designation },
@@ -1082,6 +1125,13 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
       supplierCodes: (formData.supplierCodes || []).filter(s => s.supplierId),
       purchaseFactor: formData.purchaseUnit ? factor : 1,
       conversionInverse: !!(formData.purchaseUnit && factorInverse),
+      // catalogue prices of the suppliers still on the article, in its purchase unit (else stock unit)
+      ...(seePrices ? {
+        refPrice: Number(refPrice) > 0 ? { price: Number(refPrice), unit: formData.purchaseUnit || formData.unit || '' } : null,
+        supplierPrices: (formData.supplierCodes || [])
+          .filter(sc => sc.supplierId && Number(catalogPrices[sc.supplierId]) > 0)
+          .map(sc => ({ supplierId: sc.supplierId, price: Number(catalogPrices[sc.supplierId]), unit: formData.purchaseUnit || formData.unit || '' })),
+      } : {}),
     };
     try {
       if (item) await axios.put(`${API_URL}/inventory/${item.id}`, payload);
@@ -1113,6 +1163,9 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
             value={formData.supplierCodes}
             onChange={(v) => setFormData({ ...formData, supplierCodes: v })}
             t={t}
+            prices={seePrices ? catalogPrices : null}
+            onPrice={(sid, v) => setCatalogPrices(p => ({ ...p, [sid]: v }))}
+            priceUnit={unitLabel(formData.purchaseUnit || formData.unit, language)}
           />
 
           <div className="form-group">
@@ -1178,6 +1231,32 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
                 : t('ivUnitsHelp')}
             </p>
           </div>
+
+          {seePrices && (
+            <div className="form-group">
+              <label>{t('ivPurchasePrice')}</label>
+              {/* reference price: typed here, proposed automatically on new purchase order lines */}
+              <div className="ph-ref">
+                <span className="ph-ref__label">{t('ivRefPrice')}</span>
+                <input type="number" min="0" step="any" inputMode="decimal" placeholder="0,00"
+                  value={refPrice} onChange={e => setRefPrice(e.target.value)} aria-label={t('ivRefPrice')} />
+                <span className="ph-ref__unit">MAD {t('ivPriceHT')}{(formData.purchaseUnit || formData.unit) ? ` / ${unitLabel(formData.purchaseUnit || formData.unit, language)}` : ''}</span>
+                <small className="ph-ref__hint">{t('ivRefPriceHint')}</small>
+              </div>
+              {item && (
+                <>
+                  <div className="ph-price-row">
+                    <LastPrice item={item} />
+                    <button type="button" className="ph-open" onClick={() => setShowPrices(true)}>
+                      <LineChart size={14} /> {t('ivPriceHistoryBtn')}
+                    </button>
+                  </div>
+                  <SupplierPrices item={item} />
+                </>
+              )}
+            </div>
+          )}
+          {showPrices && <PriceHistoryModal item={item} onClose={() => setShowPrices(false)} />}
 
           <div className="form-row-3">
             <div className="form-group">

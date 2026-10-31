@@ -228,6 +228,31 @@ const itemSchema = new mongoose.Schema({
   purchaseFactor: { type: Number, default: 1, min: 0.000001 },
   // how the conversion is shown: false → « 1 kg = 0.02 rouleau » (purchase → stock), true → « 1 rouleau = 50 kg »
   conversionInverse: { type: Boolean, default: false },
+  // Last purchase price, taken from the sent purchase orders (recomputeOrderedQuantity). Purchase prices are
+  // for Admin / ACHAT only: hidden from every query unless asked with .select('+lastPurchase').
+  lastPurchase: {
+    type: new mongoose.Schema({
+      unitPrice: Number,            // HT, per `unit` (the unit of the order line: kg, carton…)
+      unit: String, factor: Number, // 1 unit = factor stock units (price per stock unit = unitPrice / factor)
+      at: Date, supplier: String, orderNumber: String,
+    }, { _id: false }),
+    default: null, select: false,
+  },
+  // Catalogue price of each supplier, typed by hand in the article form (HT, per `unit` = the article's
+  // purchase unit, else its stock unit). Same visibility as lastPurchase: Admin / ACHAT only.
+  supplierPrices: {
+    type: [new mongoose.Schema({
+      supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Fournisseur', required: true },
+      price: { type: Number, min: 0 }, unit: { type: String, default: '' }, at: { type: Date, default: Date.now },
+    }, { _id: false })],
+    default: [], select: false,
+  },
+  // Reference purchase price typed on the article (any supplier), HT per `unit` — suggested on a new purchase
+  // order line when the supplier has no price yet. Same visibility as the other prices.
+  refPrice: {
+    type: new mongoose.Schema({ price: { type: Number, min: 0 }, unit: { type: String, default: '' }, at: { type: Date, default: Date.now } }, { _id: false }),
+    default: null, select: false,
+  },
   // Lowercase, accent-free copy of designations + codes, kept in sync on save → fast server-side search
   searchText: { type: String, default: '', select: false },
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; delete ret.searchText; } } });
@@ -882,6 +907,12 @@ function canViewOrders(req) {
 
 // ACHAT (orders.edit) or the accountant (orders.accounting): Suivi des commandes + Fournisseurs
 const canAccounting = (req) => isAdmin(req) || (req.permissions || []).some(p => p === 'orders.edit' || p === 'orders.accounting');
+// Article purchase prices (last price, history, catalogue / reference prices): Admin and ACHAT only
+const canSeeItemPrices = (req) => isAdmin(req) || (req.permissions || []).includes('orders.edit');
+function requireItemPrices(req, res, next) {
+  if (!canSeeItemPrices(req)) return res.status(403).json({ error: 'Accès refusé — prix des articles réservés à l\'Admin et au service achat.' });
+  next();
+}
 function requireAccounting(req, res, next) {
   if (!canAccounting(req)) return res.status(403).json({ error: 'Accès refusé — permission requise: orders.edit ou orders.accounting' });
   next();
@@ -1744,6 +1775,28 @@ function sanitizeSupplierCodes(arr) {
     .map(s => ({ supplierId: s.supplierId, code: (s.code || '').trim() }));
 }
 
+// catalogue prices from the article form: valid supplier, price > 0; the date only moves when the price changes
+function sanitizeSupplierPrices(arr, before = []) {
+  if (!Array.isArray(arr)) return [];
+  const prev = new Map((before || []).map(p => [String(p.supplierId), p]));
+  const seen = new Set();
+  return arr
+    .map(p => ({ supplierId: String(p?.supplierId || ''), price: Math.round((Number(p?.price) || 0) * 1e4) / 1e4, unit: String(p?.unit || '').slice(0, 40) }))
+    .filter(p => mongoose.Types.ObjectId.isValid(p.supplierId) && p.price > 0 && !seen.has(p.supplierId) && seen.add(p.supplierId))
+    .map(p => {
+      const old = prev.get(p.supplierId);
+      return { ...p, at: old && old.price === p.price && old.unit === p.unit ? old.at : new Date() };
+    });
+}
+const PRICE_FIELDS = '+lastPurchase +supplierPrices +refPrice';
+// reference price from the article form: null when empty; the date only moves when it changes
+function sanitizeRefPrice(v, before) {
+  const price = Math.round((Number(v?.price) || 0) * 1e4) / 1e4;
+  if (!(price > 0)) return null;
+  const unit = String(v?.unit || '').slice(0, 40);
+  return { price, unit, at: before && before.price === price && before.unit === unit ? before.at : new Date() };
+}
+
 function applyScFilter(filter, allowedSC) {
   if (allowedSC === null) return true;
   if (allowedSC.length === 0) return false;
@@ -1822,6 +1875,7 @@ app.get('/api/inventory', optionalAuth, async (req, res) => {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const [items, count] = await Promise.all([
       Item.find(filter)
+        .select(canSeeItemPrices(req) ? PRICE_FIELDS : '') // article purchase prices: Admin / ACHAT only
         .sort({ createdAt: -1, _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -1920,6 +1974,7 @@ app.post('/api/inventory', optionalAuth, async (req, res) => {
       codeInterne: req.body.codeInterne || '',
       supplierCodes: sanitizeSupplierCodes(req.body.supplierCodes),
       ...sanitizeItemUnits(req.body),
+      ...(canSeeItemPrices(req) ? { supplierPrices: sanitizeSupplierPrices(req.body.supplierPrices), refPrice: sanitizeRefPrice(req.body.refPrice) } : {}),
     });
     await item.save();
     if (item.quantity > 0) await StockMovement.create({ itemId: item._id, type: 'initial', quantity: item.quantity, balanceAfter: item.quantity, note: 'Stock initial' });
@@ -1931,7 +1986,8 @@ app.put('/api/inventory/:id', optionalAuth, async (req, res) => {
   try {
     const sc = req.body.superCategory || 'aluminium';
     if (!canEditSC(req.permissions, sc)) return res.status(403).json({ error: `Accès refusé — permission requise: inventory.${sc}.edit` });
-    const before = await Item.findById(req.params.id).select('quantity').lean();
+    const seesPrices = canSeeItemPrices(req);
+    const before = await Item.findById(req.params.id).select('quantity +supplierPrices +refPrice').lean();
     const item = await Item.findByIdAndUpdate(req.params.id, {
       image: req.body.image,
       designation: req.body.designation,
@@ -1944,7 +2000,10 @@ app.put('/api/inventory/:id', optionalAuth, async (req, res) => {
       supplierCodes: sanitizeSupplierCodes(req.body.supplierCodes),
       ...sanitizeItemUnits(req.body),
       searchText: buildItemSearchText({ designation: req.body.designation, codeInterne: req.body.codeInterne, supplierCodes: req.body.supplierCodes }),
-    }, { new: true, runValidators: true }).populate('categoryId');
+      // catalogue prices: only written by Admin / ACHAT (the others never receive them)
+      ...(seesPrices && Array.isArray(req.body.supplierPrices) ? { supplierPrices: sanitizeSupplierPrices(req.body.supplierPrices, before?.supplierPrices) } : {}),
+      ...(seesPrices && req.body.refPrice !== undefined ? { refPrice: sanitizeRefPrice(req.body.refPrice, before?.refPrice) } : {}),
+    }, { new: true, runValidators: true }).select(seesPrices ? PRICE_FIELDS : '').populate('categoryId');
     if (!item) return res.status(404).json({ error: 'Not found' });
     const diff = Math.round(((item.quantity || 0) - (before?.quantity || 0)) * 1000) / 1000;
     if (before && diff !== 0) {
@@ -2116,8 +2175,26 @@ async function recomputeOrderedQuantity(itemIds) {
     }
   }
   for (const [id, v] of pendingById) pendingById.set(id, Math.round(v * 1000) / 1000);
+  // last purchase price: the most recent sent order (not draft / cancelled) with a price on the article
+  const priced = await Order.find({ status: { $nin: ['brouillon', 'annulee'] }, 'lines.itemId': { $in: ids } })
+    .select('number reference orderDate sentAt supplier supplierId lines.itemId lines.unitPrice lines.unit lines.factor')
+    .populate('supplierId', 'name').lean();
+  const lastById = new Map();
+  for (const o of priced) {
+    const at = o.sentAt || o.orderDate;
+    for (const l of o.lines || []) {
+      const id = String(l.itemId);
+      if (!wanted.has(id) || !(l.unitPrice > 0)) continue;
+      const cur = lastById.get(id);
+      if (cur && new Date(cur.at) >= new Date(at)) continue;
+      lastById.set(id, {
+        unitPrice: l.unitPrice, unit: l.unit || '', factor: l.factor > 0 ? l.factor : 1, at,
+        supplier: o.supplierId?.name || o.supplier || '', orderNumber: o.number || o.reference || '',
+      });
+    }
+  }
   await Item.bulkWrite(ids.map(id => ({
-    updateOne: { filter: { _id: id }, update: { $set: { orderedQuantity: pendingById.get(String(id)) || 0 } } },
+    updateOne: { filter: { _id: id }, update: { $set: { orderedQuantity: pendingById.get(String(id)) || 0, lastPurchase: lastById.get(String(id)) || null } } },
   })));
 }
 // Every order line must point to an existing inventory article
@@ -2196,6 +2273,80 @@ app.get('/api/orders', requireAuth, requireOrdersView, async (req, res) => {
 
 // Orders containing an article (inventory → "Bons de commande" button). Same visibility rules as
 // the orders list: receiving-only roles see their categories and no drafts.
+// Purchase price history of an article: one point per sent purchase order line with a price
+// (Admin / ACHAT). pricePerStock = price of one stock unit (line price / line factor).
+app.get('/api/inventory/:id/price-history', requireAuth, requireItemPrices, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Article invalide' });
+    const itemId = new mongoose.Types.ObjectId(req.params.id);
+    const orders = await Order.find({ status: { $nin: ['brouillon', 'annulee'] }, 'lines.itemId': itemId })
+      .select('number reference status orderDate sentAt supplier supplierId lines.itemId lines.unitPrice lines.unit lines.stockUnit lines.factor lines.quantityOrdered')
+      .populate('supplierId', 'name').lean();
+    const points = [];
+    for (const o of orders) {
+      for (const l of o.lines || []) {
+        if (String(l.itemId) !== String(itemId) || !(l.unitPrice > 0)) continue;
+        const factor = l.factor > 0 ? l.factor : 1;
+        points.push({
+          orderId: String(o._id), orderNumber: o.number || o.reference || '', status: o.status,
+          date: o.sentAt || o.orderDate, supplier: o.supplierId?.name || o.supplier || '',
+          supplierId: o.supplierId?._id ? String(o.supplierId._id) : '',
+          unitPrice: l.unitPrice, unit: l.unit || '', stockUnit: l.stockUnit || '', factor,
+          quantityOrdered: l.quantityOrdered, pricePerStock: Math.round((l.unitPrice / factor) * 1e6) / 1e6,
+        });
+      }
+    }
+    points.sort((a, b) => new Date(a.date) - new Date(b.date));
+    // catalogue prices typed on the article, with the suppliers' names
+    const item = await Item.findById(itemId).select('+supplierPrices').populate('supplierPrices.supplierId', 'name').lean();
+    const catalog = (item?.supplierPrices || []).filter(p => p.supplierId).map(p => ({
+      supplierId: String(p.supplierId._id || p.supplierId), supplier: p.supplierId.name || '', price: p.price, unit: p.unit, at: p.at,
+    }));
+    res.json({ points, catalog });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Price to suggest on a new purchase order line: the last price paid to this supplier for this article,
+// else its catalogue price (Admin / ACHAT). pricePerStock lets the page convert it to the unit
+// of the line (kg or rouleau…).
+app.get('/api/inventory/:id/last-price', requireAuth, requireItemPrices, async (req, res) => {
+  try {
+    // order: last price paid to this supplier → its catalogue price → the article's reference price
+    // → (no supplier chosen yet) the last price paid to any supplier
+    const { supplierId } = req.query;
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.json(null);
+    const hasSupplier = mongoose.Types.ObjectId.isValid(supplierId);
+    const itemId = new mongoose.Types.ObjectId(req.params.id);
+    const orders = hasSupplier
+      ? await Order.find({ status: { $nin: ['brouillon', 'annulee'] }, supplierId, 'lines.itemId': itemId })
+        .select('number reference orderDate sentAt lines.itemId lines.unitPrice lines.unit lines.factor').lean()
+      : [];
+    let best = null;
+    for (const o of orders) {
+      const at = o.sentAt || o.orderDate;
+      for (const l of o.lines || []) {
+        if (String(l.itemId) !== String(itemId) || !(l.unitPrice > 0)) continue;
+        if (best && new Date(best.at) >= new Date(at)) continue;
+        const factor = l.factor > 0 ? l.factor : 1;
+        best = { source: 'order', at, orderNumber: o.number || o.reference || '', unitPrice: l.unitPrice, unit: l.unit || '', pricePerStock: l.unitPrice / factor };
+      }
+    }
+    if (!best) {
+      const item = await Item.findById(itemId).select('+supplierPrices +refPrice +lastPurchase purchaseUnit purchaseFactor').lean();
+      // a price typed in the article's purchase unit → per stock unit
+      const perStock = (unit) => (item?.purchaseUnit && item.purchaseFactor > 0 && unit === item.purchaseUnit ? item.purchaseFactor : 1);
+      const cat = hasSupplier ? (item?.supplierPrices || []).find(p => String(p.supplierId) === String(supplierId)) : null;
+      if (cat) best = { source: 'catalog', at: cat.at, orderNumber: '', unitPrice: cat.price, unit: cat.unit, pricePerStock: cat.price / perStock(cat.unit) };
+      else if (item?.refPrice?.price > 0) best = { source: 'ref', at: item.refPrice.at, orderNumber: '', unitPrice: item.refPrice.price, unit: item.refPrice.unit, pricePerStock: item.refPrice.price / perStock(item.refPrice.unit) };
+      else if (!hasSupplier && item?.lastPurchase?.unitPrice > 0) {
+        const lp = item.lastPurchase;
+        best = { source: 'last', at: lp.at, orderNumber: lp.orderNumber, supplier: lp.supplier, unitPrice: lp.unitPrice, unit: lp.unit, pricePerStock: lp.unitPrice / (lp.factor > 0 ? lp.factor : 1) };
+      }
+    }
+    res.json(best);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/inventory/:id/orders', requireAuth, requireOrdersView, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Article invalide' });

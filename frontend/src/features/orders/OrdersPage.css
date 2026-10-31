@@ -872,3 +872,4 @@
 .orders-page .pr-totals-company td { padding-top:6px;padding-bottom:6px;border-top:1px dashed var(--border); }
 .orders-page .pr-totals-company .pr-totals-label { text-transform:none;letter-spacing:0; }
 .orders-page .pr-totals-company .pr-num { color:var(--text-2);font-size:12.5px; }
+.or-price-hint { display: block; margin-top: 3px; font-size: 11px; color: var(--ink-blue); }

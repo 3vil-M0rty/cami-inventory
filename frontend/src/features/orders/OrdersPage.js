@@ -1310,9 +1310,31 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
   const updateLine = (idx, field, val) =>
     setForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, [field]: val } : l) }));
 
-  const pickItem = (idx, item) =>
+  // Price suggested for a line: the last price paid to this supplier for the article, else its catalogue price
+  // (Admin / ACHAT — others get nothing). Only fills an empty price; the user can change it.
+  const priceInLineUnit = (sug, item, unitMode) =>
+    Math.round(sug.pricePerStock * (item?.purchaseUnit && item.purchaseFactor > 0 && unitMode !== 'stock' ? item.purchaseFactor : 1) * 100) / 100;
+  // replace: also replaces a price that was itself suggested and not changed (e.g. the supplier is chosen
+  // after the articles: its own price wins over the article's reference price)
+  const suggestPrice = async (idx, item, supplierId, unitMode, replace = false) => {
+    if (!item) return;
+    try {
+      const r = await axios.get(`${API_URL}/inventory/${item.id || item._id}/last-price`, { params: supplierId ? { supplierId } : {} });
+      const sug = r.data;
+      if (!sug || !(sug.pricePerStock > 0)) return;
+      const value = priceInLineUnit(sug, item, unitMode);
+      setForm(f => ({ ...f, lines: f.lines.map((l, i) => (i === idx && (l.item?.id || l.itemId) === (item.id || item._id)
+        && (!(Number(l.unitPrice) > 0) || (replace && l.suggested && Number(l.unitPrice) === l.suggested.value)))
+        ? { ...l, unitPrice: value, suggested: { ...sug, value } } : l) }));
+    } catch (e) { /* no access to prices (orders.own) or offline: no suggestion */ }
+  };
+
+  const pickItem = (idx, item) => {
+    const unitMode = item?.purchaseUnit ? 'achat' : 'stock';
     setForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx
-      ? { ...l, itemId: item ? item.id : '', item, unitMode: item?.purchaseUnit ? 'achat' : 'stock' } : l) }));
+      ? { ...l, itemId: item ? item.id : '', item, unitMode, unitPrice: 0, suggested: null } : l) }));
+    suggestPrice(idx, item, form.supplierId, unitMode);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1321,7 +1343,7 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
     if (missing !== -1) { await dialog.alert({ variant: 'warning', message: t('orLineChooseItem', { n: missing + 1 }) }); return; }
     if (form.categories.length === 0) { await dialog.alert({ variant: 'warning', message: t('orSelectOneCategory') }); return; }
     // `item` is only kept for display in the form
-    const payload = { ...form, lines: form.lines.map(({ item, quantityReceived, ...l }) => l) };
+    const payload = { ...form, lines: form.lines.map(({ item, quantityReceived, suggested, ...l }) => l) };
     try {
       if (order) {
         await axios.put(`${API_URL}/orders/${order.id}`, payload);
@@ -1411,7 +1433,14 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
             <div className="form-group">
               <label>{t('orSupplier')}</label>
               <div className="or-supplier-row">
-                <select value={form.supplierId} onChange={e => setForm(f => ({ ...f, supplierId: e.target.value }))}>
+                <select value={form.supplierId} onChange={e => {
+                  const supplierId = e.target.value;
+                  setForm(f => ({ ...f, supplierId }));
+                  form.lines.forEach((l, i) => {
+                    const untouched = !(Number(l.unitPrice) > 0) || (l.suggested && Number(l.unitPrice) === l.suggested.value);
+                    if (l.item && untouched) suggestPrice(i, l.item, supplierId, l.unitMode, true);
+                  });
+                }}>
                   <option value="">{t('orChooseDash')}</option>
                   {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ''}</option>)}
                 </select>
@@ -1491,7 +1520,13 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
                           {hasPurchase ? (
                             <select value={inPurchase ? 'achat' : 'stock'} disabled={line.quantityReceived > 0}
                               title={line.quantityReceived > 0 ? t('orLineUnitLocked') : undefined}
-                              onChange={e => updateLine(idx, 'unitMode', e.target.value)}>
+                              onChange={e => {
+                                const mode = e.target.value;
+                                // a suggested price follows the unit (per kg ↔ per rouleau); a typed one stays
+                                setForm(f => ({ ...f, lines: f.lines.map((l, i) => i !== idx ? l : (l.suggested && Number(l.unitPrice) === l.suggested.value
+                                  ? { ...l, unitMode: mode, unitPrice: priceInLineUnit(l.suggested, l.item, mode), suggested: { ...l.suggested, value: priceInLineUnit(l.suggested, l.item, mode) } }
+                                  : { ...l, unitMode: mode })) }));
+                              }}>
                               <option value="achat">{unitLabel(it.purchaseUnit, lang, 2)} ({it.conversionInverse ? itemConversion(it, lang) : qtyWithUnit(it.purchaseFactor, it.unit, lang)})</option>
                               <option value="stock">{unitLabel(it.unit, lang, 2) || t('orStockUnitGeneric')}</option>
                             </select>
@@ -1516,6 +1551,15 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
                         value={line.unitPrice}
                         onChange={e => updateLine(idx, 'unitPrice', Number(e.target.value))}
                       />
+                      {line.suggested && Number(line.unitPrice) === line.suggested.value && (
+                        <span className="or-field-hint or-price-hint">
+                          {line.suggested.source === 'order'
+                            ? t('orPriceFromLast', { order: line.suggested.orderNumber || '—', date: new Date(line.suggested.at).toLocaleDateString('fr-FR') })
+                            : line.suggested.source === 'catalog' ? t('orPriceFromCatalog')
+                            : line.suggested.source === 'ref' ? t('orPriceFromRef')
+                            : t('orPriceFromAny', { supplier: line.suggested.supplier || '—', date: new Date(line.suggested.at).toLocaleDateString('fr-FR') })}
+                        </span>
+                      )}
                     </div>
 
                     <button type="button" className="btn-remove-line" onClick={() => removeLine(idx)}><X size={15} /></button>
