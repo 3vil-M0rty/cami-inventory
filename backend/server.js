@@ -226,6 +226,8 @@ const itemSchema = new mongoose.Schema({
   unit: { type: String, default: '', trim: true, maxlength: 40 },
   purchaseUnit: { type: String, default: '', trim: true, maxlength: 40 },
   purchaseFactor: { type: Number, default: 1, min: 0.000001 },
+  // how the conversion is shown: false → « 1 kg = 0.02 rouleau » (purchase → stock), true → « 1 rouleau = 50 kg »
+  conversionInverse: { type: Boolean, default: false },
   // Lowercase, accent-free copy of designations + codes, kept in sync on save → fast server-side search
   searchText: { type: String, default: '', select: false },
 }, { timestamps: true, toJSON: { transform: (doc, ret) => { ret.id = ret._id; delete ret._id; delete ret.__v; delete ret.searchText; } } });
@@ -1783,7 +1785,7 @@ app.get('/api/inventory/lookup', optionalAuth, async (req, res) => {
     if (and.length) filter.$and = and;
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
     const rows = await Item.find(filter)
-      .select('designation codeInterne image superCategory categoryId quantity threshold orderedQuantity supplierCodes.code unit purchaseUnit purchaseFactor')
+      .select('designation codeInterne image superCategory categoryId quantity threshold orderedQuantity supplierCodes.code unit purchaseUnit purchaseFactor conversionInverse')
       .sort({ createdAt: -1, _id: -1 })
       .limit(limit + 1)
       .populate('categoryId', 'name color')
@@ -2016,7 +2018,7 @@ const populateOrder = (q) => q
 
 // Fast version for the orders LIST: plain objects (lean) + only the article fields the page uses.
 // Adds the `id` fields the frontend expects (toJSON is not applied on lean documents).
-const ORDER_LIST_ITEM_FIELDS = 'designation image codeInterne supplierCodes categoryId superCategory unit purchaseUnit purchaseFactor';
+const ORDER_LIST_ITEM_FIELDS = 'designation image codeInterne supplierCodes categoryId superCategory unit purchaseUnit purchaseFactor conversionInverse';
 const withId = (d) => (d && typeof d === 'object' && d._id ? Object.assign(d, { id: String(d._id) }) : d);
 // Changes whenever an order / article / company / supplier is created, edited or deleted
 async function ordersListVersion() {
@@ -2075,7 +2077,8 @@ function sanitizeItemUnits(body) {
     const f = Number(body.purchaseFactor);
     out.purchaseFactor = Number.isFinite(f) && f > 0 ? Math.round(f * 1e6) / 1e6 : 1;
   }
-  if (out.purchaseUnit === '') out.purchaseFactor = 1; // no purchase unit → bought in stock units
+  if (body.conversionInverse !== undefined) out.conversionInverse = !!body.conversionInverse;
+  if (out.purchaseUnit === '') { out.purchaseFactor = 1; out.conversionInverse = false; } // no purchase unit → bought in stock units
   return out;
 }
 // Unit of a new / edited order line, frozen on the line. `unitMode`: 'achat' = the article's purchase unit

@@ -13,7 +13,7 @@ import { DocumentsModal, BlDocButtons, OrderDocumentsBlock } from './TrackingDoc
 import { ReceiveBatchModal, PendingBlsBlock } from './ReceiveBatch';
 import { BlsToReceivePanel, OrdersToReceiveList } from './BlsToReceive';
 import { useBlsToReceive, canReceiveBls, refreshBls } from './receptionQueue';
-import { unitLabel, qtyWithUnit, fmtUnitQty, lineFactor, lineToStock, isConverted } from '../inventory/units';
+import { unitLabel, qtyWithUnit, fmtUnitQty, lineFactor, lineToStock, isConverted, itemConversion } from '../inventory/units';
 import { ZoomImg } from '../../components/common/ImagePreview';
 import SuiviPanel, { FactureModal } from './suivi/SuiviPanel';
 
@@ -1492,7 +1492,7 @@ function OrderForm({ order, companies, suppliers, onSupplierAdded, lang, canEdit
                             <select value={inPurchase ? 'achat' : 'stock'} disabled={line.quantityReceived > 0}
                               title={line.quantityReceived > 0 ? t('orLineUnitLocked') : undefined}
                               onChange={e => updateLine(idx, 'unitMode', e.target.value)}>
-                              <option value="achat">{unitLabel(it.purchaseUnit, lang, 2)} ({qtyWithUnit(it.purchaseFactor, it.unit, lang)})</option>
+                              <option value="achat">{unitLabel(it.purchaseUnit, lang, 2)} ({it.conversionInverse ? itemConversion(it, lang) : qtyWithUnit(it.purchaseFactor, it.unit, lang)})</option>
                               <option value="stock">{unitLabel(it.unit, lang, 2) || t('orStockUnitGeneric')}</option>
                             </select>
                           ) : (

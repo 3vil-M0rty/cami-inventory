@@ -10,7 +10,7 @@ import ItemOrdersModal from './components/ItemOrdersModal';
 import ItemRequestsModal from './components/ItemRequestsModal';
 import UnitPicker from './components/UnitPicker';
 import { ImagePreviewModal } from '../../components/common/ImagePreview';
-import { unitLabel, qtyWithUnit, allowsDecimals, fmtUnitQty } from './units';
+import { unitLabel, qtyWithUnit, allowsDecimals, fmtUnitQty, conversionParts, itemConversion } from './units';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { dialog } from '../../components/common/dialog';
@@ -295,7 +295,7 @@ function InventoryPage() {
           [t('orderedQuantity')]: item.orderedQuantity || 0,
           [t('threshold')]: item.threshold,
           [t('status')]: getStockStatus(item).text,
-          [t('ivPurchaseUnit')]: item.purchaseUnit ? t('ivPurchaseInfo', { one: `1 ${unitLabel(item.purchaseUnit, language)}`, content: qtyWithUnit(item.purchaseFactor, item.unit, language) }) : '',
+          [t('ivPurchaseUnit')]: item.purchaseUnit ? t('ivPurchaseInfo', conversionParts(item.purchaseUnit, item.purchaseFactor, item.unit, item.conversionInverse, language)) : '',
         }));
         const ws = XLSX.utils.json_to_sheet(rows);
         ws['!cols'] = [{ wch: 40 }, { wch: 15 }, { wch: 14 }, { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 28 }];
@@ -675,9 +675,9 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
           )}
           {item.purchaseUnit && item.purchaseFactor > 0 && (
             <span className="item-unit-chip item-unit-chip--buy"
-              title={`${t('ivPurchaseUnitShort')} : 1 ${unitLabel(item.purchaseUnit, language)} = ${qtyWithUnit(item.purchaseFactor, item.unit, language)}`}>
+              title={`${t('ivPurchaseUnitShort')} : ${itemConversion(item, language)}`}>
               <Boxes size={11} strokeWidth={2.2} />
-              <span className="item-unit-chip__txt">1 {unitLabel(item.purchaseUnit, language)} = {qtyWithUnit(item.purchaseFactor, item.unit, language)}</span>
+              <span className="item-unit-chip__txt">{itemConversion(item, language)}</span>
             </span>
           )}
         </div>
@@ -694,7 +694,12 @@ function ItemCard({ item, language, isPoudre, onMinusClick, onPlusClick, onEdit,
             <>
               <div className="qty-col">
                 <span className="qty-label">{t('orderedQuantity')}</span>
-                <span className="qty-value">{formatQty(item.orderedQuantity || 0)}{item.unit && <span className="qty-unit">{unitOf(item.orderedQuantity || 0)}</span>}</span>
+                <span className="qty-value">{formatQty(item.orderedQuantity || 0)}{item.unit && <span className="qty-unit">{unitOf(item.orderedQuantity || 0)}</span>}
+                  {/* bought in another unit: the same quantity in the purchase unit (1 rouleau = 50 kg) */}
+                  {item.purchaseUnit && item.purchaseFactor > 0 && item.purchaseFactor !== 1 && (item.orderedQuantity || 0) > 0 && (
+                    <span className="qty-unit qty-unit--purchase">= {qtyWithUnit(Math.round(((item.orderedQuantity || 0) / item.purchaseFactor) * 1000) / 1000, item.purchaseUnit, language)}</span>
+                  )}
+                </span>
               </div>
               <div className="qty-col">
                 <span className="qty-label">{t('threshold')}</span>
@@ -823,7 +828,7 @@ function QuantityModal({ title, item, language, isPoudre, qty, note, onQtyChange
           />
           {item.purchaseUnit && item.purchaseFactor > 0 && (
             <small className="inv-form-hint">
-              {t('ivPurchaseInfo', { one: `1 ${unitLabel(item.purchaseUnit, language)}`, content: qtyWithUnit(item.purchaseFactor, item.unit, language) })}
+              {t('ivPurchaseInfo', conversionParts(item.purchaseUnit, item.purchaseFactor, item.unit, item.conversionInverse, language))}
             </small>
           )}
         </div>
@@ -1049,7 +1054,10 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
     superCategory: item.superCategory || superCategory,
     unit: item.unit || '',
     purchaseUnit: item.purchaseUnit || '',
-    purchaseFactor: item.purchaseUnit ? (item.purchaseFactor || 1) : '',
+    // typed in the direction chosen for the article (« 1 rouleau = 50 kg » when conversionInverse)
+    purchaseFactor: item.purchaseUnit
+      ? (item.conversionInverse && item.purchaseFactor > 0 ? Math.round((1 / item.purchaseFactor) * 1e6) / 1e6 : (item.purchaseFactor || 1))
+      : '',
   } : {
     image: '', designation: { it: '', fr: '', en: '' },
     codeInterne: '', supplierCodes: [],
@@ -1059,7 +1067,12 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
 
   const decimals = isPoudre || allowsDecimals(formData.unit);
   const parseQty = (val) => decimals ? parseFloat(val) || 0 : parseInt(val, 10) || 0;
-  const factor = Number(formData.purchaseFactor) || 0;
+  // « 1 achat = N stock » (1 carton = 100 pièces), or the other way « 1 stock = N achat » (1 rouleau = 50 kg)
+  // when the purchase unit is the smaller one — the stored factor is always stock units per purchase unit
+  // also the way the conversion is SHOWN everywhere (card, orders, reception): saved on the article
+  const [factorInverse, setFactorInverse] = useState(() => !!(item?.purchaseUnit && item.conversionInverse));
+  const typedFactor = Number(formData.purchaseFactor) || 0;
+  const factor = typedFactor > 0 ? (factorInverse ? Math.round((1 / typedFactor) * 1e6) / 1e6 : typedFactor) : 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1068,6 +1081,7 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
       ...formData,
       supplierCodes: (formData.supplierCodes || []).filter(s => s.supplierId),
       purchaseFactor: formData.purchaseUnit ? factor : 1,
+      conversionInverse: !!(formData.purchaseUnit && factorInverse),
     };
     try {
       if (item) await axios.put(`${API_URL}/inventory/${item.id}`, payload);
@@ -1125,20 +1139,32 @@ function ItemModal({ language, categories, suppliers = [], item, superCategory, 
               </div>
               <div className={`form-group inv-units__field inv-units__field--eq${formData.purchaseUnit ? '' : ' is-off'}`}>
                 <label>{t('ivContent')}</label>
-                {/* « 1 carton = [100] pièces » */}
-                <div className="inv-units__eq">
-                  <span className="inv-units__eq-side" title={unitLabel(formData.purchaseUnit, language)}>
-                    1 {unitLabel(formData.purchaseUnit, language) || t('ivPurchaseUnitGeneric')} =
-                  </span>
-                  <input type="number" min="0" step="any" disabled={!formData.purchaseUnit}
-                    required={!!formData.purchaseUnit} placeholder={formData.purchaseUnit ? '100' : '—'}
-                    aria-label={t('ivContent')}
-                    value={formData.purchaseFactor}
-                    onChange={e => setFormData(f => ({ ...f, purchaseFactor: e.target.value }))} />
-                  <span className="inv-units__eq-side" title={unitLabel(formData.unit, language, 2)}>
-                    {unitLabel(formData.unit, language, 2) || t('ivStockUnitsGeneric')}
-                  </span>
-                </div>
+                {/* « 1 carton = [100] pièces », or the other way « 1 rouleau = [50] kg » */}
+                {(() => {
+                  const purchaseLbl = unitLabel(formData.purchaseUnit, language) || t('ivPurchaseUnitGeneric');
+                  const stockLbl = unitLabel(formData.unit, language) || t('ivStockUnitsGeneric');
+                  const [left, right] = factorInverse
+                    ? [stockLbl, unitLabel(formData.purchaseUnit, language, 2) || t('ivPurchaseUnitGeneric')]
+                    : [purchaseLbl, unitLabel(formData.unit, language, 2) || t('ivStockUnitsGeneric')];
+                  return (
+                    <div className="inv-units__eq">
+                      <span className="inv-units__eq-side" title={left}>1 {left} =</span>
+                      <input type="number" min="0" step="any" disabled={!formData.purchaseUnit}
+                        required={!!formData.purchaseUnit} placeholder={formData.purchaseUnit ? (factorInverse ? '50' : '100') : '—'}
+                        aria-label={t('ivContent')}
+                        value={formData.purchaseFactor}
+                        onChange={e => setFormData(f => ({ ...f, purchaseFactor: e.target.value }))} />
+                      <span className="inv-units__eq-side" title={right}>{right}</span>
+                      <button type="button" className="inv-units__swap" disabled={!formData.purchaseUnit}
+                        title={t('ivFactorSwap')} aria-label={t('ivFactorSwap')}
+                        onClick={() => {
+                          // keep the same conversion, written the other way round
+                          setFormData(f => ({ ...f, purchaseFactor: typedFactor > 0 ? String(Math.round((1 / typedFactor) * 1e6) / 1e6) : f.purchaseFactor }));
+                          setFactorInverse(v => !v);
+                        }}>⇄</button>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
             <p className={`inv-units__help${formData.purchaseUnit && factor > 0 ? ' is-example' : ''}`}>

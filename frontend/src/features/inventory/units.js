@@ -147,6 +147,21 @@ export const qtyWithUnit = (qty, unit, lang = 'fr') => {
   return label ? `${fmtUnitQty(qty)} ${label}` : fmtUnitQty(qty);
 };
 
+// The conversion as people read it, in the direction chosen on the article (« Affichage » in its form):
+// inverse false → « 1 kg = 0.02 rouleau » (1 purchase unit = N stock units), true → « 1 rouleau = 50 kg ».
+// Returns { one: '1 kg', content: '0.02 rouleau' } (so « {one} = {content} » texts keep working).
+export function conversionParts(purchaseUnit, factor, stockUnit, inverse, lang = 'fr') {
+  const f = Number(factor) || 0;
+  if (inverse && f > 0) {
+    return { one: `1 ${unitLabel(stockUnit, lang)}`, content: qtyWithUnit(Math.round((1 / f) * 1e6) / 1e6, purchaseUnit, lang) };
+  }
+  return { one: `1 ${unitLabel(purchaseUnit, lang)}`, content: qtyWithUnit(f, stockUnit, lang) };
+}
+export const conversionText = (...a) => { const c = conversionParts(...a); return `${c.one} = ${c.content}`; };
+// same, for an article
+export const itemConversion = (it, lang = 'fr') =>
+  conversionText(it?.purchaseUnit, it?.purchaseFactor, it?.unit, !!it?.conversionInverse, lang);
+
 // Stock quantity of `q` units of an order line (10 cartons × 100 → 1000)
 export const lineFactor = (line) => (line && line.factor > 0 ? line.factor : 1);
 export const lineToStock = (line, q) => Math.round((Number(q) || 0) * lineFactor(line) * 1000) / 1000;

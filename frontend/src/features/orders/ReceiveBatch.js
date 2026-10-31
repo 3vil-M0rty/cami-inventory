@@ -6,7 +6,7 @@ import { Check, CheckCheck, Eye, FileText, FileImage, Package, PackageCheck, X, 
 import { useLanguage } from '../../context/LanguageContext';
 import { errorMessage } from '../../components/common/dialog';
 import { openDocument, fileBase, deleteOrderDocument } from './TrackingDocuments';
-import { unitLabel, qtyWithUnit, fmtUnitQty, lineFactor, lineToStock, isConverted } from '../inventory/units';
+import { unitLabel, qtyWithUnit, fmtUnitQty, lineFactor, lineToStock, isConverted, conversionParts, itemConversion } from '../inventory/units';
 import { ZoomImg } from '../../components/common/ImagePreview';
 import './ReceiveBatch.css';
 
@@ -123,6 +123,17 @@ export function ReceiveBatchModal({ order, docs, lang, canReceiveLine, initialBl
   // A line ordered in cartons of 100 is received in pièces (what is counted at the door): the inputs and the
   // « rest » are in the stock unit for those lines, and sent back to the server in cartons.
   const restIn = (l) => (isConverted(l) ? lineToStock(l, remaining(l)) : remaining(l));
+  // The line keeps the units it was ordered with. If the article's units were changed afterwards
+  // (e.g. now bought in kg, 1 kg = 0.02 rouleau), the reception would still count with the old ones.
+  const unitsChanged = (l) => {
+    const it = l.itemId && typeof l.itemId === 'object' ? l.itemId : null;
+    if (!it || it.unit === undefined) return false;
+    const hasPurchase = !!(it.purchaseUnit && it.purchaseFactor > 0);
+    const f = lineFactor(l);
+    if (hasPurchase && (l.unit || '') === it.purchaseUnit) return Math.abs(f - it.purchaseFactor) > 1e-9 || (l.stockUnit || '') !== (it.unit || '');
+    if ((l.unit || '') === (it.unit || '') && f === 1) return false;
+    return true;
+  };
   const toLineQty = (l, typed) => (isConverted(l) ? Math.round((typed / lineFactor(l)) * 1e6) / 1e6 : typed);
   const inputUnit = (l) => (isConverted(l) ? l.stockUnit : l.unit);
   const val = (l) => Number(qty[lineKey(l)] || 0);
@@ -238,7 +249,7 @@ export function ReceiveBatchModal({ order, docs, lang, canReceiveLine, initialBl
                         {it.codeInterne ? `${it.codeInterne} · ` : ''}
                         {t('rbReceivedOf', { r: fmtUnitQty(l.quantityReceived || 0), o: fmtUnitQty(l.quantityOrdered) })}
                         {l.unit && ` ${unitLabel(l.unit, lang, l.quantityOrdered)}`}
-                        {conv && ` (${t('rbUnitIs', { one: `1 ${unitLabel(l.unit, lang)}`, content: qtyWithUnit(lineFactor(l), l.stockUnit, lang) })})`}
+                        {conv && ` (${t('rbUnitIs', conversionParts(l.unit, lineFactor(l), l.stockUnit, !!it.conversionInverse, lang))})`}
                       </span>
                     </span>
                     <span className="rb-lines__qty">
@@ -254,6 +265,13 @@ export function ReceiveBatchModal({ order, docs, lang, canReceiveLine, initialBl
                       <span className="rb-conv">= {qtyWithUnit(toLineQty(l, v), l.unit, lang)}</span>
                     )}
                     {over && <span className="rb-over"><AlertTriangle size={12} /> {t('rbOver', { n: fmtUnitQty(v - rest) })}</span>}
+                    {unitsChanged(l) && (
+                      <span className="rb-over rb-units-changed"><AlertTriangle size={12} /> {t('rbUnitsChanged', {
+                        now: it.purchaseUnit && it.purchaseFactor > 0
+                          ? itemConversion(it, lang)
+                          : unitLabel(it.unit, lang, 2) || '—',
+                      })}</span>
+                    )}
                   </li>
                 );
               })}
